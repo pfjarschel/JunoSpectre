@@ -285,26 +285,89 @@ Rectangle {
         }
     }
 
-    // Node badge component
-    component WaveNodeBadge: Column {
+    // Node badge component with mini waveform preview
+    component WaveNodeBadge: Row {
+        id: bRoot
         property int toneNumber: 1
         property string toneName: "TONE"
         property string waveType: "SAW"
         property color toneColor: Theme.tone1
         property int level: 0
 
-        spacing: ScaleMetrics.dp(2)
-        Text {
-            text: toneName + " (" + waveType + ")"
-            font.bold: true
-            font.pixelSize: ScaleMetrics.sp(11)
-            color: toneColor
+        spacing: ScaleMetrics.dp(6)
+
+        // Miniature Waveform Glyph
+        Canvas {
+            id: miniCanvas
+            width: ScaleMetrics.dp(24)
+            height: ScaleMetrics.dp(18)
+            anchors.verticalCenter: parent.verticalCenter
+            renderStrategy: Canvas.Immediate
+
+            onPaint: {
+                const ctx = getContext("2d");
+                if (!ctx) return;
+                ctx.clearRect(0, 0, width, height);
+                ctx.strokeStyle = bRoot.toneColor;
+                ctx.lineWidth = 1.5;
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+                ctx.beginPath();
+                const midY = height / 2;
+                const amp = height * 0.42;
+
+                const wt = bRoot.waveType.toUpperCase();
+                if (wt === "SAW") {
+                    ctx.moveTo(0, midY + amp);
+                    ctx.lineTo(width / 2, midY - amp);
+                    ctx.lineTo(width / 2, midY + amp);
+                    ctx.lineTo(width, midY - amp);
+                    ctx.lineTo(width, midY + amp);
+                } else if (wt === "SQUARE") {
+                    ctx.moveTo(0, midY - amp);
+                    ctx.lineTo(width * 0.25, midY - amp);
+                    ctx.lineTo(width * 0.25, midY + amp);
+                    ctx.lineTo(width * 0.75, midY + amp);
+                    ctx.lineTo(width * 0.75, midY - amp);
+                    ctx.lineTo(width, midY - amp);
+                } else if (wt === "TRIANGLE") {
+                    ctx.moveTo(0, midY);
+                    ctx.lineTo(width * 0.25, midY - amp);
+                    ctx.lineTo(width * 0.75, midY + amp);
+                    ctx.lineTo(width, midY);
+                } else if (wt === "SINE") {
+                    ctx.moveTo(0, midY);
+                    for (let x = 0; x <= width; x += 2) {
+                        const phase = (x / width) * 2.0 * Math.PI;
+                        ctx.lineTo(x, midY - Math.sin(phase) * amp);
+                    }
+                }
+                ctx.stroke();
+            }
+
+            Component.onCompleted: requestPaint()
+            Connections {
+                target: bRoot
+                function onToneColorChanged() { miniCanvas.requestPaint(); }
+                function onWaveTypeChanged() { miniCanvas.requestPaint(); }
+            }
         }
-        Text {
-            text: "LVL: " + level
-            font.pixelSize: ScaleMetrics.sp(9)
-            font.family: Theme.fontMono
-            color: level > 0 ? toneColor : Theme.textMuted
+
+        Column {
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: ScaleMetrics.dp(2)
+            Text {
+                text: bRoot.toneName + " (" + bRoot.waveType + ")"
+                font.bold: true
+                font.pixelSize: ScaleMetrics.sp(11)
+                color: bRoot.toneColor
+            }
+            Text {
+                text: "LVL: " + bRoot.level
+                font.pixelSize: ScaleMetrics.sp(9)
+                font.family: Theme.fontMono
+                color: bRoot.level > 0 ? bRoot.toneColor : Theme.textMuted
+            }
         }
     }
 }

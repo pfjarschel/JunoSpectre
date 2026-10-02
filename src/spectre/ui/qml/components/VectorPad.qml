@@ -23,7 +23,7 @@ Item {
             anchors.fill: parent
             anchors.margins: ScaleMetrics.dp(12)
             renderStrategy: Canvas.Immediate
-            opacity: 0.22
+            opacity: 0.40
 
             onPaint: {
                 const ctx = getContext("2d");
