@@ -216,11 +216,11 @@ Rectangle {
                         // ==========================================
                         var numSlices = 16
                         var dxDepth = width * 0.22
-                        var dyDepth = height * 0.44
-                        var amp3d = height * 0.12
-                        var step3d = 8
+                        var dyDepth = height * 0.52
+                        var amp3d = height * 0.14
+                        var step3d = 3
 
-                        function drawSlice(z, isActive) {
+                        function computeSlice(z) {
                             var wSlice = width * 0.72 * (1.0 - z * 0.12)
                             var x0 = width * 0.05 + z * dxDepth
                             var yBase = height * 0.78 - z * dyDepth
@@ -231,10 +231,27 @@ Rectangle {
                                 var smp = sampleAt(p, z)
                                 slicePts.push({ x: x0 + sx, y: yBase - smp * amp3d })
                             }
+                            return {
+                                z: z,
+                                pts: slicePts,
+                                x0: x0,
+                                yBase: yBase,
+                                wSlice: wSlice
+                            }
+                        }
+
+                        var activeSliceData = computeSlice(curW)
+
+                        function drawSlice(slice, isActive) {
+                            var slicePts = slice.pts
+                            var x0 = slice.x0
+                            var yBase = slice.yBase
+                            var wSlice = slice.wSlice
+                            var z = slice.z
 
                             if (slicePts.length < 2) return
 
-                            // 1. Occlusion under-fill (so slices hide what's behind them)
+                            // 1. Occlusion under-fill (semi-translucent glass fill so back slices aren't wiped out)
                             ctx.beginPath()
                             ctx.moveTo(slicePts[0].x, slicePts[0].y)
                             for (var pIdx = 1; pIdx < slicePts.length; pIdx++) {
@@ -246,47 +263,23 @@ Rectangle {
 
                             if (isActive) {
                                 // Active slice has illuminated glowing gradient fill
-                                var grad = ctx.createLinearGradient(0, yBase - amp3d, 0, yBase)
+                                var grad = ctx.createLinearGradient(0, yBase - amp3d, 0, yBase + 6)
                                 grad.addColorStop(0, "rgba(56, 189, 248, 0.45)")
-                                grad.addColorStop(1, "rgba(7, 9, 13, 0.95)")
+                                grad.addColorStop(1, "rgba(7, 9, 13, 0.80)")
                                 ctx.fillStyle = grad
                             } else {
-                                // Background wireframe slice has opaque dark fill
-                                ctx.fillStyle = "#07090d"
+                                // Wireframe slice translucent dark glass fill
+                                ctx.fillStyle = "rgba(7, 9, 13, 0.65)"
                             }
                             ctx.fill()
 
-                            // 2. Stroke the waveform line
-                            if (isActive) {
-                                // Bloom glow pass
+                            // 2. Stroke the waveform line for wireframe slices
+                            if (!isActive) {
                                 ctx.beginPath()
-                                ctx.lineWidth = 5
-                                ctx.strokeStyle = "rgba(56, 189, 248, 0.50)"
+                                ctx.lineWidth = 1.8
                                 ctx.lineCap = "round"
-                                for (var g = 0; g < slicePts.length; g++) {
-                                    if (g === 0) ctx.moveTo(slicePts[g].x, slicePts[g].y)
-                                    else ctx.lineTo(slicePts[g].x, slicePts[g].y)
-                                }
-                                ctx.stroke()
-
-                                // Sharp bright core
-                                ctx.beginPath()
-                                ctx.lineWidth = 2.5
-                                ctx.strokeStyle = "#ffffff"
-                                for (var c = 0; c < slicePts.length; c++) {
-                                    if (c === 0) ctx.moveTo(slicePts[c].x, slicePts[c].y)
-                                    else ctx.lineTo(slicePts[c].x, slicePts[c].y)
-                                }
-                                ctx.stroke()
-
-                                // Active slice depth marker tick
-                                ctx.fillStyle = "#38bdf8"
-                                ctx.fillRect(x0 - 4, yBase - 8, 3, 16)
-                            } else {
-                                // Dim wireframe
-                                ctx.beginPath()
-                                ctx.lineWidth = 1
-                                var alpha = 0.15 + (1.0 - z) * 0.18
+                                ctx.lineJoin = "round"
+                                var alpha = 0.36 + (1.0 - z) * 0.12
                                 ctx.strokeStyle = "rgba(56, 189, 248, " + alpha.toFixed(2) + ")"
                                 for (var wIdx = 0; wIdx < slicePts.length; wIdx++) {
                                     if (wIdx === 0) ctx.moveTo(slicePts[wIdx].x, slicePts[wIdx].y)
@@ -302,17 +295,66 @@ Rectangle {
                             var zSlice = k / (numSlices - 1)
 
                             if (!activeDrawn && curW >= zSlice) {
-                                drawSlice(curW, true)
+                                drawSlice(activeSliceData, true)
                                 activeDrawn = true
                             }
 
                             if (Math.abs(zSlice - curW) > 0.035) {
-                                drawSlice(zSlice, false)
+                                var wireSlice = computeSlice(zSlice)
+                                drawSlice(wireSlice, false)
                             }
                         }
 
                         if (!activeDrawn) {
-                            drawSlice(curW, true)
+                            drawSlice(activeSliceData, true)
+                        }
+
+                        // ==========================================
+                        // DEDICATED TOP OVERLAY PASS FOR ACTIVE HIGHLIGHT
+                        // Guarantees the glowing active waveform is never obscured
+                        // by foreground wave slices when curW is in the back
+                        // ==========================================
+                        if (activeSliceData && activeSliceData.pts.length > 1) {
+                            var aPts = activeSliceData.pts
+                            var ax0 = activeSliceData.x0
+                            var ayBase = activeSliceData.yBase
+                            var aw = activeSliceData.wSlice
+
+                            // Active slice baseline guide
+                            ctx.beginPath()
+                            ctx.lineWidth = 1
+                            ctx.strokeStyle = "rgba(56, 189, 248, 0.40)"
+                            ctx.moveTo(ax0, ayBase)
+                            ctx.lineTo(ax0 + aw, ayBase)
+                            ctx.stroke()
+
+                            // Pass 1: Neon bloom glow
+                            ctx.beginPath()
+                            ctx.lineWidth = 5.5
+                            ctx.strokeStyle = "rgba(56, 189, 248, 0.65)"
+                            ctx.lineCap = "round"
+                            ctx.lineJoin = "round"
+                            for (var g = 0; g < aPts.length; g++) {
+                                if (g === 0) ctx.moveTo(aPts[g].x, aPts[g].y)
+                                else ctx.lineTo(aPts[g].x, aPts[g].y)
+                            }
+                            ctx.stroke()
+
+                            // Pass 2: White-hot sharp core
+                            ctx.beginPath()
+                            ctx.lineWidth = 2.4
+                            ctx.strokeStyle = "#ffffff"
+                            ctx.lineCap = "round"
+                            ctx.lineJoin = "round"
+                            for (var c = 0; c < aPts.length; c++) {
+                                if (c === 0) ctx.moveTo(aPts[c].x, aPts[c].y)
+                                else ctx.lineTo(aPts[c].x, aPts[c].y)
+                            }
+                            ctx.stroke()
+
+                            // Active slice depth marker cursor on left edge
+                            ctx.fillStyle = "#38bdf8"
+                            ctx.fillRect(ax0 - 5, ayBase - 7, 4, 14)
                         }
                     }
                 }
