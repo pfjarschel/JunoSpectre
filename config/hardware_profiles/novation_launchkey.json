@@ -1,0 +1,86 @@
+{
+  "profile_name": "Novation Launchkey",
+  "manufacturer": "Novation",
+  "model": "Launchkey Series",
+  "version": "1.0",
+  "description": "8 rotary potentiometers and 9 faders for Launchkey 49/61/88 and Launchkey Mini.",
+  "device_match_keywords": ["Launchkey", "LAUNCHKEY", "Launchkey Mini"],
+  "default_channel": 0,
+  "controls": {
+    "fader_1": {"id": "fader_1", "name": "Fader 1", "control_type": "fader", "message_type": "cc", "number": 41},
+    "fader_2": {"id": "fader_2", "name": "Fader 2", "control_type": "fader", "message_type": "cc", "number": 42},
+    "fader_3": {"id": "fader_3", "name": "Fader 3", "control_type": "fader", "message_type": "cc", "number": 43},
+    "fader_4": {"id": "fader_4", "name": "Fader 4", "control_type": "fader", "message_type": "cc", "number": 44},
+    "fader_5": {"id": "fader_5", "name": "Fader 5", "control_type": "fader", "message_type": "cc", "number": 45},
+    "fader_6": {"id": "fader_6", "name": "Fader 6", "control_type": "fader", "message_type": "cc", "number": 46},
+    "fader_7": {"id": "fader_7", "name": "Fader 7", "control_type": "fader", "message_type": "cc", "number": 47},
+    "fader_8": {"id": "fader_8", "name": "Fader 8", "control_type": "fader", "message_type": "cc", "number": 48},
+    "fader_master": {"id": "fader_master", "name": "Master Fader", "control_type": "fader", "message_type": "cc", "number": 49},
+    "knob_1": {"id": "knob_1", "name": "Knob 1", "control_type": "potentiometer", "message_type": "cc", "number": 21},
+    "knob_2": {"id": "knob_2", "name": "Knob 2", "control_type": "potentiometer", "message_type": "cc", "number": 22},
+    "knob_3": {"id": "knob_3", "name": "Knob 3", "control_type": "potentiometer", "message_type": "cc", "number": 23},
+    "knob_4": {"id": "knob_4", "name": "Knob 4", "control_type": "potentiometer", "message_type": "cc", "number": 24},
+    "knob_5": {"id": "knob_5", "name": "Knob 5", "control_type": "potentiometer", "message_type": "cc", "number": 25},
+    "knob_6": {"id": "knob_6", "name": "Knob 6", "control_type": "potentiometer", "message_type": "cc", "number": 26},
+    "knob_7": {"id": "knob_7", "name": "Knob 7", "control_type": "potentiometer", "message_type": "cc", "number": 27},
+    "knob_8": {"id": "knob_8", "name": "Knob 8", "control_type": "potentiometer", "message_type": "cc", "number": 28}
+  },
+  "default_bindings": [
+    {
+      "control_id": "fader_1",
+      "message_type": "cc",
+      "number": 41,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tva", "param_name": "level", "tone_index": 1, "display_name": "Tone 1 Level"}
+    },
+    {
+      "control_id": "fader_2",
+      "message_type": "cc",
+      "number": 42,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tva", "param_name": "level", "tone_index": 2, "display_name": "Tone 2 Level"}
+    },
+    {
+      "control_id": "fader_3",
+      "message_type": "cc",
+      "number": 43,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tva", "param_name": "level", "tone_index": 3, "display_name": "Tone 3 Level"}
+    },
+    {
+      "control_id": "fader_4",
+      "message_type": "cc",
+      "number": 44,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tva", "param_name": "level", "tone_index": 4, "display_name": "Tone 4 Level"}
+    },
+    {
+      "control_id": "knob_1",
+      "message_type": "cc",
+      "number": 21,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 1, "display_name": "Tone 1 Cutoff"}
+    },
+    {
+      "control_id": "knob_2",
+      "message_type": "cc",
+      "number": 22,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 2, "display_name": "Tone 2 Cutoff"}
+    },
+    {
+      "control_id": "knob_3",
+      "message_type": "cc",
+      "number": 23,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 3, "display_name": "Tone 3 Cutoff"}
+    },
+    {
+      "control_id": "knob_4",
+      "message_type": "cc",
+      "number": 24,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 4, "display_name": "Tone 4 Cutoff"}
+    }
+  ]
+}

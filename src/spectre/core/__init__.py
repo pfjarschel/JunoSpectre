@@ -3,6 +3,8 @@
 from .sysex import RolandSysEx, calculate_checksum
 from .midi import MidiDeviceManager
 from .protocol import JunoClient, SoundMode
+from ..control.smooth_scaler import SmoothScaler
+from ..control.midi_learn import MidiLearnEngine
 
 __all__ = [
     "RolandSysEx",
@@ -10,4 +12,7 @@ __all__ = [
     "MidiDeviceManager",
     "JunoClient",
     "SoundMode",
+    "SmoothScaler",
+    "MidiLearnEngine",
 ]
+

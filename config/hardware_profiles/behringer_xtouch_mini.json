@@ -1,0 +1,57 @@
+{
+  "profile_name": "Behringer X-Touch Mini",
+  "manufacturer": "Behringer",
+  "model": "X-Touch Mini",
+  "version": "1.0",
+  "description": "8 endless encoders with push switches and LED rings, 1 60mm master fader, 16 buttons.",
+  "device_match_keywords": ["X-TOUCH MINI", "X-Touch Mini", "X-TOUCH_MINI"],
+  "default_channel": 10,
+  "controls": {
+    "encoder_1": {"id": "encoder_1", "name": "Encoder 1", "control_type": "encoder", "message_type": "cc", "number": 1},
+    "encoder_2": {"id": "encoder_2", "name": "Encoder 2", "control_type": "encoder", "message_type": "cc", "number": 2},
+    "encoder_3": {"id": "encoder_3", "name": "Encoder 3", "control_type": "encoder", "message_type": "cc", "number": 3},
+    "encoder_4": {"id": "encoder_4", "name": "Encoder 4", "control_type": "encoder", "message_type": "cc", "number": 4},
+    "encoder_5": {"id": "encoder_5", "name": "Encoder 5", "control_type": "encoder", "message_type": "cc", "number": 5},
+    "encoder_6": {"id": "encoder_6", "name": "Encoder 6", "control_type": "encoder", "message_type": "cc", "number": 6},
+    "encoder_7": {"id": "encoder_7", "name": "Encoder 7", "control_type": "encoder", "message_type": "cc", "number": 7},
+    "encoder_8": {"id": "encoder_8", "name": "Encoder 8", "control_type": "encoder", "message_type": "cc", "number": 8},
+    "fader_master": {"id": "fader_master", "name": "Master Fader", "control_type": "fader", "message_type": "cc", "number": 9}
+  },
+  "default_bindings": [
+    {
+      "control_id": "encoder_1",
+      "message_type": "cc",
+      "number": 1,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 1, "display_name": "Tone 1 Cutoff"}
+    },
+    {
+      "control_id": "encoder_2",
+      "message_type": "cc",
+      "number": 2,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "resonance", "tone_index": 1, "display_name": "Tone 1 Resonance"}
+    },
+    {
+      "control_id": "encoder_3",
+      "message_type": "cc",
+      "number": 3,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 2, "display_name": "Tone 2 Cutoff"}
+    },
+    {
+      "control_id": "encoder_4",
+      "message_type": "cc",
+      "number": 4,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "resonance", "tone_index": 2, "display_name": "Tone 2 Resonance"}
+    },
+    {
+      "control_id": "fader_master",
+      "message_type": "cc",
+      "number": 9,
+      "scale_mode": "smooth",
+      "target": {"category": "patch_common", "param_name": "level", "display_name": "Patch Master Level"}
+    }
+  ]
+}

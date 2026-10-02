@@ -22,13 +22,74 @@ from .sysex import (
     OFFSET_PATCH_TONE_2,
     OFFSET_PATCH_TONE_3,
     OFFSET_PATCH_TONE_4,
+    PATCH_PARAM_ATTACK_OFFSET,
+    PATCH_PARAM_CHORUS_SEND,
     PATCH_PARAM_CUTOFF_OFFSET,
     PATCH_PARAM_LEVEL,
     PATCH_PARAM_NAME,
+    PATCH_PARAM_PAN,
+    PATCH_PARAM_RELEASE_OFFSET,
     PATCH_PARAM_RESONANCE_OFFSET,
+    PATCH_PARAM_REVERB_SEND,
+    TONE_PARAM_CHORUS_SEND,
+    TONE_PARAM_COARSE_TUNE,
+    TONE_PARAM_DRY_SEND,
+    TONE_PARAM_FINE_TUNE,
     TONE_PARAM_LEVEL,
+    TONE_PARAM_LFO1_PAN_DEPTH,
+    TONE_PARAM_LFO1_PITCH_DEPTH,
+    TONE_PARAM_LFO1_RATE,
+    TONE_PARAM_LFO1_TVA_DEPTH,
+    TONE_PARAM_LFO1_TVF_DEPTH,
+    TONE_PARAM_LFO1_WAVEFORM,
+    TONE_PARAM_LFO2_PAN_DEPTH,
+    TONE_PARAM_LFO2_PITCH_DEPTH,
+    TONE_PARAM_LFO2_RATE,
+    TONE_PARAM_LFO2_TVA_DEPTH,
+    TONE_PARAM_LFO2_TVF_DEPTH,
+    TONE_PARAM_LFO2_WAVEFORM,
+    TONE_PARAM_PAN,
+    TONE_PARAM_PITCH_ENV_DEPTH,
+    TONE_PARAM_PITCH_ENV_T1,
+    TONE_PARAM_PITCH_ENV_T2,
+    TONE_PARAM_PITCH_ENV_T3,
+    TONE_PARAM_PITCH_ENV_T4,
+    TONE_PARAM_REVERB_SEND,
+    TONE_PARAM_TVA_ENV_L1,
+    TONE_PARAM_TVA_ENV_L2,
+    TONE_PARAM_TVA_ENV_L3,
+    TONE_PARAM_TVA_ENV_T1,
+    TONE_PARAM_TVA_ENV_T2,
+    TONE_PARAM_TVA_ENV_T3,
+    TONE_PARAM_TVA_ENV_T4,
+    TONE_PARAM_TVA_LEVEL,
+    TONE_PARAM_TVA_PAN,
+    TONE_PARAM_TVF_CUTOFF,
+    TONE_PARAM_TVF_CUTOFF_KEYFOLLOW,
+    TONE_PARAM_TVF_ENV_DEPTH,
+    TONE_PARAM_TVF_ENV_L1,
+    TONE_PARAM_TVF_ENV_L2,
+    TONE_PARAM_TVF_ENV_L3,
+    TONE_PARAM_TVF_ENV_L4,
+    TONE_PARAM_TVF_ENV_T1,
+    TONE_PARAM_TVF_ENV_T2,
+    TONE_PARAM_TVF_ENV_T3,
+    TONE_PARAM_TVF_ENV_T4,
+    TONE_PARAM_TVF_ENV_VEL_SENS,
+    TONE_PARAM_TVF_FILTER_TYPE,
+    TONE_PARAM_TVF_RESONANCE,
+    TONE_PARAM_WAVE_FXM_COLOR,
+    TONE_PARAM_WAVE_FXM_DEPTH,
+    TONE_PARAM_WAVE_FXM_SWITCH,
+    TONE_PARAM_WAVE_GAIN,
+    TONE_PARAM_WAVE_GROUP_ID,
+    TONE_PARAM_WAVE_GROUP_TYPE,
+    TONE_PARAM_WAVE_NUM_L,
+    TONE_PARAM_WAVE_NUM_R,
     RolandSysEx,
     add_address,
+    pack_2nibbles,
+    pack_4nibbles,
 )
 
 
@@ -219,3 +280,175 @@ class JunoClient:
         base = self.get_active_patch_base()
         addr = add_address(base, PATCH_PARAM_RESONANCE_OFFSET)
         self.send_data(addr, [clamped])
+
+    def set_patch_param(self, param_name: str, value: int) -> None:
+        """Set a Patch Common parameter by name."""
+        base = self.get_active_patch_base()
+        mapping = {
+            "level": (PATCH_PARAM_LEVEL, 0, 127),
+            "pan": (PATCH_PARAM_PAN, 0, 127),
+            "cutoff_offset": (PATCH_PARAM_CUTOFF_OFFSET, 1, 127),
+            "resonance_offset": (PATCH_PARAM_RESONANCE_OFFSET, 1, 127),
+            "attack_offset": (PATCH_PARAM_ATTACK_OFFSET, 1, 127),
+            "release_offset": (PATCH_PARAM_RELEASE_OFFSET, 1, 127),
+            "chorus_send": (PATCH_PARAM_CHORUS_SEND, 0, 127),
+            "reverb_send": (PATCH_PARAM_REVERB_SEND, 0, 127),
+        }
+        if param_name not in mapping:
+            raise ValueError(f"Unknown patch param '{param_name}'. Supported: {list(mapping.keys())}")
+        offset, min_v, max_v = mapping[param_name]
+        clamped = max(min_v, min(max_v, int(value)))
+        addr = add_address(base, offset)
+        self.send_data(addr, [clamped])
+
+    def set_tone_param(self, tone_index: int, offset: int, value: int | Sequence[int]) -> None:
+        """Set an arbitrary Tone parameter by offset."""
+        if tone_index not in (1, 2, 3, 4):
+            raise ValueError(f"Tone index must be 1..4, got {tone_index}")
+        base = self.get_active_patch_base()
+        offsets = {
+            1: OFFSET_PATCH_TONE_1,
+            2: OFFSET_PATCH_TONE_2,
+            3: OFFSET_PATCH_TONE_3,
+            4: OFFSET_PATCH_TONE_4,
+        }
+        addr = add_address(add_address(base, offsets[tone_index]), offset)
+        data = [value] if isinstance(value, int) else list(value)
+        self.send_data(addr, data)
+
+    def set_tone_tvf(
+        self,
+        tone_index: int,
+        cutoff: Optional[int] = None,
+        resonance: Optional[int] = None,
+        env_depth: Optional[int] = None,
+        filter_type: Optional[int] = None,
+        attack: Optional[int] = None,
+        decay: Optional[int] = None,
+        sustain: Optional[int] = None,
+        release: Optional[int] = None,
+    ) -> None:
+        """Set TVF (Filter) parameters for a tone."""
+        if cutoff is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_CUTOFF, max(0, min(127, cutoff)))
+        if resonance is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_RESONANCE, max(0, min(127, resonance)))
+        if env_depth is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_DEPTH, max(1, min(127, env_depth)))
+        if filter_type is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_FILTER_TYPE, max(0, min(6, filter_type)))
+        if attack is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T1, max(0, min(127, attack)))
+        if decay is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T2, max(0, min(127, decay)))
+        if sustain is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_L3, max(0, min(127, sustain)))
+        if release is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T4, max(0, min(127, release)))
+
+    def set_tone_tva(
+        self,
+        tone_index: int,
+        level: Optional[int] = None,
+        pan: Optional[int] = None,
+        attack: Optional[int] = None,
+        decay: Optional[int] = None,
+        sustain: Optional[int] = None,
+        release: Optional[int] = None,
+    ) -> None:
+        """Set TVA (Amp) parameters for a tone."""
+        if level is not None:
+            self.set_tone_level(tone_index, level)
+        if pan is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVA_PAN, max(0, min(127, pan)))
+        if attack is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T1, max(0, min(127, attack)))
+        if decay is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T2, max(0, min(127, decay)))
+        if sustain is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_L3, max(0, min(127, sustain)))
+        if release is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T4, max(0, min(127, release)))
+
+    def set_tone_pitch(
+        self,
+        tone_index: int,
+        coarse: Optional[int] = None,
+        fine: Optional[int] = None,
+        env_depth: Optional[int] = None,
+    ) -> None:
+        """Set Pitch parameters for a tone."""
+        if coarse is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_COARSE_TUNE, max(16, min(112, coarse)))
+        if fine is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_FINE_TUNE, max(14, min(114, fine)))
+        if env_depth is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_DEPTH, max(52, min(76, env_depth)))
+
+    def set_tone_wave(
+        self,
+        tone_index: int,
+        group_type: Optional[int] = None,
+        wave_num: Optional[int] = None,
+        gain: Optional[int] = None,
+        fxm_switch: Optional[int] = None,
+        fxm_depth: Optional[int] = None,
+    ) -> None:
+        """Set Wave generator parameters for a tone."""
+        if group_type is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_WAVE_GROUP_TYPE, max(0, min(3, group_type)))
+        if wave_num is not None:
+            nibbles = pack_4nibbles(max(0, min(16384, wave_num)))
+            self.set_tone_param(tone_index, TONE_PARAM_WAVE_NUM_L, nibbles)
+        if gain is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_WAVE_GAIN, max(0, min(3, gain)))
+        if fxm_switch is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_WAVE_FXM_SWITCH, 1 if fxm_switch else 0)
+        if fxm_depth is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_WAVE_FXM_DEPTH, max(0, min(16, fxm_depth)))
+
+    def set_tone_lfo(
+        self,
+        tone_index: int,
+        lfo_index: int = 1,
+        waveform: Optional[int] = None,
+        rate: Optional[int] = None,
+        pitch_depth: Optional[int] = None,
+        tvf_depth: Optional[int] = None,
+        tva_depth: Optional[int] = None,
+        pan_depth: Optional[int] = None,
+    ) -> None:
+        """Set LFO 1 or LFO 2 parameters for a tone."""
+        if lfo_index == 1:
+            wf_off, rate_off, p_off, f_off, a_off, pan_off = (
+                TONE_PARAM_LFO1_WAVEFORM,
+                TONE_PARAM_LFO1_RATE,
+                TONE_PARAM_LFO1_PITCH_DEPTH,
+                TONE_PARAM_LFO1_TVF_DEPTH,
+                TONE_PARAM_LFO1_TVA_DEPTH,
+                TONE_PARAM_LFO1_PAN_DEPTH,
+            )
+        elif lfo_index == 2:
+            wf_off, rate_off, p_off, f_off, a_off, pan_off = (
+                TONE_PARAM_LFO2_WAVEFORM,
+                TONE_PARAM_LFO2_RATE,
+                TONE_PARAM_LFO2_PITCH_DEPTH,
+                TONE_PARAM_LFO2_TVF_DEPTH,
+                TONE_PARAM_LFO2_TVA_DEPTH,
+                TONE_PARAM_LFO2_PAN_DEPTH,
+            )
+        else:
+            raise ValueError(f"LFO index must be 1 or 2, got {lfo_index}")
+
+        if waveform is not None:
+            self.set_tone_param(tone_index, wf_off, max(0, min(12, waveform)))
+        if rate is not None:
+            self.set_tone_param(tone_index, rate_off, pack_2nibbles(max(0, min(149, rate))))
+        if pitch_depth is not None:
+            self.set_tone_param(tone_index, p_off, max(1, min(127, pitch_depth)))
+        if tvf_depth is not None:
+            self.set_tone_param(tone_index, f_off, max(1, min(127, tvf_depth)))
+        if tva_depth is not None:
+            self.set_tone_param(tone_index, a_off, max(1, min(127, tva_depth)))
+        if pan_depth is not None:
+            self.set_tone_param(tone_index, pan_off, max(1, min(127, pan_depth)))

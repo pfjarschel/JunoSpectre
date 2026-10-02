@@ -120,16 +120,45 @@ class MidiDeviceManager:
         logger.info(f"Connected to Synth: In='{in_name}', Out='{out_name}'")
         return in_name, out_name
 
-    def connect_launch_control(self) -> str:
-        """Open MIDI input from Novation Launch Control XL."""
-        in_name, _ = self.find_launch_control_ports()
+    def connect_launch_control(self) -> Tuple[str, Optional[str]]:
+        """Open bidirectional MIDI connection to Novation Launch Control XL."""
+        in_name, out_name = self.find_launch_control_ports()
         if not in_name:
             raise ConnectionError(
                 f"Could not find Launch Control XL port. Available inputs: {self.get_input_names()}"
             )
         self.lcxl_in = mido.open_input(in_name)
-        logger.info(f"Connected to Launch Control XL: In='{in_name}'")
-        return in_name
+        if out_name:
+            try:
+                self.lcxl_out = mido.open_output(out_name)
+                logger.info(f"Connected to Launch Control XL Out: '{out_name}'")
+            except Exception as e:
+                logger.warning(f"Could not open Launch Control XL output '{out_name}': {e}")
+        logger.info(f"Connected to Launch Control XL In: '{in_name}'")
+        return in_name, out_name
+
+    def connect_controller(
+        self,
+        in_port_name: str,
+        out_port_name: Optional[str] = None,
+    ) -> None:
+        """Connect to an arbitrary MIDI controller input and optional output."""
+        self.lcxl_in = mido.open_input(in_port_name)
+        if out_port_name:
+            try:
+                self.lcxl_out = mido.open_output(out_port_name)
+            except Exception as e:
+                logger.warning(f"Could not open controller output '{out_port_name}': {e}")
+
+    def send_controller_message(self, msg: mido.Message) -> None:
+        """Send a MIDI message to the active controller (for feedback / LED / sync)."""
+        if self.lcxl_out and not self.lcxl_out.closed:
+            self.lcxl_out.send(msg)
+
+    def send_controller_cc(self, control: int, value: int, channel: int = 0) -> None:
+        """Send a Control Change message to the active controller."""
+        msg = mido.Message("control_change", channel=channel, control=control, value=max(0, min(127, value)))
+        self.send_controller_message(msg)
 
     def send_juno_sysex(self, data: list[int]) -> None:
         """Send a SysEx message to the Roland synth."""

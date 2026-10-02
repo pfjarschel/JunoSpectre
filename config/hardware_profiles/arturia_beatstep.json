@@ -1,0 +1,85 @@
+{
+  "profile_name": "Arturia BeatStep",
+  "manufacturer": "Arturia",
+  "model": "BeatStep",
+  "version": "1.0",
+  "description": "16 endless rotary encoders and 16 velocity-sensitive pads.",
+  "device_match_keywords": ["Arturia BeatStep", "BeatStep"],
+  "default_channel": 0,
+  "controls": {
+    "encoder_1": {"id": "encoder_1", "name": "Encoder 1", "control_type": "encoder", "message_type": "cc", "number": 20},
+    "encoder_2": {"id": "encoder_2", "name": "Encoder 2", "control_type": "encoder", "message_type": "cc", "number": 21},
+    "encoder_3": {"id": "encoder_3", "name": "Encoder 3", "control_type": "encoder", "message_type": "cc", "number": 22},
+    "encoder_4": {"id": "encoder_4", "name": "Encoder 4", "control_type": "encoder", "message_type": "cc", "number": 23},
+    "encoder_5": {"id": "encoder_5", "name": "Encoder 5", "control_type": "encoder", "message_type": "cc", "number": 24},
+    "encoder_6": {"id": "encoder_6", "name": "Encoder 6", "control_type": "encoder", "message_type": "cc", "number": 25},
+    "encoder_7": {"id": "encoder_7", "name": "Encoder 7", "control_type": "encoder", "message_type": "cc", "number": 26},
+    "encoder_8": {"id": "encoder_8", "name": "Encoder 8", "control_type": "encoder", "message_type": "cc", "number": 27},
+    "encoder_9": {"id": "encoder_9", "name": "Encoder 9", "control_type": "encoder", "message_type": "cc", "number": 28},
+    "encoder_10": {"id": "encoder_10", "name": "Encoder 10", "control_type": "encoder", "message_type": "cc", "number": 29},
+    "encoder_11": {"id": "encoder_11", "name": "Encoder 11", "control_type": "encoder", "message_type": "cc", "number": 30},
+    "encoder_12": {"id": "encoder_12", "name": "Encoder 12", "control_type": "encoder", "message_type": "cc", "number": 31},
+    "encoder_13": {"id": "encoder_13", "name": "Encoder 13", "control_type": "encoder", "message_type": "cc", "number": 32},
+    "encoder_14": {"id": "encoder_14", "name": "Encoder 14", "control_type": "encoder", "message_type": "cc", "number": 33},
+    "encoder_15": {"id": "encoder_15", "name": "Encoder 15", "control_type": "encoder", "message_type": "cc", "number": 34},
+    "encoder_16": {"id": "encoder_16", "name": "Encoder 16", "control_type": "encoder", "message_type": "cc", "number": 35}
+  },
+  "default_bindings": [
+    {
+      "control_id": "encoder_1",
+      "message_type": "cc",
+      "number": 20,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 1, "display_name": "Tone 1 Cutoff"}
+    },
+    {
+      "control_id": "encoder_2",
+      "message_type": "cc",
+      "number": 21,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 2, "display_name": "Tone 2 Cutoff"}
+    },
+    {
+      "control_id": "encoder_3",
+      "message_type": "cc",
+      "number": 22,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 3, "display_name": "Tone 3 Cutoff"}
+    },
+    {
+      "control_id": "encoder_4",
+      "message_type": "cc",
+      "number": 23,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 4, "display_name": "Tone 4 Cutoff"}
+    },
+    {
+      "control_id": "encoder_5",
+      "message_type": "cc",
+      "number": 24,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "resonance", "tone_index": 1, "display_name": "Tone 1 Resonance"}
+    },
+    {
+      "control_id": "encoder_6",
+      "message_type": "cc",
+      "number": 25,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "resonance", "tone_index": 2, "display_name": "Tone 2 Resonance"}
+    },
+    {
+      "control_id": "encoder_7",
+      "message_type": "cc",
+      "number": 26,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "resonance", "tone_index": 3, "display_name": "Tone 3 Resonance"}
+    },
+    {
+      "control_id": "encoder_8",
+      "message_type": "cc",
+      "number": 27,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "resonance", "tone_index": 4, "display_name": "Tone 4 Resonance"}
+    }
+  ]
+}

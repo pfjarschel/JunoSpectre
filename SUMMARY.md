@@ -151,10 +151,10 @@ juno-spectre/
 
 ## 5. Development Roadmap for Antigravity
 
-* [ ] **Phase 1: SysEx Core & Sniffer**
+* [x] **Phase 1: SysEx Core & Sniffer**
   * Establish bidirectional communication with XPS-30/Juno-DS over ALSA.
   * Verify Model ID handshake and test Temporary Buffer write on TVA Level 1–4.
-* [ ] **Phase 2: MIDI Learn Engine & Smooth Scaler**
+* [x] **Phase 2: MIDI Learn Engine & Smooth Scaler**
   * Create generic controller listener: intercept incoming CCs and map dynamically to Roland parameter offsets.
   * Implement and benchmark the Smooth Scaling mathematical algorithm.
 * [ ] **Phase 3: Vector Synthesis Touch Engine**

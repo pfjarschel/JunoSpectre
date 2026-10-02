@@ -1,0 +1,165 @@
+{
+  "profile_name": "Novation Launch Control XL",
+  "manufacturer": "Novation",
+  "model": "Launch Control XL / XL3",
+  "version": "1.0",
+  "description": "24 endless rotary knobs across 3 sends, 8 faders, 16 buttons with bidirectional LED feedback.",
+  "device_match_keywords": ["Launch Control XL", "Launch Control", "LCXL", "Launch Control XL3", "LCXL3"],
+  "default_channel": 0,
+  "controls": {
+    "fader_1": {"id": "fader_1", "name": "Fader 1", "control_type": "fader", "message_type": "cc", "number": 77},
+    "fader_2": {"id": "fader_2", "name": "Fader 2", "control_type": "fader", "message_type": "cc", "number": 78},
+    "fader_3": {"id": "fader_3", "name": "Fader 3", "control_type": "fader", "message_type": "cc", "number": 79},
+    "fader_4": {"id": "fader_4", "name": "Fader 4", "control_type": "fader", "message_type": "cc", "number": 80},
+    "fader_5": {"id": "fader_5", "name": "Fader 5", "control_type": "fader", "message_type": "cc", "number": 81},
+    "fader_6": {"id": "fader_6", "name": "Fader 6", "control_type": "fader", "message_type": "cc", "number": 82},
+    "fader_7": {"id": "fader_7", "name": "Fader 7", "control_type": "fader", "message_type": "cc", "number": 83},
+    "fader_8": {"id": "fader_8", "name": "Fader 8", "control_type": "fader", "message_type": "cc", "number": 84},
+    "knob_send_a_1": {"id": "knob_send_a_1", "name": "Send A 1", "control_type": "encoder", "message_type": "cc", "number": 13},
+    "knob_send_a_2": {"id": "knob_send_a_2", "name": "Send A 2", "control_type": "encoder", "message_type": "cc", "number": 14},
+    "knob_send_a_3": {"id": "knob_send_a_3", "name": "Send A 3", "control_type": "encoder", "message_type": "cc", "number": 15},
+    "knob_send_a_4": {"id": "knob_send_a_4", "name": "Send A 4", "control_type": "encoder", "message_type": "cc", "number": 16},
+    "knob_send_a_5": {"id": "knob_send_a_5", "name": "Send A 5", "control_type": "encoder", "message_type": "cc", "number": 17},
+    "knob_send_a_6": {"id": "knob_send_a_6", "name": "Send A 6", "control_type": "encoder", "message_type": "cc", "number": 18},
+    "knob_send_a_7": {"id": "knob_send_a_7", "name": "Send A 7", "control_type": "encoder", "message_type": "cc", "number": 19},
+    "knob_send_a_8": {"id": "knob_send_a_8", "name": "Send A 8", "control_type": "encoder", "message_type": "cc", "number": 20},
+    "knob_send_b_1": {"id": "knob_send_b_1", "name": "Send B 1", "control_type": "encoder", "message_type": "cc", "number": 29},
+    "knob_send_b_2": {"id": "knob_send_b_2", "name": "Send B 2", "control_type": "encoder", "message_type": "cc", "number": 30},
+    "knob_send_b_3": {"id": "knob_send_b_3", "name": "Send B 3", "control_type": "encoder", "message_type": "cc", "number": 31},
+    "knob_send_b_4": {"id": "knob_send_b_4", "name": "Send B 4", "control_type": "encoder", "message_type": "cc", "number": 32},
+    "knob_send_b_5": {"id": "knob_send_b_5", "name": "Send B 5", "control_type": "encoder", "message_type": "cc", "number": 33},
+    "knob_send_b_6": {"id": "knob_send_b_6", "name": "Send B 6", "control_type": "encoder", "message_type": "cc", "number": 34},
+    "knob_send_b_7": {"id": "knob_send_b_7", "name": "Send B 7", "control_type": "encoder", "message_type": "cc", "number": 35},
+    "knob_send_b_8": {"id": "knob_send_b_8", "name": "Send B 8", "control_type": "encoder", "message_type": "cc", "number": 36},
+    "knob_pan_1": {"id": "knob_pan_1", "name": "Pan 1", "control_type": "encoder", "message_type": "cc", "number": 49},
+    "knob_pan_2": {"id": "knob_pan_2", "name": "Pan 2", "control_type": "encoder", "message_type": "cc", "number": 50},
+    "knob_pan_3": {"id": "knob_pan_3", "name": "Pan 3", "control_type": "encoder", "message_type": "cc", "number": 51},
+    "knob_pan_4": {"id": "knob_pan_4", "name": "Pan 4", "control_type": "encoder", "message_type": "cc", "number": 52},
+    "knob_pan_5": {"id": "knob_pan_5", "name": "Pan 5", "control_type": "encoder", "message_type": "cc", "number": 53},
+    "knob_pan_6": {"id": "knob_pan_6", "name": "Pan 6", "control_type": "encoder", "message_type": "cc", "number": 54},
+    "knob_pan_7": {"id": "knob_pan_7", "name": "Pan 7", "control_type": "encoder", "message_type": "cc", "number": 55},
+    "knob_pan_8": {"id": "knob_pan_8", "name": "Pan 8", "control_type": "encoder", "message_type": "cc", "number": 56},
+    "btn_focus_1": {"id": "btn_focus_1", "name": "Focus 1", "control_type": "button_momentary", "message_type": "note", "number": 41},
+    "btn_focus_2": {"id": "btn_focus_2", "name": "Focus 2", "control_type": "button_momentary", "message_type": "note", "number": 42},
+    "btn_focus_3": {"id": "btn_focus_3", "name": "Focus 3", "control_type": "button_momentary", "message_type": "note", "number": 43},
+    "btn_focus_4": {"id": "btn_focus_4", "name": "Focus 4", "control_type": "button_momentary", "message_type": "note", "number": 44},
+    "btn_ctrl_1": {"id": "btn_ctrl_1", "name": "Control 1", "control_type": "button_momentary", "message_type": "note", "number": 57},
+    "btn_ctrl_2": {"id": "btn_ctrl_2", "name": "Control 2", "control_type": "button_momentary", "message_type": "note", "number": 58},
+    "btn_ctrl_3": {"id": "btn_ctrl_3", "name": "Control 3", "control_type": "button_momentary", "message_type": "note", "number": 59},
+    "btn_ctrl_4": {"id": "btn_ctrl_4", "name": "Control 4", "control_type": "button_momentary", "message_type": "note", "number": 60}
+  },
+  "default_bindings": [
+    {
+      "control_id": "fader_1",
+      "message_type": "cc",
+      "number": 77,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tva", "param_name": "level", "tone_index": 1, "display_name": "Tone 1 Level"}
+    },
+    {
+      "control_id": "fader_2",
+      "message_type": "cc",
+      "number": 78,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tva", "param_name": "level", "tone_index": 2, "display_name": "Tone 2 Level"}
+    },
+    {
+      "control_id": "fader_3",
+      "message_type": "cc",
+      "number": 79,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tva", "param_name": "level", "tone_index": 3, "display_name": "Tone 3 Level"}
+    },
+    {
+      "control_id": "fader_4",
+      "message_type": "cc",
+      "number": 80,
+      "scale_mode": "smooth",
+      "target": {"category": "tone_tva", "param_name": "level", "tone_index": 4, "display_name": "Tone 4 Level"}
+    },
+    {
+      "control_id": "knob_send_a_1",
+      "message_type": "cc",
+      "number": 13,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 1, "display_name": "Tone 1 Cutoff"}
+    },
+    {
+      "control_id": "knob_send_a_2",
+      "message_type": "cc",
+      "number": 14,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 2, "display_name": "Tone 2 Cutoff"}
+    },
+    {
+      "control_id": "knob_send_a_3",
+      "message_type": "cc",
+      "number": 15,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 3, "display_name": "Tone 3 Cutoff"}
+    },
+    {
+      "control_id": "knob_send_a_4",
+      "message_type": "cc",
+      "number": 16,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "cutoff", "tone_index": 4, "display_name": "Tone 4 Cutoff"}
+    },
+    {
+      "control_id": "knob_send_b_1",
+      "message_type": "cc",
+      "number": 29,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "resonance", "tone_index": 1, "display_name": "Tone 1 Resonance"}
+    },
+    {
+      "control_id": "knob_send_b_2",
+      "message_type": "cc",
+      "number": 30,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "resonance", "tone_index": 2, "display_name": "Tone 2 Resonance"}
+    },
+    {
+      "control_id": "knob_send_b_3",
+      "message_type": "cc",
+      "number": 31,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "resonance", "tone_index": 3, "display_name": "Tone 3 Resonance"}
+    },
+    {
+      "control_id": "knob_send_b_4",
+      "message_type": "cc",
+      "number": 32,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tvf", "param_name": "resonance", "tone_index": 4, "display_name": "Tone 4 Resonance"}
+    },
+    {
+      "control_id": "knob_pan_1",
+      "message_type": "cc",
+      "number": 49,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tva", "param_name": "pan", "tone_index": 1, "display_name": "Tone 1 Pan"}
+    },
+    {
+      "control_id": "knob_pan_2",
+      "message_type": "cc",
+      "number": 50,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tva", "param_name": "pan", "tone_index": 2, "display_name": "Tone 2 Pan"}
+    },
+    {
+      "control_id": "knob_pan_3",
+      "message_type": "cc",
+      "number": 51,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tva", "param_name": "pan", "tone_index": 3, "display_name": "Tone 3 Pan"}
+    },
+    {
+      "control_id": "knob_pan_4",
+      "message_type": "cc",
+      "number": 52,
+      "scale_mode": "relative_center_reset",
+      "target": {"category": "tone_tva", "param_name": "pan", "tone_index": 4, "display_name": "Tone 4 Pan"}
+    }
+  ]
+}

@@ -55,15 +55,122 @@ TONE_PARAM_LEVEL = 0x0000          # 0..127
 TONE_PARAM_COARSE_TUNE = 0x0001    # 16..112 (-48 .. +48 semitones)
 TONE_PARAM_FINE_TUNE = 0x0002      # 14..114 (-50 .. +50 cents)
 TONE_PARAM_PAN = 0x0004            # 0..127 (L64 .. 63R)
+TONE_PARAM_DRY_SEND = 0x000C       # 0..127
+TONE_PARAM_CHORUS_SEND = 0x000D    # 0..127
+TONE_PARAM_REVERB_SEND = 0x000E    # 0..127
+
+# Wave Generator
+TONE_PARAM_WAVE_GROUP_TYPE = 0x0027   # 0..3 (INT, EXP, SAMP, MSAM)
+TONE_PARAM_WAVE_GROUP_ID = 0x0028     # 4 nibbles (0..16384)
+TONE_PARAM_WAVE_NUM_L = 0x002C        # 4 nibbles (0..16384)
+TONE_PARAM_WAVE_NUM_R = 0x0030        # 4 nibbles (0..16384)
+TONE_PARAM_WAVE_GAIN = 0x0034         # 0..3 (-6, 0, +6, +12 dB)
+TONE_PARAM_WAVE_FXM_SWITCH = 0x0035   # 0..1 (OFF, ON)
+TONE_PARAM_WAVE_FXM_COLOR = 0x0036    # 0..3 (1..4)
+TONE_PARAM_WAVE_FXM_DEPTH = 0x0037    # 0..16
+
+# Pitch Envelope
+TONE_PARAM_PITCH_ENV_DEPTH = 0x003A    # 52..76 (-12 .. +12)
+TONE_PARAM_PITCH_ENV_T1 = 0x003F       # 0..127 (Attack)
+TONE_PARAM_PITCH_ENV_T2 = 0x0040       # 0..127 (Decay 1)
+TONE_PARAM_PITCH_ENV_T3 = 0x0041       # 0..127 (Decay 2)
+TONE_PARAM_PITCH_ENV_T4 = 0x0042       # 0..127 (Release)
+TONE_PARAM_PITCH_ENV_L0 = 0x0043       # 1..127 (-63 .. +63)
+TONE_PARAM_PITCH_ENV_L1 = 0x0044       # 1..127 (-63 .. +63)
+TONE_PARAM_PITCH_ENV_L2 = 0x0045       # 1..127 (-63 .. +63)
+TONE_PARAM_PITCH_ENV_L3 = 0x0046       # 1..127 (-63 .. +63)
+TONE_PARAM_PITCH_ENV_L4 = 0x0047       # 1..127 (-63 .. +63)
+
+# TVF (Time Variant Filter)
+TONE_PARAM_TVF_FILTER_TYPE = 0x0048    # 0..6 (OFF, LPF, BPF, HPF, PKG, LPF2, LPF3)
+TONE_PARAM_TVF_CUTOFF = 0x0049         # 0..127
+TONE_PARAM_TVF_CUTOFF_KEYFOLLOW = 0x004A # 44..84 (-200 .. +200)
+TONE_PARAM_TVF_RESONANCE = 0x004D      # 0..127
+TONE_PARAM_TVF_ENV_DEPTH = 0x004F      # 1..127 (-63 .. +63)
+TONE_PARAM_TVF_ENV_VEL_SENS = 0x0051   # 1..127 (-63 .. +63)
+TONE_PARAM_TVF_ENV_T1 = 0x0055         # 0..127 (Attack)
+TONE_PARAM_TVF_ENV_T2 = 0x0056         # 0..127 (Decay 1)
+TONE_PARAM_TVF_ENV_T3 = 0x0057         # 0..127 (Decay 2)
+TONE_PARAM_TVF_ENV_T4 = 0x0058         # 0..127 (Release)
+TONE_PARAM_TVF_ENV_L1 = 0x0059         # 0..127
+TONE_PARAM_TVF_ENV_L2 = 0x005A         # 0..127
+TONE_PARAM_TVF_ENV_L3 = 0x005B         # 0..127 (Sustain)
+TONE_PARAM_TVF_ENV_L4 = 0x005C         # 0..127
+
+# TVA (Time Variant Amplifier)
+TONE_PARAM_TVA_LEVEL = 0x005F          # 0..127 (alternate address to 0x0000)
+TONE_PARAM_TVA_PAN = 0x0004            # 0..127
+TONE_PARAM_TVA_ENV_T1 = 0x0066         # 0..127 (Attack)
+TONE_PARAM_TVA_ENV_T2 = 0x0067         # 0..127 (Decay 1)
+TONE_PARAM_TVA_ENV_T3 = 0x0068         # 0..127 (Decay 2)
+TONE_PARAM_TVA_ENV_T4 = 0x0069         # 0..127 (Release)
+TONE_PARAM_TVA_ENV_L1 = 0x006A         # 0..127
+TONE_PARAM_TVA_ENV_L2 = 0x006B         # 0..127
+TONE_PARAM_TVA_ENV_L3 = 0x006C         # 0..127 (Sustain)
+
+# Tone LFO 1
+TONE_PARAM_LFO1_WAVEFORM = 0x006D      # 0..12
+TONE_PARAM_LFO1_RATE = 0x006E          # 0..149 (2 nibbles: 00 6E, 00 6F)
+TONE_PARAM_LFO1_PITCH_DEPTH = 0x0077   # 1..127 (-63 .. +63)
+TONE_PARAM_LFO1_TVF_DEPTH = 0x0078     # 1..127 (-63 .. +63)
+TONE_PARAM_LFO1_TVA_DEPTH = 0x0079     # 1..127 (-63 .. +63)
+TONE_PARAM_LFO1_PAN_DEPTH = 0x007A     # 1..127 (-63 .. +63)
+
+# Tone LFO 2
+TONE_PARAM_LFO2_WAVEFORM = 0x007B      # 0..12
+TONE_PARAM_LFO2_RATE = 0x007C          # 0..149 (2 nibbles: 00 7C, 00 7D)
+TONE_PARAM_LFO2_PITCH_DEPTH = 0x0105   # 1..127 (-63 .. +63)
+TONE_PARAM_LFO2_TVF_DEPTH = 0x0106     # 1..127 (-63 .. +63)
+TONE_PARAM_LFO2_TVA_DEPTH = 0x0107     # 1..127 (-63 .. +63)
+TONE_PARAM_LFO2_PAN_DEPTH = 0x0108     # 1..127 (-63 .. +63)
 
 # Patch Common Parameter Offsets
 PATCH_PARAM_NAME = 0x0000          # 12 ASCII chars (size 12)
 PATCH_PARAM_LEVEL = 0x000E         # 0..127
 PATCH_PARAM_PAN = 0x000F           # 0..127
+PATCH_PARAM_CHORUS_SEND = 0x0017   # 0..127
+PATCH_PARAM_REVERB_SEND = 0x0018   # 0..127
 PATCH_PARAM_CUTOFF_OFFSET = 0x0022 # 1..127 (-63 .. +63)
 PATCH_PARAM_RESONANCE_OFFSET = 0x0023 # 1..127 (-63 .. +63)
 PATCH_PARAM_ATTACK_OFFSET = 0x0024 # 1..127 (-63 .. +63)
 PATCH_PARAM_RELEASE_OFFSET = 0x0025 # 1..127 (-63 .. +63)
+
+
+def pack_4nibbles(val: int) -> list[int]:
+    """Convert an integer (0..16384) to 4 Roland 4-bit nibbles."""
+    return [
+        (val >> 12) & 0x0F,
+        (val >> 8) & 0x0F,
+        (val >> 4) & 0x0F,
+        val & 0x0F,
+    ]
+
+
+def unpack_4nibbles(data: Sequence[int]) -> int:
+    """Convert 4 Roland nibbles back to an integer."""
+    if len(data) < 4:
+        raise ValueError(f"Need 4 nibbles, got {len(data)}")
+    return (
+        ((data[0] & 0x0F) << 12)
+        | ((data[1] & 0x0F) << 8)
+        | ((data[2] & 0x0F) << 4)
+        | (data[3] & 0x0F)
+    )
+
+
+def pack_2nibbles(val: int) -> list[int]:
+    """Convert an integer (0..255) to 2 Roland 4-bit nibbles."""
+    return [
+        (val >> 4) & 0x0F,
+        val & 0x0F,
+    ]
+
+
+def unpack_2nibbles(data: Sequence[int]) -> int:
+    """Convert 2 Roland nibbles back to an integer."""
+    if len(data) < 2:
+        raise ValueError(f"Need 2 nibbles, got {len(data)}")
+    return ((data[0] & 0x0F) << 4) | (data[1] & 0x0F)
 
 
 def calculate_checksum(data: Sequence[int]) -> int:
