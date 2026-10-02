@@ -10,21 +10,94 @@ Rectangle {
     border.color: Theme.borderCard
     border.width: 1
 
+    property bool is3DView: true
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: ScaleMetrics.dp(16)
         spacing: ScaleMetrics.dp(12)
 
-        // Title and readout
+        // Title, 2D/3D Mode Selector, and Readout
         RowLayout {
             Layout.fillWidth: true
+            spacing: ScaleMetrics.dp(10)
+
             Text {
                 text: "1D LINEAR WAVETABLE MORPH SCANNER"
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(13)
                 color: Theme.textPrimary
             }
+
             Item { Layout.fillWidth: true }
+
+            // 2D / 3D Mode Selector Pill
+            Rectangle {
+                width: ScaleMetrics.dp(150)
+                height: ScaleMetrics.dp(24)
+                radius: ScaleMetrics.dp(12)
+                color: Theme.bgApp
+                border.color: Theme.borderCard
+                border.width: 1
+
+                Row {
+                    anchors.fill: parent
+                    anchors.margins: 2
+
+                    // 2D Button
+                    Rectangle {
+                        width: (parent.width - 2) / 2
+                        height: parent.height
+                        radius: ScaleMetrics.dp(10)
+                        color: !root.is3DView ? Theme.bgCardActive : "transparent"
+                        border.color: !root.is3DView ? Theme.tone1 : "transparent"
+                        border.width: 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "2D SCOPE"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: !root.is3DView ? Theme.textPrimary : Theme.textDim
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                root.is3DView = false
+                                waveCanvas.requestPaint()
+                            }
+                        }
+                    }
+
+                    // 3D Button
+                    Rectangle {
+                        width: (parent.width - 2) / 2
+                        height: parent.height
+                        radius: ScaleMetrics.dp(10)
+                        color: root.is3DView ? Theme.bgCardActive : "transparent"
+                        border.color: root.is3DView ? Theme.tone1 : "transparent"
+                        border.width: 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "3D WATERFALL"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: root.is3DView ? Theme.textPrimary : Theme.textDim
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                root.is3DView = true
+                                waveCanvas.requestPaint()
+                            }
+                        }
+                    }
+                }
+            }
+
             Text {
                 text: "W: " + Bridge.wavetablePos.toFixed(3)
                 font.bold: true
@@ -34,7 +107,7 @@ Rectangle {
             }
         }
 
-        // Live Morphing Waveform Visualizer Screen
+        // Live Morphing Waveform Visualizer Screen (2D Scope / 3D Waterfall)
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -44,15 +117,16 @@ Rectangle {
             border.width: 1
             clip: true
 
-            // Grid lines
+            // Grid lines (visible in 2D mode)
             Rectangle {
                 anchors.centerIn: parent
                 width: parent.width
                 height: 1
                 color: "#1e293b"
+                visible: !root.is3DView
             }
 
-            // Real-time canvas drawing the morphed wave
+            // Real-time canvas drawing either 2D or 3D waveform
             Canvas {
                 id: waveCanvas
                 anchors.fill: parent
@@ -77,61 +151,170 @@ Rectangle {
                     if (!ctx) return
                     ctx.clearRect(0, 0, width, height)
 
-                    var w = Bridge.wavetablePos
-                    var cy = height / 2
-                    var amp = height * 0.38
-                    var step = 2
-                    var pts = []
+                    var curW = Bridge.wavetablePos
 
-                    // Generate morphed waveform cycle:
-                    // Tone 1: Saw, Tone 2: Square, Tone 3: Triangle, Tone 4: Sine
-                    for (var x = 0; x <= width; x += step) {
-                        var phase = (x / width) * 2.0 * Math.PI // 0 .. 2pi
-                        var normPhase = (phase / (2.0 * Math.PI)) // 0 .. 1
-
-                        // Base waveforms
+                    // Helper: compute wave sample at phase and morph position z
+                    function sampleAt(phase, z) {
+                        var normPhase = ((phase / (2.0 * Math.PI)) % 1.0 + 1.0) % 1.0
                         var saw = 2.0 * (normPhase - Math.floor(normPhase + 0.5))
-                        var sqr = normPhase < 0.5 ? 1.0 : -1.0
+                        var sqr = normPhase < 0.5 ? 0.9 : -0.9
                         var tri = 2.0 * Math.abs(2.0 * (normPhase - Math.floor(normPhase + 0.5))) - 1.0
                         var sin = Math.sin(phase)
 
-                        // Interpolated morph based on W
-                        var sample = 0.0
-                        if (w <= 1.0 / 3.0) {
-                            var t = w * 3.0
-                            sample = (1.0 - t) * saw + t * sqr
-                        } else if (w <= 2.0 / 3.0) {
-                            var t = (w - 1.0 / 3.0) * 3.0
-                            sample = (1.0 - t) * sqr + t * tri
+                        if (z <= 1.0 / 3.0) {
+                            var t = z * 3.0
+                            return (1.0 - t) * saw + t * sqr
+                        } else if (z <= 2.0 / 3.0) {
+                            var t = (z - 1.0 / 3.0) * 3.0
+                            return (1.0 - t) * sqr + t * tri
                         } else {
-                            var t = (w - 2.0 / 3.0) * 3.0
-                            sample = (1.0 - t) * tri + t * sin
+                            var t = (z - 2.0 / 3.0) * 3.0
+                            return (1.0 - t) * tri + t * sin
+                        }
+                    }
+
+                    if (!root.is3DView) {
+                        // ==========================================
+                        // 2D HIGH-PRECISION OSCILLOSCOPE VIEW
+                        // ==========================================
+                        var cy = height / 2
+                        var amp = height * 0.38
+                        var step = 2
+                        var pts = []
+
+                        for (var x = 0; x <= width; x += step) {
+                            var phase = (x / width) * 2.0 * Math.PI
+                            var s = sampleAt(phase, curW)
+                            pts.push({ x: x, y: cy - s * amp })
                         }
 
-                        pts.push({ x: x, y: cy - sample * amp })
-                    }
+                        if (pts.length < 2) return
 
-                    if (pts.length < 2) return
+                        // Pass 1: Wide ambient glow
+                        ctx.beginPath()
+                        ctx.lineWidth = 6
+                        ctx.strokeStyle = "rgba(14, 165, 233, 0.35)"
+                        for (var i = 0; i < pts.length; i++) {
+                            if (i === 0) ctx.moveTo(pts[i].x, pts[i].y)
+                            else ctx.lineTo(pts[i].x, pts[i].y)
+                        }
+                        ctx.stroke()
 
-                    // Pass 1: Wide ambient glow
-                    ctx.beginPath()
-                    ctx.lineWidth = 6
-                    ctx.strokeStyle = "rgba(14, 165, 233, 0.35)"
-                    for (var i = 0; i < pts.length; i++) {
-                        if (i === 0) ctx.moveTo(pts[i].x, pts[i].y)
-                        else ctx.lineTo(pts[i].x, pts[i].y)
-                    }
-                    ctx.stroke()
+                        // Pass 2: Crisp bright core wave
+                        ctx.beginPath()
+                        ctx.lineWidth = 2.5
+                        ctx.strokeStyle = "#38bdf8"
+                        for (var j = 0; j < pts.length; j++) {
+                            if (j === 0) ctx.moveTo(pts[j].x, pts[j].y)
+                            else ctx.lineTo(pts[j].x, pts[j].y)
+                        }
+                        ctx.stroke()
 
-                    // Pass 2: Crisp bright core wave
-                    ctx.beginPath()
-                    ctx.lineWidth = 2.5
-                    ctx.strokeStyle = "#38bdf8"
-                    for (var j = 0; j < pts.length; j++) {
-                        if (j === 0) ctx.moveTo(pts[j].x, pts[j].y)
-                        else ctx.lineTo(pts[j].x, pts[j].y)
+                    } else {
+                        // ==========================================
+                        // 3D SERUM-STYLE ISOMETRIC WATERFALL VIEW
+                        // ==========================================
+                        var numSlices = 16
+                        var dxDepth = width * 0.22
+                        var dyDepth = height * 0.44
+                        var amp3d = height * 0.12
+                        var step3d = 8
+
+                        function drawSlice(z, isActive) {
+                            var wSlice = width * 0.72 * (1.0 - z * 0.12)
+                            var x0 = width * 0.05 + z * dxDepth
+                            var yBase = height * 0.78 - z * dyDepth
+
+                            var slicePts = []
+                            for (var sx = 0; sx <= wSlice; sx += step3d) {
+                                var p = (sx / wSlice) * 2.0 * Math.PI
+                                var smp = sampleAt(p, z)
+                                slicePts.push({ x: x0 + sx, y: yBase - smp * amp3d })
+                            }
+
+                            if (slicePts.length < 2) return
+
+                            // 1. Occlusion under-fill (so slices hide what's behind them)
+                            ctx.beginPath()
+                            ctx.moveTo(slicePts[0].x, slicePts[0].y)
+                            for (var pIdx = 1; pIdx < slicePts.length; pIdx++) {
+                                ctx.lineTo(slicePts[pIdx].x, slicePts[pIdx].y)
+                            }
+                            ctx.lineTo(x0 + wSlice, yBase + 4)
+                            ctx.lineTo(x0, yBase + 4)
+                            ctx.closePath()
+
+                            if (isActive) {
+                                // Active slice has illuminated glowing gradient fill
+                                var grad = ctx.createLinearGradient(0, yBase - amp3d, 0, yBase)
+                                grad.addColorStop(0, "rgba(56, 189, 248, 0.45)")
+                                grad.addColorStop(1, "rgba(7, 9, 13, 0.95)")
+                                ctx.fillStyle = grad
+                            } else {
+                                // Background wireframe slice has opaque dark fill
+                                ctx.fillStyle = "#07090d"
+                            }
+                            ctx.fill()
+
+                            // 2. Stroke the waveform line
+                            if (isActive) {
+                                // Bloom glow pass
+                                ctx.beginPath()
+                                ctx.lineWidth = 5
+                                ctx.strokeStyle = "rgba(56, 189, 248, 0.50)"
+                                ctx.lineCap = "round"
+                                for (var g = 0; g < slicePts.length; g++) {
+                                    if (g === 0) ctx.moveTo(slicePts[g].x, slicePts[g].y)
+                                    else ctx.lineTo(slicePts[g].x, slicePts[g].y)
+                                }
+                                ctx.stroke()
+
+                                // Sharp bright core
+                                ctx.beginPath()
+                                ctx.lineWidth = 2.5
+                                ctx.strokeStyle = "#ffffff"
+                                for (var c = 0; c < slicePts.length; c++) {
+                                    if (c === 0) ctx.moveTo(slicePts[c].x, slicePts[c].y)
+                                    else ctx.lineTo(slicePts[c].x, slicePts[c].y)
+                                }
+                                ctx.stroke()
+
+                                // Active slice depth marker tick
+                                ctx.fillStyle = "#38bdf8"
+                                ctx.fillRect(x0 - 4, yBase - 8, 3, 16)
+                            } else {
+                                // Dim wireframe
+                                ctx.beginPath()
+                                ctx.lineWidth = 1
+                                var alpha = 0.15 + (1.0 - z) * 0.18
+                                ctx.strokeStyle = "rgba(56, 189, 248, " + alpha.toFixed(2) + ")"
+                                for (var wIdx = 0; wIdx < slicePts.length; wIdx++) {
+                                    if (wIdx === 0) ctx.moveTo(slicePts[wIdx].x, slicePts[wIdx].y)
+                                    else ctx.lineTo(slicePts[wIdx].x, slicePts[wIdx].y)
+                                }
+                                ctx.stroke()
+                            }
+                        }
+
+                        // Render slices from back (z = 1) to front (z = 0)
+                        var activeDrawn = false
+                        for (var k = numSlices - 1; k >= 0; k--) {
+                            var zSlice = k / (numSlices - 1)
+
+                            if (!activeDrawn && curW >= zSlice) {
+                                drawSlice(curW, true)
+                                activeDrawn = true
+                            }
+
+                            if (Math.abs(zSlice - curW) > 0.035) {
+                                drawSlice(zSlice, false)
+                            }
+                        }
+
+                        if (!activeDrawn) {
+                            drawSlice(curW, true)
+                        }
                     }
-                    ctx.stroke()
                 }
             }
 
