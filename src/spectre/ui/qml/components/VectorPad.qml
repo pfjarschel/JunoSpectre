@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Layouts
 import QtQuick.Shapes
 import JunoSpectre
 import ".."
@@ -15,6 +16,81 @@ Item {
         radius: ScaleMetrics.dp(8)
         border.color: Theme.borderCard
         border.width: 1
+
+        // Ambient Real-Time Waveform Preview Canvas (subtle background oscilloscope)
+        Canvas {
+            id: vectorWaveCanvas
+            anchors.fill: parent
+            anchors.margins: ScaleMetrics.dp(12)
+            renderStrategy: Canvas.Immediate
+            opacity: 0.22
+
+            onPaint: {
+                const ctx = getContext("2d");
+                if (!ctx) return;
+                ctx.clearRect(0, 0, width, height);
+
+                const l1 = Bridge.tone1Level / 127.0;
+                const l2 = Bridge.tone2Level / 127.0;
+                const l3 = Bridge.tone3Level / 127.0;
+                const l4 = Bridge.tone4Level / 127.0;
+                const sum = l1 + l2 + l3 + l4;
+                if (sum < 0.01) return;
+
+                const w = width;
+                const h = height;
+                const cy = h / 2;
+                const amp = h * 0.32;
+                const normSum = Math.max(0.5, sum);
+                const step = 4;
+
+                ctx.beginPath();
+                let first = true;
+
+                // Render 2 full wave cycles across the pad
+                const cycles = 2.0;
+                for (let x = 0; x <= w; x += step) {
+                    const phase = (x / w) * cycles * 2.0 * Math.PI;
+                    const normPhase = ((phase / (2.0 * Math.PI)) % 1.0 + 1.0) % 1.0;
+
+                    // Base waveforms: Saw, Square, Triangle, Sine
+                    const saw = 2.0 * (normPhase - Math.floor(normPhase + 0.5));
+                    const sqr = normPhase < 0.5 ? 0.85 : -0.85;
+                    const tri = 2.0 * Math.abs(2.0 * (normPhase - Math.floor(normPhase + 0.5))) - 1.0;
+                    const sin = Math.sin(phase);
+
+                    // Weighted morph composite
+                    const sample = (l1 * saw + l2 * sqr + l3 * tri + l4 * sin) / normSum;
+                    const y = cy - sample * amp;
+
+                    if (first) {
+                        ctx.moveTo(x, y);
+                        first = false;
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+
+                ctx.lineWidth = ScaleMetrics.dp(2);
+                ctx.strokeStyle = Theme.primary;
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+                ctx.stroke();
+            }
+
+            Component.onCompleted: requestPaint()
+            onVisibleChanged: if (visible) requestPaint()
+            onWidthChanged: requestPaint()
+            onHeightChanged: requestPaint()
+
+            // Repaint only when tone levels change while on VECTOR screen
+            Connections {
+                target: Bridge
+                function onToneLevelsChanged() {
+                    if (root.visible) vectorWaveCanvas.requestPaint();
+                }
+            }
+        }
 
         // Grid lines
         Shape {
@@ -51,6 +127,7 @@ Item {
             anchors.margins: ScaleMetrics.dp(10)
             toneName: "TONE 1"
             toneSub: "NORTH-WEST"
+            waveType: "saw"
             toneColor: Theme.tone1
             level: Bridge.tone1Level
         }
@@ -62,6 +139,7 @@ Item {
             anchors.margins: ScaleMetrics.dp(10)
             toneName: "TONE 2"
             toneSub: "NORTH-EAST"
+            waveType: "square"
             toneColor: Theme.tone2
             level: Bridge.tone2Level
             alignRight: true
@@ -74,6 +152,7 @@ Item {
             anchors.margins: ScaleMetrics.dp(10)
             toneName: "TONE 3"
             toneSub: "SOUTH-WEST"
+            waveType: "triangle"
             toneColor: Theme.tone3
             level: Bridge.tone3Level
         }
@@ -85,6 +164,7 @@ Item {
             anchors.margins: ScaleMetrics.dp(10)
             toneName: "TONE 4"
             toneSub: "SOUTH-EAST"
+            waveType: "sine"
             toneColor: Theme.tone4
             level: Bridge.tone4Level
             alignRight: true
@@ -245,39 +325,111 @@ Item {
         }
     }
 
-    // Corner badge component with reactive glow
+    // Corner badge component with reactive glow and mini waveform glyph
     component CornerGlowBadge: Rectangle {
         id: cRoot
         property string toneName: "TONE"
         property string toneSub: "CORNER"
+        property string waveType: "saw"
         property color toneColor: Theme.tone1
         property int level: 0
         property bool alignRight: false
 
-        width: ScaleMetrics.dp(95)
-        height: ScaleMetrics.dp(42)
+        width: ScaleMetrics.dp(112)
+        height: ScaleMetrics.dp(44)
         radius: ScaleMetrics.dp(6)
         color: Qt.rgba(cRoot.toneColor.r, cRoot.toneColor.g, cRoot.toneColor.b, 0.08 + (cRoot.level / 127) * 0.22)
         border.color: Qt.rgba(cRoot.toneColor.r, cRoot.toneColor.g, cRoot.toneColor.b, 0.25 + (cRoot.level / 127) * 0.75)
         border.width: ScaleMetrics.dp(1)
 
-        Column {
-            anchors.centerIn: parent
-            spacing: ScaleMetrics.dp(2)
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: ScaleMetrics.dp(8)
+            anchors.rightMargin: ScaleMetrics.dp(8)
+            spacing: ScaleMetrics.dp(6)
+            layoutDirection: cRoot.alignRight ? Qt.RightToLeft : Qt.LeftToRight
 
-            Text {
-                text: cRoot.toneName
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(12)
-                color: cRoot.toneColor
-                horizontalAlignment: cRoot.alignRight ? Text.AlignRight : Text.AlignLeft
+            // Miniature Waveform Glyph
+            Canvas {
+                id: miniWaveCanvas
+                Layout.preferredWidth: ScaleMetrics.dp(22)
+                Layout.preferredHeight: ScaleMetrics.dp(16)
+                Layout.alignment: Qt.AlignVCenter
+                renderStrategy: Canvas.Immediate
+
+                onPaint: {
+                    const ctx = getContext("2d");
+                    if (!ctx) return;
+                    ctx.clearRect(0, 0, width, height);
+                    ctx.strokeStyle = cRoot.toneColor;
+                    ctx.lineWidth = 1.5;
+                    ctx.lineCap = "round";
+                    ctx.lineJoin = "round";
+                    ctx.beginPath();
+                    const midY = height / 2;
+                    const amp = height * 0.42;
+
+                    if (cRoot.waveType === "saw") {
+                        // 2 Saw cycles
+                        ctx.moveTo(0, midY + amp);
+                        ctx.lineTo(width / 2, midY - amp);
+                        ctx.lineTo(width / 2, midY + amp);
+                        ctx.lineTo(width, midY - amp);
+                        ctx.lineTo(width, midY + amp);
+                    } else if (cRoot.waveType === "square") {
+                        // 1.5 Square cycles
+                        ctx.moveTo(0, midY - amp);
+                        ctx.lineTo(width * 0.25, midY - amp);
+                        ctx.lineTo(width * 0.25, midY + amp);
+                        ctx.lineTo(width * 0.75, midY + amp);
+                        ctx.lineTo(width * 0.75, midY - amp);
+                        ctx.lineTo(width, midY - amp);
+                    } else if (cRoot.waveType === "triangle") {
+                        // 1 Triangle cycle
+                        ctx.moveTo(0, midY);
+                        ctx.lineTo(width * 0.25, midY - amp);
+                        ctx.lineTo(width * 0.75, midY + amp);
+                        ctx.lineTo(width, midY);
+                    } else if (cRoot.waveType === "sine") {
+                        // 1 Sine cycle
+                        ctx.moveTo(0, midY);
+                        for (let x = 0; x <= width; x += 2) {
+                            const phase = (x / width) * 2.0 * Math.PI;
+                            ctx.lineTo(x, midY - Math.sin(phase) * amp);
+                        }
+                    }
+                    ctx.stroke();
+                }
+
+                Component.onCompleted: requestPaint()
+                Connections {
+                    target: cRoot
+                    function onToneColorChanged() { miniWaveCanvas.requestPaint(); }
+                    function onWaveTypeChanged() { miniWaveCanvas.requestPaint(); }
+                }
             }
-            Text {
-                text: cRoot.toneSub + " (" + cRoot.level + ")"
-                font.pixelSize: ScaleMetrics.sp(8)
-                font.family: Theme.fontMono
-                color: Theme.textSecondary
-                horizontalAlignment: cRoot.alignRight ? Text.AlignRight : Text.AlignLeft
+
+            Column {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                spacing: ScaleMetrics.dp(2)
+
+                Text {
+                    text: cRoot.toneName
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(11)
+                    color: cRoot.toneColor
+                    horizontalAlignment: cRoot.alignRight ? Text.AlignRight : Text.AlignLeft
+                    width: parent.width
+                }
+                Text {
+                    text: cRoot.toneSub + " (" + cRoot.level + ")"
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    font.family: Theme.fontMono
+                    color: Theme.textSecondary
+                    horizontalAlignment: cRoot.alignRight ? Text.AlignRight : Text.AlignLeft
+                    width: parent.width
+                }
             }
         }
     }
