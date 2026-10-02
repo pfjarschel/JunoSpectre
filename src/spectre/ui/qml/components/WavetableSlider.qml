@@ -67,7 +67,9 @@ Rectangle {
                 // Re-render when slider moves
                 Connections {
                     target: Bridge
-                    function onWavetablePosChanged() { waveCanvas.requestPaint() }
+                    function onWavetablePosChanged() {
+                        if (root.visible) waveCanvas.requestPaint();
+                    }
                 }
 
                 onPaint: {

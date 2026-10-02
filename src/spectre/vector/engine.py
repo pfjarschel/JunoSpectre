@@ -88,6 +88,7 @@ class VectorEngine:
             self.mode = mode
             self._recalculate_levels()
             self._dispatch_if_needed(force=True)
+            self._notify_subscribers()
 
     def set_coordinates(self, x: float, y: float, record_gesture: bool = True) -> None:
         """Update 2D Cartesian coordinates (0.0 .. 1.0)."""
@@ -104,6 +105,7 @@ class VectorEngine:
             if self.mode == MorphMode.VECTOR_2D:
                 self._recalculate_levels()
                 self._dispatch_if_needed()
+            self._notify_subscribers()
 
     def set_wavetable_pos(self, w: float) -> None:
         """Update 1D Wavetable morph position (0.0 .. 1.0)."""
@@ -113,6 +115,7 @@ class VectorEngine:
             if self.mode == MorphMode.WAVETABLE_1D:
                 self._recalculate_levels()
                 self._dispatch_if_needed()
+            self._notify_subscribers()
 
     def set_curve(self, curve: CrossfadeCurve) -> None:
         """Set crossfade curve (Linear or Equal-Power)."""
@@ -120,6 +123,7 @@ class VectorEngine:
             self.curve = curve
             self._recalculate_levels()
             self._dispatch_if_needed(force=True)
+            self._notify_subscribers()
 
     def toggle_tone_mute(self, tone_idx: int) -> bool:
         """Toggle mute state for tone 1..4. Returns new muted state."""
@@ -127,6 +131,7 @@ class VectorEngine:
             self.tone_mutes[tone_idx - 1] = not self.tone_mutes[tone_idx - 1]
             self._recalculate_levels()
             self._dispatch_if_needed(force=True)
+            self._notify_subscribers()
             return self.tone_mutes[tone_idx - 1]
         return False
 
@@ -136,6 +141,7 @@ class VectorEngine:
             self.tone_mutes[tone_idx - 1] = muted
             self._recalculate_levels()
             self._dispatch_if_needed(force=True)
+            self._notify_subscribers()
 
     def set_tone_level(self, tone_idx: int, level: int) -> None:
         """Directly adjust level of a single tone (1..4) from 0..127."""
@@ -145,6 +151,7 @@ class VectorEngine:
             levels[tone_idx - 1] = 0 if self.tone_mutes[tone_idx - 1] else clamped
             self.tone_levels = (levels[0], levels[1], levels[2], levels[3])
             self._dispatch_if_needed(force=True)
+            self._notify_subscribers()
 
     def update(self, dt: float) -> None:
         """Tick engine by delta-time dt (advances motion loops / automators / wavetable sweeps)."""
@@ -196,7 +203,8 @@ class VectorEngine:
             except Exception as e:
                 logger.error(f"Failed to dispatch vector levels to synth: {e}")
 
-        # Notify UI subscribers
+    def _notify_subscribers(self) -> None:
+        """Notify UI subscribers immediately when state values change."""
         state = self.get_state()
         for sub in self._subscribers:
             try:
@@ -205,8 +213,9 @@ class VectorEngine:
                 logger.error(f"Error in vector state subscriber: {e}")
 
     def flush(self) -> None:
-        """Force immediate transmission of current tone levels."""
+        """Force immediate transmission of current tone levels and notify subscribers."""
         self._dispatch_if_needed(force=True)
+        self._notify_subscribers()
 
     def get_state(self) -> VectorState:
         """Return immutable snapshot of current engine state."""

@@ -193,10 +193,6 @@ Rectangle {
                 radius: ScaleMetrics.dp(3)
                 color: chanRoot.toneColor
 
-                Behavior on height {
-                    NumberAnimation { duration: 50; easing.type: Easing.OutQuad }
-                }
-
                 // Inner glow bar
                 Rectangle {
                     anchors.top: parent.top

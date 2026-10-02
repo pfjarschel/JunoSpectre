@@ -41,7 +41,7 @@ Rectangle {
         border.width: 1
 
         // Parameter Name based on active view and knob index
-        function getParamName(): string {
+        readonly property string paramName: {
             if (currentView === "VECTOR") {
                 const names = ["X POS", "Y POS", "ATTR X", "ATTR Y", "SPEED", "MODE", "CURVE", "BPM"];
                 return names[knobIndex - 1] || "PARAM";
@@ -63,32 +63,36 @@ Rectangle {
             return "ENC " + knobIndex;
         }
 
-        // Normalized value (0.0 .. 1.0)
-        function getNormValue(): real {
+        // Normalized value (0.0 .. 1.0) with localized property tracking
+        readonly property real normValue: {
             if (currentView === "VECTOR") {
-                if (knobIndex === 1) return Bridge.vectorX;
-                if (knobIndex === 2) return Bridge.vectorY;
-                if (knobIndex === 3) return Bridge.attractorX;
-                if (knobIndex === 4) return Bridge.attractorY;
-                if (knobIndex === 5) return Math.max(0.0, Math.min(1.0, (Bridge.speed - 0.25) / 1.75));
-                if (knobIndex === 6) {
-                    const m = Bridge.automator;
-                    return m === "circle" ? 0.33 : m === "lissajous" ? 0.66 : m === "chaos" ? 1.0 : 0.0;
+                switch (knobIndex) {
+                    case 1: return Bridge.vectorX;
+                    case 2: return Bridge.vectorY;
+                    case 3: return Bridge.attractorX;
+                    case 4: return Bridge.attractorY;
+                    case 5: return Math.max(0.0, Math.min(1.0, (Bridge.speed - 0.25) / 1.75));
+                    case 6: {
+                        const m = Bridge.automator;
+                        return m === "circle" ? 0.33 : m === "lissajous" ? 0.66 : m === "chaos" ? 1.0 : 0.0;
+                    }
+                    case 7: return Bridge.curve === "equal_power" ? 1.0 : 0.0;
+                    case 8: return Math.max(0.0, Math.min(1.0, (Bridge.bpm - 20) / 280));
                 }
-                if (knobIndex === 7) return Bridge.curve === "equal_power" ? 1.0 : 0.0;
-                if (knobIndex === 8) return Math.max(0.0, Math.min(1.0, (Bridge.bpm - 20) / 280));
             } else if (currentView === "WAVETABLE") {
-                if (knobIndex === 1) return Bridge.wavetablePos;
-                if (knobIndex === 2) return Math.max(0.0, Math.min(1.0, (Bridge.speed - 0.25) / 1.75));
-                if (knobIndex === 3) {
-                    const sm = Bridge.wavetableSweepMode;
-                    return sm === "sine" ? 0.25 : sm === "triangle" ? 0.5 : sm === "ramp" ? 0.75 : sm === "random_step" ? 1.0 : 0.0;
+                switch (knobIndex) {
+                    case 1: return Bridge.wavetablePos;
+                    case 2: return Math.max(0.0, Math.min(1.0, (Bridge.speed - 0.25) / 1.75));
+                    case 3: {
+                        const sm = Bridge.wavetableSweepMode;
+                        return sm === "sine" ? 0.25 : sm === "triangle" ? 0.5 : sm === "ramp" ? 0.75 : sm === "random_step" ? 1.0 : 0.0;
+                    }
+                    case 4: return Bridge.curve === "equal_power" ? 1.0 : 0.0;
+                    case 5: return Bridge.tone1Level / 127.0;
+                    case 6: return Bridge.tone2Level / 127.0;
+                    case 7: return Bridge.tone3Level / 127.0;
+                    case 8: return Bridge.tone4Level / 127.0;
                 }
-                if (knobIndex === 4) return Bridge.curve === "equal_power" ? 1.0 : 0.0;
-                if (knobIndex === 5) return Bridge.tone1Level / 127.0;
-                if (knobIndex === 6) return Bridge.tone2Level / 127.0;
-                if (knobIndex === 7) return Bridge.tone3Level / 127.0;
-                if (knobIndex === 8) return Bridge.tone4Level / 127.0;
             } else if (currentView === "MACROS") {
                 const val = knobIndex === 1 ? Bridge.macro1 :
                             knobIndex === 2 ? Bridge.macro2 :
@@ -99,38 +103,44 @@ Rectangle {
                             knobIndex === 7 ? Bridge.macro7 : Bridge.macro8;
                 return val / 127.0;
             } else if (currentView === "PATCH EDIT") {
-                if (knobIndex === 1) return (Bridge.masterCutoff - 1) / 126.0;
-                if (knobIndex === 2) return (Bridge.masterReso - 1) / 126.0;
-                if (knobIndex === 3) return (Bridge.masterAttack - 1) / 126.0;
-                if (knobIndex === 4) return (Bridge.masterRelease - 1) / 126.0;
-                if (knobIndex === 5) return Bridge.tone1Level / 127.0;
-                if (knobIndex === 6) return Bridge.tone2Level / 127.0;
-                if (knobIndex === 7) return Bridge.tone3Level / 127.0;
-                if (knobIndex === 8) return Bridge.tone4Level / 127.0;
+                switch (knobIndex) {
+                    case 1: return (Bridge.masterCutoff - 1) / 126.0;
+                    case 2: return (Bridge.masterReso - 1) / 126.0;
+                    case 3: return (Bridge.masterAttack - 1) / 126.0;
+                    case 4: return (Bridge.masterRelease - 1) / 126.0;
+                    case 5: return Bridge.tone1Level / 127.0;
+                    case 6: return Bridge.tone2Level / 127.0;
+                    case 7: return Bridge.tone3Level / 127.0;
+                    case 8: return Bridge.tone4Level / 127.0;
+                }
             }
             return card.internalVal;
         }
 
         // Display string for the readout
-        function getDisplayString(): string {
+        readonly property string displayString: {
             if (currentView === "VECTOR") {
-                if (knobIndex === 1) return Bridge.vectorX.toFixed(2);
-                if (knobIndex === 2) return Bridge.vectorY.toFixed(2);
-                if (knobIndex === 3) return Bridge.attractorX.toFixed(2);
-                if (knobIndex === 4) return Bridge.attractorY.toFixed(2);
-                if (knobIndex === 5) return Bridge.speed.toFixed(2) + "x";
-                if (knobIndex === 6) return Bridge.automator.toUpperCase();
-                if (knobIndex === 7) return Bridge.curve === "equal_power" ? "EQ-PWR" : "LINEAR";
-                if (knobIndex === 8) return Math.round(Bridge.bpm).toString();
+                switch (knobIndex) {
+                    case 1: return Bridge.vectorX.toFixed(2);
+                    case 2: return Bridge.vectorY.toFixed(2);
+                    case 3: return Bridge.attractorX.toFixed(2);
+                    case 4: return Bridge.attractorY.toFixed(2);
+                    case 5: return Bridge.speed.toFixed(2) + "x";
+                    case 6: return Bridge.automator.toUpperCase();
+                    case 7: return Bridge.curve === "equal_power" ? "EQ-PWR" : "LINEAR";
+                    case 8: return Math.round(Bridge.bpm).toString();
+                }
             } else if (currentView === "WAVETABLE") {
-                if (knobIndex === 1) return Bridge.wavetablePos.toFixed(2);
-                if (knobIndex === 2) return Bridge.speed.toFixed(2) + "x";
-                if (knobIndex === 3) return Bridge.wavetableSweepMode.toUpperCase();
-                if (knobIndex === 4) return Bridge.curve === "equal_power" ? "EQ-PWR" : "LINEAR";
-                if (knobIndex === 5) return Bridge.tone1Level.toString();
-                if (knobIndex === 6) return Bridge.tone2Level.toString();
-                if (knobIndex === 7) return Bridge.tone3Level.toString();
-                if (knobIndex === 8) return Bridge.tone4Level.toString();
+                switch (knobIndex) {
+                    case 1: return Bridge.wavetablePos.toFixed(2);
+                    case 2: return Bridge.speed.toFixed(2) + "x";
+                    case 3: return Bridge.wavetableSweepMode.toUpperCase();
+                    case 4: return Bridge.curve === "equal_power" ? "EQ-PWR" : "LINEAR";
+                    case 5: return Bridge.tone1Level.toString();
+                    case 6: return Bridge.tone2Level.toString();
+                    case 7: return Bridge.tone3Level.toString();
+                    case 8: return Bridge.tone4Level.toString();
+                }
             } else if (currentView === "MACROS") {
                 const val = knobIndex === 1 ? Bridge.macro1 :
                             knobIndex === 2 ? Bridge.macro2 :
@@ -141,14 +151,16 @@ Rectangle {
                             knobIndex === 7 ? Bridge.macro7 : Bridge.macro8;
                 return val.toString();
             } else if (currentView === "PATCH EDIT") {
-                if (knobIndex === 1) return (Bridge.masterCutoff >= 64 ? "+" : "") + (Bridge.masterCutoff - 64);
-                if (knobIndex === 2) return (Bridge.masterReso >= 64 ? "+" : "") + (Bridge.masterReso - 64);
-                if (knobIndex === 3) return (Bridge.masterAttack >= 64 ? "+" : "") + (Bridge.masterAttack - 64);
-                if (knobIndex === 4) return (Bridge.masterRelease >= 64 ? "+" : "") + (Bridge.masterRelease - 64);
-                if (knobIndex === 5) return Bridge.tone1Level.toString();
-                if (knobIndex === 6) return Bridge.tone2Level.toString();
-                if (knobIndex === 7) return Bridge.tone3Level.toString();
-                if (knobIndex === 8) return Bridge.tone4Level.toString();
+                switch (knobIndex) {
+                    case 1: return (Bridge.masterCutoff >= 64 ? "+" : "") + (Bridge.masterCutoff - 64);
+                    case 2: return (Bridge.masterReso >= 64 ? "+" : "") + (Bridge.masterReso - 64);
+                    case 3: return (Bridge.masterAttack >= 64 ? "+" : "") + (Bridge.masterAttack - 64);
+                    case 4: return (Bridge.masterRelease >= 64 ? "+" : "") + (Bridge.masterRelease - 64);
+                    case 5: return Bridge.tone1Level.toString();
+                    case 6: return Bridge.tone2Level.toString();
+                    case 7: return Bridge.tone3Level.toString();
+                    case 8: return Bridge.tone4Level.toString();
+                }
             } else if (currentView === "PERF MIXER") {
                 return Math.round(card.internalVal * 127).toString();
             } else if (currentView === "EFFECTS") {
@@ -201,67 +213,80 @@ Rectangle {
             }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        // Header: Knob tag + Param Name (Zero-overhead anchored positioning)
+        Item {
+            id: headerRow
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
             anchors.margins: ScaleMetrics.dp(4)
-            spacing: ScaleMetrics.dp(2)
+            height: ScaleMetrics.dp(14)
 
-            // Header: Knob tag + Param Name
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: ScaleMetrics.dp(4)
-
-                Rectangle {
-                    width: ScaleMetrics.dp(18)
-                    height: ScaleMetrics.dp(14)
-                    radius: ScaleMetrics.dp(3)
-                    color: Theme.bgCardActive
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "K" + card.knobIndex
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.tone1
-                    }
-                }
+            Rectangle {
+                id: tagBadge
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: ScaleMetrics.dp(18)
+                height: ScaleMetrics.dp(14)
+                radius: ScaleMetrics.dp(3)
+                color: Theme.bgCardActive
 
                 Text {
-                    Layout.fillWidth: true
-                    text: card.getParamName()
+                    anchors.centerIn: parent
+                    text: "K" + card.knobIndex
                     font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(9)
-                    color: Theme.textSecondary
-                    elide: Text.ElideRight
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Theme.tone1
                 }
             }
 
-            // Numeric Readout Value
             Text {
-                text: card.getDisplayString()
+                anchors.left: tagBadge.right
+                anchors.right: parent.right
+                anchors.leftMargin: ScaleMetrics.dp(4)
+                anchors.verticalCenter: parent.verticalCenter
+                text: card.paramName
                 font.bold: true
-                font.pixelSize: ScaleMetrics.sp(11)
-                font.family: Theme.fontMono
-                color: Theme.textPrimary
-                Layout.alignment: Qt.AlignHCenter
+                font.pixelSize: ScaleMetrics.sp(9)
+                color: Theme.textSecondary
+                elide: Text.ElideRight
             }
+        }
 
-            // Progress bar / meter indicator
+        // Numeric Readout Value
+        Text {
+            anchors.top: headerRow.bottom
+            anchors.bottom: barBg.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            text: card.displayString
+            font.bold: true
+            font.pixelSize: ScaleMetrics.sp(11)
+            font.family: Theme.fontMono
+            color: Theme.textPrimary
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        // Progress bar / meter indicator
+        Rectangle {
+            id: barBg
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: ScaleMetrics.dp(4)
+            height: ScaleMetrics.dp(4)
+            radius: ScaleMetrics.dp(2)
+            color: "#1e293b"
+            clip: true
+
             Rectangle {
-                Layout.fillWidth: true
-                height: ScaleMetrics.dp(4)
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: parent.width * Math.max(0.0, Math.min(1.0, card.normValue))
                 radius: ScaleMetrics.dp(2)
-                color: "#1e293b"
-                clip: true
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: parent.width * Math.max(0.0, Math.min(1.0, card.getNormValue()))
-                    radius: ScaleMetrics.dp(2)
-                    color: card.knobIndex <= 4 ? Theme.tone1 : Theme.tone3
-                }
+                color: card.knobIndex <= 4 ? Theme.tone1 : Theme.tone3
             }
         }
 

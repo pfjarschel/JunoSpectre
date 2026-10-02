@@ -196,8 +196,8 @@ Rectangle {
 
                             Connections {
                                 target: Bridge
-                                function onMasterCutoffChanged() { filterCanvas.requestPaint(); }
-                                function onMasterResoChanged() { filterCanvas.requestPaint(); }
+                                function onMasterCutoffChanged() { if (root.visible) filterCanvas.requestPaint(); }
+                                function onMasterResoChanged() { if (root.visible) filterCanvas.requestPaint(); }
                             }
                         }
 

@@ -98,6 +98,38 @@ def test_orbital_automator_gravity():
     assert pos4[0] > 0.3  # vx was positive
 
 
+def test_chaos_automator_smoothness_and_spread():
+    rec = MotionRecorder(bpm=120.0)
+    rec.automator = AutomatorType.CHAOS
+    rec.play()
+
+    xs = []
+    ys = []
+    prev = None
+    max_step = 0.0
+
+    # Advance 500 frames of 16ms (8 seconds)
+    for _ in range(500):
+        pos = rec.update(0.016)
+        assert pos is not None
+        assert 0.0 <= pos[0] <= 1.0
+        assert 0.0 <= pos[1] <= 1.0
+        xs.append(pos[0])
+        ys.append(pos[1])
+        if prev is not None:
+            step = ((pos[0] - prev[0]) ** 2 + (pos[1] - prev[1]) ** 2) ** 0.5
+            if step > max_step:
+                max_step = step
+        prev = pos
+
+    # Max step per frame should be continuous and smooth (no jittery spikes)
+    assert max_step < 0.015, f"Step too jittery: {max_step}"
+
+    # Wide organic dynamic range (covers significant portion of the pad)
+    assert (max(xs) - min(xs)) > 0.35
+    assert (max(ys) - min(ys)) > 0.35
+
+
 def test_wavetable_sweeps():
     from src.spectre.vector.motion import WavetableSweepMode
     rec = MotionRecorder(bpm=120.0)

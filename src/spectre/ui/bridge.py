@@ -65,6 +65,13 @@ class SpectreBridge(QObject):
         self._master_level: int = 100
         self._macros: list[int] = [64, 64, 64, 64, 64, 64, 64, 64]
 
+        # Engine state tracking for dirty checks
+        self._last_x: float = self.engine.x
+        self._last_y: float = self.engine.y
+        self._last_w: float = self.engine.w
+        self._last_tone_levels: tuple[int, int, int, int] = self.engine.tone_levels
+        self._last_transport: str = self.engine.motion.state.value
+
         # Subscribe to engine state updates
         self.engine.subscribe(self._on_engine_state_changed)
 
@@ -83,16 +90,28 @@ class SpectreBridge(QObject):
         self.engine.update(dt)
 
     def _on_engine_state_changed(self, state: VectorState) -> None:
-        """Handle state notification from VectorEngine."""
-        self.coordinatesChanged.emit(state.x, state.y)
-        self.wavetablePosChanged.emit(state.w)
-        self.toneLevelsChanged.emit(
-            state.tone_levels[0],
-            state.tone_levels[1],
-            state.tone_levels[2],
-            state.tone_levels[3],
-        )
-        self.transportStateChanged.emit(state.recorder_state.value)
+        """Handle state notification from VectorEngine with dirty-change detection."""
+        if abs(state.x - self._last_x) > 1e-4 or abs(state.y - self._last_y) > 1e-4:
+            self._last_x = state.x
+            self._last_y = state.y
+            self.coordinatesChanged.emit(state.x, state.y)
+
+        if abs(state.w - self._last_w) > 1e-4:
+            self._last_w = state.w
+            self.wavetablePosChanged.emit(state.w)
+
+        if state.tone_levels != self._last_tone_levels:
+            self._last_tone_levels = state.tone_levels
+            self.toneLevelsChanged.emit(
+                state.tone_levels[0],
+                state.tone_levels[1],
+                state.tone_levels[2],
+                state.tone_levels[3],
+            )
+
+        if state.recorder_state.value != self._last_transport:
+            self._last_transport = state.recorder_state.value
+            self.transportStateChanged.emit(state.recorder_state.value)
 
     # -------------------------------------------------------------------------
     # Properties for QML

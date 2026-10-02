@@ -86,11 +86,13 @@ class MotionRecorder:
         self._body_vx: float = 0.0
         self._body_vy: float = 0.0
 
-        # Fluid chaos state (inertial wandering velocity)
-        self._chaos_x: float = 0.5
-        self._chaos_y: float = 0.5
-        self._chaos_vx: float = 0.0
-        self._chaos_vy: float = 0.0
+        # Multi-harmonic incommensurate phase drift state (fluid, non-periodic chaos)
+        self._chaos_phase1: float = 0.0
+        self._chaos_phase2: float = 0.0
+        self._chaos_phase3: float = 0.0
+        self._chaos_phase4: float = 0.0
+        self._chaos_phase5: float = 0.0
+        self._chaos_phase6: float = 0.0
 
         # 1D Wavetable sweep state
         self.wavetable_sweep: WavetableSweepMode = WavetableSweepMode.MANUAL
@@ -357,49 +359,34 @@ class MotionRecorder:
             return (clamp_coordinate(x), clamp_coordinate(y))
 
         elif self.automator == AutomatorType.CHAOS:
-            # Fluid wandering drift with inertia & momentum
-            accel = 1.6
-            self._chaos_vx += (random.uniform(-1.0, 1.0) * accel) * effective_dt
-            self._chaos_vy += (random.uniform(-1.0, 1.0) * accel) * effective_dt
+            # Multi-harmonic incommensurate phase drift:
+            # Combines irrational frequency ratios (golden ratio phi, sqrt(2), sqrt(3), sqrt(5))
+            # into a completely smooth, continuous, non-repeating organic wander across all 4 quadrants.
+            base_omega = 2.0 * math.pi * (self.bpm / 120.0) * 0.08 * max(0.05, self.speed)
 
-            # Gentle centering pull toward attractor center
-            center_pull = 0.4
-            self._chaos_vx += (cx - self._chaos_x) * center_pull * effective_dt
-            self._chaos_vy += (cy - self._chaos_y) * center_pull * effective_dt
+            # Advancing phases with irrational speed ratios
+            self._chaos_phase1 = (self._chaos_phase1 + base_omega * 1.00000 * dt) % (2.0 * math.pi)
+            self._chaos_phase2 = (self._chaos_phase2 + base_omega * 1.61803 * dt) % (2.0 * math.pi)
+            self._chaos_phase3 = (self._chaos_phase3 + base_omega * 2.41421 * dt) % (2.0 * math.pi)
+            self._chaos_phase4 = (self._chaos_phase4 + base_omega * 1.41421 * dt) % (2.0 * math.pi)
+            self._chaos_phase5 = (self._chaos_phase5 + base_omega * 1.73205 * dt) % (2.0 * math.pi)
+            self._chaos_phase6 = (self._chaos_phase6 + base_omega * 2.23607 * dt) % (2.0 * math.pi)
 
-            # Viscous aerodynamic friction
-            friction = 0.94
-            self._chaos_vx *= (1.0 - (1.0 - friction) * effective_dt * 10.0)
-            self._chaos_vy *= (1.0 - (1.0 - friction) * effective_dt * 10.0)
+            # Superposition excursion (up to +/- 0.42 from attractor center)
+            dx = (
+                0.22 * math.sin(self._chaos_phase1)
+                + 0.13 * math.cos(self._chaos_phase2 + 0.9)
+                + 0.07 * math.sin(self._chaos_phase3 + 2.1)
+            )
+            dy = (
+                0.22 * math.cos(self._chaos_phase4)
+                + 0.13 * math.sin(self._chaos_phase5 + 1.4)
+                + 0.07 * math.cos(self._chaos_phase6 + 3.0)
+            )
 
-            # Cap max drift speed
-            max_spd = 0.75
-            cur_spd = math.hypot(self._chaos_vx, self._chaos_vy)
-            if cur_spd > max_spd:
-                scale = max_spd / cur_spd
-                self._chaos_vx *= scale
-                self._chaos_vy *= scale
-
-            self._chaos_x += self._chaos_vx * effective_dt
-            self._chaos_y += self._chaos_vy * effective_dt
-
-            # Smooth bounce off boundaries
-            margin = 0.05
-            if self._chaos_x < margin:
-                self._chaos_x = margin
-                self._chaos_vx = abs(self._chaos_vx) * 0.8
-            elif self._chaos_x > 1.0 - margin:
-                self._chaos_x = 1.0 - margin
-                self._chaos_vx = -abs(self._chaos_vx) * 0.8
-
-            if self._chaos_y < margin:
-                self._chaos_y = margin
-                self._chaos_vy = abs(self._chaos_vy) * 0.8
-            elif self._chaos_y > 1.0 - margin:
-                self._chaos_y = 1.0 - margin
-                self._chaos_vy = -abs(self._chaos_vy) * 0.8
-
-            return (clamp_coordinate(self._chaos_x), clamp_coordinate(self._chaos_y))
+            x = cx + dx
+            y = cy + dy
+            return (clamp_coordinate(x), clamp_coordinate(y))
 
         return (0.5, 0.5)
 
