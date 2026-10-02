@@ -276,9 +276,6 @@ Rectangle {
                         // ==========================================
                         if (activeSliceData && activeSliceData.pts.length > 1) {
                             var aPts = activeSliceData.pts
-                            var ax0 = activeSliceData.x0
-                            var ayBase = activeSliceData.yBase
-                            var aw = activeSliceData.wSlice
 
                             // Pass 1: Neon bloom glow
                             ctx.beginPath()
@@ -303,10 +300,6 @@ Rectangle {
                                 else ctx.lineTo(aPts[c].x, aPts[c].y)
                             }
                             ctx.stroke()
-
-                            // Active slice depth marker cursor on left edge
-                            ctx.fillStyle = "#38bdf8"
-                            ctx.fillRect(ax0 - 5, ayBase - 7, 4, 14)
                         }
 
                     }
