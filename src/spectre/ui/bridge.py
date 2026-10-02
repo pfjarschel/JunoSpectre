@@ -41,6 +41,8 @@ class SpectreBridge(QObject):
     toneMutesChanged = pyqtSignal()
     masterCutoffChanged = pyqtSignal(int)
     masterResoChanged = pyqtSignal(int)
+    masterAttackChanged = pyqtSignal(int)
+    masterReleaseChanged = pyqtSignal(int)
     masterLevelChanged = pyqtSignal(int)
     macrosChanged = pyqtSignal()
     curveChanged = pyqtSignal(str)
@@ -58,6 +60,8 @@ class SpectreBridge(QObject):
         self._active_view: str = "VECTOR"
         self._master_cutoff: int = 64
         self._master_reso: int = 64
+        self._master_attack: int = 64
+        self._master_release: int = 64
         self._master_level: int = 100
         self._macros: list[int] = [64, 64, 64, 64, 64, 64, 64, 64]
 
@@ -195,6 +199,14 @@ class SpectreBridge(QObject):
     def masterReso(self) -> int:
         return self._master_reso
 
+    @pyqtProperty(int, notify=masterAttackChanged)
+    def masterAttack(self) -> int:
+        return self._master_attack
+
+    @pyqtProperty(int, notify=masterReleaseChanged)
+    def masterRelease(self) -> int:
+        return self._master_release
+
     @pyqtProperty(int, notify=masterLevelChanged)
     def masterLevel(self) -> int:
         return self._master_level
@@ -242,7 +254,7 @@ class SpectreBridge(QObject):
     @pyqtSlot(float, float)
     def setCoordinates(self, x: float, y: float) -> None:
         """Update 2D vector coordinates or guide automator orbit center."""
-        if self.engine.motion.automator != AutomatorType.NONE:
+        if self.engine.motion.automator != AutomatorType.NONE and self.engine.motion.automator != AutomatorType.CIRCLE:
             self.engine.motion.set_orbit_center(x, y)
             self.attractorChanged.emit(self.engine.motion.center_x, self.engine.motion.center_y)
         self.engine.set_coordinates(x, y, record_gesture=True)
@@ -458,3 +470,35 @@ class SpectreBridge(QObject):
             if self._macros[index - 1] != clamped:
                 self._macros[index - 1] = clamped
                 self.macrosChanged.emit()
+
+    @pyqtSlot(int, int)
+    def setToneLevel(self, tone_number: int, level: int) -> None:
+        """Directly adjust level of a single tone (1..4) from touch mixer."""
+        self.engine.set_tone_level(tone_number, level)
+        self.toneLevelsChanged.emit(*self.engine.tone_levels)
+
+    @pyqtSlot(int)
+    def setMasterAttack(self, val: int) -> None:
+        """Set Master Attack offset (1..127, 64 is neutral 0)."""
+        clamped = max(1, min(127, int(val)))
+        if self._master_attack != clamped:
+            self._master_attack = clamped
+            self.masterAttackChanged.emit(self._master_attack)
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_patch_param("attack_offset", self._master_attack)
+                except Exception as e:
+                    logger.error(f"Error setting attack offset: {e}")
+
+    @pyqtSlot(int)
+    def setMasterRelease(self, val: int) -> None:
+        """Set Master Release offset (1..127, 64 is neutral 0)."""
+        clamped = max(1, min(127, int(val)))
+        if self._master_release != clamped:
+            self._master_release = clamped
+            self.masterReleaseChanged.emit(self._master_release)
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_patch_param("release_offset", self._master_release)
+                except Exception as e:
+                    logger.error(f"Error setting release offset: {e}")

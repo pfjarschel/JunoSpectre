@@ -275,6 +275,8 @@ class MotionRecorder:
 
         if self.automator == AutomatorType.CIRCLE:
             # Gravitational celestial N-body orbital physics around attractor (cx, cy)
+            # Scaled to a graceful, hypnotic musical tempo (matching ~4 to 8-bar cycles)
+            orbit_dt = effective_dt * 0.42
             px = self._body_x
             py = self._body_y
 
@@ -287,7 +289,7 @@ class MotionRecorder:
             v_mag = math.hypot(self._body_vx, self._body_vy)
             if v_mag < 0.05 or dist < 0.03:
                 target_r = 0.28
-                G_init = 1.2
+                G_init = 0.35
                 v_circ = math.sqrt(G_init / target_r)
                 angle = math.atan2(py - cy, px - cx) if dist > 0.04 else 0.0
                 px = cx + target_r * math.cos(angle)
@@ -300,22 +302,22 @@ class MotionRecorder:
                 dist = math.sqrt(dist_sq)
 
             # Gravitational attraction: a = G / (r^2 + epsilon)
-            G = 1.0
-            epsilon = 0.025  # Softening factor prevents extreme slingshot singularities
+            G = 0.35
+            epsilon = 0.035  # Softening factor prevents extreme slingshot singularities
             force = G / (dist_sq + epsilon)
             ax = force * (dx / max(0.01, dist))
             ay = force * (dy / max(0.01, dist))
 
-            # Numerical integration
-            self._body_vx += ax * effective_dt
-            self._body_vy += ay * effective_dt
+            # Numerical integration with orbit_dt
+            self._body_vx += ax * orbit_dt
+            self._body_vy += ay * orbit_dt
 
             # Subtle orbital drag/viscosity prevents perpetual energy buildup
-            self._body_vx *= (1.0 - 0.015 * effective_dt)
-            self._body_vy *= (1.0 - 0.015 * effective_dt)
+            self._body_vx *= (1.0 - 0.02 * orbit_dt)
+            self._body_vy *= (1.0 - 0.02 * orbit_dt)
 
-            px += self._body_vx * effective_dt
-            py += self._body_vy * effective_dt
+            px += self._body_vx * orbit_dt
+            py += self._body_vy * orbit_dt
 
             # Cushioned bounce at pad boundaries
             margin = 0.04

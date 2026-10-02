@@ -212,7 +212,12 @@ Item {
                 if (pressed) {
                     var normX = Math.max(0.0, Math.min(1.0, mouse.x / bg.width))
                     var normY = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / bg.height)))
-                    Bridge.setCoordinates(normX, normY)
+                    if (Bridge.automator === "circle") {
+                        // In ORBIT mode, dragging moves the attractor (the Sun), and the body follows!
+                        Bridge.setOrbitAttractor(normX, normY)
+                    } else {
+                        Bridge.setCoordinates(normX, normY)
+                    }
                 }
             }
 
@@ -225,15 +230,14 @@ Item {
                 var normY = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / bg.height)))
 
                 if (Bridge.automator === "circle") {
-                    if (totalDist >= ScaleMetrics.dp(16)) {
-                        // Fling gesture: compute release velocity vector
+                    // If released with a fast swipe/flick gesture, give momentum impulse to body
+                    if (totalDist >= ScaleMetrics.dp(24) && dt < 0.35) {
                         var dx = (mouse.x - startX) / bg.width
-                        var dy = -(mouse.y - startY) / bg.height // invert Y
-                        var vx = (dx / dt) * 0.45
-                        var vy = (dy / dt) * 0.45
-                        Bridge.fling(normX, normY, vx, vy)
+                        var dy = -(mouse.y - startY) / bg.height
+                        var vx = (dx / dt) * 0.35
+                        var vy = (dy / dt) * 0.35
+                        Bridge.fling(Bridge.vectorX, Bridge.vectorY, vx, vy)
                     } else {
-                        // Stationary tap: relocate attractor center
                         Bridge.setOrbitAttractor(normX, normY)
                     }
                 }

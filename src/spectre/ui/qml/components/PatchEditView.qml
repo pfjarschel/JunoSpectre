@@ -12,6 +12,12 @@ Rectangle {
 
     property int selectedTone: 1
 
+    // ADSR Envelope interactive parameters (0..127)
+    property int envAttack: Math.round((Bridge.masterAttack - 1) / 126.0 * 127)
+    property int envDecay: 45
+    property int envSustain: 80
+    property int envRelease: Math.round((Bridge.masterRelease - 1) / 126.0 * 127)
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: ScaleMetrics.dp(12)
@@ -132,18 +138,41 @@ Rectangle {
                                 const normCutoff = (Bridge.masterCutoff - 1) / 126.0;
                                 const normReso = (Bridge.masterReso - 1) / 126.0;
 
-                                const cx = Math.max(0.1, Math.min(0.9, normCutoff)) * w;
-                                const peakY = (1.0 - (0.4 + normReso * 0.45)) * h;
-                                const basePassY = 0.65 * h;
+                                // Filter Cutoff and Resonance transfer function
+                                const fc = Math.max(0.001, normCutoff);
+                                const Q = 0.707 + Math.pow(normReso, 1.8) * 14.0; // Thin high-Q peak
 
-                                // Filter Curve Path
                                 ctx.beginPath();
-                                ctx.moveTo(0, basePassY);
-                                ctx.lineTo(cx * 0.7, basePassY);
-                                ctx.quadraticCurveTo(cx, peakY, cx + (w - cx) * 0.2, h * 0.9);
-                                ctx.lineTo(w, h * 0.95);
+                                let first = true;
+                                const step = 4;
+                                let peakX = fc * w;
+                                let peakY = h * 0.95;
 
-                                // Stroke
+                                for (let x = 0; x <= w; x += step) {
+                                    const f = x / w;
+                                    const u = f / fc;
+                                    // 4-pole low-pass filter magnitude transfer function
+                                    const denom = Math.sqrt(Math.pow(1 - u * u, 2) + Math.pow(u / Q, 2));
+                                    const mag = 1.0 / Math.max(0.01, denom);
+                                    // Decibel scaling
+                                    const dB = Math.min(26.0, Math.max(-48.0, 20.0 * Math.log10(mag)));
+                                    const y = h * (1.0 - (dB + 48.0) / 74.0) * 0.85 + h * 0.08;
+
+                                    if (first) {
+                                        ctx.moveTo(x, y);
+                                        first = false;
+                                    } else {
+                                        ctx.lineTo(x, y);
+                                    }
+
+                                    // Track peak node coordinates
+                                    if (Math.abs(x - fc * w) < step) {
+                                        peakX = x;
+                                        peakY = y;
+                                    }
+                                }
+
+                                // Stroke filter response curve
                                 ctx.lineWidth = 3;
                                 ctx.strokeStyle = Theme.tone2;
                                 ctx.stroke();
@@ -157,7 +186,7 @@ Rectangle {
 
                                 // Draw Handle Node Point
                                 ctx.beginPath();
-                                ctx.arc(cx, peakY, 7, 0, 2 * Math.PI);
+                                ctx.arc(peakX, peakY, 6, 0, 2 * Math.PI);
                                 ctx.fillStyle = Theme.tone2;
                                 ctx.fill();
                                 ctx.lineWidth = 2;
@@ -183,12 +212,18 @@ Rectangle {
                                     Bridge.setMasterReso(Math.round(1 + normY * 126));
                                 }
                             }
+                            onPressed: (mouse) => {
+                                const normX = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                                const normY = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / height)));
+                                Bridge.setMasterCutoff(Math.round(1 + normX * 126));
+                                Bridge.setMasterReso(Math.round(1 + normY * 126));
+                            }
                         }
                     }
                 }
             }
 
-            // Right: ADSR Envelope Visualization & Controls
+            // Right: Interactive ADSR Envelope Visualization & Controls
             Rectangle {
                 Layout.preferredWidth: ScaleMetrics.dp(260)
                 Layout.fillHeight: true
@@ -202,59 +237,147 @@ Rectangle {
                     anchors.margins: ScaleMetrics.dp(8)
                     spacing: ScaleMetrics.dp(6)
 
-                    Text {
-                        text: "TVA AMPLITUDE ENVELOPE (ADSR)"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(10)
-                        color: Theme.tone3
-                    }
-
-                    // ADSR Curve Canvas
-                    Canvas {
-                        id: adsrCanvas
+                    RowLayout {
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
-
-                        onPaint: {
-                            const ctx = getContext("2d");
-                            ctx.reset();
-                            const w = width;
-                            const h = height;
-
-                            // ADSR curve
-                            const p0 = { x: 0, y: h * 0.9 };
-                            const pAttack = { x: w * 0.2, y: h * 0.15 };
-                            const pDecay = { x: w * 0.5, y: h * 0.45 };
-                            const pSustain = { x: w * 0.75, y: h * 0.45 };
-                            const pRelease = { x: w * 0.95, y: h * 0.9 };
-
-                            ctx.beginPath();
-                            ctx.moveTo(p0.x, p0.y);
-                            ctx.lineTo(pAttack.x, pAttack.y);
-                            ctx.lineTo(pDecay.x, pDecay.y);
-                            ctx.lineTo(pSustain.x, pSustain.y);
-                            ctx.lineTo(pRelease.x, pRelease.y);
-
-                            ctx.lineWidth = 3;
-                            ctx.strokeStyle = Theme.tone3;
-                            ctx.stroke();
-
-                            // Fill
-                            ctx.lineTo(w, h);
-                            ctx.lineTo(0, h);
-                            ctx.closePath();
-                            ctx.fillStyle = "rgba(16, 185, 129, 0.12)";
-                            ctx.fill();
+                        Text {
+                            text: "TVA ENVELOPE (ADSR)"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(10)
+                            color: Theme.tone3
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: "DRAG POINTS"
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Theme.textDim
                         }
                     }
 
-                    // ADSR Labels
+                    // ADSR Curve Canvas
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+
+                        Canvas {
+                            id: adsrCanvas
+                            anchors.fill: parent
+
+                            onPaint: {
+                                const ctx = getContext("2d");
+                                ctx.reset();
+                                const w = width;
+                                const h = height;
+
+                                const normA = Math.max(0.02, root.envAttack / 127.0);
+                                const normD = Math.max(0.02, root.envDecay / 127.0);
+                                const normS = Math.max(0.05, root.envSustain / 127.0);
+                                const normR = Math.max(0.02, root.envRelease / 127.0);
+
+                                const xA = w * 0.05 + normA * (w * 0.28);
+                                const xD = xA + normD * (w * 0.28);
+                                const xS = Math.min(w * 0.75, xD + w * 0.15);
+                                const xR = Math.min(w * 0.96, xS + normR * (w * 0.22));
+
+                                const yBase = h * 0.90;
+                                const yPeak = h * 0.12;
+                                const ySustain = yBase - normS * (yBase - yPeak);
+
+                                ctx.beginPath();
+                                ctx.moveTo(w * 0.04, yBase);
+                                ctx.lineTo(xA, yPeak);
+                                ctx.lineTo(xD, ySustain);
+                                ctx.lineTo(xS, ySustain);
+                                ctx.lineTo(xR, yBase);
+
+                                ctx.lineWidth = 3;
+                                ctx.strokeStyle = Theme.tone3;
+                                ctx.stroke();
+
+                                // Fill
+                                ctx.lineTo(w * 0.04, yBase);
+                                ctx.closePath();
+                                ctx.fillStyle = "rgba(16, 185, 129, 0.12)";
+                                ctx.fill();
+
+                                // Handles
+                                const handles = [
+                                    { x: xA, y: yPeak },
+                                    { x: xD, y: ySustain },
+                                    { x: xS, y: ySustain },
+                                    { x: xR, y: yBase }
+                                ];
+                                for (let i = 0; i < handles.length; i++) {
+                                    ctx.beginPath();
+                                    ctx.arc(handles[i].x, handles[i].y, 5, 0, 2 * Math.PI);
+                                    ctx.fillStyle = Theme.tone3;
+                                    ctx.fill();
+                                    ctx.lineWidth = 2;
+                                    ctx.strokeStyle = "#ffffff";
+                                    ctx.stroke();
+                                }
+                            }
+
+                            Connections {
+                                target: root
+                                function onEnvAttackChanged() { adsrCanvas.requestPaint(); }
+                                function onEnvDecayChanged() { adsrCanvas.requestPaint(); }
+                                function onEnvSustainChanged() { adsrCanvas.requestPaint(); }
+                                function onEnvReleaseChanged() { adsrCanvas.requestPaint(); }
+                            }
+                        }
+
+                        // Touch interaction on ADSR nodes
+                        MouseArea {
+                            anchors.fill: parent
+                            property int activeHandle: 0 // 1: A, 2: D, 3: S, 4: R
+
+                            onPressed: (mouse) => {
+                                const normX = mouse.x / width;
+                                if (normX < 0.3) {
+                                    activeHandle = 1;
+                                    const val = Math.round(Math.max(1, Math.min(127, (normX / 0.3) * 127)));
+                                    Bridge.setMasterAttack(val);
+                                } else if (normX < 0.55) {
+                                    activeHandle = 2;
+                                    root.envDecay = Math.round(Math.max(1, Math.min(127, ((normX - 0.3) / 0.25) * 127)));
+                                } else if (normX < 0.75) {
+                                    activeHandle = 3;
+                                    const normY = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / height)));
+                                    root.envSustain = Math.round(normY * 127);
+                                } else {
+                                    activeHandle = 4;
+                                    const val = Math.round(Math.max(1, Math.min(127, ((normX - 0.75) / 0.25) * 127)));
+                                    Bridge.setMasterRelease(val);
+                                }
+                            }
+
+                            onPositionChanged: (mouse) => {
+                                if (pressed) {
+                                    const normX = mouse.x / width;
+                                    const normY = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / height)));
+                                    if (activeHandle === 1) {
+                                        const val = Math.round(Math.max(1, Math.min(127, (normX / 0.3) * 127)));
+                                        Bridge.setMasterAttack(val);
+                                    } else if (activeHandle === 2) {
+                                        root.envDecay = Math.round(Math.max(1, Math.min(127, Math.abs(normX - 0.3) / 0.25 * 127)));
+                                    } else if (activeHandle === 3) {
+                                        root.envSustain = Math.round(normY * 127);
+                                    } else if (activeHandle === 4) {
+                                        const val = Math.round(Math.max(1, Math.min(127, (normX - 0.75) / 0.25 * 127)));
+                                        Bridge.setMasterRelease(val);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ADSR Numeric Labels
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "A: 15"; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textDim; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
-                        Text { text: "D: 45"; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textDim; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
-                        Text { text: "S: 80"; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textDim; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
-                        Text { text: "R: 30"; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textDim; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
+                        Text { text: "A: " + root.envAttack; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textPrimary; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
+                        Text { text: "D: " + root.envDecay; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textPrimary; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
+                        Text { text: "S: " + root.envSustain; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textPrimary; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
+                        Text { text: "R: " + root.envRelease; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textPrimary; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
                     }
                 }
             }

@@ -62,11 +62,19 @@ def test_ui_bridge_slots_and_properties():
     bridge.toggleToneMute(1)
     assert bridge.tone1Muted is False
 
+    # Test Tone Direct Level Setting
+    bridge.setToneLevel(1, 120)
+    assert bridge.tone1Level == 120
+
     # Test Master Controls
     bridge.setMasterCutoff(80)
     assert bridge.masterCutoff == 80
     bridge.setMasterReso(50)
     assert bridge.masterReso == 50
+    bridge.setMasterAttack(70)
+    assert bridge.masterAttack == 70
+    bridge.setMasterRelease(90)
+    assert bridge.masterRelease == 90
     bridge.setMasterLevel(115)
     assert bridge.masterLevel == 115
 

@@ -137,6 +137,15 @@ class VectorEngine:
             self._recalculate_levels()
             self._dispatch_if_needed(force=True)
 
+    def set_tone_level(self, tone_idx: int, level: int) -> None:
+        """Directly adjust level of a single tone (1..4) from 0..127."""
+        if 1 <= tone_idx <= 4:
+            clamped = max(0, min(127, int(level)))
+            levels = list(self.tone_levels)
+            levels[tone_idx - 1] = 0 if self.tone_mutes[tone_idx - 1] else clamped
+            self.tone_levels = (levels[0], levels[1], levels[2], levels[3])
+            self._dispatch_if_needed(force=True)
+
     def update(self, dt: float) -> None:
         """Tick engine by delta-time dt (advances motion loops / automators / wavetable sweeps)."""
         if self.mode == MorphMode.VECTOR_2D:

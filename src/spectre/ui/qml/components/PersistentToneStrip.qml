@@ -173,13 +173,14 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
         }
 
-        // Meter Track Background
+        // Meter Track Background (Draggable to set level directly)
         Rectangle {
+            id: meterTrack
             Layout.fillWidth: true
             Layout.fillHeight: true
             radius: ScaleMetrics.dp(4)
             color: Theme.bgApp
-            border.color: Theme.borderCard
+            border.color: meterMouse.containsPress ? chanRoot.toneColor : Theme.borderCard
             border.width: 1
             clip: true
 
@@ -204,6 +205,25 @@ Rectangle {
                     height: ScaleMetrics.dp(3)
                     color: "#ffffff"
                     opacity: (!chanRoot.isMuted && chanRoot.level > 0) ? 0.35 : 0.0
+                }
+            }
+
+            // Direct Touch / Drag Level Control
+            MouseArea {
+                id: meterMouse
+                anchors.fill: parent
+                onPressed: (mouse) => {
+                    if (chanRoot.isMuted) {
+                        Bridge.setToneMute(chanRoot.toneNumber, false);
+                    }
+                    const norm = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / height)));
+                    Bridge.setToneLevel(chanRoot.toneNumber, Math.round(norm * 127));
+                }
+                onPositionChanged: (mouse) => {
+                    if (pressed) {
+                        const norm = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / height)));
+                        Bridge.setToneLevel(chanRoot.toneNumber, Math.round(norm * 127));
+                    }
                 }
             }
         }

@@ -32,6 +32,9 @@ Rectangle {
         property int knobIndex: 1
         readonly property string currentView: Bridge.activeView
 
+        // State property for mock FX and Mixer params
+        property real internalVal: 0.5
+
         radius: ScaleMetrics.dp(6)
         color: Theme.bgApp
         border.color: mouseArea.containsPress ? Theme.primary : Theme.borderCard
@@ -49,12 +52,12 @@ Rectangle {
                 const names = ["BRIGHT", "WARMTH", "SUB OSC", "AIR", "DRIVE", "SPACE", "MOTION", "ATTACK"];
                 return names[knobIndex - 1] || "MACRO";
             } else if (currentView === "PATCH EDIT") {
-                const names = ["CUTOFF", "RESO", "ATTACK", "DECAY", "SUSTAIN", "RELEASE", "LFO RATE", "LFO DEPTH"];
+                const names = ["CUTOFF", "RESO", "ATTACK", "RELEASE", "T1 LVL", "T2 LVL", "T3 LVL", "T4 LVL"];
                 return names[knobIndex - 1] || "EDIT";
             } else if (currentView === "PERF MIXER") {
-                return "PART " + knobIndex;
+                return "P" + knobIndex + " VOL";
             } else if (currentView === "EFFECTS") {
-                const names = ["MFX TYPE", "PARAM 1", "PARAM 2", "WET/DRY", "CHORUS", "REVERB", "REV TIME", "MASTER EQ"];
+                const names = ["MFX TYPE", "CTRL 1", "CTRL 2", "WET/DRY", "CHORUS", "REVERB", "REV TIME", "MAST EQ"];
                 return names[knobIndex - 1] || "FX";
             }
             return "ENC " + knobIndex;
@@ -98,9 +101,14 @@ Rectangle {
             } else if (currentView === "PATCH EDIT") {
                 if (knobIndex === 1) return (Bridge.masterCutoff - 1) / 126.0;
                 if (knobIndex === 2) return (Bridge.masterReso - 1) / 126.0;
-                return 0.5;
+                if (knobIndex === 3) return (Bridge.masterAttack - 1) / 126.0;
+                if (knobIndex === 4) return (Bridge.masterRelease - 1) / 126.0;
+                if (knobIndex === 5) return Bridge.tone1Level / 127.0;
+                if (knobIndex === 6) return Bridge.tone2Level / 127.0;
+                if (knobIndex === 7) return Bridge.tone3Level / 127.0;
+                if (knobIndex === 8) return Bridge.tone4Level / 127.0;
             }
-            return 0.5;
+            return card.internalVal;
         }
 
         // Display string for the readout
@@ -133,9 +141,19 @@ Rectangle {
                             knobIndex === 7 ? Bridge.macro7 : Bridge.macro8;
                 return val.toString();
             } else if (currentView === "PATCH EDIT") {
-                if (knobIndex === 1) return (Bridge.masterCutoff - 64).toString();
-                if (knobIndex === 2) return (Bridge.masterReso - 64).toString();
-                return "64";
+                if (knobIndex === 1) return (Bridge.masterCutoff >= 64 ? "+" : "") + (Bridge.masterCutoff - 64);
+                if (knobIndex === 2) return (Bridge.masterReso >= 64 ? "+" : "") + (Bridge.masterReso - 64);
+                if (knobIndex === 3) return (Bridge.masterAttack >= 64 ? "+" : "") + (Bridge.masterAttack - 64);
+                if (knobIndex === 4) return (Bridge.masterRelease >= 64 ? "+" : "") + (Bridge.masterRelease - 64);
+                if (knobIndex === 5) return Bridge.tone1Level.toString();
+                if (knobIndex === 6) return Bridge.tone2Level.toString();
+                if (knobIndex === 7) return Bridge.tone3Level.toString();
+                if (knobIndex === 8) return Bridge.tone4Level.toString();
+            } else if (currentView === "PERF MIXER") {
+                return Math.round(card.internalVal * 127).toString();
+            } else if (currentView === "EFFECTS") {
+                if (knobIndex === 1) return Math.round(1 + card.internalVal * 78).toString();
+                return Math.round(card.internalVal * 127).toString();
             }
             return "64";
         }
@@ -143,6 +161,8 @@ Rectangle {
         // Apply updated normalized value (0.0 .. 1.0)
         function applyNormValue(nv: real) {
             const clamped = Math.max(0.0, Math.min(1.0, nv));
+            card.internalVal = clamped;
+
             if (currentView === "VECTOR") {
                 if (knobIndex === 1) Bridge.setCoordinates(clamped, Bridge.vectorY);
                 else if (knobIndex === 2) Bridge.setCoordinates(Bridge.vectorX, clamped);
@@ -165,11 +185,19 @@ Rectangle {
                     Bridge.setWavetableSweepMode(sweeps[idx]);
                 }
                 else if (knobIndex === 4) Bridge.setCurve(clamped < 0.5 ? "linear" : "equal_power");
+                else if (knobIndex >= 5 && knobIndex <= 8) {
+                    Bridge.setToneLevel(knobIndex - 4, Math.round(clamped * 127));
+                }
             } else if (currentView === "MACROS") {
                 Bridge.setMacro(knobIndex, Math.round(clamped * 127));
             } else if (currentView === "PATCH EDIT") {
                 if (knobIndex === 1) Bridge.setMasterCutoff(Math.round(1 + clamped * 126));
                 else if (knobIndex === 2) Bridge.setMasterReso(Math.round(1 + clamped * 126));
+                else if (knobIndex === 3) Bridge.setMasterAttack(Math.round(1 + clamped * 126));
+                else if (knobIndex === 4) Bridge.setMasterRelease(Math.round(1 + clamped * 126));
+                else if (knobIndex >= 5 && knobIndex <= 8) {
+                    Bridge.setToneLevel(knobIndex - 4, Math.round(clamped * 127));
+                }
             }
         }
 
@@ -230,30 +258,37 @@ Rectangle {
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    width: parent.width * card.getNormValue()
+                    width: parent.width * Math.max(0.0, Math.min(1.0, card.getNormValue()))
                     radius: ScaleMetrics.dp(2)
                     color: card.knobIndex <= 4 ? Theme.tone1 : Theme.tone3
                 }
             }
         }
 
-        // Touch and Drag Interaction
+        // Direct Touch and Drag Interaction
         MouseArea {
             id: mouseArea
             anchors.fill: parent
+            property real startX: 0
             property real startY: 0
             property real startNorm: 0
 
             onPressed: (mouse) => {
+                startX = mouse.x;
                 startY = mouse.y;
                 startNorm = card.getNormValue();
+                card.applyNormValue(mouse.x / width);
             }
 
             onPositionChanged: (mouse) => {
                 if (pressed) {
+                    const dx = mouse.x - startX;
                     const dy = startY - mouse.y;
-                    const deltaNorm = dy / ScaleMetrics.dp(80);
-                    card.applyNormValue(startNorm + deltaNorm);
+                    if (Math.abs(dy) > Math.abs(dx) * 1.2) {
+                        card.applyNormValue(startNorm + dy / ScaleMetrics.dp(70));
+                    } else {
+                        card.applyNormValue(mouse.x / width);
+                    }
                 }
             }
         }
