@@ -242,71 +242,31 @@ Rectangle {
 
                         var activeSliceData = computeSlice(curW)
 
-                        function drawSlice(slice, isActive) {
+                        function drawWireSlice(slice) {
                             var slicePts = slice.pts
-                            var x0 = slice.x0
-                            var yBase = slice.yBase
-                            var wSlice = slice.wSlice
                             var z = slice.z
-
                             if (slicePts.length < 2) return
 
-                            // 1. Occlusion under-fill (semi-translucent glass fill so back slices aren't wiped out)
                             ctx.beginPath()
-                            ctx.moveTo(slicePts[0].x, slicePts[0].y)
-                            for (var pIdx = 1; pIdx < slicePts.length; pIdx++) {
-                                ctx.lineTo(slicePts[pIdx].x, slicePts[pIdx].y)
+                            ctx.lineWidth = 1.8
+                            ctx.lineCap = "round"
+                            ctx.lineJoin = "round"
+                            var alpha = 0.36 + (1.0 - z) * 0.12
+                            ctx.strokeStyle = "rgba(56, 189, 248, " + alpha.toFixed(2) + ")"
+                            for (var wIdx = 0; wIdx < slicePts.length; wIdx++) {
+                                if (wIdx === 0) ctx.moveTo(slicePts[wIdx].x, slicePts[wIdx].y)
+                                else ctx.lineTo(slicePts[wIdx].x, slicePts[wIdx].y)
                             }
-                            ctx.lineTo(x0 + wSlice, yBase + 4)
-                            ctx.lineTo(x0, yBase + 4)
-                            ctx.closePath()
-
-                            if (isActive) {
-                                // Active slice has illuminated glowing gradient fill
-                                var grad = ctx.createLinearGradient(0, yBase - amp3d, 0, yBase + 6)
-                                grad.addColorStop(0, "rgba(56, 189, 248, 0.45)")
-                                grad.addColorStop(1, "rgba(7, 9, 13, 0.80)")
-                                ctx.fillStyle = grad
-                            } else {
-                                // Wireframe slice translucent dark glass fill
-                                ctx.fillStyle = "rgba(7, 9, 13, 0.65)"
-                            }
-                            ctx.fill()
-
-                            // 2. Stroke the waveform line for wireframe slices
-                            if (!isActive) {
-                                ctx.beginPath()
-                                ctx.lineWidth = 1.8
-                                ctx.lineCap = "round"
-                                ctx.lineJoin = "round"
-                                var alpha = 0.36 + (1.0 - z) * 0.12
-                                ctx.strokeStyle = "rgba(56, 189, 248, " + alpha.toFixed(2) + ")"
-                                for (var wIdx = 0; wIdx < slicePts.length; wIdx++) {
-                                    if (wIdx === 0) ctx.moveTo(slicePts[wIdx].x, slicePts[wIdx].y)
-                                    else ctx.lineTo(slicePts[wIdx].x, slicePts[wIdx].y)
-                                }
-                                ctx.stroke()
-                            }
+                            ctx.stroke()
                         }
 
-                        // Render slices from back (z = 1) to front (z = 0)
-                        var activeDrawn = false
+                        // Render wireframe slices from back (z = 1) to front (z = 0)
                         for (var k = numSlices - 1; k >= 0; k--) {
                             var zSlice = k / (numSlices - 1)
-
-                            if (!activeDrawn && curW >= zSlice) {
-                                drawSlice(activeSliceData, true)
-                                activeDrawn = true
-                            }
-
                             if (Math.abs(zSlice - curW) > 0.035) {
                                 var wireSlice = computeSlice(zSlice)
-                                drawSlice(wireSlice, false)
+                                drawWireSlice(wireSlice)
                             }
-                        }
-
-                        if (!activeDrawn) {
-                            drawSlice(activeSliceData, true)
                         }
 
                         // ==========================================
@@ -319,14 +279,6 @@ Rectangle {
                             var ax0 = activeSliceData.x0
                             var ayBase = activeSliceData.yBase
                             var aw = activeSliceData.wSlice
-
-                            // Active slice baseline guide
-                            ctx.beginPath()
-                            ctx.lineWidth = 1
-                            ctx.strokeStyle = "rgba(56, 189, 248, 0.40)"
-                            ctx.moveTo(ax0, ayBase)
-                            ctx.lineTo(ax0 + aw, ayBase)
-                            ctx.stroke()
 
                             // Pass 1: Neon bloom glow
                             ctx.beginPath()
@@ -356,6 +308,7 @@ Rectangle {
                             ctx.fillStyle = "#38bdf8"
                             ctx.fillRect(ax0 - 5, ayBase - 7, 4, 14)
                         }
+
                     }
                 }
             }
