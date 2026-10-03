@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from PyQt6.QtCore import QTimer
+import mido
 
 from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.protocol import JunoClient
@@ -56,26 +57,45 @@ def main() -> int:
     if not args.mock:
         try:
             midi_mgr = MidiDeviceManager()
-            midi_mgr.scan_devices()
 
             # Attempt to connect to Roland synth
-            juno_in, juno_out = midi_mgr.find_juno_ports()
-            if juno_in or juno_out or args.juno_port:
-                logger.info(f"Connecting to Roland synth (in: {juno_in}, out: {juno_out})...")
-                midi_mgr.open_juno(juno_in or args.juno_port, juno_out or args.juno_port)
+            try:
+                if args.juno_port:
+                    logger.info(f"Connecting to user-specified Roland synth port: {args.juno_port}...")
+                    midi_mgr.juno_in = mido.open_input(args.juno_port)
+                    midi_mgr.juno_out = mido.open_output(args.juno_port)
+                else:
+                    logger.info("Scanning for Roland synth (JUNO-DS / XPS-30)...")
+                    in_n, out_n = midi_mgr.connect_juno()
+                    logger.info(f"Connected to Roland synth (in: {in_n}, out: {out_n})")
+
                 juno_client = JunoClient(midi_mgr)
-                logger.info("Roland JunoClient connected.")
-            else:
-                logger.warning("No Roland synth found. Running in standalone mode.")
+                try:
+                    info = juno_client.ping(timeout=1.0)
+                    if info:
+                        logger.info(f"Roland synth verified via SysEx ping: {info}")
+                        p_name = juno_client.get_patch_name(timeout=1.0)
+                        logger.info(f"Active synth patch: '{p_name}'")
+                except Exception as ping_ex:
+                    logger.warning(f"SysEx ping query note: {ping_ex}")
+
+                logger.info("Roland JunoClient operational.")
+            except Exception as e:
+                logger.warning(f"Roland synth not connected: {e}")
 
             # Attempt to connect to hardware controller
-            lc_in, lc_out = midi_mgr.find_launch_control_ports()
-            if lc_in or lc_out or args.controller_port:
-                logger.info(f"Connecting to controller (in: {lc_in}, out: {lc_out})...")
-                midi_mgr.open_launch_control(lc_in or args.controller_port, lc_out or args.controller_port)
+            try:
+                if args.controller_port:
+                    logger.info(f"Connecting to controller port: {args.controller_port}...")
+                    midi_mgr.connect_controller(args.controller_port)
+                else:
+                    midi_mgr.connect_launch_control()
                 ctrl_engine = MidiControllerEngine(midi_mgr=midi_mgr, juno_client=juno_client)
                 ctrl_engine.load_profile(args.profile)
                 logger.info(f"Loaded controller profile '{args.profile}'.")
+            except Exception as e:
+                logger.info(f"No hardware controller connected: {e}")
+
         except Exception as e:
             logger.warning(f"Hardware initialization failed, falling back to mock mode: {e}")
 
