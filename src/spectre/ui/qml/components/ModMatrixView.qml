@@ -151,7 +151,7 @@ Rectangle {
                                         color: Theme.textDim
                                     }
                                     Text {
-                                        text: root.sources[ctrlCol.srcIdx]
+                                        text: (root.sources && root.sources[ctrlCol.srcIdx] !== undefined) ? root.sources[ctrlCol.srcIdx] : "OFF"
                                         font.bold: true
                                         font.pixelSize: ScaleMetrics.sp(9)
                                         color: Theme.textPrimary
@@ -246,7 +246,7 @@ Rectangle {
                                                     }
 
                                                     Text {
-                                                        text: root.destinations[slotBox.dIdx]
+                                                        text: (root.destinations && root.destinations[slotBox.dIdx] !== undefined) ? root.destinations[slotBox.dIdx] : "OFF"
                                                         font.bold: true
                                                         font.pixelSize: ScaleMetrics.sp(8.5)
                                                         color: slotBox.dIdx === 0 ? Theme.textDim : ctrlCol.accentColor
