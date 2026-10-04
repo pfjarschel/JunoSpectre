@@ -47,9 +47,10 @@
                     ┌───────────────────┴───────────────────┐
                     │                                       │
                     ▼                                       ▼
-         [Roland XPS-30 / Juno-DS]              [Carla Headless VST Host]
-         • 4-Tone PCM Sound Generator           • Dexed (Yamaha DX7 FM)
-         • Integrated 24-bit USB Audio Out ────► • Surge XT (Hybrid Wavetable)
+         [Roland XPS-30 / Juno-DS]              [Embedded Soft Synth Engine]
+         • 4-Tone PCM Sound Generator           • VSTs / Custom Software Synth
+         • Integrated 24-bit USB Audio In/Out ◄►• Digital USB Audio Streaming
+         • SysEx Local Control Decoupling
 ```
 
 ---
@@ -79,7 +80,7 @@
     * Moving Up: $\Delta V = \Delta P \times \frac{127 - V_{\text{current}}}{127 - P_{\text{last}}}$
     * Moving Down: $\Delta V = \vert{}\Delta P\vert{} \times \frac{V_{\text{current}}}{P_{\text{last}}}$
 
-### Module 3: 2D Vector & Wavetable Morphing Engine (`spectre.vector`)
+### Module 3: 2D Vector, 1D Wavetable & 4-OSC Virtual Analog (VA) Engine (`spectre.vector` & `spectre.va`)
 * **Cartesian 4-Tone Interpolation:**
   * Maps an X/Y coordinate ($0.0 \le X, Y \le 1.0$) into four Roland TVA Level values:
     $$\text{Tone 1 (NW)} = (1 - X) \times Y \times 127$$
@@ -89,46 +90,71 @@
   * Supports Linear and Constant-Power (Equal-Power) crossfade laws.
 * **1D Linear Wavetable Scanner:**
   * Smooth sequential crossfade across Tone 1 $\to$ Tone 2 $\to$ Tone 3 $\to$ Tone 4 ($A \to B \to C \to D$).
+* **Logarithmic Volume Normalization Curve:**
+  * Roland TVA gain behaves exponentially ($dB$), causing single tones or combinations to deviate in perceived volume.
+  * Real-time normalization applies an acoustic loudness compensation exponent ($w^{0.29}$) to maintain consistent perceived volume across single-tone corners and mixed centers.
+* **4-OSC Virtual Analog (VA) Engine:**
+  * Classic multi-oscillator Virtual Analog workflow.
+  * **Hardwired Ganged Master Filter & Envelopes:** Master TVF Cutoff, Resonance, and Master TVA/TVF ADSR envelopes are internally ganged by design—no toggle needed in this view.
+  * **Oscillator Detune & Mixer:** 4 oscillators with curated analog waveforms (Sine, Tri, Saw, Square, Pulse-Widths, sync-like waves), coarse tune (octaves/semitones), fine tune (cents detune), and individual levels.
 * **Motion Recording & Orbital Automators:**
   * Touch gesture loop recorder: captures continuous X/Y trajectories up to 16 bars with tempo sync (BPM), speed scaling (0.25x–4x), and loop modes (Forward, Ping-Pong, Reverse).
   * Built-in geometric motion automators: Circles, Lissajous figures, and Brownian Chaos walks.
 
-### Module 4: Wave Harvester & Sound Profiler (`spectre.wave_harvester`)
-* **Automated Wave Profiling Script (`scripts/wave_harvester.py`):**
-  * Initializes a clean, unmodulated test patch in the synth temporary buffer (Tone 1 active, TVF bypassed, instant square envelope, effects at 0).
-  * Rapidly steps through all 2,402 internal ROM waves (INTA, INTB) and Axial expansion waves (EXP-01..10).
-  * Triggers ultra-short audition bursts (80–100 ms Middle C).
-  * Performs fast pitch/periodicity autocorrelation ($R(\tau) \ge 0.98$) to automatically classify waveforms:
-    1. Single-Cycle Looping Waves (extracts 1-period vector SVG for the UI)
-    2. Sustained Multi-Cycle Synth / Pad Waves
-    3. Decaying Acoustic PCM Samples
-    4. One-Shot Percussion & Transients
-    5. Complex / FX Textures
-* **Database & Wave Browser:**
-  * Extracted Roland wave database stored in `config/waveforms.json`.
-  * Touch drawer on the Patch Edit screen for instant categorized selection, search, and live audition.
+### Module 4: Wave Database & Harvester Engine (`spectre.wave_harvester`)
+* **Roland Waveform Database (`config/waveforms.json`):**
+  * 2,382+ waveforms parsed, verified, and indexed across INTA, INTB, and Axial expansions.
+  * Tag-based categorical taxonomy (Analog, Keys, Bass, Strings, Brass, Perc, FX).
+  * Prioritized bread-and-butter synth collection (ARP Sine, Sine, JD Tri, VS-Tri, Juno SAW HD, JP-8 Saw, MG Saw HD, P5 Saw HD, Juno Sqr HD, JP-8 Sqr, MG Sqr HD, P5 Sqr HD, JP-8 Pulse widths).
+* **Virtual Touch Keyboard & Wave Browser Drawer:**
+  * Integrated 5-row responsive touch virtual keyboard for fast search and filtering directly on the touch screen.
+  * Live wave preview and instant audition into the temporary buffer.
 
 ### Module 5: Touch UI Workstation OS (`spectre.ui`)
 * **Engine:** Built with **Qt Quick (QML)** using hardware-accelerated OpenGL scene graphs on the Raspberry Pi (VideoCore GPU) and PC, delivering locked 60 FPS touch response.
-* **Screens ($1024 \times 600$ Touch Display):**
-  1. **Top Bar (Persistent):** Mode [PATCH / PERF], Patch Name, Active Part/Layer, BPM / Tap Tempo, MIDI Activity LEDs.
-  2. **Context Strip:** Visual reflection of the 8 physical encoders for the current view.
-  3. **Vector & Morph Pad:** Glowing 2D touch puck, animated trajectory trails, corner tone badges with real-time level glow.
-  4. **Wavetable Scanner:** 1D linear slider with 4-zone crossfade visualization.
-  5. **Macro Play Deck:** 8 customizable multi-parameter macro dials, chord/note monitor, octave/transpose, and Panic button.
-  6. **Patch & Tone Editor (Zero Menu Diving):**
-     - Master Patch Common (Cutoff offset, Reso offset, Level, Pan, Sends).
-     - 4 Tone Tabs with Mute/Solo, Level VU meters, and Wave badge.
-     - Interactive TVF Filter curve display with draggable cutoff & resonance.
-     - Interactive TVF & TVA ADSR envelope curve drag points.
-     - Dual LFO modulation matrix.
-  7. **Performance Layer & Zone Mixer:**
-     - 16-Part mixer (levels, pans, mutes).
-     - Visual 61/88-key split/layer zone editor.
-     - Instant jump to edit any Part's patch buffer without leaving Performance Mode.
-  8. **Effects (MFX) Studio:** Visual signal flow (Tones $\to$ MFX $\to$ Chorus $\to$ Reverb) with graphical parameter controls.
-  9. **Patch Librarian & Snapshots:** Unlimited `.syx` patch database on disk, tag-based browsing, instant audition (< 15 ms), and one-touch live snapshot saving.
-  10. **Step Sequencer:** 16-step polyphonic trigger grid, Euclidean rhythm generator, and parameter modulation lane.
+* **Canvas Optimization & Self-Contained Architecture:**
+  * **Reclaimed $1000\text{px}+ \times 506\text{dp}$ Workspace:** The fixed right-hand 4-tone strip and fixed bottom morph toolbar are eliminated from the global shell. Each engine manages its own canvas width and height, freeing generous space for confident touch targets.
+  * **Context Strip (8 Encoders):** Persists below the Top Bar for fast physical knob interaction, but automatically hides on System & Utility views (`HARDWARE`, `SYSTEM`, `LIBRARIAN`, `MIDI LEARN`) expanding vertical canvas to 556dp.
+  * **Zero Screen Hopping & Zero Hidden Drawers:** Filter and envelope shaping are directly accessible inside each engine view via dedicated on-panel controls or the Right Flank `SculptorPanel.qml` (~360dp, 100% visible, no hidden drawers).
+  * **App Launcher Overlay (`ScreensOverlay.qml`):** Replaced cramped horizontal tabs with a single `[ ⊞ SCREENS: <ACTIVE_VIEW> ▼ ]` button in `HeaderBar.qml` opening a categorized modal overlay presenting 16 touch tiles grouped across 4 distinct categories.
+* **16 Workstation Apps Across 4 Categories:**
+  1. **SYNTH ENGINES:**
+     - **Juno PCM (`PatchEditView.qml`, Default Boot Screen / Index 0):** Full-screen 4-Tone Roland sound designer with stereo Wave L / Wave R selection per tone, dual interactive envelopes (TVF Filter Env with Depth -63..+63 & TVA Amp Env), Portamento Time & Switch, and a master `[LINK ALL TONES: ON/OFF]` toggle button.
+     - **2D Vector (`VectorPad.qml`):** 3-column layout featuring automated wave motion orbit controls (Left, ~140dp), 2D morph pad with live oscilloscope and corner badges (Center, >520dp), and Master TVF/TVA/LFO/Pitch `SculptorPanel` (Right, ~360dp).
+     - **1D Wavetable (`WavetableSlider.qml`):** 3-column layout featuring sweep automators (Left), 1D linear slider and 3D waterfall scope (Center), and `SculptorPanel` (Right).
+     - **4-OSC VA (`VaView.qml`):** 3-column virtual analog console with 4-oscillator mixer/detune (Col 1), master TVF filter & env (Col 2), and master TVA amp with Portamento & Legato (Col 3).
+  2. **MODULATION & FX:**
+     - **Mod Matrix (`ModMatrixView.qml`):** 4 Roland matrix controllers with source selectors, 4 destinations per controller, and -63..+63 bipolar sensitivities.
+     - **Step LFO (`StepLfoView.qml`):** 16-step pattern modulator with horizontal touch drawing grid, tempo sync, glide curves, and live playhead.
+     - **Pitch Env (`PitchEnvView.qml`):** Bi-polar multi-segment pitch envelope canvas ($T_1..T_4$, $L_0..L_4$), depth, velocity sensitivity, and quick preset shapes.
+     - **MFX Studio (`MfxView.qml`):** Dedicated multi-effects studio for all 80 Roland MFX algorithms with parameter sliders, bypass, and send routing.
+     - **Master FX (`MasterFxView.qml`):** Master Chorus, Master Reverb, and 3-band parametric EQ with live EQ curve response.
+  3. **PERFORMANCE & PLAY:**
+     - **Macro Deck (`MacroDeck.qml`):** 8 large touch dials assigned to physical encoders, with note monitor and panic button.
+     - **Perf Mixer (`PerfMixerView.qml`):** 16-part multi-timbral faders, pans, mutes, and split/layer zone editor.
+     - **Sequencer (`SeqView.qml`):** 16-step polyphonic trigger grid with arpeggiator styles and octave range.
+  4. **SYSTEM & UTILITIES:**
+     - **Librarian (`LibrarianView.qml`):** Category-filtered `.spectre` and `.syx` patch database with instant audition, export, and USB import.
+     - **MIDI Learn (`MidiLearnView.qml`):** Interactive CC controller surface mapping with live MIDI learn detection.
+     - **Hardware Config (`HardwareConfigView.qml`):** Roland Juno-DS / XPS-30 device configuration, SysEx throttling, Local Control switch, and USB controller surfaces.
+     - **System Control (`SystemView.qml`):** Appliance system control with fast app restart, display brightness slider, Pi hardware telemetry, Wi-Fi manager with virtual keyboard, and apt system updater.
+
+### Module 6: Preset & Snapshot Architecture (`.spectre`)
+* **Universal Preset Format (`.spectre`):**
+  * JSON-packaged preset storing the complete Roland temporary patch dump along with Spectre engine states (Active Engine Mode, Vector coordinates, motion loops, macro mappings, and controller bindings).
+* **Snapshot & Compare Engine:**
+  * Instant A/B state compare and non-destructive live snapshot recall.
+  * Clean "Init Spectre Patch" generator for 1-touch blank-slate sound design.
+
+### Module 7: Future Expansion Engines (v2.0 & v3.0)
+* **16-Partial Additive Engine (v2.0):**
+  * Utilizes 4 Parts (16 tones total) tuned to harmonic ratios ($1f, 2f, 3f, \dots, 16f$).
+  * Touch screen allows user to draw single-cycle waveforms; Pi calculates real-time 16-harmonic FFT and pushes TVA levels.
+  * Dynamic wavetable sweeps across custom additive frames.
+* **EX Mode (Embedded Soft Synth in v3.0):**
+  * Embedded soft synth engine (VSTs and/or custom software synthesizer running on Pi).
+  * Streams 24-bit digital audio directly into the Juno-DS over bidirectional USB Audio.
+  * Automated MIDI isolation: sends SysEx `Local Control = OFF` when entering EX mode so the keyboard triggers only the soft synth, and restores `Local Control = ON` for native patches.
 
 ---
 
@@ -161,16 +187,17 @@ juno-spectre/
 │   │   │   ├── math.py
 │   │   │   ├── motion.py
 │   │   │   └── engine.py
+│   │   ├── va/                    # 4-OSC Virtual Analog engine logic & detuning
 │   │   ├── store/                 # Central Reactive Synth Store & Actions
 │   │   │   ├── synth_state.py
 │   │   │   └── actions.py
 │   │   ├── sequencer/             # 16-step micro-step nanosecond sequencer
-│   │   ├── librarian/             # Sysex save/load/audition & snapshots
-│   │   ├── vst/                   # Headless Carla daemon supervisor
+│   │   ├── librarian/             # Sysex & .spectre save/load/audition & snapshots
+│   │   ├── ex/                    # Embedded Soft Synth Engine supervisor (v3.0)
 │   │   └── ui/                    # Qt Quick / QML Touch Application
 │   │       ├── main.qml
 │   │       ├── components/        # VectorPad.qml, EnvCurve.qml, WaveDrawer.qml, etc.
-│   │       ├── views/             # VectorView, EditView, PlayView, PerfView, SeqView
+│   │       ├── views/             # VectorView, WaveView, VaView, EditView, PlayView, PerfView, SeqView
 │   │       └── bridge.py          # Python-QML reactive properties bridge
 ├── scripts/
 │   ├── spectre_control.py         # Hardware profile inspector & MIDI learn CLI
@@ -192,46 +219,80 @@ juno-spectre/
 
 ## 5. Revised Phased Development Roadmap
 
-* [x] **Phase 1: SysEx Core & Sniffer**
-  * Establish bidirectional communication with XPS-30/Juno-DS over ALSA/USB-MIDI.
-  * Verify Model ID handshake and test Temporary Buffer write on TVA Level 1–4.
-* [x] **Phase 2: MIDI Learn Engine & Smooth Scaler**
-  * Intercept incoming CCs and map dynamically to Roland parameter offsets.
-  * Implement and benchmark the Smooth Scaling mathematical algorithm.
-  * Build hardware profiles for Novation Launch Control XL, Midimix, nanoKONTROL2, BeatStep, etc.
-* [ ] **Phase 3A: Waveform Database & Harvester Engine**
-  * Extract all official waveform names and numbers from the Roland manual into `config/waveforms.json`.
-  * Categorize waveforms into tags (Analog, Keys, Bass, Strings, Brass, Perc, FX).
-  * Add wave query (`get_tone_wave_info`) and wave set (`set_tone_wave`) methods to `JunoClient`.
-  * Build the automated `wave_harvester.py` utility for 100 ms audio profiling and single-cycle detection.
-* [ ] **Phase 3B: Reactive Synth Store & Controller Context Engine**
-  * Implement centralized `SynthStore` managing SoundMode, Patch Common, 4x Tones, Performance Parts 1–16, and 8 Macros.
-  * Implement Dual Controller Mapping: Expanded (24-knob direct) vs Focus (8-knob contextual).
-  * Rate-limited SysEx dispatch queue (50Hz) with dirty-state byte deduplication.
-* [ ] **Phase 3C: 2D Vector & 1D Wavetable Morphing Engine**
-  * Implement Cartesian 4-tone interpolation (Linear and Equal-Power).
-  * Implement 1D sequential wavetable morphing ($A \to B \to C \to D$).
-  * Implement gesture motion loop recorder (1–16 bars, tempo sync, speed scaling, ping-pong, reverse).
-  * Implement geometric automators (Circle, Lissajous, Chaos walk).
-* [ ] **Phase 3D: Qt Quick / QML Touch UI Shell & Vector View (1024×600)**
-  * Set up hardware-accelerated Qt Quick runtime for Raspberry Pi and PC.
-  * Build persistent Top Bar, Context Strip, and Persistent Tone VU/Mute Strip.
-  * Build the interactive Vector Pad with glowing puck, trajectory trails, and animated playback.
-* [ ] **Phase 3E: Macro Play Deck & Contextual Encoders**
-  * Build the 8-Macro touch interface with customizable multi-destination parameter mapping.
-  * Add chord/note display, transpose, and Panic button.
-* [ ] **Phase 3F: Tactile Patch & Tone Editor (Zero Menu Diving)**
-  * Interactive TVF Filter curve display and draggable Cutoff/Reso points.
-  * Interactive TVF & TVA ADSR envelope curve editors.
-  * Slide-out Wave Browser with categories, search, and live audition.
-* [ ] **Phase 3G: Performance Layer & Zone Mixer**
-  * 16-Part volume/pan mixer and visual 61/88-key split/layer zone editor.
-  * Direct jump to edit any layer's patch buffer (`0x19 0x00...`) inside Performance Mode.
-* [ ] **Phase 4: Patch Librarian & Snapshot Manager**
-  * RQ1 patch memory dump and unlimited local `.syx` patch database.
-  * Instant temporary audition (< 15 ms via DT1) and live snapshot utility.
-* [ ] **Phase 5: Workstation Step Sequencer**
-  * 16-step polyphonic trigger grid with external ALSA MIDI clock synchronization.
-  * Multi-track routing: Roland Synth, External VST, and Parameter modulation lanes.
-* [ ] **Phase 6: Headless Carla VST Host (Dexed / Surge XT)**
-  * Headless Carla daemon integration over Roland 24-bit USB audio interface.
+### Phase 1: SysEx Core & Communication [Complete]
+* [x] Establish bidirectional communication with XPS-30/Juno-DS over ALSA/USB-MIDI.
+* [x] Verify Model ID handshake (Juno-DS `00 00 00 37` & XPS-30 variants).
+* [x] Temporary Buffer read/write (DT1/RQ1) for TVA Levels, TVF, Envelopes, Wave selection.
+
+### Phase 2: MIDI Learn Engine & Smooth Scaler [Complete]
+* [x] Intercept incoming CCs and map dynamically to Roland parameter offsets.
+* [x] Implement and benchmark the Smooth Scaling mathematical algorithm.
+* [x] Build hardware profiles for Novation Launch Control XL, Midimix, nanoKONTROL2, BeatStep, etc.
+
+### Phase 3: Waveform Database & Touch Virtual Keyboard [Complete]
+* [x] Extract all 2,382+ official waveforms from the Roland manual into `config/waveforms.json`.
+* [x] Categorize waveforms into tags (Analog, Keys, Bass, Strings, Brass, Perc, FX).
+* [x] Prioritize bread-and-butter synth waveforms (ARP Sine, Sine, JD Tri, VS-Tri, Juno/JP8/MG/P5 Saws & Squares, Pulse widths).
+* [x] 5-row responsive touch virtual keyboard with search & real-time filtering.
+
+---
+
+### v1.0: The Tactile Vector, Wavetable & VA Workstation (Native Engine)
+* [x] **2D Vector Morphing Engine:**
+  * Cartesian 4-tone interpolation (Linear and Equal-Power).
+  * Real-time 60 FPS morphing oscilloscope preview.
+  * Motion loop recorder (1–16 bars, tempo sync, speed scaling, ping-pong, reverse) & geometric automators.
+* [x] **1D Wavetable Morphing Engine:**
+  * Sequential 4-tone crossfade ($A \to B \to C \to D$).
+  * Real-time 2D waveform scope & 3D waterfall display.
+* [x] **Acoustic Loudness Normalization:**
+  * Perceived loudness compensation curve ($w^{0.29}$) preserving balanced levels between single tones and complex mixes.
+* [ ] **4-OSC Virtual Analog (VA) Engine:**
+  * Multi-oscillator Virtual Analog workflow.
+  * Internally hardwired/always ganged master TVF filter & master TVA/TVF ADSR envelopes.
+  * 4-oscillator detune & mixer (octaves, semitones, cents detune, analog bread-and-butter waveforms).
+* [ ] **Dynamic Buffer Target Router:**
+  * Automatic SysEx target routing between Patch mode (`0x1F`) and Performance parts (`0x19 [PartOffset]`).
+* [ ] **MIDI Program Change Auto-Sync:**
+  * Detect patch/performance changes initiated on the keyboard and update UI state.
+* [ ] **Clean "Init Patch" Generator:**
+  * 1-touch clean template for unmodulated sound sculpting.
+* [ ] **UI Screens & Shell Revamp (1024×600 Touch - Self-Contained Synth Architecture):**
+  * [x] Base QML touch shell & persistent Top Bar (sync, patch name, LEDs)
+  * [ ] Screen Real Estate Revamp: Remove fixed right-hand tone strip and fixed bottom row to liberate full $1024 \times 540$ canvas; make tone mixer contextual/on-demand
+  * [ ] Vector View Revamped (Large $>400\text{px}$ 2D pad, left orbit/loop panel, right-flank Quick Sculptor touch faders, curve drawer)
+  * [ ] Wavetable View Revamped (1D slider, 2D scope, 3D waterfall, left loop/scan panel, right-flank Quick Sculptor touch faders)
+  * [ ] 4-OSC VA View (dedicated 3-column analog synth console: 4-OSC mixer/detune $\to$ Master TVF $\to$ Master ADSR)
+  * [ ] Standard 4-Tone View (classic Roland 4-tone sound designer, wave browser, velocity splits, optional Gang/Link toggle)
+  * [x] Wave Browser Modal with touch virtual keyboard
+  * [ ] Performance Layer & Zone Mixer (16-part volume/pan/mutes, patch selector per part, direct Part "EDIT" buttons)
+  * [ ] Macro Play Deck (8 customizable macro dials, panic button)
+  * [ ] Effects (MFX) Studio (visual signal chain & parameters)
+  * [ ] MIDI Controller Map & Quick-Touch Learn Screen
+  * [ ] Patch Librarian & Preset Browser (`.spectre` and `.syx` management)
+  * [ ] Appliance Options & Maintenance Screen (touch reboot/shutdown, brightness, system update)
+  * [ ] Splash / Startup Screen
+
+---
+
+### v2.0: Multi-Part & The Additive Frontier
+* [ ] **Multi-Part Performance Engine:**
+  * Layering Vector + Wavetable + 4-OSC VA + PCM across Roland Parts 1–16 simultaneously.
+* [ ] **16-Partial Additive Synth Engine:**
+  * Utilizes 4 Roland Parts (16 tones total) tuned to harmonic ratios ($1f, 2f, 3f, \dots, 16f$).
+* [ ] **Touch Waveform Drawing Canvas:**
+  * Real-time finger drawing of single-cycle waves with instant FFT harmonic calculation pushing Roland TVA levels.
+* [ ] **Custom Harmonic Wavetable Sweeps:**
+  * Morphing across user-drawn additive wave tables.
+
+---
+
+### v3.0: EX Mode (Hybrid Software Expansion)
+* [ ] **Embedded Soft Synth Engine:**
+  * Embedded soft synth host (VSTs and/or custom software synthesizer running on Pi).
+* [ ] **Integrated 24-bit USB Audio Streaming:**
+  * High-fidelity, low-latency digital audio stream from Pi directly through the Juno-DS DAC and headphone jacks.
+* [ ] **Automated SysEx Local Control Decoupling:**
+  * Sends `Local Control = OFF` when entering EX mode (keybed triggers soft synth only, internal sound engine silenced).
+  * Restores `Local Control = ON` when returning to native Roland patches.
+* [ ] **Custom Sample & SoundFont Playback on Pi**

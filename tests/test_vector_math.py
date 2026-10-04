@@ -92,3 +92,17 @@ def test_wavetable_midpoints():
     assert mid_3_4[1] == 0
     assert mid_3_4[2] in (63, 64)
     assert mid_3_4[3] in (63, 64)
+
+
+def test_normalized_curve():
+    # In normalized mode, center balances 4 tones to prevent drop-off and level spikes on Roland TVA
+    norm_center = calculate_cartesian_levels(0.5, 0.5, curve=CrossfadeCurve.NORMALIZED)
+    assert norm_center == (85, 85, 85, 85)
+
+    # 50/50 mix on edge
+    norm_top = calculate_cartesian_levels(0.5, 1.0, curve=CrossfadeCurve.NORMALIZED)
+    assert norm_top == (104, 104, 0, 0)
+
+    # Wavetable midpoint
+    norm_wt_mid = calculate_wavetable_levels(1.0 / 6.0, curve=CrossfadeCurve.NORMALIZED)
+    assert norm_wt_mid == (104, 104, 0, 0)

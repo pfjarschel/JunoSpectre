@@ -72,3 +72,44 @@ def test_juno_client_set_tone_level(mock_midi_mgr):
     assert sent_packet[0:6] == [0x41, 0x10, 0x00, 0x00, 0x3A, 0x12]
     assert sent_packet[6:10] == [0x1F, 0x00, 0x20, 0x00]
     assert sent_packet[10] == 100
+
+
+def test_juno_client_get_tone_wave(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    
+    # Mock sound mode query response (PATCH mode)
+    mode_msg = mido.Message(
+        "sysex",
+        data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12, 0x01, 0x00, 0x00, 0x00, 0x00, 0x7F],
+    )
+    # Wave query response: Addr 1F 00 20 27
+    # Data: type=0, group_id=1 (0,0,0,1), wave_num=579 (0x0243 -> nibbles 0,2,4,3)
+    # Checksum calculation:
+    from src.spectre.core.sysex import calculate_checksum
+    addr = [0x1F, 0x00, 0x20, 0x27]
+    payload = [0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x04, 0x03]
+    csum = calculate_checksum(addr + payload)
+    wave_msg = mido.Message(
+        "sysex",
+        data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12] + addr + payload + [csum],
+    )
+    mock_midi_mgr.iter_juno_messages.return_value = [mode_msg, wave_msg]
+
+    bank, wave_num, gtype = client.get_tone_wave(1, timeout=0.1)
+    assert bank == "INTA"
+    assert wave_num == 579
+    assert gtype == 0
+
+
+def test_juno_client_ensure_tone_enabled(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    mode_msg = mido.Message(
+        "sysex",
+        data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12, 0x01, 0x00, 0x00, 0x00, 0x00, 0x7F],
+    )
+    mock_midi_mgr.iter_juno_messages.return_value = [mode_msg]
+
+    client.ensure_tone_enabled(2)
+    # Should have sent switch=1 at 1F 00 10 0E and dry_send=127 at 1F 00 22 0C
+    assert mock_midi_mgr.send_juno_sysex.call_count >= 2
+

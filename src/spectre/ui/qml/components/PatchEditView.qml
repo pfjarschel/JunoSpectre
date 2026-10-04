@@ -11,76 +11,345 @@ Rectangle {
     border.width: 1
 
     property int selectedTone: 1
+    property int activeLfoTab: 1 // 1 or 2
 
-    // ADSR Envelope interactive parameters (0..127)
-    property int envAttack: Math.round((Bridge.masterAttack - 1) / 126.0 * 127)
-    property int envDecay: 45
-    property int envSustain: 80
-    property int envRelease: Math.round((Bridge.masterRelease - 1) / 126.0 * 127)
+    // Active LFO properties helpers
+    readonly property var lfoData: activeLfoTab === 1 ? {
+        rate: Bridge.lfo1Rate,
+        wave: Bridge.lfo1Wave,
+        pitchDepth: Bridge.lfo1PitchDepth,
+        tvfDepth: Bridge.lfo1TvfDepth,
+        tvaDepth: Bridge.lfo1TvaDepth,
+        panDepth: Bridge.lfo1PanDepth,
+        delayTime: Bridge.lfo1DelayTime,
+        fadeMode: Bridge.lfo1FadeMode,
+        fadeTime: Bridge.lfo1FadeTime,
+        sync: Bridge.lfo1Sync
+    } : {
+        rate: Bridge.lfo2Rate,
+        wave: Bridge.lfo2Wave,
+        pitchDepth: Bridge.lfo2PitchDepth,
+        tvfDepth: Bridge.lfo2TvfDepth,
+        tvaDepth: Bridge.lfo2TvaDepth,
+        panDepth: Bridge.lfo2PanDepth,
+        delayTime: Bridge.lfo2DelayTime,
+        fadeMode: Bridge.lfo2FadeMode,
+        fadeTime: Bridge.lfo2FadeTime,
+        sync: Bridge.lfo2Sync
+    }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: ScaleMetrics.dp(12)
-        spacing: ScaleMetrics.dp(10)
+        anchors.margins: ScaleMetrics.dp(8)
+        spacing: ScaleMetrics.dp(6)
 
-        // Header: Tone Selection Tabs
+        // =====================================================================
+        // 1. TOP HEADER: TITLE + PORTAMENTO + LINK ALL TONES TOGGLE
+        // =====================================================================
         RowLayout {
             Layout.fillWidth: true
             spacing: ScaleMetrics.dp(8)
 
-            Text {
-                text: "PATCH EDIT"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(13)
-                font.letterSpacing: 1.2
-                color: Theme.textSecondary
+            RowLayout {
+                spacing: ScaleMetrics.dp(6)
+                Rectangle {
+                    width: ScaleMetrics.dp(8)
+                    height: ScaleMetrics.dp(8)
+                    radius: 4
+                    color: Theme.tone1
+                }
+                Text {
+                    text: "JUNO PCM SOUND DESIGNER"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(12)
+                    font.letterSpacing: 1.2
+                    color: Theme.textPrimary
+                }
             }
 
             Item { Layout.fillWidth: true }
 
-            Repeater {
-                model: 4
-                delegate: Rectangle {
-                    property int tIdx: modelData + 1
-                    property bool isSel: root.selectedTone === tIdx
-                    width: ScaleMetrics.dp(70)
+            // Portamento & Legato Controls
+            RowLayout {
+                spacing: ScaleMetrics.dp(6)
+
+                // Portamento Switch
+                Rectangle {
+                    width: ScaleMetrics.dp(110)
                     height: ScaleMetrics.dp(26)
                     radius: ScaleMetrics.dp(4)
-                    color: isSel ? Theme.bgCardActive : Theme.bgApp
-                    border.color: isSel ? (tIdx === 1 ? Theme.tone1 : tIdx === 2 ? Theme.tone2 : tIdx === 3 ? Theme.tone3 : Theme.tone4) : Theme.borderCard
+                    color: Bridge.portamentoSwitch ? Theme.bgCardActive : "#10141d"
+                    border.color: Bridge.portamentoSwitch ? "#38bdf8" : Theme.borderCard
                     border.width: 1
 
-                    Text {
+                    RowLayout {
                         anchors.centerIn: parent
-                        text: "TONE " + parent.tIdx
-                        font.bold: parent.isSel
-                        font.pixelSize: ScaleMetrics.sp(10)
-                        color: parent.isSel ? Theme.textPrimary : Theme.textDim
+                        spacing: 4
+                        Rectangle {
+                            width: 6; height: 6; radius: 3
+                            color: Bridge.portamentoSwitch ? "#38bdf8" : Theme.textDim
+                        }
+                        Text {
+                            text: Bridge.portamentoSwitch ? "PORTAMENTO: ON" : "PORTAMENTO: OFF"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Bridge.portamentoSwitch ? Theme.textPrimary : Theme.textDim
+                        }
                     }
 
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: root.selectedTone = parent.tIdx
+                        onClicked: Bridge.setPortamentoSwitch(!Bridge.portamentoSwitch)
+                    }
+                }
+
+                // Legato Switch
+                Rectangle {
+                    width: ScaleMetrics.dp(90)
+                    height: ScaleMetrics.dp(26)
+                    radius: ScaleMetrics.dp(4)
+                    color: Bridge.legatoSwitch ? Theme.bgCardActive : "#10141d"
+                    border.color: Bridge.legatoSwitch ? "#38bdf8" : Theme.borderCard
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 4
+                        Rectangle {
+                            width: 6; height: 6; radius: 3
+                            color: Bridge.legatoSwitch ? "#38bdf8" : Theme.textDim
+                        }
+                        Text {
+                            text: Bridge.legatoSwitch ? "LEGATO: ON" : "LEGATO: OFF"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Bridge.legatoSwitch ? Theme.textPrimary : Theme.textDim
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Bridge.setLegatoSwitch(!Bridge.legatoSwitch)
+                    }
+                }
+
+                // Portamento Time Mini-Slider
+                Rectangle {
+                    width: ScaleMetrics.dp(95)
+                    height: ScaleMetrics.dp(26)
+                    radius: ScaleMetrics.dp(4)
+                    color: "#10141d"
+                    border.color: Theme.borderCard
+                    border.width: 1
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: parent.width * (Bridge.portamentoTime / 127.0)
+                        radius: ScaleMetrics.dp(4)
+                        color: Qt.rgba(0.22, 0.74, 0.97, 0.3)
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: ScaleMetrics.dp(4)
+                        Text { text: "TIME"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: Bridge.portamentoTime.toString()
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            font.family: Theme.fontMono
+                            color: Theme.textPrimary
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onPressed: (mouse) => {
+                            const norm = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                            Bridge.setPortamentoTime(Math.round(norm * 127));
+                        }
+                        onPositionChanged: (mouse) => {
+                            if (pressed) {
+                                const norm = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                                Bridge.setPortamentoTime(Math.round(norm * 127));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // LINK ALL TONES TOGGLE
+            Rectangle {
+                width: ScaleMetrics.dp(135)
+                height: ScaleMetrics.dp(26)
+                radius: ScaleMetrics.dp(4)
+                color: Bridge.linkedMode ? Theme.bgCardActive : "#10141d"
+                border.color: Bridge.linkedMode ? "#38bdf8" : Theme.borderCard
+                border.width: Bridge.linkedMode ? 2 : 1
+
+                RowLayout {
+                    anchors.centerIn: parent
+                    spacing: ScaleMetrics.dp(4)
+
+                    Rectangle {
+                        width: ScaleMetrics.dp(6)
+                        height: ScaleMetrics.dp(6)
+                        radius: 3
+                        color: Bridge.linkedMode ? "#38bdf8" : Theme.textDim
+                    }
+
+                    Text {
+                        text: Bridge.linkedMode ? "LINK ALL TONES: ON" : "LINK ALL TONES: OFF"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Bridge.linkedMode ? Theme.textPrimary : Theme.textDim
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: Bridge.setLinkedMode(!Bridge.linkedMode)
+                }
+            }
+        }
+
+        // =====================================================================
+        // 2. TONE TABS STRIP (TONE 1 - 4 + LEVEL METERS + MUTES)
+        // ONLY PLACE WHERE TONE COLORS ARE APPLIED FOR DISCRIMINATION
+        // =====================================================================
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: ScaleMetrics.dp(8)
+
+            Repeater {
+                model: 4
+                delegate: ToneTabButton {
+                    Layout.fillWidth: true
+                    toneNumber: modelData + 1
+                    isSelected: root.selectedTone === (modelData + 1)
+                    toneColor: modelData === 0 ? Theme.tone1 : modelData === 1 ? Theme.tone2 : modelData === 2 ? Theme.tone3 : Theme.tone4
+                    toneLevel: modelData === 0 ? Bridge.tone1Level : modelData === 1 ? Bridge.tone2Level : modelData === 2 ? Bridge.tone3Level : Bridge.tone4Level
+                    isMuted: modelData === 0 ? Bridge.tone1Muted : modelData === 1 ? Bridge.tone2Muted : modelData === 2 ? Bridge.tone3Muted : Bridge.tone4Muted
+                    onSelected: {
+                        root.selectedTone = toneNumber;
                     }
                 }
             }
         }
 
-        // Main Editor Area (Filter Curve + ADSR Envelope)
+        // =====================================================================
+        // 3. MAIN WORKSPACE: 4 NEUTRAL INSTRUMENT PANELS
+        // =====================================================================
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: ScaleMetrics.dp(10)
+            spacing: ScaleMetrics.dp(8)
 
-            // Left: TVF Filter Response Canvas with Draggable Cutoff & Reso Node
+            // -----------------------------------------------------------------
+            // PANEL 1: PCM OSCILLATOR / STEREO WAVE ASSIGNMENT (~230dp)
+            // -----------------------------------------------------------------
             Rectangle {
-                Layout.fillWidth: true
+                Layout.preferredWidth: ScaleMetrics.dp(230)
                 Layout.fillHeight: true
                 radius: ScaleMetrics.dp(6)
                 color: Theme.bgApp
                 border.color: Theme.borderCard
                 border.width: 1
-                clip: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: ScaleMetrics.dp(8)
+                    spacing: ScaleMetrics.dp(5)
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: "PCM OSCILLATOR"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(10)
+                            color: Theme.textPrimary
+                        }
+                        Item { Layout.fillWidth: true }
+                        // Tone badge
+                        Rectangle {
+                            height: ScaleMetrics.dp(18)
+                            implicitWidth: ScaleMetrics.dp(55)
+                            radius: 3
+                            color: "#10141d"
+                            border.color: root.selectedTone === 1 ? Theme.tone1 : root.selectedTone === 2 ? Theme.tone2 : root.selectedTone === 3 ? Theme.tone3 : Theme.tone4
+                            border.width: 1
+                            Text {
+                                anchors.centerIn: parent
+                                text: "TONE " + root.selectedTone
+                                font.bold: true
+                                font.pixelSize: ScaleMetrics.sp(8)
+                                color: root.selectedTone === 1 ? Theme.tone1 : root.selectedTone === 2 ? Theme.tone2 : root.selectedTone === 3 ? Theme.tone3 : Theme.tone4
+                            }
+                        }
+                    }
+
+                    // WAVE LEFT
+                    WaveCard {
+                        Layout.fillWidth: true
+                        channelLabel: "WAVE L (LEFT / MONO)"
+                        toneIdx: root.selectedTone
+                    }
+
+                    // WAVE RIGHT
+                    WaveCard {
+                        Layout.fillWidth: true
+                        channelLabel: "WAVE R (RIGHT / EXP)"
+                        toneIdx: root.selectedTone
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: Theme.borderCard
+                    }
+
+                    Text {
+                        text: "PITCH & TUNING"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Theme.textDim
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "COARSE TUNE"
+                        valText: (Bridge.pitchCoarse >= 0 ? "+" : "") + Bridge.pitchCoarse + " st"
+                        normVal: (Bridge.pitchCoarse + 24) / 48.0
+                        isBipolar: true
+                        onMoved: (norm) => Bridge.setPitchCoarse(Math.round(norm * 48 - 24))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "FINE TUNE"
+                        valText: (Bridge.pitchFine >= 0 ? "+" : "") + Bridge.pitchFine + " c"
+                        normVal: (Bridge.pitchFine + 50) / 100.0
+                        isBipolar: true
+                        onMoved: (norm) => Bridge.setPitchFine(Math.round(norm * 100 - 50))
+                    }
+
+                    Item { Layout.fillHeight: true }
+                }
+            }
+
+            // -----------------------------------------------------------------
+            // PANEL 2: TVF FILTER & ENVELOPE (~255dp)
+            // -----------------------------------------------------------------
+            Rectangle {
+                Layout.preferredWidth: ScaleMetrics.dp(255)
+                Layout.fillHeight: true
+                radius: ScaleMetrics.dp(6)
+                color: Theme.bgApp
+                border.color: Theme.borderCard
+                border.width: 1
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -90,142 +359,139 @@ Rectangle {
                     RowLayout {
                         Layout.fillWidth: true
                         Text {
-                            text: "TVF FILTER FREQUENCY RESPONSE"
+                            text: "TVF FILTER & ENVELOPE"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(10)
-                            color: Theme.tone2
+                            color: Theme.textPrimary
                         }
                         Item { Layout.fillWidth: true }
-                        Text {
-                            text: "DRAG NODE TO ADJUST CUTOFF & RESO"
-                            font.pixelSize: ScaleMetrics.sp(9)
-                            color: Theme.textDim
-                        }
                     }
 
-                    Item {
-                        id: filterCanvasArea
+                    // TVF Type Selector Chips
+                    RowLayout {
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        spacing: ScaleMetrics.dp(3)
+                        Repeater {
+                            model: ["OFF", "LPF", "BPF", "HPF", "PKG"]
+                            delegate: Rectangle {
+                                Layout.fillWidth: true
+                                height: ScaleMetrics.dp(22)
+                                radius: 3
+                                color: Bridge.tvfType === modelData ? Theme.bgCardActive : "#10141d"
+                                border.color: Bridge.tvfType === modelData ? "#38bdf8" : Theme.borderCard
+                                border.width: 1
 
-                        Canvas {
-                            id: filterCanvas
-                            anchors.fill: parent
-
-                            onPaint: {
-                                const ctx = getContext("2d");
-                                ctx.reset();
-                                const w = width;
-                                const h = height;
-
-                                // Grid lines
-                                ctx.strokeStyle = "#1e293b";
-                                ctx.lineWidth = 1;
-                                for (let gx = 0.25; gx < 1.0; gx += 0.25) {
-                                    ctx.beginPath();
-                                    ctx.moveTo(gx * w, 0);
-                                    ctx.lineTo(gx * w, h);
-                                    ctx.stroke();
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    font.bold: Bridge.tvfType === modelData
+                                    font.pixelSize: ScaleMetrics.sp(7)
+                                    color: Bridge.tvfType === modelData ? Theme.textPrimary : Theme.textDim
                                 }
-                                for (let gy = 0.25; gy < 1.0; gy += 0.25) {
-                                    ctx.beginPath();
-                                    ctx.moveTo(0, gy * h);
-                                    ctx.lineTo(w, gy * h);
-                                    ctx.stroke();
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: Bridge.setTvfType(modelData)
                                 }
-
-                                // Normalized Cutoff & Reso
-                                const normCutoff = (Bridge.masterCutoff - 1) / 126.0;
-                                const normReso = (Bridge.masterReso - 1) / 126.0;
-
-                                // Filter Cutoff and Resonance transfer function
-                                const fc = Math.max(0.001, normCutoff);
-                                const Q = 0.707 + Math.pow(normReso, 1.8) * 14.0; // Thin high-Q peak
-
-                                ctx.beginPath();
-                                let first = true;
-                                const step = 4;
-                                let peakX = fc * w;
-                                let peakY = h * 0.95;
-
-                                for (let x = 0; x <= w; x += step) {
-                                    const f = x / w;
-                                    const u = f / fc;
-                                    // 4-pole low-pass filter magnitude transfer function
-                                    const denom = Math.sqrt(Math.pow(1 - u * u, 2) + Math.pow(u / Q, 2));
-                                    const mag = 1.0 / Math.max(0.01, denom);
-                                    // Decibel scaling
-                                    const dB = Math.min(26.0, Math.max(-48.0, 20.0 * Math.log10(mag)));
-                                    const y = h * (1.0 - (dB + 48.0) / 74.0) * 0.85 + h * 0.08;
-
-                                    if (first) {
-                                        ctx.moveTo(x, y);
-                                        first = false;
-                                    } else {
-                                        ctx.lineTo(x, y);
-                                    }
-
-                                    // Track peak node coordinates
-                                    if (Math.abs(x - fc * w) < step) {
-                                        peakX = x;
-                                        peakY = y;
-                                    }
-                                }
-
-                                // Stroke filter response curve
-                                ctx.lineWidth = 3;
-                                ctx.strokeStyle = Theme.tone2;
-                                ctx.stroke();
-
-                                // Fill under curve
-                                ctx.lineTo(w, h);
-                                ctx.lineTo(0, h);
-                                ctx.closePath();
-                                ctx.fillStyle = "rgba(56, 189, 248, 0.12)";
-                                ctx.fill();
-
-                                // Draw Handle Node Point
-                                ctx.beginPath();
-                                ctx.arc(peakX, peakY, 6, 0, 2 * Math.PI);
-                                ctx.fillStyle = Theme.tone2;
-                                ctx.fill();
-                                ctx.lineWidth = 2;
-                                ctx.strokeStyle = "#ffffff";
-                                ctx.stroke();
-                            }
-
-                            Connections {
-                                target: Bridge
-                                function onMasterCutoffChanged() { if (root.visible) filterCanvas.requestPaint(); }
-                                function onMasterResoChanged() { if (root.visible) filterCanvas.requestPaint(); }
-                            }
-                        }
-
-                        // Interactive Drag MouseArea
-                        MouseArea {
-                            anchors.fill: parent
-                            onPositionChanged: (mouse) => {
-                                if (pressed) {
-                                    const normX = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                                    const normY = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / height)));
-                                    Bridge.setMasterCutoff(Math.round(1 + normX * 126));
-                                    Bridge.setMasterReso(Math.round(1 + normY * 126));
-                                }
-                            }
-                            onPressed: (mouse) => {
-                                const normX = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                                const normY = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / height)));
-                                Bridge.setMasterCutoff(Math.round(1 + normX * 126));
-                                Bridge.setMasterReso(Math.round(1 + normY * 126));
                             }
                         }
                     }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "CUTOFF"
+                        valText: Bridge.masterCutoff.toString()
+                        normVal: (Bridge.masterCutoff - 1) / 126.0
+                        onMoved: (norm) => Bridge.setMasterCutoff(Math.round(1 + norm * 126))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "RESONANCE"
+                        valText: Bridge.masterReso.toString()
+                        normVal: (Bridge.masterReso - 1) / 126.0
+                        onMoved: (norm) => Bridge.setMasterReso(Math.round(1 + norm * 126))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "KEY FOLLOW"
+                        valText: (Bridge.tvfKeyFollow >= 0 ? "+" : "") + Bridge.tvfKeyFollow + "%"
+                        normVal: (Bridge.tvfKeyFollow + 100) / 200.0
+                        isBipolar: true
+                        onMoved: (norm) => Bridge.setTvfKeyFollow(Math.round(norm * 200 - 100))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "ENV DEPTH"
+                        valText: (Bridge.tvfEnvDepth >= 0 ? "+" : "") + Bridge.tvfEnvDepth
+                        normVal: (Bridge.tvfEnvDepth + 63) / 126.0
+                        isBipolar: true
+                        onMoved: (norm) => Bridge.setTvfEnvDepth(Math.round(norm * 126 - 63))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "VELO SENS"
+                        valText: Bridge.tvfVeloSens.toString()
+                        normVal: Bridge.tvfVeloSens / 127.0
+                        onMoved: (norm) => Bridge.setTvfVeloSens(Math.round(norm * 127))
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: Theme.borderCard
+                    }
+
+                    Text {
+                        text: "TVF ENVELOPE (ADSR)"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Theme.textDim
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "ATTACK (A)"
+                        valText: Bridge.tvfAttack.toString()
+                        normVal: Bridge.tvfAttack / 127.0
+                        onMoved: (norm) => Bridge.setTvfAttack(Math.round(norm * 127))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "DECAY (D)"
+                        valText: Bridge.tvfDecay.toString()
+                        normVal: Bridge.tvfDecay / 127.0
+                        onMoved: (norm) => Bridge.setTvfDecay(Math.round(norm * 127))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "SUSTAIN (S)"
+                        valText: Bridge.tvfSustain.toString()
+                        normVal: Bridge.tvfSustain / 127.0
+                        onMoved: (norm) => Bridge.setTvfSustain(Math.round(norm * 127))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "RELEASE (R)"
+                        valText: Bridge.tvfRelease.toString()
+                        normVal: Bridge.tvfRelease / 127.0
+                        onMoved: (norm) => Bridge.setTvfRelease(Math.round(norm * 127))
+                    }
+
+                    Item { Layout.fillHeight: true }
                 }
             }
 
-            // Right: Interactive ADSR Envelope Visualization & Controls
+            // -----------------------------------------------------------------
+            // PANEL 3: TVA AMPLIFIER & ENVELOPE (~245dp)
+            // -----------------------------------------------------------------
             Rectangle {
-                Layout.preferredWidth: ScaleMetrics.dp(260)
+                Layout.preferredWidth: ScaleMetrics.dp(245)
                 Layout.fillHeight: true
                 radius: ScaleMetrics.dp(6)
                 color: Theme.bgApp
@@ -235,149 +501,444 @@ Rectangle {
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: ScaleMetrics.dp(8)
-                    spacing: ScaleMetrics.dp(6)
+                    spacing: ScaleMetrics.dp(4)
 
                     RowLayout {
                         Layout.fillWidth: true
                         Text {
-                            text: "TVA ENVELOPE (ADSR)"
+                            text: "TVA AMPLIFIER & ENVELOPE"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(10)
-                            color: Theme.tone3
+                            color: Theme.textPrimary
                         }
                         Item { Layout.fillWidth: true }
-                        Text {
-                            text: "DRAG POINTS"
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: Theme.textDim
-                        }
                     }
 
-                    // ADSR Curve Canvas
-                    Item {
+                    TouchFader {
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
-
-                        Canvas {
-                            id: adsrCanvas
-                            anchors.fill: parent
-
-                            onPaint: {
-                                const ctx = getContext("2d");
-                                ctx.reset();
-                                const w = width;
-                                const h = height;
-
-                                const normA = Math.max(0.02, root.envAttack / 127.0);
-                                const normD = Math.max(0.02, root.envDecay / 127.0);
-                                const normS = Math.max(0.05, root.envSustain / 127.0);
-                                const normR = Math.max(0.02, root.envRelease / 127.0);
-
-                                const xA = w * 0.05 + normA * (w * 0.28);
-                                const xD = xA + normD * (w * 0.28);
-                                const xS = Math.min(w * 0.75, xD + w * 0.15);
-                                const xR = Math.min(w * 0.96, xS + normR * (w * 0.22));
-
-                                const yBase = h * 0.90;
-                                const yPeak = h * 0.12;
-                                const ySustain = yBase - normS * (yBase - yPeak);
-
-                                ctx.beginPath();
-                                ctx.moveTo(w * 0.04, yBase);
-                                ctx.lineTo(xA, yPeak);
-                                ctx.lineTo(xD, ySustain);
-                                ctx.lineTo(xS, ySustain);
-                                ctx.lineTo(xR, yBase);
-
-                                ctx.lineWidth = 3;
-                                ctx.strokeStyle = Theme.tone3;
-                                ctx.stroke();
-
-                                // Fill
-                                ctx.lineTo(w * 0.04, yBase);
-                                ctx.closePath();
-                                ctx.fillStyle = "rgba(16, 185, 129, 0.12)";
-                                ctx.fill();
-
-                                // Handles
-                                const handles = [
-                                    { x: xA, y: yPeak },
-                                    { x: xD, y: ySustain },
-                                    { x: xS, y: ySustain },
-                                    { x: xR, y: yBase }
-                                ];
-                                for (let i = 0; i < handles.length; i++) {
-                                    ctx.beginPath();
-                                    ctx.arc(handles[i].x, handles[i].y, 5, 0, 2 * Math.PI);
-                                    ctx.fillStyle = Theme.tone3;
-                                    ctx.fill();
-                                    ctx.lineWidth = 2;
-                                    ctx.strokeStyle = "#ffffff";
-                                    ctx.stroke();
-                                }
-                            }
-
-                            Connections {
-                                target: root
-                                function onEnvAttackChanged() { adsrCanvas.requestPaint(); }
-                                function onEnvDecayChanged() { adsrCanvas.requestPaint(); }
-                                function onEnvSustainChanged() { adsrCanvas.requestPaint(); }
-                                function onEnvReleaseChanged() { adsrCanvas.requestPaint(); }
-                            }
-                        }
-
-                        // Touch interaction on ADSR nodes
-                        MouseArea {
-                            anchors.fill: parent
-                            property int activeHandle: 0 // 1: A, 2: D, 3: S, 4: R
-
-                            onPressed: (mouse) => {
-                                const normX = mouse.x / width;
-                                if (normX < 0.3) {
-                                    activeHandle = 1;
-                                    const val = Math.round(Math.max(1, Math.min(127, (normX / 0.3) * 127)));
-                                    Bridge.setMasterAttack(val);
-                                } else if (normX < 0.55) {
-                                    activeHandle = 2;
-                                    root.envDecay = Math.round(Math.max(1, Math.min(127, ((normX - 0.3) / 0.25) * 127)));
-                                } else if (normX < 0.75) {
-                                    activeHandle = 3;
-                                    const normY = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / height)));
-                                    root.envSustain = Math.round(normY * 127);
-                                } else {
-                                    activeHandle = 4;
-                                    const val = Math.round(Math.max(1, Math.min(127, ((normX - 0.75) / 0.25) * 127)));
-                                    Bridge.setMasterRelease(val);
-                                }
-                            }
-
-                            onPositionChanged: (mouse) => {
-                                if (pressed) {
-                                    const normX = mouse.x / width;
-                                    const normY = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / height)));
-                                    if (activeHandle === 1) {
-                                        const val = Math.round(Math.max(1, Math.min(127, (normX / 0.3) * 127)));
-                                        Bridge.setMasterAttack(val);
-                                    } else if (activeHandle === 2) {
-                                        root.envDecay = Math.round(Math.max(1, Math.min(127, Math.abs(normX - 0.3) / 0.25 * 127)));
-                                    } else if (activeHandle === 3) {
-                                        root.envSustain = Math.round(normY * 127);
-                                    } else if (activeHandle === 4) {
-                                        const val = Math.round(Math.max(1, Math.min(127, (normX - 0.75) / 0.25 * 127)));
-                                        Bridge.setMasterRelease(val);
-                                    }
-                                }
-                            }
-                        }
+                        label: "LEVEL"
+                        valText: Bridge.masterLevel.toString()
+                        normVal: Bridge.masterLevel / 127.0
+                        onMoved: (norm) => Bridge.setMasterLevel(Math.round(norm * 127))
                     }
 
-                    // ADSR Numeric Labels
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "PAN"
+                        valText: Bridge.tvaPan === 0 ? "CENTER" : (Bridge.tvaPan < 0 ? ("L" + Math.abs(Bridge.tvaPan)) : ("R" + Bridge.tvaPan))
+                        normVal: (Bridge.tvaPan + 64) / 127.0
+                        isBipolar: true
+                        onMoved: (norm) => Bridge.setTvaPan(Math.round(norm * 127 - 64))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "VELO SENS"
+                        valText: Bridge.tvaVeloSens.toString()
+                        normVal: Bridge.tvaVeloSens / 127.0
+                        onMoved: (norm) => Bridge.setTvaVeloSens(Math.round(norm * 127))
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: Theme.borderCard
+                    }
+
+                    Text {
+                        text: "TVA ENVELOPE (ADSR)"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Theme.textDim
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "ATTACK (A)"
+                        valText: Bridge.masterAttack.toString()
+                        normVal: (Bridge.masterAttack - 1) / 126.0
+                        onMoved: (norm) => Bridge.setMasterAttack(Math.round(1 + norm * 126))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "DECAY (D)"
+                        valText: Bridge.tvaDecay.toString()
+                        normVal: Bridge.tvaDecay / 127.0
+                        onMoved: (norm) => Bridge.setTvaDecay(Math.round(norm * 127))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "SUSTAIN (S)"
+                        valText: Bridge.tvaSustain.toString()
+                        normVal: Bridge.tvaSustain / 127.0
+                        onMoved: (norm) => Bridge.setTvaSustain(Math.round(norm * 127))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "RELEASE (R)"
+                        valText: Bridge.masterRelease.toString()
+                        normVal: (Bridge.masterRelease - 1) / 126.0
+                        onMoved: (norm) => Bridge.setMasterRelease(Math.round(1 + norm * 126))
+                    }
+
+                    Item { Layout.fillHeight: true }
+                }
+            }
+
+            // -----------------------------------------------------------------
+            // PANEL 4: LFO 1 & 2 MODULATOR (~260dp)
+            // -----------------------------------------------------------------
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: ScaleMetrics.dp(6)
+                color: Theme.bgApp
+                border.color: Theme.borderCard
+                border.width: 1
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: ScaleMetrics.dp(8)
+                    spacing: ScaleMetrics.dp(4)
+
+                    // Header with LFO 1 / LFO 2 Tabs
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "A: " + root.envAttack; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textPrimary; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
-                        Text { text: "D: " + root.envDecay; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textPrimary; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
-                        Text { text: "S: " + root.envSustain; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textPrimary; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
-                        Text { text: "R: " + root.envRelease; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textPrimary; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
+                        Text {
+                            text: "LFO MODULATOR"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(10)
+                            color: Theme.textPrimary
+                        }
+                        Item { Layout.fillWidth: true }
+
+                        Row {
+                            spacing: 3
+                            Rectangle {
+                                width: ScaleMetrics.dp(45)
+                                height: ScaleMetrics.dp(22)
+                                radius: 3
+                                color: root.activeLfoTab === 1 ? Theme.bgCardActive : "#10141d"
+                                border.color: root.activeLfoTab === 1 ? "#38bdf8" : Theme.borderCard
+                                border.width: 1
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "LFO 1"
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: root.activeLfoTab === 1 ? Theme.textPrimary : Theme.textDim
+                                }
+                                MouseArea { anchors.fill: parent; onClicked: root.activeLfoTab = 1 }
+                            }
+                            Rectangle {
+                                width: ScaleMetrics.dp(45)
+                                height: ScaleMetrics.dp(22)
+                                radius: 3
+                                color: root.activeLfoTab === 2 ? Theme.bgCardActive : "#10141d"
+                                border.color: root.activeLfoTab === 2 ? "#38bdf8" : Theme.borderCard
+                                border.width: 1
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "LFO 2"
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: root.activeLfoTab === 2 ? Theme.textPrimary : Theme.textDim
+                                }
+                                MouseArea { anchors.fill: parent; onClicked: root.activeLfoTab = 2 }
+                            }
+                        }
+                    }
+
+                    // Wave selector chips (2 rows of 4)
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 4
+                        rowSpacing: 2; columnSpacing: 2
+                        Repeater {
+                            model: ["TRI", "SIN", "SAW", "SQR", "TRP", "S&H", "RND", "CHS"]
+                            delegate: Rectangle {
+                                Layout.fillWidth: true
+                                height: ScaleMetrics.dp(20)
+                                radius: 3
+                                color: root.lfoData.wave === modelData ? Theme.bgCardActive : "#10141d"
+                                border.color: root.lfoData.wave === modelData ? "#38bdf8" : Theme.borderCard
+                                border.width: 1
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    font.bold: root.lfoData.wave === modelData
+                                    font.pixelSize: ScaleMetrics.sp(7)
+                                    color: root.lfoData.wave === modelData ? Theme.textPrimary : Theme.textDim
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: Bridge.setLfoParam(root.activeLfoTab, "wave", modelData)
+                                }
+                            }
+                        }
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "RATE"
+                        valText: root.lfoData.rate.toString()
+                        normVal: root.lfoData.rate / 127.0
+                        onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "rate", Math.round(norm * 127))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "PITCH DEPTH"
+                        valText: (root.lfoData.pitchDepth >= 0 ? "+" : "") + root.lfoData.pitchDepth
+                        normVal: (root.lfoData.pitchDepth + 63) / 126.0
+                        isBipolar: true
+                        onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "pitch_depth", Math.round(norm * 126 - 63))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "FILTER DEPTH"
+                        valText: (root.lfoData.tvfDepth >= 0 ? "+" : "") + root.lfoData.tvfDepth
+                        normVal: (root.lfoData.tvfDepth + 63) / 126.0
+                        isBipolar: true
+                        onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "tvf_depth", Math.round(norm * 126 - 63))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "AMP DEPTH"
+                        valText: (root.lfoData.tvaDepth >= 0 ? "+" : "") + root.lfoData.tvaDepth
+                        normVal: (root.lfoData.tvaDepth + 63) / 126.0
+                        isBipolar: true
+                        onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "tva_depth", Math.round(norm * 126 - 63))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "PAN DEPTH"
+                        valText: (root.lfoData.panDepth >= 0 ? "+" : "") + root.lfoData.panDepth
+                        normVal: (root.lfoData.panDepth + 63) / 126.0
+                        isBipolar: true
+                        onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "pan_depth", Math.round(norm * 126 - 63))
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "DELAY TIME"
+                        valText: root.lfoData.delayTime.toString()
+                        normVal: root.lfoData.delayTime / 127.0
+                        onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "delay_time", Math.round(norm * 127))
+                    }
+
+                    // Fade Mode Chips
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(2)
+                        Repeater {
+                            model: ["ON-IN", "ON-OUT", "OFF-IN", "OFF-OUT"]
+                            delegate: Rectangle {
+                                Layout.fillWidth: true
+                                height: ScaleMetrics.dp(18)
+                                radius: 2
+                                color: root.lfoData.fadeMode === modelData ? Theme.bgCardActive : "#10141d"
+                                border.color: root.lfoData.fadeMode === modelData ? "#38bdf8" : Theme.borderCard
+                                border.width: 1
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    font.bold: root.lfoData.fadeMode === modelData
+                                    font.pixelSize: ScaleMetrics.sp(6)
+                                    color: root.lfoData.fadeMode === modelData ? Theme.textPrimary : Theme.textDim
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: Bridge.setLfoParam(root.activeLfoTab, "fade_mode", modelData)
+                                }
+                            }
+                        }
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "FADE TIME"
+                        valText: root.lfoData.fadeTime.toString()
+                        normVal: root.lfoData.fadeTime / 127.0
+                        onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "fade_time", Math.round(norm * 127))
+                    }
+
+                    Item { Layout.fillHeight: true }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // SUB-COMPONENTS
+    // =========================================================================
+
+    // Tone Tab Button Component (Mute, VU Meter, Wave readout, selection)
+    component ToneTabButton: Rectangle {
+        id: tb
+        property int toneNumber: 1
+        property bool isSelected: false
+        property color toneColor: Theme.tone1
+        property int toneLevel: 100
+        property bool isMuted: false
+        signal selected()
+
+        height: ScaleMetrics.dp(38)
+        radius: ScaleMetrics.dp(5)
+        color: isSelected ? Theme.bgCardActive : "#0f172a"
+        border.color: isSelected ? toneColor : Theme.borderCard
+        border.width: isSelected ? 2 : 1
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: ScaleMetrics.dp(5)
+            spacing: ScaleMetrics.dp(6)
+
+            // Mute / On Button
+            Rectangle {
+                width: ScaleMetrics.dp(34)
+                height: ScaleMetrics.dp(26)
+                radius: ScaleMetrics.dp(4)
+                color: tb.isMuted ? Theme.recording : (tb.toneLevel > 0 ? Theme.bgSurface : "#10141d")
+                border.color: tb.isMuted ? Theme.recording : (tb.toneLevel > 0 ? tb.toneColor : Theme.borderCard)
+                border.width: 1
+
+                Text {
+                    anchors.centerIn: parent
+                    text: tb.isMuted ? "MUTE" : "ON"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: tb.isMuted ? "#ffffff" : (tb.toneLevel > 0 ? tb.toneColor : Theme.textDim)
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: Bridge.toggleToneMute(tb.toneNumber)
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 1
+
+                RowLayout {
+                    Text {
+                        text: "TONE " + tb.toneNumber
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(10)
+                        color: tb.isSelected ? tb.toneColor : Theme.textPrimary
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: tb.isMuted ? "OFF" : ("LVL " + tb.toneLevel)
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        font.family: Theme.fontMono
+                        color: tb.isMuted ? Theme.textDim : tb.toneColor
+                    }
+                }
+
+                // Mini horizontal level bar
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: ScaleMetrics.dp(4)
+                    radius: 2
+                    color: "#1e293b"
+                    clip: true
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: parent.width * (tb.isMuted ? 0 : (tb.toneLevel / 127.0))
+                        color: tb.toneColor
+                    }
+                }
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: tb.selected()
+        }
+    }
+
+    // Wave Card Component (Wave L / Wave R)
+    component WaveCard: Rectangle {
+        id: wc
+        property string channelLabel: "WAVE L"
+        property int toneIdx: 1
+        property var waveData: (Bridge.toneWaveData && Bridge.toneWaveData.length >= toneIdx) ? Bridge.toneWaveData[toneIdx - 1] : null
+
+        height: ScaleMetrics.dp(58)
+        radius: ScaleMetrics.dp(4)
+        color: "#10141d"
+        border.color: Theme.borderCard
+        border.width: 1
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: ScaleMetrics.dp(5)
+            spacing: 2
+
+            Text {
+                text: wc.channelLabel
+                font.bold: true
+                font.pixelSize: ScaleMetrics.sp(8)
+                color: Theme.textDim
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: ScaleMetrics.dp(4)
+
+                CategoryGlyph {
+                    Layout.preferredWidth: ScaleMetrics.dp(20)
+                    Layout.preferredHeight: ScaleMetrics.dp(14)
+                    toneIndex: wc.toneIdx - 1
+                    category: wc.waveData ? wc.waveData.category : "synth_wave"
+                    isSingleCycle: wc.waveData ? wc.waveData.is_single_cycle : true
+                    samples64: wc.waveData ? wc.waveData.samples_64 : null
+                    color: "#38bdf8"
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: wc.waveData ? (wc.waveData.bank + " " + wc.waveData.number + ": " + wc.waveData.name) : "INTA 579: Juno Saw HD"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Theme.textPrimary
+                    elide: Text.ElideRight
+                }
+
+                Rectangle {
+                    width: ScaleMetrics.dp(48)
+                    height: ScaleMetrics.dp(22)
+                    radius: 3
+                    color: Theme.bgCardActive
+                    border.color: "#38bdf8"
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "BROWSE"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: "#38bdf8"
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Bridge.openWaveBrowser(wc.toneIdx)
                     }
                 }
             }

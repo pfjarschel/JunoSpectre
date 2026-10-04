@@ -15,6 +15,7 @@ class CrossfadeCurve(str, enum.Enum):
     """Interpolation curve profile for tone crossfading."""
     LINEAR = "linear"
     EQUAL_POWER = "equal_power"
+    NORMALIZED = "normalized"
 
 
 def clamp_coordinate(val: float) -> float:
@@ -59,6 +60,13 @@ def calculate_cartesian_levels(
         w2 = math.sqrt(max(0.0, w2))
         w3 = math.sqrt(max(0.0, w3))
         w4 = math.sqrt(max(0.0, w4))
+    elif curve == CrossfadeCurve.NORMALIZED:
+        # Roland TVA perceptual power normalization (exponent 0.29):
+        # Perfectly equalizes perceived loudness between single tones and multi-tone combinations
+        w1 = math.pow(w1, 0.29) if w1 > 0 else 0.0
+        w2 = math.pow(w2, 0.29) if w2 > 0 else 0.0
+        w3 = math.pow(w3, 0.29) if w3 > 0 else 0.0
+        w4 = math.pow(w4, 0.29) if w4 > 0 else 0.0
 
     l1 = max(0, min(max_level, round(w1 * max_level)))
     l2 = max(0, min(max_level, round(w2 * max_level)))
@@ -111,6 +119,11 @@ def calculate_wavetable_levels(
         w2 = math.sqrt(max(0.0, w2))
         w3 = math.sqrt(max(0.0, w3))
         w4 = math.sqrt(max(0.0, w4))
+    elif curve == CrossfadeCurve.NORMALIZED:
+        w1 = math.pow(w1, 0.29) if w1 > 0 else 0.0
+        w2 = math.pow(w2, 0.29) if w2 > 0 else 0.0
+        w3 = math.pow(w3, 0.29) if w3 > 0 else 0.0
+        w4 = math.pow(w4, 0.29) if w4 > 0 else 0.0
 
     l1 = max(0, min(max_level, round(w1 * max_level)))
     l2 = max(0, min(max_level, round(w2 * max_level)))

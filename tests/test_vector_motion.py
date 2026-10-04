@@ -158,6 +158,21 @@ def test_wavetable_sweeps():
     val4 = rec.step_wavetable(0.1)
     assert 0.0 <= val4 <= 1.0
 
+    # CHAOS
+    rec.wavetable_sweep = WavetableSweepMode.CHAOS
+    positions = []
+    for _ in range(1200):
+        c_val = rec.step_wavetable(0.016)
+        assert c_val is not None
+        assert 0.0 <= c_val <= 1.0
+        positions.append(c_val)
+    # Check that it moves across a wide range without flatlining at 0.0 or 1.0
+    assert min(positions) < 0.25
+    assert max(positions) > 0.75
+    # Check that positions are smooth and never pegged at exact bounds
+    assert not all(p == 0.0 for p in positions)
+    assert not all(p == 1.0 for p in positions)
+
 
 
 def test_serialization():

@@ -52,9 +52,9 @@ Rectangle {
             }
         }
 
-        // Active Patch Name Display
+        // Active Patch Name Display with Sync Button
         Rectangle {
-            Layout.preferredWidth: ScaleMetrics.dp(150)
+            Layout.preferredWidth: ScaleMetrics.dp(185)
             Layout.fillWidth: false
             height: ScaleMetrics.dp(28)
             radius: ScaleMetrics.dp(4)
@@ -65,7 +65,8 @@ Rectangle {
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: ScaleMetrics.dp(8)
-                anchors.rightMargin: ScaleMetrics.dp(8)
+                anchors.rightMargin: ScaleMetrics.dp(4)
+                spacing: ScaleMetrics.dp(4)
 
                 Text {
                     Layout.fillWidth: true
@@ -75,64 +76,117 @@ Rectangle {
                     color: Theme.textPrimary
                     elide: Text.ElideRight
                 }
+
+                // Sync button
+                Rectangle {
+                    id: syncBtn
+                    width: ScaleMetrics.dp(42)
+                    height: ScaleMetrics.dp(22)
+                    radius: ScaleMetrics.dp(3)
+                    color: syncArea.pressed ? Theme.bgCardActive : Theme.bgSurface
+                    border.color: syncArea.pressed ? Theme.tone1 : Theme.borderCard
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 2
+                        Text {
+                            text: "⟳"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(11)
+                            color: Theme.tone1
+                        }
+                        Text {
+                            text: "SYNC"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Theme.textSecondary
+                        }
+                    }
+
+                    MouseArea {
+                        id: syncArea
+                        anchors.fill: parent
+                        onClicked: {
+                            Bridge.syncPatchFromSynth();
+                        }
+                    }
+                }
             }
         }
 
-        // View Navigation Tabs
+        // Screens Launcher Trigger Button
         Rectangle {
+            id: screensBtn
             Layout.fillWidth: true
+            Layout.preferredWidth: ScaleMetrics.dp(240)
+            Layout.maximumWidth: ScaleMetrics.dp(320)
             height: ScaleMetrics.dp(32)
             radius: ScaleMetrics.dp(6)
-            color: Theme.bgApp
-            border.color: Theme.borderCard
+            color: screensArea.pressed ? Theme.bgCardActive : Theme.bgApp
+            border.color: screensArea.pressed ? Theme.primary : Theme.borderCard
             border.width: 1
 
+            readonly property color viewAccent: {
+                const v = Bridge.activeView;
+                if (v === "JUNO PCM" || v === "VECTOR") return Theme.tone1;
+                if (v === "WAVETABLE") return Theme.tone3;
+                if (v === "VA" || v === "MACROS") return Theme.tone2;
+                if (v === "MOD MATRIX" || v === "PATCH EDIT") return "#38bdf8";
+                if (v === "STEP LFO" || v === "SEQUENCER") return "#10b981";
+                if (v === "PITCH ENV") return "#fbbf24";
+                if (v === "MFX") return "#ec4899";
+                if (v === "MASTER FX" || v === "PERF MIXER") return "#a855f7";
+                if (v === "LIBRARIAN") return "#60a5fa";
+                if (v === "MIDI LEARN") return "#f59e0b";
+                if (v === "HARDWARE") return "#94a3b8";
+                if (v === "SYSTEM") return "#ef4444";
+                return Theme.primary;
+            }
+
             RowLayout {
+                anchors.centerIn: parent
+                spacing: ScaleMetrics.dp(8)
+
+                Rectangle {
+                    width: ScaleMetrics.dp(20)
+                    height: ScaleMetrics.dp(20)
+                    radius: ScaleMetrics.dp(4)
+                    color: Theme.bgSurface
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⊞"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(11)
+                        color: screensBtn.viewAccent
+                    }
+                }
+
+                Text {
+                    text: "SCREENS:"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(9)
+                    color: Theme.textDim
+                }
+
+                Text {
+                    text: Bridge.activeView
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(11)
+                    color: screensBtn.viewAccent
+                }
+
+                Text {
+                    text: "▼"
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Theme.textSecondary
+                }
+            }
+
+            MouseArea {
+                id: screensArea
                 anchors.fill: parent
-                anchors.margins: 2
-                spacing: 2
-
-                NavTab {
-                    Layout.fillWidth: true
-                    viewKey: "VECTOR"
-                    label: "VECTOR"
-                    activeColor: Theme.tone1
-                }
-
-                NavTab {
-                    Layout.fillWidth: true
-                    viewKey: "WAVETABLE"
-                    label: "WAVETABLE"
-                    activeColor: Theme.tone3
-                }
-
-                NavTab {
-                    Layout.fillWidth: true
-                    viewKey: "MACROS"
-                    label: "MACROS"
-                    activeColor: Theme.tone2
-                }
-
-                NavTab {
-                    Layout.fillWidth: true
-                    viewKey: "PATCH EDIT"
-                    label: "PATCH EDIT"
-                    activeColor: "#38bdf8"
-                }
-
-                NavTab {
-                    Layout.fillWidth: true
-                    viewKey: "PERF MIXER"
-                    label: "PERF MIXER"
-                    activeColor: "#a855f7"
-                }
-
-                NavTab {
-                    Layout.fillWidth: true
-                    viewKey: "EFFECTS"
-                    label: "EFFECTS"
-                    activeColor: "#ec4899"
-                }
+                onClicked: Bridge.openScreensOverlay()
             }
         }
 
@@ -187,43 +241,5 @@ Rectangle {
             }
         }
     }
-
-    // Reusable Navigation Tab Component
-    component NavTab: Rectangle {
-        id: tabRoot
-        property string viewKey: "VECTOR"
-        property string label: "VECTOR"
-        property color activeColor: Theme.primary
-
-        property bool isActive: Bridge.activeView === viewKey
-
-        Layout.fillHeight: true
-        radius: ScaleMetrics.dp(4)
-        color: isActive ? Theme.bgCardActive : "transparent"
-        border.color: isActive ? activeColor : "transparent"
-        border.width: 1
-
-        Text {
-            anchors.centerIn: parent
-            text: tabRoot.label
-            font.bold: tabRoot.isActive
-            font.pixelSize: ScaleMetrics.sp(10)
-            color: tabRoot.isActive ? Theme.textPrimary : Theme.textMuted
-        }
-
-        Rectangle {
-            anchors.bottom: parent.bottom
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width * 0.6
-            height: ScaleMetrics.dp(2)
-            radius: 1
-            color: tabRoot.activeColor
-            visible: tabRoot.isActive
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: Bridge.setActiveView(tabRoot.viewKey)
-        }
-    }
 }
+

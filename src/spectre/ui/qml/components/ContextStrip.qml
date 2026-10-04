@@ -85,7 +85,7 @@ Rectangle {
                     case 2: return Math.max(0.0, Math.min(1.0, (Bridge.speed - 0.25) / 1.75));
                     case 3: {
                         const sm = Bridge.wavetableSweepMode;
-                        return sm === "sine" ? 0.25 : sm === "triangle" ? 0.5 : sm === "ramp" ? 0.75 : sm === "random_step" ? 1.0 : 0.0;
+                        return sm === "sine" ? 0.2 : sm === "triangle" ? 0.4 : sm === "ramp" ? 0.6 : sm === "random_step" ? 0.8 : sm === "chaos" ? 1.0 : 0.0;
                     }
                     case 4: return Bridge.curve === "equal_power" ? 1.0 : 0.0;
                     case 5: return Bridge.tone1Level / 127.0;
@@ -192,8 +192,8 @@ Rectangle {
                 if (knobIndex === 1) Bridge.setWavetablePos(clamped);
                 else if (knobIndex === 2) Bridge.setSpeed(0.25 + clamped * 1.75);
                 else if (knobIndex === 3) {
-                    const sweeps = ["manual", "sine", "triangle", "ramp", "random_step"];
-                    const idx = Math.min(4, Math.floor(clamped * 5));
+                    const sweeps = ["manual", "sine", "triangle", "ramp", "random_step", "chaos"];
+                    const idx = Math.min(5, Math.floor(clamped * 6));
                     Bridge.setWavetableSweepMode(sweeps[idx]);
                 }
                 else if (knobIndex === 4) Bridge.setCurve(clamped < 0.5 ? "linear" : "equal_power");
@@ -301,7 +301,7 @@ Rectangle {
             onPressed: (mouse) => {
                 startX = mouse.x;
                 startY = mouse.y;
-                startNorm = card.getNormValue();
+                startNorm = card.normValue;
                 card.applyNormValue(mouse.x / width);
             }
 

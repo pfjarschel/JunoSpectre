@@ -120,6 +120,14 @@ def main() -> int:
         platform=args.platform,
     )
 
+    # Auto-detect patch and waveform state from connected Roland synth
+    if juno_client:
+        try:
+            logger.info("Auto-syncing patch state and waveforms from Roland synthesizer...")
+            bridge.syncPatchFromSynth()
+        except Exception as e:
+            logger.warning(f"Initial synth sync failed: {e}")
+
     if args.fullscreen and qml_engine.rootObjects():
         root_obj = qml_engine.rootObjects()[0]
         if hasattr(root_obj, "showFullScreen"):

@@ -51,7 +51,7 @@ class VectorEngine:
         self,
         juno_client: Optional[JunoClient] = None,
         max_update_hz: float = 50.0,
-        curve: CrossfadeCurve = CrossfadeCurve.LINEAR,
+        curve: CrossfadeCurve = CrossfadeCurve.NORMALIZED,
     ):
         self.juno = juno_client
         self.max_update_hz = max_update_hz

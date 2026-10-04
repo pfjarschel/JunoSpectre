@@ -50,6 +50,7 @@ class WavetableSweepMode(str, enum.Enum):
     TRIANGLE = "triangle"
     RAMP = "ramp"
     RANDOM_STEP = "random_step"
+    CHAOS = "chaos"
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,10 @@ class MotionRecorder:
         self._wt_target: float = 0.5
         self._wt_current: float = 0.5
         self._wt_step_timer: float = 0.0
+        self._wt_chaos_phase1: float = 0.0
+        self._wt_chaos_phase2: float = 0.0
+        self._wt_chaos_phase3: float = 0.0
+        self._wt_chaos_phase4: float = 0.0
 
         # Bar sync quantization (0 = free length, 1..16 = quantized bars)
         self.sync_bars: int = 0
@@ -424,6 +429,24 @@ class MotionRecorder:
             # Smooth exponential slew to target
             self._wt_current += (self._wt_target - self._wt_current) * min(1.0, 8.0 * dt)
             return max(0.0, min(1.0, self._wt_current))
+
+        elif self.wavetable_sweep == WavetableSweepMode.CHAOS:
+            # Multi-harmonic continuous irrational drift (never sticks or flatlines at edges)
+            base_omega = 2.0 * math.pi * (self.bpm / 120.0) * 0.08 * max(0.05, self.speed)
+            self._wt_chaos_phase1 = (self._wt_chaos_phase1 + base_omega * 1.00000 * dt) % (2.0 * math.pi)
+            self._wt_chaos_phase2 = (self._wt_chaos_phase2 + base_omega * 1.61803 * dt) % (2.0 * math.pi)
+            self._wt_chaos_phase3 = (self._wt_chaos_phase3 + base_omega * 2.41421 * dt) % (2.0 * math.pi)
+            self._wt_chaos_phase4 = (self._wt_chaos_phase4 + base_omega * 1.73205 * dt) % (2.0 * math.pi)
+
+            raw_excursion = (
+                0.50 * math.sin(self._wt_chaos_phase1)
+                + 0.30 * math.cos(self._wt_chaos_phase2 + 0.9)
+                + 0.18 * math.sin(self._wt_chaos_phase3 + 2.1)
+                + 0.10 * math.cos(self._wt_chaos_phase4 + 1.4)
+            )
+            # Smooth hyperbolic tangent compression provides organic turnaround without edge clipping
+            pos = 0.5 + 0.48 * math.tanh(1.5 * raw_excursion)
+            return max(0.0, min(1.0, pos))
 
         return None
 

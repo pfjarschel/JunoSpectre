@@ -18,6 +18,7 @@ from .sysex import (
     ADDR_TEMP_PERF_PART_1,
     DEFAULT_DEVICE_ID,
     JUNO_DS_MODEL_ID,
+    OFFSET_PATCH_TMT,
     OFFSET_PATCH_TONE_1,
     OFFSET_PATCH_TONE_2,
     OFFSET_PATCH_TONE_3,
@@ -90,6 +91,7 @@ from .sysex import (
     add_address,
     pack_2nibbles,
     pack_4nibbles,
+    unpack_4nibbles,
 )
 
 
@@ -385,18 +387,82 @@ class JunoClient:
         if env_depth is not None:
             self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_DEPTH, max(52, min(76, env_depth)))
 
+    def ensure_tone_enabled(self, tone_index: int) -> None:
+        """Ensure tone switch is enabled (ON) in the Tone Mix Table and routed to dry send."""
+        if tone_index not in (1, 2, 3, 4):
+            raise ValueError(f"Tone index must be 1..4, got {tone_index}")
+        tmt_switch_offsets = {
+            1: 0x0005,
+            2: 0x000E,
+            3: 0x0017,
+            4: 0x0020,
+        }
+        base = self.get_active_patch_base()
+        tmt_base = add_address(base, OFFSET_PATCH_TMT)
+        switch_addr = add_address(tmt_base, tmt_switch_offsets[tone_index])
+        self.send_data(switch_addr, [1])
+
+        # Also ensure tone dry send is non-zero (127) so it reaches the main output
+        offsets = {
+            1: OFFSET_PATCH_TONE_1,
+            2: OFFSET_PATCH_TONE_2,
+            3: OFFSET_PATCH_TONE_3,
+            4: OFFSET_PATCH_TONE_4,
+        }
+        t_addr = add_address(base, offsets[tone_index])
+        self.send_data(add_address(t_addr, TONE_PARAM_DRY_SEND), [127])
+
+    def get_tone_wave(self, tone_index: int, timeout: float = 1.0) -> Tuple[str, int, int]:
+        """Query active wave (bank, wave_num, group_type) for a tone (1..4)."""
+        if tone_index not in (1, 2, 3, 4):
+            raise ValueError(f"Tone index must be 1..4, got {tone_index}")
+        base = self.get_active_patch_base(timeout=timeout)
+        offsets = {
+            1: OFFSET_PATCH_TONE_1,
+            2: OFFSET_PATCH_TONE_2,
+            3: OFFSET_PATCH_TONE_3,
+            4: OFFSET_PATCH_TONE_4,
+        }
+        t_addr = add_address(base, offsets[tone_index])
+        wave_addr = add_address(t_addr, TONE_PARAM_WAVE_GROUP_TYPE)
+        # Size 9: 1 byte group type, 4 nibbles group id, 4 nibbles wave num L
+        res = self.request_data(wave_addr, (0x00, 0x00, 0x00, 0x09), timeout=timeout)
+        if res is None or len(res) < 9:
+            raise TimeoutError(f"Timed out querying Tone {tone_index} wave info.")
+        group_type = res[0]
+        group_id = unpack_4nibbles(res[1:5])
+        wave_num = unpack_4nibbles(res[5:9])
+        bank = "INTA" if group_id == 1 else "INTB" if group_id == 2 else f"GROUP_{group_id}"
+        return (bank, wave_num, group_type)
+
+    def get_all_tone_waves(self, timeout: float = 1.0) -> list[Tuple[str, int]]:
+        """Query active waveform (bank, wave_num) for all 4 tones."""
+        waves = []
+        for i in (1, 2, 3, 4):
+            try:
+                bank, wnum, _ = self.get_tone_wave(i, timeout=timeout)
+                waves.append((bank, wnum))
+            except Exception:
+                waves.append(("INTA", 0))
+        return waves
+
     def set_tone_wave(
         self,
         tone_index: int,
-        group_type: Optional[int] = None,
+        bank: Optional[str] = "INTA",
         wave_num: Optional[int] = None,
         gain: Optional[int] = None,
         fxm_switch: Optional[int] = None,
         fxm_depth: Optional[int] = None,
     ) -> None:
         """Set Wave generator parameters for a tone."""
-        if group_type is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_WAVE_GROUP_TYPE, max(0, min(3, group_type)))
+        if bank is not None or wave_num is not None:
+            self.ensure_tone_enabled(tone_index)
+        if bank is not None:
+            bank_id = 1 if bank.upper() == "INTA" else 2
+            self.set_tone_param(tone_index, TONE_PARAM_WAVE_GROUP_TYPE, 0)
+            self.set_tone_param(tone_index, TONE_PARAM_WAVE_GROUP_ID, pack_4nibbles(bank_id))
+            self.set_tone_param(tone_index, TONE_PARAM_WAVE_NUM_R, pack_4nibbles(0))
         if wave_num is not None:
             nibbles = pack_4nibbles(max(0, min(16384, wave_num)))
             self.set_tone_param(tone_index, TONE_PARAM_WAVE_NUM_L, nibbles)

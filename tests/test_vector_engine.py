@@ -13,7 +13,11 @@ def test_vector_engine_initial_state():
     assert state.mode == MorphMode.VECTOR_2D
     assert state.x == 0.5
     assert state.y == 0.5
-    assert state.tone_levels == (32, 32, 32, 32)
+    assert state.tone_levels == (85, 85, 85, 85)
+
+    # Linear curve produces 32
+    lin_engine = VectorEngine(curve=CrossfadeCurve.LINEAR)
+    assert lin_engine.get_state().tone_levels == (32, 32, 32, 32)
 
 
 def test_vector_engine_coordinates_and_subscribers():
