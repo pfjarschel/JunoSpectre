@@ -10,14 +10,14 @@ Rectangle {
     border.color: Theme.borderCard
     border.width: 1
 
-    property var steps: [0, 15, 30, 45, 60, 45, 30, 15, 0, -15, -30, -45, -60, -45, -30, -15]
+    property var steps: Bridge.stepLfoSteps
     property int currentPlayhead: 0
-    property int curveType: 1 // 0: OFF/HOLD, 1: LINEAR, 2: SMOOTH
-    property int syncRateIdx: 2 // 1/16
+    property int curveType: Bridge.stepLfoCurve
+    property int syncRateIdx: Bridge.stepLfoRateIdx
     property var syncRates: ["OFF (Hz)", "1/32", "1/16", "1/8", "1/4", "1/2", "1/1"]
-    property int destIdx: 1 // 0: PITCH, 1: TVF CUTOFF, 2: TVA LEVEL, 3: PAN
+    property int destIdx: Bridge.stepLfoDestIdx
     property var destNames: ["PITCH", "TVF CUTOFF", "TVA LEVEL", "PAN"]
-    property int depthVal: 48
+    property int depthVal: Bridge.stepLfoDepth
 
     // Internal simulation timer for playhead animation
     Timer {
@@ -73,7 +73,7 @@ Rectangle {
                 }
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: root.destIdx = (root.destIdx + 1) % root.destNames.length
+                    onClicked: Bridge.setStepLfoParam("dest", (root.destIdx + 1) % root.destNames.length)
                 }
             }
 
@@ -99,7 +99,7 @@ Rectangle {
                 }
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: root.syncRateIdx = (root.syncRateIdx + 1) % root.syncRates.length
+                    onClicked: Bridge.setStepLfoParam("rate", (root.syncRateIdx + 1) % root.syncRates.length)
                 }
             }
 
@@ -125,7 +125,7 @@ Rectangle {
                 }
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: root.curveType = (root.curveType + 1) % 3
+                    onClicked: Bridge.setStepLfoParam("curve", (root.curveType + 1) % 3)
                 }
             }
         }
@@ -146,33 +146,60 @@ Rectangle {
                 model: [
                     { name: "SINE", fn: () => {
                         var a = [];
-                        for(var i=0; i<16; i++) a.push(Math.round(Math.sin((i/16.0)*Math.PI*2) * 60));
+                        for(var i=0; i<16; i++) {
+                            var v = Math.round(Math.sin((i/16.0)*Math.PI*2) * 60);
+                            a.push(v);
+                            Bridge.setStepLfoStep(i, v);
+                        }
                         root.steps = a;
                     }},
                     { name: "SAW UP", fn: () => {
                         var a = [];
-                        for(var i=0; i<16; i++) a.push(Math.round(-60 + (i/15.0)*120));
+                        for(var i=0; i<16; i++) {
+                            var v = Math.round(-60 + (i/15.0)*120);
+                            a.push(v);
+                            Bridge.setStepLfoStep(i, v);
+                        }
                         root.steps = a;
                     }},
                     { name: "SAW DN", fn: () => {
                         var a = [];
-                        for(var i=0; i<16; i++) a.push(Math.round(60 - (i/15.0)*120));
+                        for(var i=0; i<16; i++) {
+                            var v = Math.round(60 - (i/15.0)*120);
+                            a.push(v);
+                            Bridge.setStepLfoStep(i, v);
+                        }
                         root.steps = a;
                     }},
                     { name: "TRI", fn: () => {
                         var a = [];
-                        for(var i=0; i<8; i++) a.push(Math.round(-60 + (i/7.0)*120));
-                        for(var i=8; i<16; i++) a.push(Math.round(60 - ((i-8)/7.0)*120));
+                        for(var i=0; i<8; i++) {
+                            var v1 = Math.round(-60 + (i/7.0)*120);
+                            a.push(v1);
+                            Bridge.setStepLfoStep(i, v1);
+                        }
+                        for(var j=8; j<16; j++) {
+                            var v2 = Math.round(60 - ((j-8)/7.0)*120);
+                            a.push(v2);
+                            Bridge.setStepLfoStep(j, v2);
+                        }
                         root.steps = a;
                     }},
                     { name: "RANDOM", fn: () => {
                         var a = [];
-                        for(var i=0; i<16; i++) a.push(Math.round((Math.random() - 0.5) * 120));
+                        for(var i=0; i<16; i++) {
+                            var v = Math.round((Math.random() - 0.5) * 120);
+                            a.push(v);
+                            Bridge.setStepLfoStep(i, v);
+                        }
                         root.steps = a;
                     }},
                     { name: "CLEAR", fn: () => {
                         var a = [];
-                        for(var i=0; i<16; i++) a.push(0);
+                        for(var i=0; i<16; i++) {
+                            a.push(0);
+                            Bridge.setStepLfoStep(i, 0);
+                        }
                         root.steps = a;
                     }}
                 ]
@@ -286,6 +313,7 @@ Rectangle {
                     var arr = root.steps.slice();
                     arr[colIdx] = val;
                     root.steps = arr;
+                    Bridge.setStepLfoStep(colIdx, val);
                 }
 
                 onPositionChanged: (mouse) => {

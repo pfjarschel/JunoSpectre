@@ -332,3 +332,321 @@ def test_vaview_pw_pwm():
 
     va_view.setProperty("osc1Pwm", 35)
     assert va_view.property("osc1Pwm") == 35
+
+
+def test_modmatrix_picker():
+    """Verify ModMatrixView sources, destinations, and modal picker overlay state."""
+    from PyQt6.QtCore import QObject
+
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    root = qml_engine.rootObjects()[0]
+
+    matrix_view = root.findChild(QObject, "modMatrixView")
+    assert matrix_view is not None
+
+    sources = matrix_view.property("sources").toVariant()
+    assert len(sources) == 11
+    assert "CC01 MOD WHEEL" in sources
+    assert "STEP LFO" in sources
+
+    destinations = matrix_view.property("destinations").toVariant()
+    assert len(destinations) == 11
+    assert "OFF" in destinations
+    assert "TVF CUTOFF" in destinations
+
+    assert matrix_view.property("pickerVisible") is False
+
+    # Test openPicker invocation
+    matrix_view.setProperty("pickerVisible", True)
+    assert matrix_view.property("pickerVisible") is True
+    matrix_view.setProperty("pickerVisible", False)
+    assert matrix_view.property("pickerVisible") is False
+
+
+def test_pitchenv_draggable_mseg():
+    """Verify PitchEnvView properties and MSEG getPoints calculation."""
+    from PyQt6.QtCore import QObject
+
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    root = qml_engine.rootObjects()[0]
+
+    pitch_view = root.findChild(QObject, "pitchEnvView")
+    assert pitch_view is not None
+
+    assert pitch_view.property("t1") == 20
+    assert pitch_view.property("l1") == 24
+    assert pitch_view.property("draggedPoint") == -1
+
+    # Verify Roland Dynamics & Velocity Sensitivity properties
+    assert pitch_view.property("envDepth") == 12
+    assert pitch_view.property("velSens") == 30
+    assert pitch_view.property("t1VelSens") == 0
+    assert pitch_view.property("t4VelSens") == 0
+    assert pitch_view.property("timeKeyfollow") == 0
+
+    # Test updating segment values
+    pitch_view.setProperty("t1", 55)
+    pitch_view.setProperty("l1", -15)
+    assert pitch_view.property("t1") == 55
+    assert pitch_view.property("l1") == -15
+
+    # Test updating dynamics & velocity properties
+    pitch_view.setProperty("envDepth", -6)
+    pitch_view.setProperty("velSens", 45)
+    pitch_view.setProperty("t1VelSens", 20)
+    pitch_view.setProperty("t4VelSens", -15)
+    pitch_view.setProperty("timeKeyfollow", 50)
+
+    assert pitch_view.property("envDepth") == -6
+    assert pitch_view.property("velSens") == 45
+    assert pitch_view.property("t1VelSens") == 20
+    assert pitch_view.property("t4VelSens") == -15
+    assert pitch_view.property("timeKeyfollow") == 50
+
+    # Test draggedPoint active state
+    pitch_view.setProperty("draggedPoint", 1)
+    assert pitch_view.property("draggedPoint") == 1
+    pitch_view.setProperty("draggedPoint", -1)
+    assert pitch_view.property("draggedPoint") == -1
+
+
+def test_mfx_view_features():
+    """Verify MfxView category filtering, search, 4-8 param grid, and bypass state."""
+    from PyQt6.QtCore import QObject
+
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    root = qml_engine.rootObjects()[0]
+
+    mfx_view = root.findChild(QObject, "mfxView")
+    assert mfx_view is not None
+
+    # Check default active algorithm (15 Tape Echo)
+    assert mfx_view.property("activeAlgoId") == 15
+    assert mfx_view.property("isBypassed") is False
+    assert mfx_view.property("selectedCategory") == "ALL"
+
+    curr_algo = mfx_view.property("currentAlgo").toVariant()
+    assert curr_algo["id"] == 15
+    assert "TAPE ECHO" in curr_algo["name"]
+    assert curr_algo["cat"] == "DELAY"
+    assert len(curr_algo["params"]) == 8
+
+    # Test category filtering
+    mfx_view.setProperty("selectedCategory", "FILTER/EQ")
+    filtered = mfx_view.property("filteredAlgos").toVariant()
+    assert len(filtered) == 1
+    assert filtered[0]["id"] == 1
+
+    mfx_view.setProperty("selectedCategory", "CHORUS")
+    filtered = mfx_view.property("filteredAlgos").toVariant()
+    assert len(filtered) == 2
+    assert all(item["cat"] == "CHORUS" for item in filtered)
+
+    # Test search filtering
+    mfx_view.setProperty("selectedCategory", "ALL")
+    mfx_view.setProperty("searchQuery", "phaser")
+    filtered = mfx_view.property("filteredAlgos").toVariant()
+    assert len(filtered) == 2  # 11 Phaser and 45 Step Phaser
+    assert any(item["id"] == 11 for item in filtered)
+    assert any(item["id"] == 45 for item in filtered)
+
+    # Search by ID
+    mfx_view.setProperty("searchQuery", "68")
+    filtered = mfx_view.property("filteredAlgos").toVariant()
+    assert len(filtered) == 1
+    assert filtered[0]["id"] == 68
+    assert "SLICER" in filtered[0]["name"]
+
+    # Test selecting an algorithm
+    mfx_view.setProperty("activeAlgoId", 68)
+    curr_algo = mfx_view.property("currentAlgo").toVariant()
+    assert curr_algo["id"] == 68
+    assert "SLICER" in curr_algo["name"]
+    assert len(curr_algo["params"]) == 6
+
+    # Test bypass toggle
+    mfx_view.setProperty("isBypassed", True)
+    assert mfx_view.property("isBypassed") is True
+    mfx_view.setProperty("isBypassed", False)
+    assert mfx_view.property("isBypassed") is False
+
+    # Test Virtual Keyboard integration
+    assert mfx_view.property("virtualKeyboardVisible") is False
+    vk = mfx_view.findChild(QObject, "mfxVirtualKeyboard")
+    assert vk is not None
+
+    mfx_view.setProperty("virtualKeyboardVisible", True)
+    assert mfx_view.property("virtualKeyboardVisible") is True
+    mfx_view.setProperty("virtualKeyboardVisible", False)
+    assert mfx_view.property("virtualKeyboardVisible") is False
+
+
+def test_master_fx_view_controls():
+    """Verify MasterFxView scaled sliders, chorus/reverb controls, and parametric EQ."""
+    from PyQt6.QtCore import QObject
+
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    root = qml_engine.rootObjects()[0]
+
+    master_fx_view = root.findChild(QObject, "masterFxView")
+    assert master_fx_view is not None
+
+    # Check chorus properties
+    assert master_fx_view.property("chorusType") == 1
+    assert master_fx_view.property("chorusRate") == 40
+    assert master_fx_view.property("chorusDepth") == 65
+    assert master_fx_view.property("chorusPreDelay") == 12
+    assert master_fx_view.property("chorusFeedback") == 20
+    assert master_fx_view.property("chorusToReverb") == 0
+    assert master_fx_view.property("chorusLevel") == 80
+
+    # Check reverb properties
+    assert master_fx_view.property("reverbType") == 4
+    assert master_fx_view.property("reverbTime") == 70
+    assert master_fx_view.property("reverbDamp") == 45
+    assert master_fx_view.property("reverbPreDelay") == 15
+    assert master_fx_view.property("reverbDiffusion") == 60
+    assert master_fx_view.property("reverbTone") == 64
+    assert master_fx_view.property("reverbLevel") == 60
+
+    # Check EQ properties
+    assert master_fx_view.property("eqLowGain") == 2
+    assert master_fx_view.property("eqLowFreq") == 400
+    assert master_fx_view.property("eqMidGain") == -3
+    assert master_fx_view.property("eqMidFreq") == 1200
+    assert master_fx_view.property("eqMidQ") == 1.0
+    assert master_fx_view.property("eqHighGain") == 4
+    assert master_fx_view.property("eqHighFreq") == 4000
+    assert master_fx_view.property("eqMasterLevel") == 100
+
+    # Test modifying chorus parameters
+    master_fx_view.setProperty("chorusRate", 85)
+    master_fx_view.setProperty("chorusToReverb", 40)
+    assert master_fx_view.property("chorusRate") == 85
+    assert master_fx_view.property("chorusToReverb") == 40
+
+    # Test modifying reverb parameters
+    master_fx_view.setProperty("reverbTime", 95)
+    master_fx_view.setProperty("reverbDiffusion", 80)
+    assert master_fx_view.property("reverbTime") == 95
+    assert master_fx_view.property("reverbDiffusion") == 80
+
+    # Test modifying EQ parameters
+    master_fx_view.setProperty("eqLowGain", 6)
+    master_fx_view.setProperty("eqMidGain", 0)
+    master_fx_view.setProperty("eqMidQ", 2.0)
+    master_fx_view.setProperty("eqHighGain", -5)
+    assert master_fx_view.property("eqLowGain") == 6
+    assert master_fx_view.property("eqMidGain") == 0
+    assert master_fx_view.property("eqMidQ") == 2.0
+    assert master_fx_view.property("eqHighGain") == -5
+
+    # Test drag interaction state
+    assert master_fx_view.property("draggedEqBand") == -1
+    master_fx_view.setProperty("draggedEqBand", 1)
+    assert master_fx_view.property("draggedEqBand") == 1
+    master_fx_view.setProperty("draggedEqBand", -1)
+    assert master_fx_view.property("draggedEqBand") == -1
+
+
+def test_init_patch_workflow():
+    """Verify Patch Init modal, Bridge.initPatch state reset, and QML view synchronization."""
+    from PyQt6.QtCore import QObject
+
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    root = qml_engine.rootObjects()[0]
+
+    # Check modal exists
+    init_modal = root.findChild(QObject, "initPatchModal")
+    assert init_modal is not None
+    assert init_modal.property("visible") is False
+
+    # Check opening modal via bridge slot
+    modal_opened = False
+    def on_modal_req():
+        nonlocal modal_opened
+        modal_opened = True
+    bridge.requestOpenInitPatchModal.connect(on_modal_req)
+
+    bridge.openInitPatchModal()
+    assert modal_opened is True
+
+    # Test modal open/close methods
+    init_modal.setProperty("visible", True)
+    assert init_modal.property("visible") is True
+    init_modal.setProperty("visible", False)
+    assert init_modal.property("visible") is False
+
+    # Mutate parameters to non-default values first
+    bridge.setPatchName("Custom Lead", "PATCH")
+    bridge.setMasterCutoff(45)
+    bridge.setMasterReso(80)
+    bridge.setTvfEnvDepth(35)
+    bridge.setTvaSustain(40)
+    bridge.setPortamentoSwitch(True)
+    bridge.setToneWave(1, "INTA", 100)
+
+    mfx_view = root.findChild(QObject, "mfxView")
+    mfx_view.setProperty("isBypassed", False)
+
+    master_fx_view = root.findChild(QObject, "masterFxView")
+    master_fx_view.setProperty("chorusLevel", 90)
+    master_fx_view.setProperty("reverbLevel", 75)
+    master_fx_view.setProperty("eqLowGain", 8)
+
+    pitch_view = root.findChild(QObject, "pitchEnvView")
+    pitch_view.setProperty("envDepth", 12)
+
+    # Execute initPatch
+    patch_init_signal_received = False
+    def on_patch_init():
+        nonlocal patch_init_signal_received
+        patch_init_signal_received = True
+    bridge.patchInitialized.connect(on_patch_init)
+
+    bridge.initPatch()
+    assert patch_init_signal_received is True
+
+    # Verify bridge state has reset to clean template
+    assert bridge.patchName == "JUNO SPECTRE"
+    assert bridge.masterCutoff == 127
+    assert bridge.masterReso == 0
+    assert bridge.tvfEnvDepth == 0
+    assert bridge.tvfAttack == 0
+    assert bridge.tvfDecay == 0
+    assert bridge.tvfSustain == 127
+    assert bridge.tvfRelease == 0
+    assert bridge.tvaSustain == 127
+    assert bridge.masterAttack == 0
+    assert bridge.portamentoSwitch is False
+    assert bridge.lfo1PitchDepth == 0
+    assert bridge.lfo2TvfDepth == 0
+
+    # Verify tone waves set to JUNO SPECTRE 4-osc defaults
+    waves = bridge.toneWaveData
+    assert len(waves) == 4
+    assert waves[0]["id"] == 579
+    assert waves[1]["id"] == 600
+    assert waves[2]["id"] == 622
+    assert waves[3]["id"] == 625
+
+    # Verify QML views reacted via onPatchInitialized
+    assert mfx_view.property("isBypassed") is True
+    assert master_fx_view.property("chorusLevel") == 0
+    assert master_fx_view.property("reverbLevel") == 0
+    assert master_fx_view.property("eqLowGain") == 0
+    assert pitch_view.property("envDepth") == 0
+
+
+
+
+
+
+
+
+

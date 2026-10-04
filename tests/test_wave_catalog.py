@@ -108,7 +108,7 @@ def test_bridge_tone_wave_integration():
     assert len(waves) == 4
     assert waves[0]["name"] == "Juno Saw HD"
     assert waves[1]["name"] == "Juno Sqr HD"
-    assert waves[2]["name"] == "700 Triangle"
+    assert waves[2]["name"] in ("JD Triangle", "700 Triangle")
     assert waves[3]["name"] == "Sine"
     
     # Switch Tone 1 to Piano

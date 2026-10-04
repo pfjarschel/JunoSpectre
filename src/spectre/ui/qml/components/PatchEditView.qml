@@ -10,7 +10,7 @@ Rectangle {
     border.color: Theme.borderCard
     border.width: 1
 
-    property int selectedTone: 1
+    property int selectedTone: Bridge.selectedTone
     property int activeLfoTab: 1 // 1 or 2
 
     // Active LFO properties helpers
@@ -235,6 +235,7 @@ Rectangle {
                     isMuted: modelData === 0 ? Bridge.tone1Muted : modelData === 1 ? Bridge.tone2Muted : modelData === 2 ? Bridge.tone3Muted : Bridge.tone4Muted
                     onSelected: {
                         root.selectedTone = toneNumber;
+                        Bridge.setSelectedTone(toneNumber);
                     }
                 }
             }

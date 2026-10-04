@@ -163,6 +163,7 @@ Rectangle {
 
                     Text { text: "PRESET ACTIONS"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textDim }
 
+                    LibBtn { text: "INITIALIZE ACTIVE PATCH (RAM)"; accent: "#fbbf24"; onClicked: Bridge.openInitPatchModal() }
                     LibBtn { text: "STORE / WRITE TO USER MEM"; accent: Theme.tone1 }
                     LibBtn { text: "RENAME CURRENT PATCH"; accent: Theme.tone2 }
                     LibBtn { text: "EXPORT AS .SYX SYSEX"; accent: "#10b981" }
@@ -194,6 +195,7 @@ Rectangle {
         id: lb
         property string text: "ACTION"
         property color accent: Theme.primary
+        signal clicked()
 
         Layout.fillWidth: true
         height: ScaleMetrics.dp(34)
@@ -212,6 +214,7 @@ Rectangle {
         MouseArea {
             id: lbMouse
             anchors.fill: parent
+            onClicked: lb.clicked()
         }
     }
 }

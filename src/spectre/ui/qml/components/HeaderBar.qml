@@ -52,9 +52,9 @@ Rectangle {
             }
         }
 
-        // Active Patch Name Display with Sync Button
+        // Active Patch Name Display with Sync and Init Buttons
         Rectangle {
-            Layout.preferredWidth: ScaleMetrics.dp(185)
+            Layout.preferredWidth: ScaleMetrics.dp(235)
             Layout.fillWidth: false
             height: ScaleMetrics.dp(28)
             radius: ScaleMetrics.dp(4)
@@ -109,6 +109,42 @@ Rectangle {
                         anchors.fill: parent
                         onClicked: {
                             Bridge.syncPatchFromSynth();
+                        }
+                    }
+                }
+
+                // Init button
+                Rectangle {
+                    id: initBtn
+                    width: ScaleMetrics.dp(40)
+                    height: ScaleMetrics.dp(22)
+                    radius: ScaleMetrics.dp(3)
+                    color: initArea.pressed ? Theme.bgCardActive : Theme.bgSurface
+                    border.color: initArea.pressed ? "#fbbf24" : Theme.borderCard
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 2
+                        Text {
+                            text: "✦"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(10)
+                            color: "#fbbf24"
+                        }
+                        Text {
+                            text: "INIT"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Theme.textSecondary
+                        }
+                    }
+
+                    MouseArea {
+                        id: initArea
+                        anchors.fill: parent
+                        onClicked: {
+                            Bridge.openInitPatchModal();
                         }
                     }
                 }

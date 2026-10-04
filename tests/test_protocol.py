@@ -113,3 +113,32 @@ def test_juno_client_ensure_tone_enabled(mock_midi_mgr):
     # Should have sent switch=1 at 1F 00 10 0E and dry_send=127 at 1F 00 22 0C
     assert mock_midi_mgr.send_juno_sysex.call_count >= 2
 
+
+def test_juno_client_set_patch_name(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    mode_msg = mido.Message(
+        "sysex",
+        data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12, 0x01, 0x00, 0x00, 0x00, 0x00, 0x7F],
+    )
+    mock_midi_mgr.iter_juno_messages.return_value = [mode_msg]
+
+    client.set_patch_name("JUNO SPECTRE")
+    assert mock_midi_mgr.send_juno_sysex.called
+    last_call = mock_midi_mgr.send_juno_sysex.call_args[0][0]
+    # Check ASCII encoding of JUNO SPECTRE
+    assert b"JUNO SPECTRE" in bytes(last_call)
+
+
+def test_juno_client_init_patch(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    mode_msg = mido.Message(
+        "sysex",
+        data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12, 0x01, 0x00, 0x00, 0x00, 0x00, 0x7F],
+    )
+    mock_midi_mgr.iter_juno_messages.return_value = [mode_msg]
+
+    client.init_patch()
+    # Verified multiple SysEx commands were dispatched for Patch Common and 4 tones
+    assert mock_midi_mgr.send_juno_sysex.call_count >= 30
+
+

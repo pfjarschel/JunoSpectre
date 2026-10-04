@@ -198,6 +198,12 @@ Window {
         objectName: "waveBrowserModal"
     }
 
+    // Global Modal: Patch Initialization Confirmation
+    InitPatchModal {
+        id: initPatchModal
+        objectName: "initPatchModal"
+    }
+
     // Global Bridge signal listeners
     Connections {
         target: Bridge
@@ -206,6 +212,9 @@ Window {
         }
         function onRequestOpenWaveBrowser(toneIndex) {
             waveBrowserModal.open(toneIndex);
+        }
+        function onRequestOpenInitPatchModal() {
+            initPatchModal.open();
         }
     }
 }

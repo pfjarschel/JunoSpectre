@@ -41,12 +41,15 @@ Rectangle {
             spacing: ScaleMetrics.dp(8)
 
             Repeater {
-                model: 8
+                model: Bridge.perfParts
                 delegate: ChannelStrip {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    partIndex: modelData + 1
-                    partName: modelData === 0 ? "Grand Pno" : modelData === 1 ? "Warm Strings" : modelData === 2 ? "Synth Bass" : "Part " + (modelData + 1)
+                    partIndex: modelData.index
+                    partName: modelData.name
+                    volume: modelData.volume
+                    isMuted: modelData.muted
+                    isSolo: modelData.solo
                 }
             }
         }
@@ -57,7 +60,7 @@ Rectangle {
         id: chan
         property int partIndex: 1
         property string partName: "Part 1"
-        property int volume: partIndex === 1 ? 110 : partIndex === 2 ? 85 : 0
+        property int volume: 100
         property bool isMuted: false
         property bool isSolo: false
 
@@ -119,7 +122,7 @@ Rectangle {
 
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: chan.isMuted = !chan.isMuted
+                        onClicked: Bridge.setPartMute(chan.partIndex, !chan.isMuted)
                     }
                 }
 
@@ -139,7 +142,7 @@ Rectangle {
 
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: chan.isSolo = !chan.isSolo
+                        onClicked: Bridge.setPartSolo(chan.partIndex, !chan.isSolo)
                     }
                 }
             }
@@ -190,11 +193,13 @@ Rectangle {
                 MouseArea {
                     id: faderMouse
                     anchors.fill: parent
+                    function updateVol(my) {
+                        const norm = Math.max(0.0, Math.min(1.0, 1.0 - (my / height)));
+                        Bridge.setPartVolume(chan.partIndex, Math.round(norm * 127));
+                    }
+                    onPressed: (mouse) => updateVol(mouse.y)
                     onPositionChanged: (mouse) => {
-                        if (pressed) {
-                            const norm = Math.max(0.0, Math.min(1.0, 1.0 - (mouse.y / height)));
-                            chan.volume = Math.round(norm * 127);
-                        }
+                        if (pressed) updateVol(mouse.y);
                     }
                 }
             }

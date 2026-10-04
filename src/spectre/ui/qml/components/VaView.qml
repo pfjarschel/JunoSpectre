@@ -10,32 +10,32 @@ Rectangle {
     border.color: Theme.borderCard
     border.width: 1
 
-    property int osc1Wave: 0 // 0: SAW, 1: SQR, 2: TRI, 3: SIN, 4: NOISE
-    property int osc2Wave: 0
-    property int osc3Wave: 2
-    property int osc4Wave: 4
-    property int osc1Coarse: 0
-    property int osc2Coarse: 0
-    property int osc3Coarse: -12
-    property int osc4Coarse: 0
-    property int osc1Fine: 0
-    property int osc2Fine: 7
-    property int osc3Fine: 0
-    property int osc4Fine: 0
-    property int osc1Level: 100
-    property int osc2Level: 90
-    property int osc3Level: 80
-    property int osc4Level: 20
-    property int osc1Pw: 50
-    property int osc2Pw: 50
-    property int osc3Pw: 50
-    property int osc4Pw: 50
-    property int osc1Pwm: 0
-    property int osc2Pwm: 0
-    property int osc3Pwm: 0
-    property int osc4Pwm: 0
-    property bool unisonActive: true
-    property int unisonDetune: 15
+    property int osc1Wave: Bridge.vaOsc1Wave
+    property int osc2Wave: Bridge.vaOsc2Wave
+    property int osc3Wave: Bridge.vaOsc3Wave
+    property int osc4Wave: Bridge.vaOsc4Wave
+    property int osc1Coarse: Bridge.vaOsc1Coarse
+    property int osc2Coarse: Bridge.vaOsc2Coarse
+    property int osc3Coarse: Bridge.vaOsc3Coarse
+    property int osc4Coarse: Bridge.vaOsc4Coarse
+    property int osc1Fine: Bridge.vaOsc1Fine
+    property int osc2Fine: Bridge.vaOsc2Fine
+    property int osc3Fine: Bridge.vaOsc3Fine
+    property int osc4Fine: Bridge.vaOsc4Fine
+    property int osc1Level: Bridge.tone1Level
+    property int osc2Level: Bridge.tone2Level
+    property int osc3Level: Bridge.tone3Level
+    property int osc4Level: Bridge.tone4Level
+    property int osc1Pw: Bridge.vaOsc1Pw
+    property int osc2Pw: Bridge.vaOsc2Pw
+    property int osc3Pw: Bridge.vaOsc3Pw
+    property int osc4Pw: Bridge.vaOsc4Pw
+    property int osc1Pwm: Bridge.vaOsc1Pwm
+    property int osc2Pwm: Bridge.vaOsc2Pwm
+    property int osc3Pwm: Bridge.vaOsc3Pwm
+    property int osc4Pwm: Bridge.vaOsc4Pwm
+    property bool unisonActive: Bridge.vaUnison
+    property int unisonDetune: Bridge.vaUnisonDetune
 
     RowLayout {
         anchors.fill: parent
@@ -106,7 +106,7 @@ Rectangle {
 
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: root.unisonActive = !root.unisonActive
+                            onClicked: Bridge.setVaUnison(!root.unisonActive)
                         }
                     }
 
@@ -153,12 +153,12 @@ Rectangle {
                             enabled: root.unisonActive
                             onPressed: (mouse) => {
                                 const norm = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                                root.unisonDetune = Math.round(norm * 50);
+                                Bridge.setVaUnisonDetune(Math.round(norm * 50));
                             }
                             onPositionChanged: (mouse) => {
                                 if (pressed) {
                                     const norm = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                                    root.unisonDetune = Math.round(norm * 50);
+                                    Bridge.setVaUnisonDetune(Math.round(norm * 50));
                                 }
                             }
                         }
@@ -187,15 +187,12 @@ Rectangle {
                         lvlVal: root.osc1Level
                         pwVal: root.osc1Pw
                         pwmVal: root.osc1Pwm
-                        onWaveChanged: (w) => root.osc1Wave = w
-                        onCoarseChanged: (c) => root.osc1Coarse = c
-                        onFineChanged: (f) => root.osc1Fine = f
-                        onLvlChanged: (l) => {
-                            root.osc1Level = l;
-                            if (typeof Bridge !== "undefined" && Bridge.setToneLevel) Bridge.setToneLevel(1, l);
-                        }
-                        onPwChanged: (p) => root.osc1Pw = p
-                        onPwmChanged: (m) => root.osc1Pwm = m
+                        onWaveChanged: (w) => Bridge.setVaOscWave(1, w)
+                        onCoarseChanged: (c) => Bridge.setVaOscCoarse(1, c)
+                        onFineChanged: (f) => Bridge.setVaOscFine(1, f)
+                        onLvlChanged: (l) => Bridge.setVaOscLevel(1, l)
+                        onPwChanged: (p) => Bridge.setVaOscPw(1, p)
+                        onPwmChanged: (m) => Bridge.setVaOscPwm(1, m)
                     }
 
                     // OSC 2 (Top Right)
@@ -211,15 +208,12 @@ Rectangle {
                         lvlVal: root.osc2Level
                         pwVal: root.osc2Pw
                         pwmVal: root.osc2Pwm
-                        onWaveChanged: (w) => root.osc2Wave = w
-                        onCoarseChanged: (c) => root.osc2Coarse = c
-                        onFineChanged: (f) => root.osc2Fine = f
-                        onLvlChanged: (l) => {
-                            root.osc2Level = l;
-                            if (typeof Bridge !== "undefined" && Bridge.setToneLevel) Bridge.setToneLevel(2, l);
-                        }
-                        onPwChanged: (p) => root.osc2Pw = p
-                        onPwmChanged: (m) => root.osc2Pwm = m
+                        onWaveChanged: (w) => Bridge.setVaOscWave(2, w)
+                        onCoarseChanged: (c) => Bridge.setVaOscCoarse(2, c)
+                        onFineChanged: (f) => Bridge.setVaOscFine(2, f)
+                        onLvlChanged: (l) => Bridge.setVaOscLevel(2, l)
+                        onPwChanged: (p) => Bridge.setVaOscPw(2, p)
+                        onPwmChanged: (m) => Bridge.setVaOscPwm(2, m)
                     }
 
                     // OSC 3 (Bottom Left)
@@ -235,15 +229,12 @@ Rectangle {
                         lvlVal: root.osc3Level
                         pwVal: root.osc3Pw
                         pwmVal: root.osc3Pwm
-                        onWaveChanged: (w) => root.osc3Wave = w
-                        onCoarseChanged: (c) => root.osc3Coarse = c
-                        onFineChanged: (f) => root.osc3Fine = f
-                        onLvlChanged: (l) => {
-                            root.osc3Level = l;
-                            if (typeof Bridge !== "undefined" && Bridge.setToneLevel) Bridge.setToneLevel(3, l);
-                        }
-                        onPwChanged: (p) => root.osc3Pw = p
-                        onPwmChanged: (m) => root.osc3Pwm = m
+                        onWaveChanged: (w) => Bridge.setVaOscWave(3, w)
+                        onCoarseChanged: (c) => Bridge.setVaOscCoarse(3, c)
+                        onFineChanged: (f) => Bridge.setVaOscFine(3, f)
+                        onLvlChanged: (l) => Bridge.setVaOscLevel(3, l)
+                        onPwChanged: (p) => Bridge.setVaOscPw(3, p)
+                        onPwmChanged: (m) => Bridge.setVaOscPwm(3, m)
                     }
 
                     // OSC 4 (Bottom Right)
@@ -259,15 +250,12 @@ Rectangle {
                         lvlVal: root.osc4Level
                         pwVal: root.osc4Pw
                         pwmVal: root.osc4Pwm
-                        onWaveChanged: (w) => root.osc4Wave = w
-                        onCoarseChanged: (c) => root.osc4Coarse = c
-                        onFineChanged: (f) => root.osc4Fine = f
-                        onLvlChanged: (l) => {
-                            root.osc4Level = l;
-                            if (typeof Bridge !== "undefined" && Bridge.setToneLevel) Bridge.setToneLevel(4, l);
-                        }
-                        onPwChanged: (p) => root.osc4Pw = p
-                        onPwmChanged: (m) => root.osc4Pwm = m
+                        onWaveChanged: (w) => Bridge.setVaOscWave(4, w)
+                        onCoarseChanged: (c) => Bridge.setVaOscCoarse(4, c)
+                        onFineChanged: (f) => Bridge.setVaOscFine(4, f)
+                        onLvlChanged: (l) => Bridge.setVaOscLevel(4, l)
+                        onPwChanged: (p) => Bridge.setVaOscPw(4, p)
+                        onPwmChanged: (m) => Bridge.setVaOscPwm(4, m)
                     }
                 }
             }
