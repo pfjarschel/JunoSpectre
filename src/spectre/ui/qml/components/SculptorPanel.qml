@@ -683,6 +683,28 @@ Rectangle {
                     onMoved: (norm) => Bridge.setPortamentoTime(Math.round(norm * 127))
                 }
 
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 1
+                    color: Theme.borderCard
+                }
+
+                Text {
+                    text: "ANALOG FEEL"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Theme.textDim
+                }
+
+                TouchFader {
+                    Layout.fillWidth: true
+                    label: "1/f MOD DEPTH"
+                    valText: Bridge.analogFeel.toString()
+                    normVal: Bridge.analogFeel / 127.0
+                    barColor: "#f59e0b"
+                    onMoved: (norm) => Bridge.setAnalogFeel(Math.round(norm * 127))
+                }
+
                 Item { Layout.fillHeight: true }
             }
         }

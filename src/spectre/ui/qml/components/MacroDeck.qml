@@ -91,7 +91,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 macroIndex: 6
-                macroTitle: "WARMTH"
+                macroTitle: "ANALOG FEEL"
                 macroColor: "#38bdf8"
                 macroValue: Bridge.macro6
             }
@@ -169,6 +169,9 @@ Rectangle {
                         const cx = width / 2;
                         const cy = height / 2;
                         const radius = Math.min(cx, cy) - 6;
+                        if (radius <= 0) {
+                            return;
+                        }
 
                         const startAngle = 0.75 * Math.PI;
                         const endAngle = 2.25 * Math.PI;

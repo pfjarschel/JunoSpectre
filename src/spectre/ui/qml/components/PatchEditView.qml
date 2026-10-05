@@ -186,6 +186,53 @@ Rectangle {
                 }
             }
 
+            // ANALOG FEEL Mini-Slider (1/f drift / analog instability)
+            Rectangle {
+                width: ScaleMetrics.dp(112)
+                height: ScaleMetrics.dp(26)
+                radius: ScaleMetrics.dp(4)
+                color: "#10141d"
+                border.color: Theme.borderCard
+                border.width: 1
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: parent.width * (Bridge.analogFeel / 127.0)
+                    radius: ScaleMetrics.dp(4)
+                    color: Qt.rgba(0.96, 0.62, 0.04, 0.3)
+                }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: ScaleMetrics.dp(4)
+                    Text { text: "ANALOG FEEL"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textSecondary; elide: Text.ElideRight }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: Bridge.analogFeel.toString()
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        font.family: Theme.fontMono
+                        color: Theme.textPrimary
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onPressed: (mouse) => {
+                        const norm = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                        Bridge.setAnalogFeel(Math.round(norm * 127));
+                    }
+                    onPositionChanged: (mouse) => {
+                        if (pressed) {
+                            const norm = Math.max(0.0, Math.min(1.0, mouse.x / width));
+                            Bridge.setAnalogFeel(Math.round(norm * 127));
+                        }
+                    }
+                }
+            }
+
             // LINK ALL TONES TOGGLE
             Rectangle {
                 width: ScaleMetrics.dp(135)

@@ -96,6 +96,7 @@ class SpectreBridge(QObject):
     portamentoTimeChanged = pyqtSignal(int)
     portamentoSwitchChanged = pyqtSignal(bool)
     legatoSwitchChanged = pyqtSignal(bool)
+    analogFeelChanged = pyqtSignal(int)
     lfoParamsChanged = pyqtSignal()
     brightnessChanged = pyqtSignal(int)
 
@@ -1041,7 +1042,7 @@ class SpectreBridge(QObject):
     def macro8(self) -> int:
         return self.patch_state.macros[7]
 
-    @pyqtProperty(int, notify=macrosChanged)
+    @pyqtProperty(int, notify=analogFeelChanged)
     def analogFeel(self) -> int:
         return self.patch_state.common.analog_feel
 
@@ -1403,6 +1404,7 @@ class SpectreBridge(QObject):
                         juno.set_portamento(self.patch_state.common.portamento_switch, time=clamped)
                 elif index == 6:
                     self.patch_state.common.analog_feel = clamped
+                    self.analogFeelChanged.emit(clamped)
                     if juno:
                         juno.set_patch_analog_feel(clamped)
                 elif index == 7:
@@ -1737,6 +1739,21 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_legato(enabled)
                 except Exception as e:
                     logger.error(f"Error setting legato switch on synth: {e}")
+
+    @pyqtSlot(int)
+    def setAnalogFeel(self, val: int) -> None:
+        """Set Patch Analog Feel / 1/f drift depth (0..127), keeping Macro 6 in sync."""
+        clamped = max(0, min(127, int(val)))
+        if self.patch_state.common.analog_feel != clamped:
+            self.patch_state.common.analog_feel = clamped
+            self.patch_state.macros[5] = clamped
+            self.analogFeelChanged.emit(clamped)
+            self.macrosChanged.emit()
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_patch_analog_feel(clamped)
+                except Exception as e:
+                    logger.error(f"Error setting analog feel on synth: {e}")
 
     @pyqtSlot(int, str, "QVariant")
     def setLfoParam(self, lfo_idx: int, param: str, val) -> None:

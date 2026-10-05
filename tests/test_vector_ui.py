@@ -731,6 +731,30 @@ def test_pcm_sound_designer_enhancements():
     assert bridge.reverbSend == 55
 
 
+def test_analog_feel_dedicated_control_syncs_macro6():
+    """setAnalogFeel updates analog_feel + Macro 6; setMacro(6) syncs analog_feel."""
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+
+    # Dedicated control keeps macro 6 in sync
+    bridge.setAnalogFeel(90)
+    assert bridge.analogFeel == 90
+    assert bridge.macro6 == 90
+    assert bridge.patch_state.macros[5] == 90
+    assert bridge.patch_state.common.analog_feel == 90
+
+    # Reverse direction: macro 6 drives analog_feel
+    bridge.setMacro(6, 42)
+    assert bridge.analogFeel == 42
+    assert bridge.patch_state.common.analog_feel == 42
+
+    # Clamping
+    bridge.setAnalogFeel(200)
+    assert bridge.analogFeel == 127
+    bridge.setAnalogFeel(-5)
+    assert bridge.analogFeel == 0
+
+
 def test_sculptor_mutates_all_four_tones():
     """Verify that Sculptor methods sculpt ALL 4 tones regardless of selectedTone or linkedMode."""
     engine = VectorEngine()
