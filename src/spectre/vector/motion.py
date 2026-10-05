@@ -61,6 +61,48 @@ class TrajectoryPoint:
     y: float          # 0.0 .. 1.0
 
 
+# Maximum consecutive-point distance (normalized pad units) treated as idle
+IDLE_EDGE_EPSILON = 0.005
+
+# Hermite tangent length as a fraction of the closing gap (curve tension)
+HERMITE_TENSION = 0.7
+
+# Weighted moving-average kernel applied to interior samples on stop
+SMOOTHING_KERNEL = (1, 2, 3, 2, 1)
+
+
+def _point_distance(a: TrajectoryPoint, b: TrajectoryPoint) -> float:
+    return math.hypot(a.x - b.x, a.y - b.y)
+
+
+def _edge_momentum(
+    points: List[TrajectoryPoint], *, from_end: bool
+) -> Optional[Tuple[float, float]]:
+    """Average unit direction of motion at a trajectory edge, or None if idle."""
+    dirs: List[Tuple[float, float]] = []
+    if from_end:
+        rng = range(len(points) - 1, max(0, len(points) - 7), -1)
+    else:
+        rng = range(1, min(len(points), 7))
+    for i in rng:
+        dx = points[i].x - points[i - 1].x
+        dy = points[i].y - points[i - 1].y
+        d = math.hypot(dx, dy)
+        if d <= IDLE_EDGE_EPSILON:
+            continue
+        dirs.append((dx / d, dy / d))
+        if len(dirs) == 3:
+            break
+    if not dirs:
+        return None
+    ux = sum(v[0] for v in dirs) / len(dirs)
+    uy = sum(v[1] for v in dirs) / len(dirs)
+    norm = math.hypot(ux, uy)
+    if norm < 1e-6:
+        return None
+    return (ux / norm, uy / norm)
+
+
 class MotionRecorder:
     """Manages recording, looping playback, and algorithmic modulation of vector trajectories."""
 
@@ -70,6 +112,9 @@ class MotionRecorder:
         self.loop_mode: LoopMode = LoopMode.FORWARD
         self.speed: float = 1.0  # Speed multiplier (e.g. 0.25x .. 2.0x)
         self.automator: AutomatorType = AutomatorType.NONE
+        self.auto_trim: bool = True  # Strip idle lead-in/tail-off on stop
+        self.auto_close: bool = True  # Append linear points back to the start on stop
+        self.smoothing: bool = True  # Low-pass interior samples on stop
 
         self.points: List[TrajectoryPoint] = []
         self._record_start_time: float = 0.0
@@ -164,11 +209,160 @@ class MotionRecorder:
     def stop_recording(self) -> None:
         """Finish recording and immediately transition to playing if points exist."""
         if self.state == RecorderState.RECORDING:
+            if self.smoothing:
+                self._apply_smoothing()
+            if self.auto_trim:
+                self._trim_stationary_edges()
+            if self.auto_close:
+                added = self._close_loop()
+                if added and self.smoothing:
+                    self._smooth_closure(len(self.points) - added)
             if len(self.points) > 1:
                 self.state = RecorderState.PLAYING
                 self._playback_time = 0.0
             else:
                 self.state = RecorderState.STOPPED
+
+    def _apply_smoothing(self) -> None:
+        """Low-pass the trajectory with a weighted moving average.
+
+        Endpoints (and the kernel-radius samples around them) are pinned so the
+        manual start/end positions are respected; timestamps are preserved.
+        """
+        pts = self.points
+        half = len(SMOOTHING_KERNEL) // 2
+        if len(pts) < 2 * half + 1:
+            return
+
+        weight_sum = float(sum(SMOOTHING_KERNEL))
+        smoothed = list(pts)
+        for i in range(half, len(pts) - half):
+            x_acc = 0.0
+            y_acc = 0.0
+            for offset, w in enumerate(SMOOTHING_KERNEL):
+                sample = pts[i - half + offset]
+                x_acc += sample.x * w
+                y_acc += sample.y * w
+            smoothed[i] = TrajectoryPoint(
+                timestamp=pts[i].timestamp,
+                x=clamp_coordinate(x_acc / weight_sum),
+                y=clamp_coordinate(y_acc / weight_sum),
+            )
+        self.points = smoothed
+
+    def _trim_stationary_edges(self) -> None:
+        """Remove idle samples at the start and end of the recorded trajectory.
+
+        The edge anchors (first/last sample position) define the settling zone:
+        points are idle only while they stay within IDLE_EDGE_EPSILON of the
+        anchor. Slow but real motion accumulates displacement past the epsilon
+        and is therefore preserved. Surviving timestamps are re-based so the
+        loop starts at t = 0.
+        """
+        pts = self.points
+        if len(pts) < 3:
+            return
+
+        start = 0
+        while start < len(pts) - 1 and _point_distance(pts[0], pts[start + 1]) <= IDLE_EDGE_EPSILON:
+            start += 1
+
+        end = len(pts) - 1
+        while end > start and _point_distance(pts[-1], pts[end - 1]) <= IDLE_EDGE_EPSILON:
+            end -= 1
+
+        trimmed = pts[start : end + 1]
+        if len(trimmed) < 2:
+            return
+
+        t0 = trimmed[0].timestamp
+        self.points = [
+            TrajectoryPoint(timestamp=max(0.0, p.timestamp - t0), x=p.x, y=p.y)
+            for p in trimmed
+        ]
+
+    def _close_loop(self) -> int:
+        """Sweep a momentum-matched Hermite curve from the last sample back to the first.
+
+        The closing segment exits along the trajectory's final momentum and arrives
+        along the direction the motion originally left the start point, so the loop
+        restarts seamlessly instead of snapping onto a straight return line. The gap
+        is traversed at the trajectory's average speed. Degenerate momentum falls
+        back to a linear closure. Returns the number of closure points appended.
+        """
+        pts = self.points
+        if len(pts) < 3:
+            return 0
+
+        first, last = pts[0], pts[-1]
+        gap = _point_distance(first, last)
+        if gap <= IDLE_EDGE_EPSILON:
+            return 0
+
+        total_t = last.timestamp - first.timestamp
+        if total_t <= 0.0:
+            return 0
+        path_len = sum(_point_distance(pts[i - 1], pts[i]) for i in range(1, len(pts)))
+        if path_len <= 0.0:
+            return 0
+
+        steps = sorted(pts[i].timestamp - pts[i - 1].timestamp for i in range(1, len(pts)))
+        step = steps[len(steps) // 2]
+        if step <= 1e-6:
+            step = total_t / (len(pts) - 1)
+
+        speed = path_len / total_t
+        count = max(1, min(256, round((gap / speed) / step)))
+
+        tail = _edge_momentum(pts, from_end=True)
+        head = _edge_momentum(pts, from_end=False)
+        t0x, t0y = (tail[0] * gap * HERMITE_TENSION, tail[1] * gap * HERMITE_TENSION) if tail else (0.0, 0.0)
+        t1x, t1y = (head[0] * gap * HERMITE_TENSION, head[1] * gap * HERMITE_TENSION) if head else (0.0, 0.0)
+
+        lx, ly = last.x, last.y
+        fx, fy = first.x, first.y
+        for k in range(1, count + 1):
+            s = k / count
+            s2 = s * s
+            s3 = s2 * s
+            h00 = 2.0 * s3 - 3.0 * s2 + 1.0
+            h10 = s3 - 2.0 * s2 + s
+            h01 = -2.0 * s3 + 3.0 * s2
+            h11 = s3 - s2
+            self.points.append(
+                TrajectoryPoint(
+                    timestamp=last.timestamp + step * k,
+                    x=clamp_coordinate(h00 * lx + h10 * t0x + h01 * fx + h11 * t1x),
+                    y=clamp_coordinate(h00 * ly + h10 * t0y + h01 * fy + h11 * t1y),
+                )
+            )
+        return count
+
+    def _smooth_closure(self, start: int) -> None:
+        """Relax appended closure samples with the moving-average kernel.
+
+        Recorded samples and both seam anchors (loop start and closure end) stay
+        pinned; only the closure waypoints are averaged, easing the junctions
+        between the Hermite curve and the manual path.
+        """
+        pts = self.points
+        half = len(SMOOTHING_KERNEL) // 2
+        weight_sum = float(sum(SMOOTHING_KERNEL))
+        smoothed = list(pts)
+        for i in range(start, len(pts) - 1):
+            x_acc = 0.0
+            y_acc = 0.0
+            for offset, w in enumerate(SMOOTHING_KERNEL):
+                j = min(max(i - half + offset, 0), len(pts) - 1)
+                sample = pts[j]
+                x_acc += sample.x * w
+                y_acc += sample.y * w
+            smoothed[i] = TrajectoryPoint(
+                timestamp=pts[i].timestamp,
+                x=clamp_coordinate(x_acc / weight_sum),
+                y=clamp_coordinate(y_acc / weight_sum),
+            )
+        self.points = smoothed
 
     def play(self) -> None:
         """Start or resume looping playback."""

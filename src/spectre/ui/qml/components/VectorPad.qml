@@ -230,6 +230,30 @@ Item {
                     }
                 }
 
+                // Auto-trim idle lead-in / tail-off toggle
+                LoopPill {
+                    Layout.fillWidth: true
+                    text: "TRIM IDLE"
+                    isActive: Bridge.autoTrim
+                    onClicked: Bridge.setAutoTrim(!Bridge.autoTrim)
+                }
+
+                // Auto-close loop back to start toggle
+                LoopPill {
+                    Layout.fillWidth: true
+                    text: "CLOSE LOOP"
+                    isActive: Bridge.autoClose
+                    onClicked: Bridge.setAutoClose(!Bridge.autoClose)
+                }
+
+                // Trajectory low-pass smoothing toggle
+                LoopPill {
+                    Layout.fillWidth: true
+                    text: "SMOOTH"
+                    isActive: Bridge.smoothing
+                    onClicked: Bridge.setSmoothing(!Bridge.smoothing)
+                }
+
                 Item { Layout.fillHeight: true }
 
                 // Speed Slider
@@ -494,8 +518,11 @@ Item {
                     const pts = Bridge.getMotionPath();
                     if (!pts || pts.length < 2) return;
 
-                    ctx.lineWidth = 2.5;
-                    ctx.strokeStyle = Qt.rgba(0.24, 0.49, 1.0, 0.75);
+                    ctx.lineWidth = 2.0;
+                    ctx.strokeStyle = Qt.rgba(0.24, 0.49, 1.0, 0.15);
+                    // ctx.strokeStyle = Qt.rgba(1.0, 1.0, 1.0, 0.15);
+                    ctx.lineCap = "round";
+                    ctx.setLineDash([1, 6]);
                     ctx.beginPath();
                     ctx.moveTo(pts[0][0] * width, (1.0 - pts[0][1]) * height);
                     for (let i = 1; i < pts.length; i++) {

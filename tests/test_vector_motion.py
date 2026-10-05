@@ -190,3 +190,209 @@ def test_serialization():
     assert restored.bpm == 130.0
     assert len(restored.points) == 2
     assert restored.points[1].x == 0.8
+
+
+def test_auto_trim_removes_idle_edges():
+    rec = MotionRecorder(bpm=120.0)
+    assert rec.auto_trim is True
+    rec.smoothing = False
+    rec.auto_close = False
+
+    rec.start_recording()
+    rec.record_point(0.2, 0.2, timestamp=0.0)   # idle lead-in
+    rec.record_point(0.2, 0.2, timestamp=0.2)   # idle lead-in
+    rec.record_point(0.5, 0.5, timestamp=0.6)
+    rec.record_point(0.8, 0.8, timestamp=1.0)
+    rec.record_point(0.8, 0.8, timestamp=1.2)   # idle tail-off
+    rec.record_point(0.8, 0.8, timestamp=1.4)   # idle tail-off
+    rec.stop_recording()
+
+    pts = rec.points
+    assert len(pts) == 3
+    assert (pts[0].x, pts[0].y) == (0.2, 0.2)
+    assert (pts[-1].x, pts[-1].y) == (0.8, 0.8)
+    assert pts[0].timestamp == pytest.approx(0.0)
+    assert rec.duration == pytest.approx(0.8)
+
+
+def test_auto_trim_disabled_keeps_idle_edges():
+    rec = MotionRecorder(bpm=120.0)
+    rec.auto_trim = False
+    rec.auto_close = False
+
+    rec.start_recording()
+    rec.record_point(0.3, 0.3, timestamp=0.0)
+    rec.record_point(0.3, 0.3, timestamp=0.2)
+    rec.record_point(0.7, 0.7, timestamp=0.6)
+    rec.stop_recording()
+
+    assert len(rec.points) == 3
+    assert rec.duration == pytest.approx(0.6)
+
+
+def test_auto_trim_leaves_fully_idle_recording_intact():
+    rec = MotionRecorder(bpm=120.0)
+    rec.start_recording()
+    for i in range(5):
+        rec.record_point(0.5, 0.5, timestamp=float(i))
+    rec.stop_recording()
+
+    assert len(rec.points) == 5
+    assert rec.state == RecorderState.PLAYING
+
+
+def test_auto_trim_preserves_slow_final_motion():
+    rec = MotionRecorder(bpm=120.0)
+    rec.smoothing = False
+    rec.auto_close = False
+
+    rec.start_recording()
+    rec.record_point(0.0, 0.0, timestamp=0.0)
+    rec.record_point(0.5, 0.5, timestamp=0.5)
+    rec.record_point(0.504, 0.5, timestamp=0.7)   # slow taper (< eps per step)
+    rec.record_point(0.508, 0.5, timestamp=0.9)
+    rec.record_point(0.512, 0.5, timestamp=1.1)
+    rec.record_point(0.512, 0.5, timestamp=1.3)   # settled
+    rec.record_point(0.512, 0.5, timestamp=1.5)   # settled
+    rec.stop_recording()
+
+    pts = rec.points
+    assert len(pts) == 4
+    assert pts[-1].x == pytest.approx(0.508, abs=0.001)
+
+
+def test_auto_close_appends_seamless_return_points():
+    rec = MotionRecorder(bpm=120.0)
+    rec.start_recording()
+    rec.record_point(0.0, 0.0, timestamp=0.0)
+    rec.record_point(0.5, 0.0, timestamp=0.5)
+    rec.record_point(1.0, 0.0, timestamp=1.0)
+    rec.stop_recording()
+
+    pts = rec.points
+    assert len(pts) == 5
+    assert (pts[-1].x, pts[-1].y) == (0.0, 0.0)
+    assert pts[-1].timestamp > pts[-2].timestamp
+    assert rec.duration == pytest.approx(2.0)
+
+
+def test_auto_close_skips_already_closed_path():
+    rec = MotionRecorder(bpm=120.0)
+    rec.start_recording()
+    rec.record_point(0.0, 0.0, timestamp=0.0)
+    rec.record_point(1.0, 0.0, timestamp=0.5)
+    rec.record_point(1.0, 1.0, timestamp=1.0)
+    rec.record_point(0.0, 1.0, timestamp=1.5)
+    rec.record_point(0.0, 0.0, timestamp=2.0)
+    rec.stop_recording()
+
+    assert len(rec.points) == 5
+
+
+def test_auto_close_disabled_keeps_open_path():
+    rec = MotionRecorder(bpm=120.0)
+    rec.auto_trim = False
+    rec.auto_close = False
+    rec.start_recording()
+    rec.record_point(0.0, 0.0, timestamp=0.0)
+    rec.record_point(0.5, 0.0, timestamp=0.5)
+    rec.record_point(1.0, 0.0, timestamp=1.0)
+    rec.stop_recording()
+
+    assert len(rec.points) == 3
+    assert rec.duration == pytest.approx(1.0)
+
+
+def _l_shaped_recorder(relax: bool = False) -> "MotionRecorder":
+    rec = MotionRecorder(bpm=120.0)
+    rec.auto_trim = False
+    rec.smoothing = relax
+    rec.start_recording()
+    path = [(0.2, 0.2), (0.35, 0.2), (0.5, 0.2), (0.65, 0.2), (0.8, 0.2),
+            (0.8, 0.35), (0.8, 0.5), (0.8, 0.65), (0.8, 0.8)]
+    for i, (x, y) in enumerate(path):
+        rec.record_point(x, y, timestamp=i * 0.05)
+    return rec
+
+
+def test_auto_close_curve_exits_along_momentum():
+    rec = _l_shaped_recorder()
+    n_orig = len(rec.points)
+    rec.stop_recording()
+
+    pts = rec.points
+    assert len(pts) > n_orig
+    first_closing = pts[n_orig]
+    assert first_closing.y > 0.8   # continues upward momentum before curving back
+    assert first_closing.x < 0.8   # starts drifting toward the start point
+    for i in range(1, len(pts)):
+        assert pts[i].timestamp > pts[i - 1].timestamp
+
+
+def test_auto_close_curve_arrives_on_start_direction():
+    rec = _l_shaped_recorder()
+    rec.stop_recording()
+
+    pts = rec.points
+    assert (pts[-1].x, pts[-1].y) == (0.2, 0.2)
+    # Head momentum leaves the start toward +x, so the return must arrive
+    # moving +x: the penultimate sample undershoots below the start x.
+    assert pts[-2].x < 0.2
+
+
+def _jittery_recorder(**flags) -> "MotionRecorder":
+    rec = MotionRecorder(bpm=120.0)
+    rec.auto_trim = flags.get("auto_trim", False)
+    rec.auto_close = flags.get("auto_close", False)
+    rec.smoothing = flags.get("smoothing", True)
+    rec.start_recording()
+    for i in range(9):
+        y = 0.5 + (0.02 if i % 2 else -0.02)
+        rec.record_point(0.1 + 0.1 * i, y, timestamp=i * 0.1)
+    return rec
+
+
+def test_smoothing_reduces_jitter_and_pins_endpoints():
+    rec = _jittery_recorder()
+    raw = list(rec.points)
+    rec.stop_recording()
+
+    pts = rec.points
+    assert (pts[0].x, pts[0].y) == (raw[0].x, raw[0].y)
+    assert (pts[-1].x, pts[-1].y) == (raw[-1].x, raw[-1].y)
+
+    raw_dev = max(abs(p.y - 0.5) for p in raw[2:-2])
+    smooth_dev = max(abs(p.y - 0.5) for p in pts[2:-2])
+    assert smooth_dev < raw_dev * 0.5
+    for i in range(1, len(pts)):
+        assert pts[i].timestamp == pytest.approx(raw[i].timestamp)
+
+
+def test_smoothing_disabled_keeps_raw_samples():
+    rec = _jittery_recorder(smoothing=False)
+    raw = list(rec.points)
+    rec.stop_recording()
+
+    assert [(p.x, p.y) for p in rec.points] == [(p.x, p.y) for p in raw]
+
+
+def test_auto_close_closure_is_relaxed_when_smoothing_on():
+    raw_rec = _l_shaped_recorder(relax=False)
+    n_orig = len(raw_rec.points)
+    raw_rec.stop_recording()
+
+    smooth_rec = _l_shaped_recorder(relax=True)
+    smooth_rec.stop_recording()
+
+    raw_c1 = raw_rec.points[n_orig]
+    smooth_c1 = smooth_rec.points[n_orig]
+    # Junction relaxation pulls the first closure sample toward the chord
+    chord_y = 0.8 + (0.2 - 0.8) / (len(raw_rec.points) - n_orig)
+    assert raw_c1.y > 0.8
+    assert smooth_c1.y < raw_c1.y
+    assert smooth_c1.y > chord_y
+    # Seam anchors stay pinned and timing intact
+    assert (smooth_rec.points[-1].x, smooth_rec.points[-1].y) == (0.2, 0.2)
+    assert len(smooth_rec.points) == len(raw_rec.points)
+    for i in range(1, len(smooth_rec.points)):
+        assert smooth_rec.points[i].timestamp == pytest.approx(raw_rec.points[i].timestamp)

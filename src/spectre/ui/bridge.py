@@ -50,6 +50,9 @@ class SpectreBridge(QObject):
     speedChanged = pyqtSignal(float)
     bpmChanged = pyqtSignal(float)
     automatorChanged = pyqtSignal(str)
+    autoTrimChanged = pyqtSignal(bool)
+    autoCloseChanged = pyqtSignal(bool)
+    smoothingChanged = pyqtSignal(bool)
     patchInfoChanged = pyqtSignal(str, str)
     motionPointsChanged = pyqtSignal()
 
@@ -158,6 +161,8 @@ class SpectreBridge(QObject):
         dt = now - self._last_tick_time
         self._last_tick_time = now
         self.engine.update(dt)
+        if self.engine.motion.state == RecorderState.RECORDING:
+            self.motionPointsChanged.emit()
 
     def _on_engine_state_changed(self, state: VectorState) -> None:
         """Handle state notification from VectorEngine with dirty-change detection."""
@@ -299,6 +304,18 @@ class SpectreBridge(QObject):
     @pyqtProperty(str, notify=automatorChanged)
     def automator(self) -> str:
         return self.engine.motion.automator.value
+
+    @pyqtProperty(bool, notify=autoTrimChanged)
+    def autoTrim(self) -> bool:
+        return self.engine.motion.auto_trim
+
+    @pyqtProperty(bool, notify=autoCloseChanged)
+    def autoClose(self) -> bool:
+        return self.engine.motion.auto_close
+
+    @pyqtProperty(bool, notify=smoothingChanged)
+    def smoothing(self) -> bool:
+        return self.engine.motion.smoothing
 
     @pyqtProperty(str, notify=patchInfoChanged)
     def patchName(self) -> str:
@@ -671,6 +688,10 @@ class SpectreBridge(QObject):
     @pyqtProperty(int, notify=reverbParamsChanged)
     def reverbTone(self) -> int:
         return self.patch_state.effects.reverb_tone
+
+    @pyqtProperty(bool, notify=masterEqChanged)
+    def eqSwitch(self) -> bool:
+        return getattr(self.patch_state.effects, "eq_switch", True)
 
     @pyqtProperty(int, notify=masterEqChanged)
     def eqLowGain(self) -> int:
@@ -1072,6 +1093,11 @@ class SpectreBridge(QObject):
         self.transportStateChanged.emit(self.engine.motion.state.value)
         self.motionPointsChanged.emit()
 
+    @pyqtSlot(result="QVariantList")
+    def getMotionPath(self) -> list:
+        """Return recorded trajectory points as [x, y] normalized pairs."""
+        return [[pt.x, pt.y] for pt in self.engine.motion.points]
+
     @pyqtSlot(str)
     def setLoopMode(self, mode_str: str) -> None:
         """Set loop playback mode."""
@@ -1100,6 +1126,24 @@ class SpectreBridge(QObject):
                 self.transportStateChanged.emit(self.engine.motion.state.value)
         except ValueError:
             pass
+
+    @pyqtSlot(bool)
+    def setAutoTrim(self, enabled: bool) -> None:
+        """Toggle automatic trimming of idle lead-in and tail-off samples."""
+        self.engine.motion.auto_trim = bool(enabled)
+        self.autoTrimChanged.emit(self.engine.motion.auto_trim)
+
+    @pyqtSlot(bool)
+    def setAutoClose(self, enabled: bool) -> None:
+        """Toggle automatic closure of the loop back to the start point."""
+        self.engine.motion.auto_close = bool(enabled)
+        self.autoCloseChanged.emit(self.engine.motion.auto_close)
+
+    @pyqtSlot(bool)
+    def setSmoothing(self, enabled: bool) -> None:
+        """Toggle low-pass smoothing of the trajectory on stop."""
+        self.engine.motion.smoothing = bool(enabled)
+        self.smoothingChanged.emit(self.engine.motion.smoothing)
 
     @pyqtSlot(float)
     def setBpm(self, bpm_val: float) -> None:
@@ -2136,7 +2180,10 @@ class SpectreBridge(QObject):
 
         if self.engine.juno:
             try:
-                self.engine.juno.set_chorus(eff.chorus_type, level=eff.chorus_level, output_select=eff.chorus_to_reverb)
+                if param in ("type", "level", "toReverb"):
+                    self.engine.juno.set_chorus(eff.chorus_type, level=eff.chorus_level, output_select=eff.chorus_to_reverb)
+                elif param in ("rate", "depth", "preDelay", "feedback"):
+                    self.engine.juno.set_chorus_param(param, int(val))
             except Exception as e:
                 logger.error(f"Error setting chorus on synth: {e}")
 
@@ -2163,7 +2210,10 @@ class SpectreBridge(QObject):
 
         if self.engine.juno:
             try:
-                self.engine.juno.set_reverb(eff.reverb_type, level=eff.reverb_level)
+                if param in ("type", "level"):
+                    self.engine.juno.set_reverb(eff.reverb_type, level=eff.reverb_level)
+                elif param in ("time", "damp", "preDelay", "diffusion", "tone"):
+                    self.engine.juno.set_reverb_param(param, int(val))
             except Exception as e:
                 logger.error(f"Error setting reverb on synth: {e}")
 
@@ -2173,7 +2223,9 @@ class SpectreBridge(QObject):
     def setMasterEqParam(self, param: str, val) -> None:
         """Set Master 3-Band Parametric EQ parameter."""
         eff = self.patch_state.effects
-        if param == "lowGain":
+        if param == "switch":
+            eff.eq_switch = bool(val)
+        elif param == "lowGain":
             eff.eq_low_gain = int(val)
         elif param == "lowFreq":
             eff.eq_low_freq = int(val)
@@ -2189,6 +2241,12 @@ class SpectreBridge(QObject):
             eff.eq_high_freq = int(val)
         elif param == "masterLevel":
             eff.eq_master_level = int(val)
+
+        if self.engine.juno:
+            try:
+                self.engine.juno.set_master_eq_param(param, val)
+            except Exception as e:
+                logger.error(f"Error setting master EQ on synth: {e}")
 
         self.masterEqChanged.emit()
 
