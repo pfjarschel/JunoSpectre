@@ -85,6 +85,7 @@ from .sysex import (
     PATCH_PARAM_MATRIX_CTRL_4,
     PATCH_PARAM_MONO_POLY,
     PATCH_PARAM_NAME,
+    PATCH_PARAM_OUTPUT_ASSIGN,
     PATCH_PARAM_PAN,
     PATCH_PARAM_PORTAMENTO_MODE,
     PATCH_PARAM_PORTAMENTO_SWITCH,
@@ -126,6 +127,7 @@ from .sysex import (
     TONE_PARAM_LFO_STEP_1,
     TONE_PARAM_LFO_STEP_TYPE,
     TONE_PARAM_MATRIX_CTRL_SW_BASE,
+    TONE_PARAM_OUTPUT_ASSIGN,
     TONE_PARAM_PAN,
     TONE_PARAM_PITCH_ENV_DEPTH,
     TONE_PARAM_PITCH_ENV_L0,
@@ -511,6 +513,32 @@ class JunoClient:
             self.set_tone_param(tone_index, TONE_PARAM_FINE_TUNE, max(14, min(114, fine)))
         if env_depth is not None:
             self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_DEPTH, max(52, min(76, env_depth)))
+
+    def set_tone_output(
+        self,
+        tone_index: int,
+        output_assign: Optional[int] = None,
+        output_level: Optional[int] = None,
+        chorus_send: Optional[int] = None,
+        reverb_send: Optional[int] = None,
+    ) -> None:
+        """Set Tone Output routing (Assign, Dry Level, Chorus Send, Reverb Send)."""
+        if tone_index not in (1, 2, 3, 4):
+            raise ValueError(f"Tone index must be 1..4, got {tone_index}")
+        if output_assign is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_OUTPUT_ASSIGN, max(0, min(12, int(output_assign))))
+        if output_level is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_DRY_SEND, max(0, min(127, int(output_level))))
+        if chorus_send is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_CHORUS_SEND, max(0, min(127, int(chorus_send))))
+        if reverb_send is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_REVERB_SEND, max(0, min(127, int(reverb_send))))
+
+    def set_patch_output_assign(self, output_assign: int) -> None:
+        """Set Patch Common Output Assign (0: MFX, 1: L+R, 2: L, 3: R, 4: TONE)."""
+        base = self.get_active_patch_base()
+        common_base = add_address(base, OFFSET_PATCH_COMMON)
+        self.send_data(add_address(common_base, PATCH_PARAM_OUTPUT_ASSIGN), [max(0, min(13, int(output_assign)))])
 
     def set_tone_switch(self, tone_index: int, enabled: bool) -> None:
         """Set tone switch (ON/OFF) in Tone Mix Table (TMT)."""

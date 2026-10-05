@@ -110,6 +110,7 @@ class SpectreBridge(QObject):
     stepLfoChanged = pyqtSignal()
     perfPartsChanged = pyqtSignal()
     vaParamsChanged = pyqtSignal()
+    routingChanged = pyqtSignal()
 
     def __init__(self, engine: VectorEngine, parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -248,6 +249,7 @@ class SpectreBridge(QObject):
         self.perfPartsChanged.emit()
         self.vaParamsChanged.emit()
         self.macrosChanged.emit()
+        self.routingChanged.emit()
 
     # -------------------------------------------------------------------------
     # Properties for QML: Transport, Vector, and Shell
@@ -779,6 +781,58 @@ class SpectreBridge(QObject):
     @pyqtProperty(int, notify=mfxParamsChanged)
     def mfxReverbSend(self) -> int:
         return self.patch_state.effects.mfx_reverb_send
+
+    # -------------------------------------------------------------------------
+    # Properties for QML: Routing View
+    # -------------------------------------------------------------------------
+
+    @pyqtProperty(str, notify=routingChanged)
+    def routingPreset(self) -> str:
+        return self.patch_state.effects.routing_preset
+
+    @pyqtProperty(bool, notify=routingChanged)
+    def manualRoutingUnlocked(self) -> bool:
+        return self.patch_state.effects.manual_routing_unlocked
+
+    @pyqtProperty("QVariantList", notify=routingChanged)
+    def toneOutputAssigns(self) -> list:
+        return [t.output_assign for t in self.patch_state.tones]
+
+    @pyqtProperty("QVariantList", notify=routingChanged)
+    def toneOutputLevels(self) -> list:
+        return [t.output_level for t in self.patch_state.tones]
+
+    @pyqtProperty("QVariantList", notify=routingChanged)
+    def toneChorusSends(self) -> list:
+        return [t.chorus_send for t in self.patch_state.tones]
+
+    @pyqtProperty("QVariantList", notify=routingChanged)
+    def toneReverbSends(self) -> list:
+        return [t.reverb_send for t in self.patch_state.tones]
+
+    @pyqtProperty("QVariantList", notify=routingChanged)
+    def routingPitfalls(self) -> list:
+        return self.detectRoutingPitfalls()
+
+    @pyqtProperty(str, notify=mfxParamsChanged)
+    def mfxAlgoName(self) -> str:
+        eff = self.patch_state.effects
+        if eff.mfx_bypassed or eff.mfx_type == 0:
+            return "BYPASS / OFF"
+        algo = get_mfx_algo(eff.mfx_type)
+        return algo.get("name", f"MFX #{eff.mfx_type}") if algo else f"MFX #{eff.mfx_type}"
+
+    @pyqtProperty(str, notify=chorusParamsChanged)
+    def chorusTypeName(self) -> str:
+        names = ["OFF", "CHORUS", "DELAY", "GM2 CHORUS"]
+        idx = self.patch_state.effects.chorus_type
+        return names[idx] if 0 <= idx < len(names) else "OFF"
+
+    @pyqtProperty(str, notify=reverbParamsChanged)
+    def reverbTypeName(self) -> str:
+        names = ["OFF", "REVERB", "ROOM", "HALL", "PLATE", "GM2"]
+        idx = self.patch_state.effects.reverb_type
+        return names[idx] if 0 <= idx < len(names) else "OFF"
 
     # -------------------------------------------------------------------------
     # Properties for QML: Mod Matrix (1..4)
@@ -2188,6 +2242,7 @@ class SpectreBridge(QObject):
                 logger.error(f"Error setting chorus on synth: {e}")
 
         self.chorusParamsChanged.emit()
+        self.routingChanged.emit()
 
     @pyqtSlot(str, int)
     def setReverbParam(self, param: str, val: int) -> None:
@@ -2218,6 +2273,7 @@ class SpectreBridge(QObject):
                 logger.error(f"Error setting reverb on synth: {e}")
 
         self.reverbParamsChanged.emit()
+        self.routingChanged.emit()
 
     @pyqtSlot(str, "QVariant")
     def setMasterEqParam(self, param: str, val) -> None:
@@ -2286,6 +2342,7 @@ class SpectreBridge(QObject):
 
         self.mfxValuesChanged.emit()
         self.mfxParamsChanged.emit()
+        self.routingChanged.emit()
 
     @pyqtSlot(int, int)
     def setMfxParam(self, param_index: int, val: int) -> None:
@@ -2318,6 +2375,7 @@ class SpectreBridge(QObject):
                 logger.error(f"Error toggling MFX bypass on synth: {e}")
 
         self.mfxParamsChanged.emit()
+        self.routingChanged.emit()
 
     @pyqtSlot(str, int)
     def setMfxSend(self, send_type: str, val: int) -> None:
@@ -2343,6 +2401,249 @@ class SpectreBridge(QObject):
                 logger.error(f"Error setting MFX sends on synth: {e}")
 
         self.mfxParamsChanged.emit()
+        self.routingChanged.emit()
+
+    # -------------------------------------------------------------------------
+    # Invokable Slots from QML: Routing View
+    # -------------------------------------------------------------------------
+
+    @pyqtSlot(result="QVariantList")
+    def detectRoutingPitfalls(self) -> list:
+        """Detect potential parallel routing pitfalls, phase cancellation, or reverb overloading."""
+        eff = self.patch_state.effects
+        tones = self.patch_state.tones
+        pitfalls = []
+
+        # 1. Multiple Reverb Injections
+        has_tone_rev = any(t.reverb_send > 0 for t in tones)
+        has_mfx_rev = (eff.mfx_reverb_send > 0) and not eff.mfx_bypassed
+        has_cho_rev = (eff.chorus_to_reverb > 0) and (eff.chorus_type > 0) and (eff.chorus_level > 0)
+
+        reverb_sources = 0
+        sources_str = []
+        if has_tone_rev:
+            reverb_sources += 1
+            sources_str.append("Tones")
+        if has_mfx_rev:
+            reverb_sources += 1
+            sources_str.append("MFX")
+        if has_cho_rev:
+            reverb_sources += 1
+            sources_str.append("Chorus")
+
+        if reverb_sources >= 2:
+            pitfalls.append({
+                "type": "REVERB_OVERLOAD",
+                "severity": "warning",
+                "title": "Multiple Reverb Injections Active",
+                "description": f"Reverb is receiving parallel audio feeds simultaneously from: {', '.join(sources_str)}. This can create an uncontrolled muddy reverb wash and phase smear."
+            })
+
+        # 2. Mono Chorus-to-Reverb Collapsing
+        if eff.chorus_to_reverb in (1, 2) and eff.chorus_type > 0 and eff.chorus_level > 0:
+            if eff.chorus_to_reverb == 1:
+                desc = "Chorus output is routed EXCLUSIVELY into Reverb in mono, bypassing stereo Main Out."
+            else:
+                desc = "Chorus output feeds Main Out in stereo AND Reverb in mono. Note that the reverb feed is summed to mono."
+            pitfalls.append({
+                "type": "CHORUS_MONO_SUM",
+                "severity": "info",
+                "title": "Chorus Sent to Reverb (Mono Summed)",
+                "description": desc
+            })
+
+        # 3. Comb Filtering Risk (Parallel Direct Dry + MFX Output)
+        any_direct = any(t.output_assign == 1 for t in tones)
+        if any_direct and eff.mfx_dry_send > 0 and not eff.mfx_bypassed:
+            pitfalls.append({
+                "type": "COMB_FILTERING",
+                "severity": "caution",
+                "title": "Parallel Direct & MFX Summing",
+                "description": "Some tones are routed directly to Main Out while MFX also outputs dry signal to Main Out. This can cause phase cancellation or comb filtering."
+            })
+
+        # 4. Double Modulation (MFX Chorus + Master Chorus)
+        if not eff.mfx_bypassed and eff.mfx_chorus_send > 0 and eff.chorus_type > 0 and eff.chorus_level > 0:
+            pitfalls.append({
+                "type": "DOUBLE_MODULATION",
+                "severity": "info",
+                "title": "Double Modulation / Cascaded Chorus",
+                "description": "MFX output is feeding Master Chorus. If MFX is also an active delay/flanger/chorus, multiple modulation delays will overlap."
+            })
+
+        return pitfalls
+
+    @pyqtSlot(str)
+    def applyRoutingPreset(self, preset_name: str) -> None:
+        """Apply a curated routing topology algorithm across Tones, MFX, Chorus, and Reverb."""
+        preset = preset_name.upper().replace(" ", "_")
+        eff = self.patch_state.effects
+        tones = self.patch_state.tones
+        juno = self.engine.juno if self.engine else None
+
+        if preset == "SERIAL_CHAIN":
+            # Tones (all) -> MFX -> Chorus -> Reverb -> Out
+            eff.routing_preset = "SERIAL_CHAIN"
+            eff.manual_routing_unlocked = False
+            for t in tones:
+                t.output_assign = 0  # MFX
+                t.output_level = 127
+                t.chorus_send = 0
+                t.reverb_send = 0
+                if juno:
+                    try:
+                        juno.set_tone_output(t.tone_index, output_assign=0, output_level=127, chorus_send=0, reverb_send=0)
+                    except Exception as e:
+                        logger.error(f"Error setting tone {t.tone_index} routing: {e}")
+            eff.mfx_dry_send = 0      # All MFX audio cascades to Chorus
+            eff.mfx_chorus_send = 127
+            eff.mfx_reverb_send = 0   # No direct MFX leak to Reverb
+            eff.chorus_level = 80
+            eff.chorus_to_reverb = 1  # REV only: pure serial chain (Chorus cascades exclusively into Reverb)
+            eff.reverb_level = 60
+
+        elif preset == "STUDIO_AUX":
+            # Tones -> MFX (Insert) -> Out; MFX sends parallel to Chorus & Reverb
+            eff.routing_preset = "STUDIO_AUX"
+            eff.manual_routing_unlocked = False
+            for t in tones:
+                t.output_assign = 0  # MFX
+                t.output_level = 127
+                t.chorus_send = 0
+                t.reverb_send = 0
+                if juno:
+                    try:
+                        juno.set_tone_output(t.tone_index, output_assign=0, output_level=127, chorus_send=0, reverb_send=0)
+                    except Exception as e:
+                        logger.error(f"Error setting tone {t.tone_index} routing: {e}")
+            eff.mfx_dry_send = 127     # MFX direct to main
+            eff.mfx_chorus_send = 60   # Parallel aux send
+            eff.mfx_reverb_send = 60   # Parallel aux send
+            eff.chorus_level = 75
+            eff.chorus_to_reverb = 0   # MAIN only: no leak into reverb
+            eff.reverb_level = 65
+
+        elif preset == "VINTAGE_SYNTH":
+            # Tones -> Direct Out (L+R) + Parallel Chorus & Reverb sends (MFX bypassed/muted)
+            eff.routing_preset = "VINTAGE_SYNTH"
+            eff.manual_routing_unlocked = False
+            for t in tones:
+                t.output_assign = 1  # DIRECT (L+R)
+                t.output_level = 127
+                t.chorus_send = 70
+                t.reverb_send = 50
+                if juno:
+                    try:
+                        juno.set_tone_output(t.tone_index, output_assign=1, output_level=127, chorus_send=70, reverb_send=50)
+                    except Exception as e:
+                        logger.error(f"Error setting tone {t.tone_index} routing: {e}")
+            eff.mfx_dry_send = 0
+            eff.mfx_chorus_send = 0
+            eff.mfx_reverb_send = 0
+            eff.chorus_level = 80
+            eff.chorus_to_reverb = 0   # MAIN only
+            eff.reverb_level = 60
+
+        elif preset == "AMBIENT_WASH":
+            # Tones -> MFX -> Chorus (100% to Reverb) -> Reverb -> Out
+            eff.routing_preset = "AMBIENT_WASH"
+            eff.manual_routing_unlocked = False
+            for t in tones:
+                t.output_assign = 0  # MFX
+                t.output_level = 127
+                t.chorus_send = 0
+                t.reverb_send = 0
+                if juno:
+                    try:
+                        juno.set_tone_output(t.tone_index, output_assign=0, output_level=127, chorus_send=0, reverb_send=0)
+                    except Exception as e:
+                        logger.error(f"Error setting tone {t.tone_index} routing: {e}")
+            eff.mfx_dry_send = 30
+            eff.mfx_chorus_send = 110
+            eff.mfx_reverb_send = 40
+            eff.chorus_level = 90
+            eff.chorus_to_reverb = 1   # REV only: chorus is entirely submerged in reverb
+            eff.reverb_level = 95
+
+        elif preset in ("CUSTOM", "MANUAL"):
+            eff.routing_preset = "CUSTOM"
+            eff.manual_routing_unlocked = True
+
+        # Send MFX, Chorus, Reverb updates to synth
+        if juno:
+            try:
+                juno.set_mfx(
+                    eff.mfx_type,
+                    dry_send=eff.mfx_dry_send,
+                    chorus_send=eff.mfx_chorus_send,
+                    reverb_send=eff.mfx_reverb_send,
+                )
+                juno.set_chorus(
+                    eff.chorus_type,
+                    level=eff.chorus_level,
+                    output_select=eff.chorus_to_reverb,
+                )
+                juno.set_reverb(
+                    eff.reverb_type,
+                    level=eff.reverb_level,
+                )
+            except Exception as e:
+                logger.error(f"Error syncing effects routing on synth: {e}")
+
+        self.routingChanged.emit()
+        self.mfxParamsChanged.emit()
+        self.chorusParamsChanged.emit()
+        self.reverbParamsChanged.emit()
+
+    @pyqtSlot(bool)
+    def setManualRoutingUnlocked(self, unlocked: bool) -> None:
+        """Unlock or lock manual sliders editing."""
+        self.patch_state.effects.manual_routing_unlocked = bool(unlocked)
+        if unlocked and self.patch_state.effects.routing_preset != "CUSTOM":
+            self.patch_state.effects.routing_preset = "CUSTOM"
+        self.routingChanged.emit()
+
+    @pyqtSlot(int, str, int)
+    def setToneRoutingParam(self, tone_idx: int, param: str, val: int) -> None:
+        """Set tone routing parameter. tone_idx: 1..4 (or 0 for all 4 tones)."""
+        tones = self.patch_state.tones if tone_idx == 0 else [self.patch_state.tones[tone_idx - 1]]
+        juno = self.engine.juno if self.engine else None
+
+        self.patch_state.effects.routing_preset = "CUSTOM"
+
+        for t in tones:
+            if param == "assign":
+                val_int = max(0, min(2, int(val)))
+                t.output_assign = val_int
+                hw_assign = 0 if val_int in (0, 2) else 1
+                if juno:
+                    try:
+                        juno.set_tone_output(t.tone_index, output_assign=hw_assign)
+                    except Exception as e:
+                        logger.error(f"Error setting tone output assign: {e}")
+            elif param == "level":
+                t.output_level = max(0, min(127, int(val)))
+                if juno:
+                    try:
+                        juno.set_tone_output(t.tone_index, output_level=t.output_level)
+                    except Exception as e:
+                        logger.error(f"Error setting tone output level: {e}")
+            elif param == "chorusSend":
+                t.chorus_send = max(0, min(127, int(val)))
+                if juno:
+                    try:
+                        juno.set_tone_output(t.tone_index, chorus_send=t.chorus_send)
+                    except Exception as e:
+                        logger.error(f"Error setting tone chorus send: {e}")
+            elif param == "reverbSend":
+                t.reverb_send = max(0, min(127, int(val)))
+                if juno:
+                    try:
+                        juno.set_tone_output(t.tone_index, reverb_send=t.reverb_send)
+                    except Exception as e:
+                        logger.error(f"Error setting tone reverb send: {e}")
+
+        self.routingChanged.emit()
 
     # -------------------------------------------------------------------------
     # Invokable Slots from QML: Mod Matrix View
@@ -2709,6 +3010,7 @@ class SpectreBridge(QObject):
                     state = self.engine.juno.read_full_patch(timeout=1.0)
                     if isinstance(state, PatchState):
                         self.patch_state = state
+                        self.patch_state.effects.routing_preset = ""  # No algorithm preset selected on hardware sync
                         self._patch_name = state.common.name
                         self._sound_mode = state.sound_mode
 

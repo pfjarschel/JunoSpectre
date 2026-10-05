@@ -90,13 +90,13 @@ def test_workstation_views_switching():
     # Initial boot view must be JUNO PCM
     assert bridge.activeView == "JUNO PCM"
 
-    all_16_views = [
+    all_views = [
         "JUNO PCM", "VECTOR", "WAVETABLE", "VA",
-        "MOD MATRIX", "STEP LFO", "PITCH ENV", "MFX", "MASTER FX",
+        "MOD MATRIX", "STEP LFO", "PITCH ENV", "MFX", "ROUTING", "MASTER FX",
         "MACROS", "PERF MIXER", "SEQUENCER",
         "LIBRARIAN", "MIDI LEARN", "HARDWARE", "SYSTEM"
     ]
-    for v in all_16_views:
+    for v in all_views:
         bridge.setActiveView(v)
         assert bridge.activeView == v
         if v == "VECTOR":

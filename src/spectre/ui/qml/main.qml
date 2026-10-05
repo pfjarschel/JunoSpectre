@@ -60,14 +60,15 @@ Window {
                     case "STEP LFO": return 5;
                     case "PITCH ENV": return 6;
                     case "MFX": return 7;
-                    case "MASTER FX": return 8;
-                    case "MACROS": return 9;
-                    case "PERF MIXER": return 10;
-                    case "SEQUENCER": return 11;
-                    case "LIBRARIAN": return 12;
-                    case "MIDI LEARN": return 13;
-                    case "HARDWARE": return 14;
-                    case "SYSTEM": return 15;
+                    case "ROUTING": return 8;
+                    case "MASTER FX": return 9;
+                    case "MACROS": return 10;
+                    case "PERF MIXER": return 11;
+                    case "SEQUENCER": return 12;
+                    case "LIBRARIAN": return 13;
+                    case "MIDI LEARN": return 14;
+                    case "HARDWARE": return 15;
+                    case "SYSTEM": return 16;
                     default: return 0;
                 }
             }
@@ -128,7 +129,13 @@ Window {
                 objectName: "mfxView"
             }
 
-            // View 8: Master Chorus, Reverb & 3-Band Parametric EQ
+            // View 8: Dedicated FX & Tone Routing Screen (Matrix & Pitfall Detector)
+            RoutingView {
+                id: routingView
+                objectName: "routingView"
+            }
+
+            // View 9: Master Chorus, Reverb & 3-Band Parametric EQ
             MasterFxView {
                 id: masterFxView
                 objectName: "masterFxView"

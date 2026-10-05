@@ -208,12 +208,26 @@ Rectangle {
                             glyph: "📈"
                             accentColor: "#fbbf24"
                         }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(8)
+
+                        AppTile {
+                            Layout.fillWidth: true
+                            viewKey: "ROUTING"
+                            title: "ROUTING"
+                            subtitle: "Signal flow presets & bus matrix"
+                            glyph: "🔀"
+                            accentColor: "#06b6d4"
+                        }
 
                         AppTile {
                             Layout.fillWidth: true
                             viewKey: "MFX"
                             title: "MFX STUDIO"
-                            subtitle: "80 multi-effects processors & routing"
+                            subtitle: "80 multi-effects processors & params"
                             glyph: "🎛"
                             accentColor: "#ec4899"
                         }

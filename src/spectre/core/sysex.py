@@ -59,6 +59,7 @@ TONE_PARAM_ENV_MODE = 0x0008       # 0..1 (0: NO-SUS, 1: SUSTAIN)
 TONE_PARAM_DRY_SEND = 0x000C       # 0..127
 TONE_PARAM_CHORUS_SEND = 0x000D    # 0..127
 TONE_PARAM_REVERB_SEND = 0x000E    # 0..127
+TONE_PARAM_OUTPUT_ASSIGN = 0x0011  # 0..12 (0: MFX, 1: L+R / Direct, 2: L, 3: R)
 
 # Tone Control 1..4 Destination 1..4 Switches (0x0017..0x0026: 0=OFF, 1=ON, 2=REVERSE)
 # Formula: 0x0017 + (ctrl_idx - 1) * 4 + (dest_idx - 1)
@@ -166,6 +167,7 @@ PATCH_PARAM_CUTOFF_OFFSET = 0x0022 # 1..127 (-63 .. +63)
 PATCH_PARAM_RESONANCE_OFFSET = 0x0023 # 1..127 (-63 .. +63)
 PATCH_PARAM_ATTACK_OFFSET = 0x0024 # 1..127 (-63 .. +63)
 PATCH_PARAM_RELEASE_OFFSET = 0x0025 # 1..127 (-63 .. +63)
+PATCH_PARAM_OUTPUT_ASSIGN = 0x0027  # 0..13 (0: MFX, 1: L+R, 2: L, 3: R, 4: TONE)
 PATCH_PARAM_MATRIX_CTRL_1 = 0x002B # Source, Dest 1..4, Sens 1..4 (size 9)
 PATCH_PARAM_MATRIX_CTRL_2 = 0x0034 # Source, Dest 1..4, Sens 1..4 (size 9)
 PATCH_PARAM_MATRIX_CTRL_3 = 0x003D # Source, Dest 1..4, Sens 1..4 (size 9)

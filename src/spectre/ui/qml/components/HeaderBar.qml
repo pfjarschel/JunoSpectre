@@ -172,6 +172,7 @@ Rectangle {
                 if (v === "STEP LFO" || v === "SEQUENCER") return "#10b981";
                 if (v === "PITCH ENV") return "#fbbf24";
                 if (v === "MFX") return "#ec4899";
+                if (v === "ROUTING") return "#06b6d4";
                 if (v === "MASTER FX" || v === "PERF MIXER") return "#a855f7";
                 if (v === "LIBRARIAN") return "#60a5fa";
                 if (v === "MIDI LEARN") return "#f59e0b";

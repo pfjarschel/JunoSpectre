@@ -45,6 +45,12 @@ class ToneState:
     tva_release: int = 0         # T4: 0..127
     muted: bool = False
 
+    # Tone Routing & Sends
+    output_assign: int = 0       # 0: MFX, 1: DIRECT (L+R), 2: L, 3: R
+    output_level: int = 127      # 0..127 (Tone Dry Send)
+    chorus_send: int = 0         # 0..127
+    reverb_send: int = 0         # 0..127
+
     # TVF (Filter)
     tvf_filter_type: int = 1     # 0..6 (OFF, LPF, BPF, HPF, PKG, LPF2, LPF3)
     tvf_cutoff: int = 127        # 0..127
@@ -258,6 +264,7 @@ class PatchCommonState:
     analog_feel: int = 0         # 0..127
     chorus_send: int = 0         # 0..127
     reverb_send: int = 0         # 0..127
+    patch_output_assign: int = 4 # 0: MFX, 1: L+R, 2: L, 3: R, 4: TONE (respect per-tone assign)
     matrix_ctrls: list[MatrixCtrlState] = field(default_factory=lambda: [
         MatrixCtrlState(source=1, dest1=1, sens1=94),   # CC01 Mod Wheel (id 1) -> PITCH (+30)
         MatrixCtrlState(source=96, dest1=2, sens1=39),  # Pitch Bend (id 96) -> TVF CUT (-25)
@@ -277,6 +284,10 @@ class EffectsState:
     mfx_bypassed: bool = False
     mfx_last_active_type: int = 15 # 15: Tape Echo
     mfx_params: list[int] = field(default_factory=lambda: [0] * 32)
+
+    # Clean Routing Topologies
+    routing_preset: str = ""  # "" (none / raw patch), SERIAL_CHAIN, STUDIO_AUX, VINTAGE_SYNTH, AMBIENT_WASH, CUSTOM
+    manual_routing_unlocked: bool = False
 
     # Master Chorus
     chorus_type: int = 1         # 0=OFF, 1=Chorus 1, 2=Delay, 3=GM2

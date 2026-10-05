@@ -117,7 +117,7 @@
   * **Context Strip (8 Encoders):** Persists below the Top Bar for fast physical knob interaction, but automatically hides on System & Utility views (`HARDWARE`, `SYSTEM`, `LIBRARIAN`, `MIDI LEARN`) expanding vertical canvas to 556dp.
   * **Zero Screen Hopping & Zero Hidden Drawers:** Filter and envelope shaping are directly accessible inside each engine view via dedicated on-panel controls or the Right Flank `SculptorPanel.qml` (~360dp, 100% visible, no hidden drawers).
   * **App Launcher Overlay (`ScreensOverlay.qml`):** Replaced cramped horizontal tabs with a single `[ ⊞ SCREENS: <ACTIVE_VIEW> ▼ ]` button in `HeaderBar.qml` opening a categorized modal overlay presenting 16 touch tiles grouped across 4 distinct categories.
-* **16 Workstation Apps Across 4 Categories:**
+* **17 Workstation Apps Across 4 Categories:**
   1. **SYNTH ENGINES:**
      - **Juno PCM (`PatchEditView.qml`, Default Boot Screen / Index 0):** Full-screen 4-Tone Roland sound designer with stereo Wave L / Wave R selection per tone, dual interactive envelopes (TVF Filter Env with Depth -63..+63 & TVA Amp Env), Portamento Time & Switch, and a master `[LINK ALL TONES: ON/OFF]` toggle button.
      - **2D Vector (`VectorPad.qml`):** 3-column layout featuring automated wave motion orbit controls (Left, ~140dp), 2D morph pad with live oscilloscope and corner badges (Center, >520dp), and Master TVF/TVA/LFO/Pitch `SculptorPanel` (Right, ~360dp).
@@ -127,7 +127,8 @@
      - **Mod Matrix (`ModMatrixView.qml`):** 4 Roland matrix controllers with source selectors, 4 destinations per controller, and -63..+63 bipolar sensitivities.
      - **Step LFO (`StepLfoView.qml`):** 16-step pattern modulator with horizontal touch drawing grid, tempo sync, glide curves, and live playhead.
      - **Pitch Env (`PitchEnvView.qml`):** Bi-polar multi-segment pitch envelope canvas ($T_1..T_4$, $L_0..L_4$), depth, velocity sensitivity, and quick preset shapes.
-     - **MFX Studio (`MfxView.qml`):** Dedicated multi-effects studio for all 80 Roland MFX algorithms with parameter sliders, bypass, and send routing.
+     - **Routing (`RoutingView.qml`):** Dedicated signal flow matrix and topology presets (Serial Chain, Studio Aux, Vintage Synth, Ambient Wash) with interactive schematic, live pitfall detection (comb filtering / multi-reverb overload warnings), and 4-column manual sends strips.
+     - **MFX Studio (`MfxView.qml`):** Dedicated multi-effects studio for all 80 Roland MFX algorithms with parameter sliders and bypass.
      - **Master FX (`MasterFxView.qml`):** Master Chorus, Master Reverb, and 3-band parametric EQ with live EQ curve response.
   3. **PERFORMANCE & PLAY:**
      - **Macro Deck (`MacroDeck.qml`):** 8 large touch dials assigned to physical encoders, with note monitor and panic button.
@@ -247,7 +248,7 @@ juno-spectre/
   * Real-time 2D waveform scope & 3D waterfall display.
 * [x] **Acoustic Loudness Normalization:**
   * Perceived loudness compensation curve ($w^{0.29}$) preserving balanced levels between single tones and complex mixes.
-* [ ] **4-OSC Virtual Analog (VA) Engine:**
+* [x] **4-OSC Virtual Analog (VA) Engine:**
   * Multi-oscillator Virtual Analog workflow.
   * Internally hardwired/always ganged master TVF filter & master TVA/TVF ADSR envelopes.
   * 4-oscillator detune & mixer (octaves, semitones, cents detune, analog bread-and-butter waveforms).
@@ -259,15 +260,15 @@ juno-spectre/
   * 1-touch clean template for unmodulated sound sculpting.
 * [ ] **UI Screens & Shell Revamp (1024×600 Touch - Self-Contained Synth Architecture):**
   * [x] Base QML touch shell & persistent Top Bar (sync, patch name, LEDs)
-  * [ ] Screen Real Estate Revamp: Remove fixed right-hand tone strip and fixed bottom row to liberate full $1024 \times 540$ canvas; make tone mixer contextual/on-demand
-  * [ ] Vector View Revamped (Large $>400\text{px}$ 2D pad, left orbit/loop panel, right-flank Quick Sculptor touch faders, curve drawer)
-  * [ ] Wavetable View Revamped (1D slider, 2D scope, 3D waterfall, left loop/scan panel, right-flank Quick Sculptor touch faders)
-  * [ ] 4-OSC VA View (dedicated 3-column analog synth console: 4-OSC mixer/detune $\to$ Master TVF $\to$ Master ADSR)
-  * [ ] Standard 4-Tone View (classic Roland 4-tone sound designer, wave browser, velocity splits, optional Gang/Link toggle)
+  * [x] Screen Real Estate Revamp: Remove fixed right-hand tone strip and fixed bottom row to liberate full $1024 \times 540$ canvas; make tone mixer contextual/on-demand
+  * [x] Vector View Revamped (Large $>400\text{px}$ 2D pad, left orbit/loop panel, right-flank Quick Sculptor touch faders, curve drawer)
+  * [x] Wavetable View Revamped (1D slider, 2D scope, 3D waterfall, left loop/scan panel, right-flank Quick Sculptor touch faders)
+  * [x] 4-OSC VA View (dedicated 3-column analog synth console: 4-OSC mixer/detune $\to$ Master TVF $\to$ Master ADSR)
+  * [x] Standard 4-Tone View (classic Roland 4-tone sound designer, wave browser, velocity splits, optional Gang/Link toggle)
   * [x] Wave Browser Modal with touch virtual keyboard
   * [ ] Performance Layer & Zone Mixer (16-part volume/pan/mutes, patch selector per part, direct Part "EDIT" buttons)
   * [ ] Macro Play Deck (8 customizable macro dials, panic button)
-  * [ ] Effects (MFX) Studio (visual signal chain & parameters)
+  * [x] Effects (MFX) Studio (visual signal chain & parameters)
   * [ ] MIDI Controller Map & Quick-Touch Learn Screen
   * [ ] Patch Librarian & Preset Browser (`.spectre` and `.syx` management)
   * [ ] Appliance Options & Maintenance Screen (touch reboot/shutdown, brightness, system update)
