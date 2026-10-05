@@ -55,9 +55,15 @@ TONE_PARAM_LEVEL = 0x0000          # 0..127
 TONE_PARAM_COARSE_TUNE = 0x0001    # 16..112 (-48 .. +48 semitones)
 TONE_PARAM_FINE_TUNE = 0x0002      # 14..114 (-50 .. +50 cents)
 TONE_PARAM_PAN = 0x0004            # 0..127 (L64 .. 63R)
+TONE_PARAM_ENV_MODE = 0x0008       # 0..1 (0: NO-SUS, 1: SUSTAIN)
 TONE_PARAM_DRY_SEND = 0x000C       # 0..127
 TONE_PARAM_CHORUS_SEND = 0x000D    # 0..127
 TONE_PARAM_REVERB_SEND = 0x000E    # 0..127
+
+# Tone Control 1..4 Destination 1..4 Switches (0x0017..0x0026: 0=OFF, 1=ON, 2=REVERSE)
+# Formula: 0x0017 + (ctrl_idx - 1) * 4 + (dest_idx - 1)
+TONE_PARAM_MATRIX_CTRL_SW_BASE = 0x0017
+TONE_PARAM_MATRIX_CTRL_1_DEST_1_SW = 0x0017
 
 # Wave Generator
 TONE_PARAM_WAVE_GROUP_TYPE = 0x0027   # 0..3 (INT, EXP, SAMP, MSAM)
@@ -96,22 +102,26 @@ TONE_PARAM_TVF_ENV_T1 = 0x0055         # 0..127 (Attack)
 TONE_PARAM_TVF_ENV_T2 = 0x0056         # 0..127 (Decay 1)
 TONE_PARAM_TVF_ENV_T3 = 0x0057         # 0..127 (Decay 2)
 TONE_PARAM_TVF_ENV_T4 = 0x0058         # 0..127 (Release)
-TONE_PARAM_TVF_ENV_L1 = 0x0059         # 0..127
-TONE_PARAM_TVF_ENV_L2 = 0x005A         # 0..127
-TONE_PARAM_TVF_ENV_L3 = 0x005B         # 0..127 (Sustain)
-TONE_PARAM_TVF_ENV_L4 = 0x005C         # 0..127
+TONE_PARAM_TVF_ENV_L0 = 0x0059         # 0..127 (Start Level)
+TONE_PARAM_TVF_ENV_L1 = 0x005A         # 0..127 (Attack Peak)
+TONE_PARAM_TVF_ENV_L2 = 0x005B         # 0..127 (Decay 1 Break)
+TONE_PARAM_TVF_ENV_L3 = 0x005C         # 0..127 (Sustain)
+TONE_PARAM_TVF_ENV_L4 = 0x005D         # 0..127 (Release End Level)
 
 # TVA (Time Variant Amplifier)
-TONE_PARAM_TVA_LEVEL = 0x005F          # 0..127 (alternate address to 0x0000)
-TONE_PARAM_TVA_PAN = 0x0004            # 0..127
-TONE_PARAM_TVA_VEL_SENS = 0x0062       # 1..127 (-63 .. +63)
-TONE_PARAM_TVA_ENV_T1 = 0x0066         # 0..127 (Attack)
-TONE_PARAM_TVA_ENV_T2 = 0x0067         # 0..127 (Decay 1)
-TONE_PARAM_TVA_ENV_T3 = 0x0068         # 0..127 (Decay 2)
-TONE_PARAM_TVA_ENV_T4 = 0x0069         # 0..127 (Release)
-TONE_PARAM_TVA_ENV_L1 = 0x006A         # 0..127
-TONE_PARAM_TVA_ENV_L2 = 0x006B         # 0..127
-TONE_PARAM_TVA_ENV_L3 = 0x006C         # 0..127 (Sustain)
+TONE_PARAM_TVA_LEVEL = TONE_PARAM_LEVEL # 0x0000 (0..127)
+TONE_PARAM_TVA_PAN = TONE_PARAM_PAN     # 0x0004 (0..127)
+TONE_PARAM_TVA_BIAS_LEVEL = 0x005E      # 54..74 (-100 .. +100, 64 is 0 neutral)
+TONE_PARAM_TVA_BIAS_POSITION = 0x005F   # 0..127 (C-1 .. G9)
+TONE_PARAM_TVA_BIAS_DIRECTION = 0x0060  # 0..3 (LWR, UPR, L&U, ALL)
+TONE_PARAM_TVA_VEL_SENS = 0x0062        # 1..127 (-63 .. +63)
+TONE_PARAM_TVA_ENV_T1 = 0x0066          # 0..127 (Attack)
+TONE_PARAM_TVA_ENV_T2 = 0x0067          # 0..127 (Decay 1)
+TONE_PARAM_TVA_ENV_T3 = 0x0068          # 0..127 (Decay 2)
+TONE_PARAM_TVA_ENV_T4 = 0x0069          # 0..127 (Release)
+TONE_PARAM_TVA_ENV_L1 = 0x006A          # 0..127 (Attack Peak)
+TONE_PARAM_TVA_ENV_L2 = 0x006B          # 0..127 (Decay Break)
+TONE_PARAM_TVA_ENV_L3 = 0x006C          # 0..127 (Sustain)
 
 # Tone LFO 1
 TONE_PARAM_LFO1_WAVEFORM = 0x006D      # 0..12
@@ -134,13 +144,21 @@ TONE_PARAM_LFO2_PITCH_DEPTH = 0x0105   # 1..127 (-63 .. +63)
 TONE_PARAM_LFO2_TVF_DEPTH = 0x0106     # 1..127 (-63 .. +63)
 TONE_PARAM_LFO2_TVA_DEPTH = 0x0107     # 1..127 (-63 .. +63)
 TONE_PARAM_LFO2_PAN_DEPTH = 0x0108     # 1..127 (-63 .. +63)
+TONE_PARAM_LFO_STEP_TYPE = 0x0109      # 0..1 (0=TYP1 / STEP, 1=TYP2 / GLIDE)
+TONE_PARAM_LFO_STEP_1 = 0x010A         # 28..100 (-36 .. +36, 64=0), 16 steps: 0x010A..0x0119
 
 # Patch Common Parameter Offsets
 PATCH_PARAM_NAME = 0x0000          # 12 ASCII chars (size 12)
 PATCH_PARAM_LEVEL = 0x000E         # 0..127
 PATCH_PARAM_PAN = 0x000F           # 0..127
+PATCH_PARAM_ANALOG_FEEL = 0x0015   # 0..127
+PATCH_PARAM_MONO_POLY = 0x0016     # 0..1 (0=MONO, 1=POLY)
 PATCH_PARAM_LEGATO_SWITCH = 0x0017 # 0..1 (OFF, ON)
+PATCH_PARAM_LEGATO_RETRIGGER = 0x0018 # 0..1 (OFF, ON)
 PATCH_PARAM_PORTAMENTO_SWITCH = 0x0019 # 0..1 (OFF, ON)
+PATCH_PARAM_PORTAMENTO_MODE = 0x001A # 0..1 (0=NORMAL, 1=LEGATO)
+PATCH_PARAM_PORTAMENTO_TYPE = 0x001B # 0..1 (0=RATE, 1=TIME)
+PATCH_PARAM_PORTAMENTO_START = 0x001C # 0..1 (0=PITCH, 1=NOTE)
 PATCH_PARAM_PORTAMENTO_TIME = 0x001D # 0..127
 PATCH_PARAM_CHORUS_SEND = 0x0017   # Legacy alias for patch common
 PATCH_PARAM_REVERB_SEND = 0x0018   # Legacy alias for patch common
@@ -152,6 +170,12 @@ PATCH_PARAM_MATRIX_CTRL_1 = 0x002B # Source, Dest 1..4, Sens 1..4 (size 9)
 PATCH_PARAM_MATRIX_CTRL_2 = 0x0034 # Source, Dest 1..4, Sens 1..4 (size 9)
 PATCH_PARAM_MATRIX_CTRL_3 = 0x003D # Source, Dest 1..4, Sens 1..4 (size 9)
 PATCH_PARAM_MATRIX_CTRL_4 = 0x0046 # Source, Dest 1..4, Sens 1..4 (size 9)
+
+# Tone Mix Table (TMT) Offsets (relative to OFFSET_PATCH_TMT)
+TMT_PARAM_TONE1_SWITCH = 0x0005    # 0..1 (OFF, ON)
+TMT_PARAM_TONE2_SWITCH = 0x000E    # 0..1 (OFF, ON)
+TMT_PARAM_TONE3_SWITCH = 0x0017    # 0..1 (OFF, ON)
+TMT_PARAM_TONE4_SWITCH = 0x0020    # 0..1 (OFF, ON)
 
 # MFX Parameter Offsets (relative to OFFSET_PATCH_COMMON_MFX)
 MFX_PARAM_TYPE = 0x0000
@@ -231,11 +255,12 @@ def add_address(
         raise ValueError(f"Base address must be 4 bytes, got {len(base)}")
     
     if isinstance(offset, int):
-        # Convert integer to 4 bytes in 7-bit chunks
+        # Convert Roland hex offset literals (e.g. 0x0105 -> byte2=0x01, byte3=0x05)
+        # Each byte in Roland SysEx address is 7-bit (0x00..0x7F)
         off_bytes = [
-            (offset >> 21) & 0x7F,
-            (offset >> 14) & 0x7F,
-            (offset >> 7) & 0x7F,
+            (offset >> 24) & 0x7F,
+            (offset >> 16) & 0x7F,
+            (offset >> 8) & 0x7F,
             offset & 0x7F,
         ]
     elif len(offset) == 4:

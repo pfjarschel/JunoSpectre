@@ -80,8 +80,11 @@ class SpectreBridge(QObject):
     tvfTypeChanged = pyqtSignal(str)
     tvfKeyFollowChanged = pyqtSignal(int)
     tvfVeloSensChanged = pyqtSignal(int)
+    tvaLevelChanged = pyqtSignal(int)
+    tvaAttackChanged = pyqtSignal(int)
     tvaDecayChanged = pyqtSignal(int)
     tvaSustainChanged = pyqtSignal(int)
+    tvaReleaseChanged = pyqtSignal(int)
     tvaPanChanged = pyqtSignal(int)
     tvaVeloSensChanged = pyqtSignal(int)
     pitchCoarseChanged = pyqtSignal(int)
@@ -414,6 +417,14 @@ class SpectreBridge(QObject):
     def tvfVeloSens(self) -> int:
         return self._active_tone().tvf_env_velo_sens
 
+    @pyqtProperty(int, notify=tvaLevelChanged)
+    def tvaLevel(self) -> int:
+        return self._active_tone().level
+
+    @pyqtProperty(int, notify=tvaAttackChanged)
+    def tvaAttack(self) -> int:
+        return self._active_tone().tva_attack
+
     @pyqtProperty(int, notify=tvaDecayChanged)
     def tvaDecay(self) -> int:
         return self._active_tone().tva_decay
@@ -421,6 +432,10 @@ class SpectreBridge(QObject):
     @pyqtProperty(int, notify=tvaSustainChanged)
     def tvaSustain(self) -> int:
         return self._active_tone().tva_sustain
+
+    @pyqtProperty(int, notify=tvaReleaseChanged)
+    def tvaRelease(self) -> int:
+        return self._active_tone().tva_release
 
     @pyqtProperty(int, notify=tvaPanChanged)
     def tvaPan(self) -> int:
@@ -715,41 +730,37 @@ class SpectreBridge(QObject):
     # Properties for QML: Mod Matrix (1..4)
     # -------------------------------------------------------------------------
 
+    def _build_matrix_ctrl_dict(self, ctrl_idx: int) -> dict:
+        """Helper to build dict representation of a matrix controller including tone switches."""
+        c = self.patch_state.common.matrix_ctrls[ctrl_idx]
+        sw1 = [self.patch_state.tones[t].matrix_switches[ctrl_idx][0] for t in range(4)]
+        sw2 = [self.patch_state.tones[t].matrix_switches[ctrl_idx][1] for t in range(4)]
+        sw3 = [self.patch_state.tones[t].matrix_switches[ctrl_idx][2] for t in range(4)]
+        sw4 = [self.patch_state.tones[t].matrix_switches[ctrl_idx][3] for t in range(4)]
+        return {
+            "source": c.source,
+            "dest1": c.dest1, "sens1": c.sens1 - 64, "dest1_sw": sw1,
+            "dest2": c.dest2, "sens2": c.sens2 - 64, "dest2_sw": sw2,
+            "dest3": c.dest3, "sens3": c.sens3 - 64, "dest3_sw": sw3,
+            "dest4": c.dest4, "sens4": c.sens4 - 64, "dest4_sw": sw4,
+            "dest_sw": [sw1, sw2, sw3, sw4],
+        }
+
     @pyqtProperty("QVariantMap", notify=matrixCtrlChanged)
     def matrixCtrl1(self) -> dict:
-        c = self.patch_state.common.matrix_ctrls[0]
-        return {
-            "source": c.source, "dest1": c.dest1, "sens1": c.sens1 - 64,
-            "dest2": c.dest2, "sens2": c.sens2 - 64, "dest3": c.dest3, "sens3": c.sens3 - 64,
-            "dest4": c.dest4, "sens4": c.sens4 - 64
-        }
+        return self._build_matrix_ctrl_dict(0)
 
     @pyqtProperty("QVariantMap", notify=matrixCtrlChanged)
     def matrixCtrl2(self) -> dict:
-        c = self.patch_state.common.matrix_ctrls[1]
-        return {
-            "source": c.source, "dest1": c.dest1, "sens1": c.sens1 - 64,
-            "dest2": c.dest2, "sens2": c.sens2 - 64, "dest3": c.dest3, "sens3": c.sens3 - 64,
-            "dest4": c.dest4, "sens4": c.sens4 - 64
-        }
+        return self._build_matrix_ctrl_dict(1)
 
     @pyqtProperty("QVariantMap", notify=matrixCtrlChanged)
     def matrixCtrl3(self) -> dict:
-        c = self.patch_state.common.matrix_ctrls[2]
-        return {
-            "source": c.source, "dest1": c.dest1, "sens1": c.sens1 - 64,
-            "dest2": c.dest2, "sens2": c.sens2 - 64, "dest3": c.dest3, "sens3": c.sens3 - 64,
-            "dest4": c.dest4, "sens4": c.sens4 - 64
-        }
+        return self._build_matrix_ctrl_dict(2)
 
     @pyqtProperty("QVariantMap", notify=matrixCtrlChanged)
     def matrixCtrl4(self) -> dict:
-        c = self.patch_state.common.matrix_ctrls[3]
-        return {
-            "source": c.source, "dest1": c.dest1, "sens1": c.sens1 - 64,
-            "dest2": c.dest2, "sens2": c.sens2 - 64, "dest3": c.dest3, "sens3": c.sens3 - 64,
-            "dest4": c.dest4, "sens4": c.sens4 - 64
-        }
+        return self._build_matrix_ctrl_dict(3)
 
     # -------------------------------------------------------------------------
     # Properties for QML: Step LFO, VA Engine, Perf Mixer, Macros
@@ -757,11 +768,11 @@ class SpectreBridge(QObject):
 
     @pyqtProperty("QVariantList", notify=stepLfoChanged)
     def stepLfoSteps(self) -> list:
-        return self.patch_state.step_lfo.steps
+        return self._active_tone().step_lfo_steps
 
     @pyqtProperty(int, notify=stepLfoChanged)
     def stepLfoCurve(self) -> int:
-        return self.patch_state.step_lfo.curve_type
+        return self._active_tone().step_lfo_type
 
     @pyqtProperty(int, notify=stepLfoChanged)
     def stepLfoRateIdx(self) -> int:
@@ -781,6 +792,14 @@ class SpectreBridge(QObject):
 
     @pyqtProperty(int, notify=vaParamsChanged)
     def vaUnisonDetune(self) -> int:
+        return self.patch_state.va_unison_detune
+
+    @pyqtProperty(bool, notify=vaParamsChanged)
+    def vaAutoDetune(self) -> bool:
+        return self.patch_state.va_unison
+
+    @pyqtProperty(int, notify=vaParamsChanged)
+    def vaAutoDetuneSpread(self) -> int:
         return self.patch_state.va_unison_detune
 
     @pyqtProperty(int, notify=vaParamsChanged)
@@ -913,6 +932,18 @@ class SpectreBridge(QObject):
     @pyqtProperty(int, notify=macrosChanged)
     def macro8(self) -> int:
         return self.patch_state.macros[7]
+
+    @pyqtProperty(int, notify=macrosChanged)
+    def analogFeel(self) -> int:
+        return self.patch_state.common.analog_feel
+
+    @pyqtProperty(int, notify=macrosChanged)
+    def chorusSend(self) -> int:
+        return self.patch_state.common.chorus_send
+
+    @pyqtProperty(int, notify=macrosChanged)
+    def reverbSend(self) -> int:
+        return self.patch_state.common.reverb_send
 
     # -------------------------------------------------------------------------
     # Invokable Slots from QML: Transport, Shell, Tone Selection
@@ -1105,14 +1136,18 @@ class SpectreBridge(QObject):
             self.tvfDecayChanged.emit(self.tvfDecay)
             self.tvfSustainChanged.emit(self.tvfSustain)
             self.tvfReleaseChanged.emit(self.tvfRelease)
+            self.tvaLevelChanged.emit(self.tvaLevel)
             self.tvaPanChanged.emit(self.tvaPan)
             self.tvaVeloSensChanged.emit(self.tvaVeloSens)
-            self.masterAttackChanged.emit(self.masterAttack)
+            self.tvaAttackChanged.emit(self.tvaAttack)
             self.tvaDecayChanged.emit(self.tvaDecay)
             self.tvaSustainChanged.emit(self.tvaSustain)
+            self.tvaReleaseChanged.emit(self.tvaRelease)
+            self.masterAttackChanged.emit(self.masterAttack)
             self.masterReleaseChanged.emit(self.masterRelease)
             self.lfoParamsChanged.emit()
             self.pitchEnvChanged.emit()
+            self.stepLfoChanged.emit()
 
     @pyqtSlot(bool)
     def setLinkedMode(self, linked: bool) -> None:
@@ -1123,12 +1158,10 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(int)
     def toggleToneMute(self, tone_number: int) -> None:
-        """Toggle mute state for tone 1..4."""
+        """Toggle mute state for tone 1..4 (disables/enables wave playback)."""
         idx = max(1, min(4, tone_number)) - 1
-        self.patch_state.tones[idx].muted = not self.patch_state.tones[idx].muted
-        self.engine.toggle_tone_mute(tone_number)
-        self.toneMutesChanged.emit()
-        self.toneLevelsChanged.emit(*self.engine.tone_levels)
+        new_muted = not self.patch_state.tones[idx].muted
+        self.setToneMute(tone_number, new_muted)
 
     @pyqtSlot(int, bool)
     def setToneMute(self, tone_number: int, muted: bool) -> None:
@@ -1136,8 +1169,17 @@ class SpectreBridge(QObject):
         idx = max(1, min(4, tone_number)) - 1
         self.patch_state.tones[idx].muted = muted
         self.engine.set_tone_mute(tone_number, muted)
+        target_level = 0 if muted else self.patch_state.tones[idx].level
+        if self.engine.juno:
+            try:
+                self.engine.juno.set_tone_switch(tone_number, not muted)
+                self.engine.juno.set_tone_level(tone_number, target_level)
+            except Exception as e:
+                logger.error(f"Error setting tone mute on synth: {e}")
         self.toneMutesChanged.emit()
         self.toneLevelsChanged.emit(*self.engine.tone_levels)
+        if tone_number == self._selected_tone:
+            self.tvaLevelChanged.emit(self.tvaLevel)
 
     @pyqtSlot(int, int)
     def setToneLevel(self, tone_number: int, level: int) -> None:
@@ -1145,8 +1187,33 @@ class SpectreBridge(QObject):
         idx = max(1, min(4, tone_number)) - 1
         clamped = max(0, min(127, int(level)))
         self.patch_state.tones[idx].level = clamped
-        self.engine.set_tone_level(tone_number, clamped)
-        self.toneLevelsChanged.emit(*self.engine.tone_levels)
+        if not self.patch_state.tones[idx].muted:
+            self.engine.set_tone_level(tone_number, clamped)
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_level(tone_number, clamped)
+                except Exception as e:
+                    logger.error(f"Error setting tone level on synth: {e}")
+        self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])
+        if tone_number == self._selected_tone:
+            self.tvaLevelChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def setTvaLevel(self, val: int) -> None:
+        """Set active tone TVA Level (0..127). Ganged across all 4 tones if linked."""
+        clamped = max(0, min(127, int(val)))
+        targets = self._target_tones()
+        for t in targets:
+            t.level = clamped
+            if not t.muted:
+                self.engine.set_tone_level(t.tone_index, clamped)
+                if self.engine.juno:
+                    try:
+                        self.engine.juno.set_tone_level(t.tone_index, clamped)
+                    except Exception as e:
+                        logger.error(f"Error setting tone level on synth: {e}")
+        self.tvaLevelChanged.emit(self._active_tone().level)
+        self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])
 
     @pyqtSlot(str)
     def setCurve(self, curve_str: str) -> None:
@@ -1160,12 +1227,63 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(int, int)
     def setMacro(self, index: int, value: int) -> None:
-        """Set macro 1..8 value (0..127)."""
-        if 1 <= index <= 8:
-            clamped = max(0, min(127, int(value)))
-            if self.patch_state.macros[index - 1] != clamped:
-                self.patch_state.macros[index - 1] = clamped
-                self.macrosChanged.emit()
+        """Set macro 1..8 value (0..127) and dispatch to synth parameter."""
+        if not (1 <= index <= 8):
+            return
+        clamped = max(0, min(127, int(value)))
+        if self.patch_state.macros[index - 1] != clamped:
+            self.patch_state.macros[index - 1] = clamped
+            self.macrosChanged.emit()
+
+            juno = self.engine.juno
+            try:
+                if index == 1:
+                    offset_val = max(1, min(127, clamped))
+                    self.patch_state.common.cutoff_offset = offset_val
+                    self._active_tone().tvf_cutoff = offset_val
+                    self.masterCutoffChanged.emit(offset_val)
+                    if juno:
+                        juno.set_patch_offsets(cutoff=offset_val)
+                elif index == 2:
+                    offset_val = max(1, min(127, clamped))
+                    self.patch_state.common.resonance_offset = offset_val
+                    self._active_tone().tvf_resonance = offset_val
+                    self.masterResoChanged.emit(offset_val)
+                    if juno:
+                        juno.set_patch_offsets(resonance=offset_val)
+                elif index == 3:
+                    offset_val = max(1, min(127, clamped))
+                    self.patch_state.common.attack_offset = offset_val
+                    self._active_tone().tva_attack = offset_val
+                    self.masterAttackChanged.emit(offset_val)
+                    if juno:
+                        juno.set_patch_offsets(attack=offset_val)
+                elif index == 4:
+                    offset_val = max(1, min(127, clamped))
+                    self.patch_state.common.release_offset = offset_val
+                    self._active_tone().tva_release = offset_val
+                    self.masterReleaseChanged.emit(offset_val)
+                    if juno:
+                        juno.set_patch_offsets(release=offset_val)
+                elif index == 5:
+                    self.patch_state.common.portamento_time = clamped
+                    self.portamentoTimeChanged.emit(clamped)
+                    if juno:
+                        juno.set_portamento(self.patch_state.common.portamento_switch, time=clamped)
+                elif index == 6:
+                    self.patch_state.common.analog_feel = clamped
+                    if juno:
+                        juno.set_patch_analog_feel(clamped)
+                elif index == 7:
+                    self.patch_state.common.chorus_send = clamped
+                    if juno:
+                        juno.set_chorus(self.patch_state.effects.chorus_type, level=clamped)
+                elif index == 8:
+                    self.patch_state.common.reverb_send = clamped
+                    if juno:
+                        juno.set_reverb(self.patch_state.effects.reverb_type, level=clamped)
+            except Exception as e:
+                logger.error(f"Error dispatching macro {index} to synth: {e}")
 
     # -------------------------------------------------------------------------
     # Invokable Slots from QML: Tone TVF, TVA, Pitch, Portamento
@@ -1325,7 +1443,7 @@ class SpectreBridge(QObject):
         self.tvfReleaseChanged.emit(clamped)
 
     @pyqtSlot(int)
-    def setMasterAttack(self, val: int) -> None:
+    def setTvaAttack(self, val: int) -> None:
         """Set TVA Attack time (0..127). Ganged if linked."""
         clamped = max(0, min(127, int(val)))
         targets = self._target_tones()
@@ -1336,7 +1454,12 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_tva(t.tone_index, attack=clamped)
                 except Exception as e:
                     logger.error(f"Error setting TVA attack on synth: {e}")
+        self.tvaAttackChanged.emit(clamped)
         self.masterAttackChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def setMasterAttack(self, val: int) -> None:
+        self.setTvaAttack(val)
 
     @pyqtSlot(int)
     def setTvaDecay(self, val: int) -> None:
@@ -1365,7 +1488,7 @@ class SpectreBridge(QObject):
         self.tvaSustainChanged.emit(clamped)
 
     @pyqtSlot(int)
-    def setMasterRelease(self, val: int) -> None:
+    def setTvaRelease(self, val: int) -> None:
         """Set TVA Release time (0..127). Ganged if linked."""
         clamped = max(0, min(127, int(val)))
         targets = self._target_tones()
@@ -1376,7 +1499,12 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_tva(t.tone_index, release=clamped)
                 except Exception as e:
                     logger.error(f"Error setting TVA release on synth: {e}")
+        self.tvaReleaseChanged.emit(clamped)
         self.masterReleaseChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def setMasterRelease(self, val: int) -> None:
+        self.setTvaRelease(val)
 
     @pyqtSlot(int)
     def setTvaPan(self, val: int) -> None:
@@ -1430,12 +1558,15 @@ class SpectreBridge(QObject):
         targets = self._target_tones()
         for t in targets:
             t.fine_tune = raw_val
+            if not self.patch_state.va_unison:
+                self.patch_state.va_custom_detunes[t.tone_index - 1] = raw_val
             if self.engine.juno:
                 try:
                     self.engine.juno.set_tone_pitch(t.tone_index, fine=raw_val)
                 except Exception as e:
                     logger.error(f"Error setting fine tune on synth: {e}")
         self.pitchFineChanged.emit(clamped)
+        self.vaParamsChanged.emit()
 
     @pyqtSlot(int)
     def setPortamentoTime(self, val: int) -> None:
@@ -1464,9 +1595,11 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(bool)
     def setLegatoSwitch(self, enabled: bool) -> None:
-        """Toggle Patch Legato Switch."""
+        """Toggle Patch Legato Switch (sets Mono/Poly to MONO when ON)."""
         if self.patch_state.common.legato_switch != enabled:
             self.patch_state.common.legato_switch = enabled
+            self.patch_state.common.mono_poly = 0 if enabled else 1
+            self.patch_state.common.portamento_mode = 1 if enabled else 0
             self.legatoSwitchChanged.emit(enabled)
             if self.engine.juno:
                 try:
@@ -1477,6 +1610,8 @@ class SpectreBridge(QObject):
     @pyqtSlot(int, str, "QVariant")
     def setLfoParam(self, lfo_idx: int, param: str, val) -> None:
         """Set LFO 1 or LFO 2 parameter for active tone (or all if linked)."""
+        if param == "wave" and val == "SAW":
+            val = "SAW-UP"
         targets = self._target_tones()
         for t in targets:
             if lfo_idx == 1:
@@ -1555,6 +1690,339 @@ class SpectreBridge(QObject):
                         self.engine.juno.set_tone_param(t.tone_index, 0x0103, t.lfo2_fade_time)
 
         self.lfoParamsChanged.emit()
+
+    # -------------------------------------------------------------------------
+    # Invokable Slots from QML: Sculptor Panel (Mutates ALL 4 Tones Simultaneously)
+    # -------------------------------------------------------------------------
+
+    @pyqtSlot(int)
+    def sculptCutoff(self, val: int) -> None:
+        """Sculpt TVF Cutoff across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tvf_cutoff = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tvf(t.tone_index, cutoff=clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting cutoff on synth: {e}")
+        self.masterCutoffChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptReso(self, val: int) -> None:
+        """Sculpt TVF Resonance across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tvf_resonance = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tvf(t.tone_index, resonance=clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting resonance on synth: {e}")
+        self.masterResoChanged.emit(clamped)
+
+    @pyqtSlot(str)
+    def sculptTvfType(self, type_str: str) -> None:
+        """Sculpt TVF filter type across all 4 tones."""
+        val_idx = 1
+        if type_str in TVF_TYPE_NAMES:
+            val_idx = TVF_TYPE_NAMES.index(type_str)
+        for t in self.patch_state.tones:
+            t.tvf_filter_type = val_idx
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tvf(t.tone_index, filter_type=val_idx)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVF filter type on synth: {e}")
+        self.tvfTypeChanged.emit(type_str)
+
+    @pyqtSlot(int)
+    def sculptTvfKeyFollow(self, val: int) -> None:
+        """Sculpt TVF Cutoff Keyfollow across all 4 tones (-100..+100%)."""
+        clamped = max(-100, min(100, int(val)))
+        raw_val = 64 + (clamped // 10)
+        for t in self.patch_state.tones:
+            t.tvf_cutoff_keyfollow = raw_val
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_param(t.tone_index, 0x004A, raw_val)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVF keyfollow on synth: {e}")
+        self.tvfKeyFollowChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvfEnvDepth(self, depth: int) -> None:
+        """Sculpt TVF envelope depth across all 4 tones (-63..+63)."""
+        clamped = max(-63, min(63, int(depth)))
+        raw_val = 64 + clamped
+        for t in self.patch_state.tones:
+            t.tvf_env_depth = raw_val
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tvf(t.tone_index, env_depth=raw_val)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVF env depth on synth: {e}")
+        self.tvfEnvDepthChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvfVeloSens(self, val: int) -> None:
+        """Sculpt TVF velocity sensitivity across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tvf_env_velo_sens = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_param(t.tone_index, 0x0051, clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVF velo sens on synth: {e}")
+        self.tvfVeloSensChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvfAttack(self, val: int) -> None:
+        """Sculpt TVF Attack across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tvf_attack = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tvf(t.tone_index, attack=clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVF attack on synth: {e}")
+        self.tvfAttackChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvfDecay(self, val: int) -> None:
+        """Sculpt TVF Decay across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tvf_decay = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tvf(t.tone_index, decay=clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVF decay on synth: {e}")
+        self.tvfDecayChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvfSustain(self, val: int) -> None:
+        """Sculpt TVF Sustain across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tvf_sustain = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tvf(t.tone_index, sustain=clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVF sustain on synth: {e}")
+        self.tvfSustainChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvfRelease(self, val: int) -> None:
+        """Sculpt TVF Release across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tvf_release = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tvf(t.tone_index, release=clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVF release on synth: {e}")
+        self.tvfReleaseChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvaPan(self, val: int) -> None:
+        """Sculpt Tone TVA Pan across all 4 tones (-64..+63)."""
+        clamped = max(-64, min(63, int(val)))
+        raw_val = clamped + 64
+        for t in self.patch_state.tones:
+            t.pan = raw_val
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tva(t.tone_index, pan=raw_val)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVA pan on synth: {e}")
+        self.tvaPanChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvaVeloSens(self, val: int) -> None:
+        """Sculpt Tone TVA Velocity Sensitivity across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tva_velo_sens = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_param(t.tone_index, 0x0062, clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVA velo sens on synth: {e}")
+        self.tvaVeloSensChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvaAttack(self, val: int) -> None:
+        """Sculpt TVA Attack time across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tva_attack = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tva(t.tone_index, attack=clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVA attack on synth: {e}")
+        self.tvaAttackChanged.emit(clamped)
+        self.masterAttackChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvaDecay(self, val: int) -> None:
+        """Sculpt TVA Decay time across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tva_decay = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tva(t.tone_index, decay=clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVA decay on synth: {e}")
+        self.tvaDecayChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvaSustain(self, val: int) -> None:
+        """Sculpt TVA Sustain level across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tva_sustain = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tva(t.tone_index, sustain=clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVA sustain on synth: {e}")
+        self.tvaSustainChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptTvaRelease(self, val: int) -> None:
+        """Sculpt TVA Release time across all 4 tones (0..127)."""
+        clamped = max(0, min(127, int(val)))
+        for t in self.patch_state.tones:
+            t.tva_release = clamped
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_tva(t.tone_index, release=clamped)
+                except Exception as e:
+                    logger.error(f"Error sculpting TVA release on synth: {e}")
+        self.tvaReleaseChanged.emit(clamped)
+        self.masterReleaseChanged.emit(clamped)
+
+    @pyqtSlot(int, str, "QVariant")
+    def sculptLfoParam(self, lfo_idx: int, param: str, val) -> None:
+        """Sculpt LFO 1 or LFO 2 parameters across all 4 tones."""
+        if param == "wave" and val == "SAW":
+            val = "SAW-UP"
+        for t in self.patch_state.tones:
+            if lfo_idx == 1:
+                if param == "wave" and val in LFO_WAVE_NAMES:
+                    t.lfo1_waveform = LFO_WAVE_NAMES.index(val)
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, waveform=t.lfo1_waveform)
+                elif param == "rate":
+                    t.lfo1_rate = max(0, min(127, int(val)))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, rate=t.lfo1_rate)
+                elif param == "pitch_depth":
+                    t.lfo1_pitch_depth = max(1, min(127, int(val) + 64))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, pitch_depth=t.lfo1_pitch_depth)
+                elif param == "tvf_depth":
+                    t.lfo1_tvf_depth = max(1, min(127, int(val) + 64))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, tvf_depth=t.lfo1_tvf_depth)
+                elif param == "tva_depth":
+                    t.lfo1_tva_depth = max(1, min(127, int(val) + 64))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, tva_depth=t.lfo1_tva_depth)
+                elif param == "pan_depth":
+                    t.lfo1_pan_depth = max(1, min(127, int(val) + 64))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, pan_depth=t.lfo1_pan_depth)
+                elif param == "delay_time":
+                    t.lfo1_delay_time = max(0, min(127, int(val)))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_param(t.tone_index, 0x0072, t.lfo1_delay_time)
+                elif param == "fade_mode" and val in LFO_FADE_MODE_NAMES:
+                    t.lfo1_fade_mode = LFO_FADE_MODE_NAMES.index(val)
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_param(t.tone_index, 0x0074, t.lfo1_fade_mode)
+                elif param == "fade_time":
+                    t.lfo1_fade_time = max(0, min(127, int(val)))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_param(t.tone_index, 0x0075, t.lfo1_fade_time)
+            elif lfo_idx == 2:
+                if param == "wave" and val in LFO_WAVE_NAMES:
+                    t.lfo2_waveform = LFO_WAVE_NAMES.index(val)
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, waveform=t.lfo2_waveform)
+                elif param == "rate":
+                    t.lfo2_rate = max(0, min(127, int(val)))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, rate=t.lfo2_rate)
+                elif param == "pitch_depth":
+                    t.lfo2_pitch_depth = max(1, min(127, int(val) + 64))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, pitch_depth=t.lfo2_pitch_depth)
+                elif param == "tvf_depth":
+                    t.lfo2_tvf_depth = max(1, min(127, int(val) + 64))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, tvf_depth=t.lfo2_tvf_depth)
+                elif param == "tva_depth":
+                    t.lfo2_tva_depth = max(1, min(127, int(val) + 64))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, tva_depth=t.lfo2_tva_depth)
+                elif param == "pan_depth":
+                    t.lfo2_pan_depth = max(1, min(127, int(val) + 64))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, pan_depth=t.lfo2_pan_depth)
+                elif param == "delay_time":
+                    t.lfo2_delay_time = max(0, min(127, int(val)))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_param(t.tone_index, 0x0100, t.lfo2_delay_time)
+                elif param == "fade_mode" and val in LFO_FADE_MODE_NAMES:
+                    t.lfo2_fade_mode = LFO_FADE_MODE_NAMES.index(val)
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_param(t.tone_index, 0x0102, t.lfo2_fade_mode)
+                elif param == "fade_time":
+                    t.lfo2_fade_time = max(0, min(127, int(val)))
+                    if self.engine.juno:
+                        self.engine.juno.set_tone_param(t.tone_index, 0x0103, t.lfo2_fade_time)
+
+        self.lfoParamsChanged.emit()
+
+    @pyqtSlot(int)
+    def sculptPitchCoarse(self, val: int) -> None:
+        """Sculpt Tone Coarse Tune across all 4 tones (-48..+48)."""
+        clamped = max(-48, min(48, int(val)))
+        raw_val = clamped + 64
+        for t in self.patch_state.tones:
+            t.coarse_tune = raw_val
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_pitch(t.tone_index, coarse=raw_val)
+                except Exception as e:
+                    logger.error(f"Error sculpting coarse tune on synth: {e}")
+        self.pitchCoarseChanged.emit(clamped)
+
+    @pyqtSlot(int)
+    def sculptPitchFine(self, val: int) -> None:
+        """Sculpt Tone Fine Tune across all 4 tones (-50..+50)."""
+        clamped = max(-50, min(50, int(val)))
+        raw_val = clamped + 64
+        for t in self.patch_state.tones:
+            t.fine_tune = raw_val
+            if not self.patch_state.va_unison:
+                self.patch_state.va_custom_detunes[t.tone_index - 1] = raw_val
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_pitch(t.tone_index, fine=raw_val)
+                except Exception as e:
+                    logger.error(f"Error sculpting fine tune on synth: {e}")
+        self.pitchFineChanged.emit(clamped)
+        self.vaParamsChanged.emit()
 
     # -------------------------------------------------------------------------
     # Invokable Slots from QML: Pitch Envelope View
@@ -1799,29 +2267,104 @@ class SpectreBridge(QObject):
 
             self.matrixCtrlChanged.emit()
 
+    @pyqtSlot(int, int, int, bool)
+    def setToneMatrixSwitch(self, tone_index: int, ctrl_index: int, dest_index: int, enable: bool) -> None:
+        """Set Tone Control Switch (1..4) for a Matrix Controller (1..4) Destination (1..4)."""
+        if 1 <= tone_index <= 4 and 1 <= ctrl_index <= 4 and 1 <= dest_index <= 4:
+            sw_val = 1 if enable else 0
+            self.patch_state.tones[tone_index - 1].matrix_switches[ctrl_index - 1][dest_index - 1] = sw_val
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_matrix_switch(tone_index, ctrl_index, dest_index, sw_val)
+                except Exception as e:
+                    logger.error(f"Error setting tone matrix switch on synth: {e}")
+            self.matrixCtrlChanged.emit()
+
     # -------------------------------------------------------------------------
     # Invokable Slots from QML: Step LFO View
     # -------------------------------------------------------------------------
 
     @pyqtSlot(int, int)
     def setStepLfoStep(self, step_index: int, val: int) -> None:
-        """Set bipolar value for one of the 16 steps (-63..+63)."""
+        """Set bipolar value for one of the 16 steps (-36..+36) for active tone (or all if linked)."""
         if 0 <= step_index < 16:
-            self.patch_state.step_lfo.steps[step_index] = max(-63, min(63, int(val)))
+            clamped = max(-36, min(36, int(val)))
+            targets = self._target_tones()
+            for tone in targets:
+                new_steps = list(tone.step_lfo_steps)
+                new_steps[step_index] = clamped
+                tone.step_lfo_steps = new_steps
+                if self.engine.juno:
+                    try:
+                        self.engine.juno.set_tone_step_lfo_step(tone.tone_index, step_index, clamped)
+                    except Exception as e:
+                        logger.error(f"Error setting Step LFO step {step_index} on tone {tone.tone_index}: {e}")
             self.stepLfoChanged.emit()
+
+    @pyqtSlot("QVariantList")
+    def setStepLfoAllSteps(self, steps: list) -> None:
+        """Set all 16 steps at once for active tone (or all if linked) via contiguous SysEx."""
+        clamped_steps = [max(-36, min(36, int(s))) for s in steps[:16]]
+        if len(clamped_steps) < 16:
+            clamped_steps.extend([0] * (16 - len(clamped_steps)))
+        targets = self._target_tones()
+        for tone in targets:
+            tone.step_lfo_steps = list(clamped_steps)
+            if self.engine.juno:
+                try:
+                    self.engine.juno.set_tone_step_lfo_steps(tone.tone_index, clamped_steps)
+                except Exception as e:
+                    logger.error(f"Error setting all Step LFO steps on tone {tone.tone_index}: {e}")
+        self.stepLfoChanged.emit()
 
     @pyqtSlot(str, "QVariant")
     def setStepLfoParam(self, param: str, val) -> None:
-        """Set curve, rate, destination, or depth for the Step LFO."""
-        slfo = self.patch_state.step_lfo
+        """Set curve (step type), rate, destination, or depth for the Step LFO."""
         if param == "curve":
-            slfo.curve_type = int(val)
+            step_type = max(0, min(1, int(val)))
+            targets = self._target_tones()
+            for tone in targets:
+                tone.step_lfo_type = step_type
+                if self.engine.juno:
+                    try:
+                        self.engine.juno.set_tone_step_lfo_type(tone.tone_index, step_type)
+                    except Exception as e:
+                        logger.error(f"Error setting Step LFO type on tone {tone.tone_index}: {e}")
+            self.stepLfoChanged.emit()
         elif param == "rateIdx":
-            slfo.sync_rate_idx = int(val)
+            self.patch_state.step_lfo.sync_rate_idx = int(val)
+            self.stepLfoChanged.emit()
         elif param == "destIdx":
-            slfo.dest_idx = int(val)
+            self.patch_state.step_lfo.dest_idx = int(val)
+            self.stepLfoChanged.emit()
         elif param == "depth":
-            slfo.depth = max(0, min(127, int(val)))
+            self.patch_state.step_lfo.depth = max(0, min(127, int(val)))
+            self.stepLfoChanged.emit()
+
+    @pyqtSlot(int)
+    def assignStepLfoToLfo(self, lfo_num: int) -> None:
+        """Assign or toggle Step LFO (Wave 12) on LFO 1 or LFO 2 for active tone (or all if linked)."""
+        if lfo_num not in (1, 2):
+            return
+        targets = self._target_tones()
+        for tone in targets:
+            if lfo_num == 1:
+                new_wave = 1 if tone.lfo1_waveform == 12 else 12  # 1: TRI, 12: STEP
+                tone.lfo1_waveform = new_wave
+                if self.engine.juno:
+                    try:
+                        self.engine.juno.set_tone_lfo(tone.tone_index, lfo_index=1, waveform=new_wave)
+                    except Exception as e:
+                        logger.error(f"Error assigning LFO 1 wave on tone {tone.tone_index}: {e}")
+            else:
+                new_wave = 0 if tone.lfo2_waveform == 12 else 12  # 0: SIN, 12: STEP
+                tone.lfo2_waveform = new_wave
+                if self.engine.juno:
+                    try:
+                        self.engine.juno.set_tone_lfo(tone.tone_index, lfo_index=2, waveform=new_wave)
+                    except Exception as e:
+                        logger.error(f"Error assigning LFO 2 wave on tone {tone.tone_index}: {e}")
+        self.lfoParamsChanged.emit()
         self.stepLfoChanged.emit()
 
     # -------------------------------------------------------------------------
@@ -1857,10 +2400,14 @@ class SpectreBridge(QObject):
     def setVaOscFine(self, osc_index: int, val: int) -> None:
         """Set fine tune in cents for oscillator 1..4."""
         if 1 <= osc_index <= 4:
+            if self.patch_state.va_unison:
+                # Locked in Auto Detune mode
+                return
             clamped = max(-50, min(50, int(val)))
             raw = clamped + 64
             t = self.patch_state.tones[osc_index - 1]
             t.fine_tune = raw
+            self.patch_state.va_custom_detunes[osc_index - 1] = raw
             if self.engine.juno:
                 try:
                     self.engine.juno.set_tone_pitch(osc_index, fine=raw)
@@ -1898,25 +2445,50 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(bool)
     def setVaUnison(self, active: bool) -> None:
-        """Toggle VA Unison detune mode."""
-        self.patch_state.va_unison = active
-        self.applyVaUnisonDetune()
+        """Toggle VA Auto Detune mode with custom detune memory cache."""
+        if active:
+            # Snapshot custom detuning before engaging Auto Detune
+            self.patch_state.va_custom_detunes = [t.fine_tune for t in self.patch_state.tones]
+            self.patch_state.va_unison = True
+            self.applyVaUnisonDetune()
+        else:
+            self.patch_state.va_unison = False
+            # Restore cached custom fine detunings
+            for idx, raw in enumerate(self.patch_state.va_custom_detunes, start=1):
+                self.patch_state.tones[idx - 1].fine_tune = raw
+                if self.engine.juno:
+                    try:
+                        self.engine.juno.set_tone_pitch(idx, fine=raw)
+                    except Exception as e:
+                        logger.error(f"Error restoring custom fine tune on synth: {e}")
+        self.pitchFineChanged.emit(self.pitchFine)
         self.vaParamsChanged.emit()
+
+    @pyqtSlot(bool)
+    def setVaAutoDetune(self, active: bool) -> None:
+        """Alias for setVaUnison."""
+        self.setVaUnison(active)
 
     @pyqtSlot(int)
     def setVaUnisonDetune(self, cents: int) -> None:
-        """Set VA Unison detune spread (0..50 cents)."""
+        """Set VA Auto Detune spread (0..50 cents)."""
+        if not self.patch_state.va_unison:
+            return
         self.patch_state.va_unison_detune = max(0, min(50, int(cents)))
         self.applyVaUnisonDetune()
         self.vaParamsChanged.emit()
 
+    @pyqtSlot(int)
+    def setVaAutoDetuneSpread(self, cents: int) -> None:
+        """Alias for setVaUnisonDetune."""
+        self.setVaUnisonDetune(cents)
+
     def applyVaUnisonDetune(self) -> None:
         """Distribute symmetrical unison detuning across all 4 oscillators."""
         if not self.patch_state.va_unison:
-            spreads = [0, 0, 0, 0]
-        else:
-            d = self.patch_state.va_unison_detune
-            spreads = [-d, d, -(d // 2), (d // 2)]
+            return
+        d = self.patch_state.va_unison_detune
+        spreads = [-d, d, -(d // 2), (d // 2)]
 
         for idx, offset in enumerate(spreads, start=1):
             raw = max(14, min(114, 64 + offset))
@@ -1927,6 +2499,7 @@ class SpectreBridge(QObject):
                 except Exception as e:
                     logger.error(f"Error applying unison detune on synth: {e}")
         self.pitchFineChanged.emit(self.pitchFine)
+        self.vaParamsChanged.emit()
 
     # -------------------------------------------------------------------------
     # Invokable Slots from QML: Performance Mixer View
@@ -2028,6 +2601,7 @@ class SpectreBridge(QObject):
                             state.tones[2].level,
                             state.tones[3].level,
                         )
+                        self.patch_state.va_custom_detunes = [t.fine_tune for t in state.tones]
                 except Exception as e:
                     logger.warning(f"Could not read full patch: {e}")
 

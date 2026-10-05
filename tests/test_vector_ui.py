@@ -346,14 +346,15 @@ def test_modmatrix_picker():
     assert matrix_view is not None
 
     sources = matrix_view.property("sources").toVariant()
-    assert len(sources) == 11
+    assert len(sources) == 19
     assert "CC01 MOD WHEEL" in sources
-    assert "STEP LFO" in sources
+    assert "PITCH BEND" in sources
 
     destinations = matrix_view.property("destinations").toVariant()
-    assert len(destinations) == 11
+    assert len(destinations) == 34
     assert "OFF" in destinations
     assert "TVF CUTOFF" in destinations
+    assert "TMT" in destinations
 
     assert matrix_view.property("pickerVisible") is False
 
@@ -362,6 +363,28 @@ def test_modmatrix_picker():
     assert matrix_view.property("pickerVisible") is True
     matrix_view.setProperty("pickerVisible", False)
     assert matrix_view.property("pickerVisible") is False
+
+
+def test_modmatrix_tone_switches():
+    """Verify Bridge matrix controller tone switch properties and slots."""
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+
+    ctrl1 = bridge.matrixCtrl1
+    assert "dest1_sw" in ctrl1
+    assert ctrl1["dest1_sw"] == [1, 1, 1, 1]
+    assert "dest_sw" in ctrl1
+
+    # Toggle Tone 1, Ctrl 1, Dest 1 to OFF
+    bridge.setToneMatrixSwitch(1, 1, 1, False)
+    ctrl1_updated = bridge.matrixCtrl1
+    assert ctrl1_updated["dest1_sw"] == [0, 1, 1, 1]
+    assert bridge.patch_state.tones[0].matrix_switches[0][0] == 0
+
+    # Toggle it back to ON
+    bridge.setToneMatrixSwitch(1, 1, 1, True)
+    assert bridge.matrixCtrl1["dest1_sw"] == [1, 1, 1, 1]
+    assert bridge.patch_state.tones[0].matrix_switches[0][0] == 1
 
 
 def test_pitchenv_draggable_mseg():
@@ -641,6 +664,226 @@ def test_init_patch_workflow():
     assert master_fx_view.property("reverbLevel") == 0
     assert master_fx_view.property("eqLowGain") == 0
     assert pitch_view.property("envDepth") == 0
+
+
+def test_pcm_sound_designer_enhancements():
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+
+    # 1. Test tvaLevel and tone switching
+    bridge.setToneLevel(1, 105)
+    bridge.setToneLevel(2, 75)
+    bridge.setSelectedTone(1)
+    assert bridge.tvaLevel == 105
+
+    bridge.setSelectedTone(2)
+    assert bridge.tvaLevel == 75
+
+    # 2. Test setTvaLevel affects active tone
+    bridge.setTvaLevel(90)
+    assert bridge.tone2Level == 90
+    assert bridge.tvaLevel == 90
+
+    # 3. Test linkedMode
+    bridge.setLinkedMode(True)
+    bridge.setTvaLevel(110)
+    assert bridge.tone1Level == 110
+    assert bridge.tone2Level == 110
+    assert bridge.tone3Level == 110
+    assert bridge.tone4Level == 110
+    bridge.setLinkedMode(False)
+
+    # 4. Test TVA Attack and Release
+    bridge.setTvaAttack(15)
+    assert bridge.tvaAttack == 15
+    bridge.setTvaRelease(45)
+    assert bridge.tvaRelease == 45
+
+    # 5. Test Legato Switch
+    bridge.setLegatoSwitch(True)
+    assert bridge.legatoSwitch is True
+    assert bridge.patch_state.common.mono_poly == 0  # MONO
+    assert bridge.patch_state.common.portamento_mode == 1  # LEGATO
+    bridge.setLegatoSwitch(False)
+    assert bridge.legatoSwitch is False
+    assert bridge.patch_state.common.mono_poly == 1  # POLY
+    assert bridge.patch_state.common.portamento_mode == 0  # NORMAL
+
+    # 6. Test Macro dispatches
+    bridge.setMacro(1, 80)
+    assert bridge.macro1 == 80
+    assert bridge.masterCutoff == 80
+    bridge.setMacro(5, 40)
+    assert bridge.macro5 == 40
+    assert bridge.portamentoTime == 40
+    bridge.setMacro(6, 60)
+    assert bridge.macro6 == 60
+    assert bridge.analogFeel == 60
+    bridge.setMacro(7, 35)
+    assert bridge.macro7 == 35
+    assert bridge.chorusSend == 35
+    bridge.setMacro(8, 55)
+    assert bridge.macro8 == 55
+    assert bridge.reverbSend == 55
+
+
+def test_sculptor_mutates_all_four_tones():
+    """Verify that Sculptor methods sculpt ALL 4 tones regardless of selectedTone or linkedMode."""
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+
+    # Tone 2 is selected on Juno PCM, linkedMode is False
+    bridge.setSelectedTone(2)
+    bridge.setLinkedMode(False)
+    assert bridge.selectedTone == 2
+    assert bridge.linkedMode is False
+
+    # Sculpt TVF Cutoff
+    bridge.sculptCutoff(110)
+    for t in bridge.patch_state.tones:
+        assert t.tvf_cutoff == 110
+    assert bridge.masterCutoff == 110
+
+    # Sculpt TVF Resonance
+    bridge.sculptReso(95)
+    for t in bridge.patch_state.tones:
+        assert t.tvf_resonance == 95
+    assert bridge.masterReso == 95
+
+    # Sculpt TVF Attack
+    bridge.sculptTvfAttack(42)
+    for t in bridge.patch_state.tones:
+        assert t.tvf_attack == 42
+    assert bridge.tvfAttack == 42
+
+    # Sculpt TVA Release
+    bridge.sculptTvaRelease(55)
+    for t in bridge.patch_state.tones:
+        assert t.tva_release == 55
+    assert bridge.masterRelease == 55
+
+    # Sculpt LFO1 Rate
+    bridge.sculptLfoParam(1, "rate", 88)
+    for t in bridge.patch_state.tones:
+        assert t.lfo1_rate == 88
+
+    # Sculpt Pitch Coarse (+12 semitones = 76 raw)
+    bridge.sculptPitchCoarse(12)
+    for t in bridge.patch_state.tones:
+        assert t.coarse_tune == 76
+    assert bridge.pitchCoarse == 12
+
+
+def test_va_auto_detune_mode():
+    """Verify Auto Detune mode caches custom fine tunes, locks faders, and restores them when disabled."""
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+
+    # 1. Initial state is OFF
+    assert bridge.vaAutoDetune is False
+    assert bridge.vaUnison is False
+
+    # 2. Set custom manual fine tunes on OSC 1..4
+    bridge.setVaOscFine(1, 0)
+    bridge.setVaOscFine(2, -5)
+    bridge.setVaOscFine(3, 12)
+    bridge.setVaOscFine(4, -8)
+
+    assert bridge.vaOsc1Fine == 0
+    assert bridge.vaOsc2Fine == -5
+    assert bridge.vaOsc3Fine == 12
+    assert bridge.vaOsc4Fine == -8
+
+    # 3. Engage Auto Detune mode
+    bridge.setVaAutoDetune(True)
+    assert bridge.vaAutoDetune is True
+
+    # 4. Set auto detune spread to 20 cents
+    bridge.setVaAutoDetuneSpread(20)
+    assert bridge.vaAutoDetuneSpread == 20
+    # Formula: [-d, d, -(d // 2), (d // 2)]
+    assert bridge.vaOsc1Fine == -20
+    assert bridge.vaOsc2Fine == 20
+    assert bridge.vaOsc3Fine == -10
+    assert bridge.vaOsc4Fine == 10
+
+    # 5. Manual setVaOscFine must be ignored while Auto Detune is active
+    bridge.setVaOscFine(1, 45)
+    assert bridge.vaOsc1Fine == -20
+
+    # 6. Disengage Auto Detune mode -> must restore custom fine tunes from memory cache
+    bridge.setVaAutoDetune(False)
+    assert bridge.vaAutoDetune is False
+    assert bridge.vaOsc1Fine == 0
+    assert bridge.vaOsc2Fine == -5
+    assert bridge.vaOsc3Fine == 12
+    assert bridge.vaOsc4Fine == -8
+
+    # 7. Manual editing works again
+    bridge.setVaOscFine(1, 15)
+    assert bridge.vaOsc1Fine == 15
+
+
+def test_ui_bridge_step_lfo():
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+
+    # Initial state on Tone 1
+    bridge.setSelectedTone(1)
+    assert bridge.selectedTone == 1
+    assert bridge.stepLfoCurve == 0
+    assert bridge.stepLfoSteps == [0] * 16
+
+    # 1. Update single step on active tone (Tone 1)
+    bridge.setStepLfoStep(0, 36)
+    assert bridge.stepLfoSteps[0] == 36
+    assert bridge.patch_state.tones[0].step_lfo_steps[0] == 36
+    # Other tones must not be affected when linkedMode is False
+    assert bridge.patch_state.tones[1].step_lfo_steps[0] == 0
+
+    # 2. Clamping step values to -36..+36
+    bridge.setStepLfoStep(1, 100)
+    assert bridge.stepLfoSteps[1] == 36
+    bridge.setStepLfoStep(2, -100)
+    assert bridge.stepLfoSteps[2] == -36
+
+    # 3. Update Step Type (curve)
+    bridge.setStepLfoParam("curve", 1) # GLIDE
+    assert bridge.stepLfoCurve == 1
+    assert bridge.patch_state.tones[0].step_lfo_type == 1
+
+    # 4. Switch to Tone 2
+    bridge.setSelectedTone(2)
+    assert bridge.selectedTone == 2
+    assert bridge.stepLfoCurve == 0 # Tone 2 is still STEP (0)
+    assert bridge.stepLfoSteps[0] == 0 # Tone 2 step 0 is 0
+
+    # 5. Test setStepLfoAllSteps
+    new_shape = [i * 2 for i in range(16)]
+    bridge.setStepLfoAllSteps(new_shape)
+    assert bridge.stepLfoSteps == [i * 2 for i in range(16)]
+
+    # 6. Test Linked Mode across all 4 tones
+    bridge.setLinkedMode(True)
+    assert bridge.linkedMode is True
+    bridge.setStepLfoStep(5, -20)
+    for t in bridge.patch_state.tones:
+        assert t.step_lfo_steps[5] == -20
+
+    # 7. Test Quick Assign to LFO 1 and LFO 2
+    bridge.setLinkedMode(False)
+    bridge.setSelectedTone(1)
+    assert bridge.lfo1Wave != "STEP"
+    bridge.assignStepLfoToLfo(1)
+    assert bridge.lfo1Wave == "STEP"
+    assert bridge.patch_state.tones[0].lfo1_waveform == 12
+
+    # Toggle off
+    bridge.assignStepLfoToLfo(1)
+    assert bridge.lfo1Wave != "STEP"
+    assert bridge.patch_state.tones[0].lfo1_waveform == 1 # TRI
+
+
 
 
 

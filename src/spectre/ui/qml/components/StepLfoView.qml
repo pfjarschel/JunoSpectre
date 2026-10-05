@@ -11,21 +11,30 @@ Rectangle {
     border.width: 1
 
     property var steps: Bridge.stepLfoSteps
-    property int currentPlayhead: 0
     property int curveType: Bridge.stepLfoCurve
-    property int syncRateIdx: Bridge.stepLfoRateIdx
-    property var syncRates: ["OFF (Hz)", "1/32", "1/16", "1/8", "1/4", "1/2", "1/1"]
-    property int destIdx: Bridge.stepLfoDestIdx
-    property var destNames: ["PITCH", "TVF CUTOFF", "TVA LEVEL", "PAN"]
-    property int depthVal: Bridge.stepLfoDepth
+    property int selectedTone: Bridge.selectedTone
+    property bool isLinked: Bridge.linkedMode
+    property string lfo1Wave: Bridge.lfo1Wave
+    property string lfo2Wave: Bridge.lfo2Wave
 
-    // Internal simulation timer for playhead animation
-    Timer {
-        id: playheadTimer
-        interval: 120
-        running: true
-        repeat: true
-        onTriggered: root.currentPlayhead = (root.currentPlayhead + 1) % 16
+    Connections {
+        target: Bridge
+        function onStepLfoChanged() {
+            root.steps = Bridge.stepLfoSteps;
+            root.curveType = Bridge.stepLfoCurve;
+        }
+        function onSelectedToneChanged() {
+            root.selectedTone = Bridge.selectedTone;
+            root.steps = Bridge.stepLfoSteps;
+            root.curveType = Bridge.stepLfoCurve;
+        }
+        function onLinkedModeChanged() {
+            root.isLinked = Bridge.linkedMode;
+        }
+        function onLfoParamsChanged() {
+            root.lfo1Wave = Bridge.lfo1Wave;
+            root.lfo2Wave = Bridge.lfo2Wave;
+        }
     }
 
     ColumnLayout {
@@ -33,7 +42,9 @@ Rectangle {
         anchors.margins: ScaleMetrics.dp(10)
         spacing: ScaleMetrics.dp(8)
 
+        // =====================================================================
         // Header and Controls
+        // =====================================================================
         RowLayout {
             Layout.fillWidth: true
             spacing: ScaleMetrics.dp(8)
@@ -49,88 +60,156 @@ Rectangle {
                 font.letterSpacing: 1.2
                 color: Theme.textPrimary
             }
+
             Item { Layout.fillWidth: true }
 
-            // Target Chip
-            Rectangle {
-                height: ScaleMetrics.dp(24)
-                implicitWidth: ScaleMetrics.dp(110)
-                radius: 4
-                color: "#10141d"
-                border.color: "#10b981"
-                border.width: 1
+            // Tone Selector Pills
+            RowLayout {
+                spacing: ScaleMetrics.dp(4)
+                Text {
+                    text: "TONE:"
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    font.bold: true
+                    color: Theme.textDim
+                }
 
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: 4
-                    Text { text: "DEST:"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-                    Text {
-                        text: root.destNames[root.destIdx]
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: "#10b981"
+                Repeater {
+                    model: [
+                        { id: 1, label: "T1", col: Theme.tone1 },
+                        { id: 2, label: "T2", col: Theme.tone2 },
+                        { id: 3, label: "T3", col: Theme.tone3 },
+                        { id: 4, label: "T4", col: Theme.tone4 }
+                    ]
+                    delegate: Rectangle {
+                        height: ScaleMetrics.dp(24)
+                        implicitWidth: ScaleMetrics.dp(28)
+                        radius: 4
+                        property bool isSel: root.selectedTone === modelData.id
+                        color: isSel ? Qt.rgba(modelData.col.r, modelData.col.g, modelData.col.b, 0.25) : "#10141d"
+                        border.color: isSel ? modelData.col : Theme.borderCard
+                        border.width: 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData.label
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: parent.isSel ? modelData.col : Theme.textDim
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: Bridge.setSelectedTone(modelData.id)
+                        }
                     }
                 }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Bridge.setStepLfoParam("dest", (root.destIdx + 1) % root.destNames.length)
+
+                Rectangle {
+                    height: ScaleMetrics.dp(24)
+                    implicitWidth: ScaleMetrics.dp(64)
+                    radius: 4
+                    color: root.isLinked ? Qt.rgba(0.66, 0.33, 0.97, 0.25) : "#10141d"
+                    border.color: root.isLinked ? "#a855f7" : Theme.borderCard
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "LINK ALL"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: root.isLinked ? "#c084fc" : Theme.textDim
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Bridge.setLinkedMode(!Bridge.linkedMode)
+                    }
                 }
             }
 
-            // Sync Rate Chip
-            Rectangle {
-                height: ScaleMetrics.dp(24)
-                implicitWidth: ScaleMetrics.dp(90)
-                radius: 4
-                color: "#10141d"
-                border.color: Theme.borderCard
-                border.width: 1
+            // Quick Assign Pills
+            RowLayout {
+                spacing: ScaleMetrics.dp(4)
+                Text {
+                    text: "ASSIGN:"
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    font.bold: true
+                    color: Theme.textDim
+                }
 
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: 4
-                    Text { text: "RATE:"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
+                Rectangle {
+                    height: ScaleMetrics.dp(24)
+                    implicitWidth: ScaleMetrics.dp(46)
+                    radius: 4
+                    property bool isActive: root.lfo1Wave === "STEP"
+                    color: isActive ? Qt.rgba(0.06, 0.72, 0.51, 0.25) : "#10141d"
+                    border.color: isActive ? "#10b981" : Theme.borderCard
+                    border.width: 1
+
                     Text {
-                        text: root.syncRates[root.syncRateIdx]
+                        anchors.centerIn: parent
+                        text: "LFO 1"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.textPrimary
+                        color: parent.isActive ? "#10b981" : Theme.textDim
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Bridge.assignStepLfoToLfo(1)
                     }
                 }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Bridge.setStepLfoParam("rate", (root.syncRateIdx + 1) % root.syncRates.length)
+
+                Rectangle {
+                    height: ScaleMetrics.dp(24)
+                    implicitWidth: ScaleMetrics.dp(46)
+                    radius: 4
+                    property bool isActive: root.lfo2Wave === "STEP"
+                    color: isActive ? Qt.rgba(0.06, 0.72, 0.51, 0.25) : "#10141d"
+                    border.color: isActive ? "#10b981" : Theme.borderCard
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "LFO 2"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: parent.isActive ? "#10b981" : Theme.textDim
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Bridge.assignStepLfoToLfo(2)
+                    }
                 }
             }
 
-            // Curve Mode
+            // Step Type (Curve) Toggle Chip
             Rectangle {
                 height: ScaleMetrics.dp(24)
-                implicitWidth: ScaleMetrics.dp(85)
+                implicitWidth: ScaleMetrics.dp(120)
                 radius: 4
                 color: "#10141d"
-                border.color: Theme.borderCard
+                border.color: root.curveType === 0 ? Theme.tone1 : Theme.tone2
                 border.width: 1
 
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: 4
-                    Text { text: "CURVE:"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
+                    Text { text: "TYPE:"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
                     Text {
-                        text: root.curveType === 0 ? "HOLD" : (root.curveType === 1 ? "LINEAR" : "SMOOTH")
+                        text: root.curveType === 0 ? "STEP (HOLD)" : "GLIDE (SMOOTH)"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.tone1
+                        color: root.curveType === 0 ? Theme.tone1 : Theme.tone2
                     }
                 }
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: Bridge.setStepLfoParam("curve", (root.curveType + 1) % 3)
+                    onClicked: Bridge.setStepLfoParam("curve", root.curveType === 0 ? 1 : 0)
                 }
             }
         }
 
+        // =====================================================================
         // Preset Toolbar
+        // =====================================================================
         RowLayout {
             Layout.fillWidth: true
             spacing: ScaleMetrics.dp(4)
@@ -147,60 +226,59 @@ Rectangle {
                     { name: "SINE", fn: () => {
                         var a = [];
                         for(var i=0; i<16; i++) {
-                            var v = Math.round(Math.sin((i/16.0)*Math.PI*2) * 60);
+                            var v = Math.round(Math.sin((i/16.0)*Math.PI*2) * 36);
                             a.push(v);
-                            Bridge.setStepLfoStep(i, v);
                         }
                         root.steps = a;
+                        Bridge.setStepLfoAllSteps(a);
                     }},
                     { name: "SAW UP", fn: () => {
                         var a = [];
                         for(var i=0; i<16; i++) {
-                            var v = Math.round(-60 + (i/15.0)*120);
+                            var v = Math.round(-36 + (i/15.0)*72);
                             a.push(v);
-                            Bridge.setStepLfoStep(i, v);
                         }
                         root.steps = a;
+                        Bridge.setStepLfoAllSteps(a);
                     }},
                     { name: "SAW DN", fn: () => {
                         var a = [];
                         for(var i=0; i<16; i++) {
-                            var v = Math.round(60 - (i/15.0)*120);
+                            var v = Math.round(36 - (i/15.0)*72);
                             a.push(v);
-                            Bridge.setStepLfoStep(i, v);
                         }
                         root.steps = a;
+                        Bridge.setStepLfoAllSteps(a);
                     }},
                     { name: "TRI", fn: () => {
                         var a = [];
                         for(var i=0; i<8; i++) {
-                            var v1 = Math.round(-60 + (i/7.0)*120);
+                            var v1 = Math.round(-36 + (i/7.0)*72);
                             a.push(v1);
-                            Bridge.setStepLfoStep(i, v1);
                         }
                         for(var j=8; j<16; j++) {
-                            var v2 = Math.round(60 - ((j-8)/7.0)*120);
+                            var v2 = Math.round(36 - ((j-8)/7.0)*72);
                             a.push(v2);
-                            Bridge.setStepLfoStep(j, v2);
                         }
                         root.steps = a;
+                        Bridge.setStepLfoAllSteps(a);
                     }},
                     { name: "RANDOM", fn: () => {
                         var a = [];
                         for(var i=0; i<16; i++) {
-                            var v = Math.round((Math.random() - 0.5) * 120);
+                            var v = Math.round((Math.random() - 0.5) * 72);
                             a.push(v);
-                            Bridge.setStepLfoStep(i, v);
                         }
                         root.steps = a;
+                        Bridge.setStepLfoAllSteps(a);
                     }},
                     { name: "CLEAR", fn: () => {
                         var a = [];
                         for(var i=0; i<16; i++) {
                             a.push(0);
-                            Bridge.setStepLfoStep(i, 0);
                         }
                         root.steps = a;
+                        Bridge.setStepLfoAllSteps(a);
                     }}
                 ]
 
@@ -227,7 +305,9 @@ Rectangle {
             }
         }
 
+        // =====================================================================
         // Interactive 16-Step Drawing Grid
+        // =====================================================================
         Rectangle {
             id: gridBox
             Layout.fillWidth: true
@@ -258,21 +338,21 @@ Rectangle {
                     model: 16
                     delegate: Rectangle {
                         id: barCol
-                        width: (stepsRow.width - 30) / 16.0
+                        width: (stepsRow.width - (15 * ScaleMetrics.dp(2))) / 16.0
                         height: stepsRow.height
-                        color: root.currentPlayhead === index ? Qt.rgba(0.06, 0.72, 0.51, 0.12) : "transparent"
+                        color: "transparent"
                         radius: 2
 
-                        property int stepVal: root.steps[index] !== undefined ? root.steps[index] : 0
+                        property int stepVal: (root.steps && root.steps[index] !== undefined) ? root.steps[index] : 0
 
                         // Step bar
                         Rectangle {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            width: parent.width - 2
-                            property real norm: (barCol.stepVal + 63) / 126.0
+                            width: Math.max(4, parent.width - 2)
+                            property real norm: (barCol.stepVal + 36.0) / 72.0
                             y: norm >= 0.5 ? parent.height * 0.5 - height : parent.height * 0.5
                             height: Math.max(2, Math.abs((norm - 0.5) * parent.height))
-                            color: root.currentPlayhead === index ? "#10b981" : (barCol.stepVal >= 0 ? "#059669" : "#0284c7")
+                            color: barCol.stepVal > 0 ? "#10b981" : (barCol.stepVal < 0 ? "#0284c7" : "#334155")
                             radius: 1
                         }
 
@@ -283,7 +363,7 @@ Rectangle {
                             text: (index + 1).toString()
                             font.family: Theme.fontMono
                             font.pixelSize: ScaleMetrics.sp(7)
-                            color: root.currentPlayhead === index ? "#10b981" : Theme.textDim
+                            color: Theme.textDim
                         }
 
                         // Step value label
@@ -293,7 +373,7 @@ Rectangle {
                             text: barCol.stepVal > 0 ? "+" + barCol.stepVal : barCol.stepVal.toString()
                             font.family: Theme.fontMono
                             font.pixelSize: ScaleMetrics.sp(7)
-                            color: root.currentPlayhead === index ? Theme.textPrimary : Theme.textDim
+                            color: barCol.stepVal !== 0 ? Theme.textPrimary : Theme.textDim
                         }
                     }
                 }
@@ -307,13 +387,15 @@ Rectangle {
                     var colWidth = width / 16.0;
                     var colIdx = Math.max(0, Math.min(15, Math.floor(mx / colWidth)));
                     var norm = 1.0 - (my / height); // 0 at bottom, 1 at top
-                    var val = Math.round((norm - 0.5) * 126);
-                    val = Math.max(-63, Math.min(63, val));
+                    var val = Math.round((norm - 0.5) * 72);
+                    val = Math.max(-36, Math.min(36, val));
 
-                    var arr = root.steps.slice();
-                    arr[colIdx] = val;
-                    root.steps = arr;
-                    Bridge.setStepLfoStep(colIdx, val);
+                    var arr = (root.steps ? root.steps.slice() : new Array(16).fill(0));
+                    if (arr[colIdx] !== val) {
+                        arr[colIdx] = val;
+                        root.steps = arr;
+                        Bridge.setStepLfoStep(colIdx, val);
+                    }
                 }
 
                 onPositionChanged: (mouse) => {

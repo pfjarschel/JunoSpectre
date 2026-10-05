@@ -69,8 +69,8 @@ Rectangle {
             Item { Layout.fillWidth: true }
 
             Rectangle {
-                height: ScaleMetrics.dp(18)
-                implicitWidth: ScaleMetrics.dp(95)
+                height: ScaleMetrics.dp(20)
+                implicitWidth: ScaleMetrics.dp(105)
                 radius: ScaleMetrics.dp(3)
                 color: "#1e293b"
                 border.color: "#38bdf8"
@@ -184,7 +184,7 @@ Rectangle {
                             }
                             MouseArea {
                                 anchors.fill: parent
-                                onClicked: Bridge.setTvfType(modelData)
+                                onClicked: Bridge.sculptTvfType(modelData)
                             }
                         }
                     }
@@ -195,7 +195,7 @@ Rectangle {
                     label: "CUTOFF"
                     valText: Bridge.masterCutoff.toString()
                     normVal: (Bridge.masterCutoff - 1) / 126.0
-                    onMoved: (norm) => Bridge.setMasterCutoff(Math.round(1 + norm * 126))
+                    onMoved: (norm) => Bridge.sculptCutoff(Math.round(1 + norm * 126))
                 }
 
                 TouchFader {
@@ -203,7 +203,7 @@ Rectangle {
                     label: "RESONANCE"
                     valText: Bridge.masterReso.toString()
                     normVal: (Bridge.masterReso - 1) / 126.0
-                    onMoved: (norm) => Bridge.setMasterReso(Math.round(1 + norm * 126))
+                    onMoved: (norm) => Bridge.sculptReso(Math.round(1 + norm * 126))
                 }
 
                 TouchFader {
@@ -212,7 +212,7 @@ Rectangle {
                     valText: (Bridge.tvfKeyFollow >= 0 ? "+" : "") + Bridge.tvfKeyFollow + "%"
                     normVal: (Bridge.tvfKeyFollow + 100) / 200.0
                     isBipolar: true
-                    onMoved: (norm) => Bridge.setTvfKeyFollow(Math.round(norm * 200 - 100))
+                    onMoved: (norm) => Bridge.sculptTvfKeyFollow(Math.round(norm * 200 - 100))
                 }
 
                 TouchFader {
@@ -221,7 +221,7 @@ Rectangle {
                     valText: (Bridge.tvfEnvDepth >= 0 ? "+" : "") + Bridge.tvfEnvDepth
                     normVal: (Bridge.tvfEnvDepth + 63) / 126.0
                     isBipolar: true
-                    onMoved: (norm) => Bridge.setTvfEnvDepth(Math.round(norm * 126 - 63))
+                    onMoved: (norm) => Bridge.sculptTvfEnvDepth(Math.round(norm * 126 - 63))
                 }
 
                 TouchFader {
@@ -229,7 +229,7 @@ Rectangle {
                     label: "VELO SENS"
                     valText: Bridge.tvfVeloSens.toString()
                     normVal: Bridge.tvfVeloSens / 127.0
-                    onMoved: (norm) => Bridge.setTvfVeloSens(Math.round(norm * 127))
+                    onMoved: (norm) => Bridge.sculptTvfVeloSens(Math.round(norm * 127))
                 }
 
                 Rectangle {
@@ -250,7 +250,7 @@ Rectangle {
                     label: "ATTACK (A)"
                     valText: Bridge.tvfAttack.toString()
                     normVal: Bridge.tvfAttack / 127.0
-                    onMoved: (norm) => Bridge.setTvfAttack(Math.round(norm * 127))
+                    onMoved: (norm) => Bridge.sculptTvfAttack(Math.round(norm * 127))
                 }
 
                 TouchFader {
@@ -258,7 +258,7 @@ Rectangle {
                     label: "DECAY (D)"
                     valText: Bridge.tvfDecay.toString()
                     normVal: Bridge.tvfDecay / 127.0
-                    onMoved: (norm) => Bridge.setTvfDecay(Math.round(norm * 127))
+                    onMoved: (norm) => Bridge.sculptTvfDecay(Math.round(norm * 127))
                 }
 
                 TouchFader {
@@ -266,7 +266,7 @@ Rectangle {
                     label: "SUSTAIN (S)"
                     valText: Bridge.tvfSustain.toString()
                     normVal: Bridge.tvfSustain / 127.0
-                    onMoved: (norm) => Bridge.setTvfSustain(Math.round(norm * 127))
+                    onMoved: (norm) => Bridge.sculptTvfSustain(Math.round(norm * 127))
                 }
 
                 TouchFader {
@@ -274,7 +274,7 @@ Rectangle {
                     label: "RELEASE (R)"
                     valText: Bridge.tvfRelease.toString()
                     normVal: Bridge.tvfRelease / 127.0
-                    onMoved: (norm) => Bridge.setTvfRelease(Math.round(norm * 127))
+                    onMoved: (norm) => Bridge.sculptTvfRelease(Math.round(norm * 127))
                 }
 
                 Item { Layout.fillHeight: true }
@@ -314,7 +314,7 @@ Rectangle {
                     valText: Bridge.tvaPan === 0 ? "CENTER" : (Bridge.tvaPan < 0 ? ("L" + Math.abs(Bridge.tvaPan)) : ("R" + Bridge.tvaPan))
                     normVal: (Bridge.tvaPan + 64) / 127.0
                     isBipolar: true
-                    onMoved: (norm) => Bridge.setTvaPan(Math.round(norm * 127 - 64))
+                    onMoved: (norm) => Bridge.sculptTvaPan(Math.round(norm * 127 - 64))
                 }
 
                 TouchFader {
@@ -322,7 +322,7 @@ Rectangle {
                     label: "VELO SENS"
                     valText: Bridge.tvaVeloSens.toString()
                     normVal: Bridge.tvaVeloSens / 127.0
-                    onMoved: (norm) => Bridge.setTvaVeloSens(Math.round(norm * 127))
+                    onMoved: (norm) => Bridge.sculptTvaVeloSens(Math.round(norm * 127))
                 }
 
                 Rectangle {
@@ -343,7 +343,7 @@ Rectangle {
                     label: "ATTACK (A)"
                     valText: Bridge.masterAttack.toString()
                     normVal: (Bridge.masterAttack - 1) / 126.0
-                    onMoved: (norm) => Bridge.setMasterAttack(Math.round(1 + norm * 126))
+                    onMoved: (norm) => Bridge.sculptTvaAttack(Math.round(1 + norm * 126))
                 }
 
                 TouchFader {
@@ -351,7 +351,7 @@ Rectangle {
                     label: "DECAY (D)"
                     valText: Bridge.tvaDecay.toString()
                     normVal: Bridge.tvaDecay / 127.0
-                    onMoved: (norm) => Bridge.setTvaDecay(Math.round(norm * 127))
+                    onMoved: (norm) => Bridge.sculptTvaDecay(Math.round(norm * 127))
                 }
 
                 TouchFader {
@@ -359,7 +359,7 @@ Rectangle {
                     label: "SUSTAIN (S)"
                     valText: Bridge.tvaSustain.toString()
                     normVal: Bridge.tvaSustain / 127.0
-                    onMoved: (norm) => Bridge.setTvaSustain(Math.round(norm * 127))
+                    onMoved: (norm) => Bridge.sculptTvaSustain(Math.round(norm * 127))
                 }
 
                 TouchFader {
@@ -367,7 +367,7 @@ Rectangle {
                     label: "RELEASE (R)"
                     valText: Bridge.masterRelease.toString()
                     normVal: (Bridge.masterRelease - 1) / 126.0
-                    onMoved: (norm) => Bridge.setMasterRelease(Math.round(1 + norm * 126))
+                    onMoved: (norm) => Bridge.sculptTvaRelease(Math.round(1 + norm * 126))
                 }
 
                 Item { Layout.fillHeight: true }
@@ -455,7 +455,7 @@ Rectangle {
 
                             MouseArea {
                                 anchors.fill: parent
-                                onClicked: Bridge.setLfoParam(root.activeLfoTab, "wave", modelData)
+                                onClicked: Bridge.sculptLfoParam(root.activeLfoTab, "wave", modelData)
                             }
                         }
                     }
@@ -466,7 +466,7 @@ Rectangle {
                     label: "RATE"
                     valText: root.lfoData.rate.toString()
                     normVal: root.lfoData.rate / 127.0
-                    onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "rate", Math.round(norm * 127))
+                    onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "rate", Math.round(norm * 127))
                 }
 
                 TouchFader {
@@ -475,7 +475,7 @@ Rectangle {
                     valText: (root.lfoData.pitchDepth >= 0 ? "+" : "") + root.lfoData.pitchDepth
                     normVal: (root.lfoData.pitchDepth + 63) / 126.0
                     isBipolar: true
-                    onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "pitch_depth", Math.round(norm * 126 - 63))
+                    onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "pitch_depth", Math.round(norm * 126 - 63))
                 }
 
                 TouchFader {
@@ -484,7 +484,7 @@ Rectangle {
                     valText: (root.lfoData.tvfDepth >= 0 ? "+" : "") + root.lfoData.tvfDepth
                     normVal: (root.lfoData.tvfDepth + 63) / 126.0
                     isBipolar: true
-                    onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "tvf_depth", Math.round(norm * 126 - 63))
+                    onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "tvf_depth", Math.round(norm * 126 - 63))
                 }
 
                 TouchFader {
@@ -493,7 +493,7 @@ Rectangle {
                     valText: (root.lfoData.tvaDepth >= 0 ? "+" : "") + root.lfoData.tvaDepth
                     normVal: (root.lfoData.tvaDepth + 63) / 126.0
                     isBipolar: true
-                    onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "tva_depth", Math.round(norm * 126 - 63))
+                    onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "tva_depth", Math.round(norm * 126 - 63))
                 }
 
                 TouchFader {
@@ -502,7 +502,7 @@ Rectangle {
                     valText: (root.lfoData.panDepth >= 0 ? "+" : "") + root.lfoData.panDepth
                     normVal: (root.lfoData.panDepth + 63) / 126.0
                     isBipolar: true
-                    onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "pan_depth", Math.round(norm * 126 - 63))
+                    onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "pan_depth", Math.round(norm * 126 - 63))
                 }
 
                 TouchFader {
@@ -510,7 +510,7 @@ Rectangle {
                     label: "DELAY TIME"
                     valText: root.lfoData.delayTime.toString()
                     normVal: root.lfoData.delayTime / 127.0
-                    onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "delay_time", Math.round(norm * 127))
+                    onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "delay_time", Math.round(norm * 127))
                 }
 
                 // Fade Mode Chips
@@ -536,7 +536,7 @@ Rectangle {
                             }
                             MouseArea {
                                 anchors.fill: parent
-                                onClicked: Bridge.setLfoParam(root.activeLfoTab, "fade_mode", modelData)
+                                onClicked: Bridge.sculptLfoParam(root.activeLfoTab, "fade_mode", modelData)
                             }
                         }
                     }
@@ -547,7 +547,7 @@ Rectangle {
                     label: "FADE TIME"
                     valText: root.lfoData.fadeTime.toString()
                     normVal: root.lfoData.fadeTime / 127.0
-                    onMoved: (norm) => Bridge.setLfoParam(root.activeLfoTab, "fade_time", Math.round(norm * 127))
+                    onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "fade_time", Math.round(norm * 127))
                 }
 
                 Item { Layout.fillHeight: true }
@@ -586,7 +586,7 @@ Rectangle {
                     valText: (Bridge.pitchCoarse >= 0 ? "+" : "") + Bridge.pitchCoarse + " st"
                     normVal: (Bridge.pitchCoarse + 24) / 48.0
                     isBipolar: true
-                    onMoved: (norm) => Bridge.setPitchCoarse(Math.round(norm * 48 - 24))
+                    onMoved: (norm) => Bridge.sculptPitchCoarse(Math.round(norm * 48 - 24))
                 }
 
                 TouchFader {
@@ -595,7 +595,7 @@ Rectangle {
                     valText: (Bridge.pitchFine >= 0 ? "+" : "") + Bridge.pitchFine + " c"
                     normVal: (Bridge.pitchFine + 50) / 100.0
                     isBipolar: true
-                    onMoved: (norm) => Bridge.setPitchFine(Math.round(norm * 100 - 50))
+                    onMoved: (norm) => Bridge.sculptPitchFine(Math.round(norm * 100 - 50))
                 }
 
                 Rectangle {

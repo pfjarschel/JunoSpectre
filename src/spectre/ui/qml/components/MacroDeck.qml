@@ -46,7 +46,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 macroIndex: 1
-                macroTitle: "BRIGHTNESS"
+                macroTitle: "CUTOFF"
                 macroColor: Theme.tone1
                 macroValue: Bridge.macro1
             }
@@ -55,7 +55,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 macroIndex: 2
-                macroTitle: "WARMTH"
+                macroTitle: "RESO"
                 macroColor: Theme.tone2
                 macroValue: Bridge.macro2
             }
@@ -64,7 +64,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 macroIndex: 3
-                macroTitle: "SUB OSC"
+                macroTitle: "ATTACK"
                 macroColor: Theme.tone3
                 macroValue: Bridge.macro3
             }
@@ -73,7 +73,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 macroIndex: 4
-                macroTitle: "AIR"
+                macroTitle: "RELEASE"
                 macroColor: Theme.tone4
                 macroValue: Bridge.macro4
             }
@@ -82,7 +82,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 macroIndex: 5
-                macroTitle: "DRIVE"
+                macroTitle: "PORTA TIME"
                 macroColor: "#f59e0b"
                 macroValue: Bridge.macro5
             }
@@ -91,7 +91,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 macroIndex: 6
-                macroTitle: "SPACE"
+                macroTitle: "WARMTH"
                 macroColor: "#38bdf8"
                 macroValue: Bridge.macro6
             }
@@ -100,7 +100,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 macroIndex: 7
-                macroTitle: "MOTION"
+                macroTitle: "CHORUS"
                 macroColor: "#a855f7"
                 macroValue: Bridge.macro7
             }
@@ -109,7 +109,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 macroIndex: 8
-                macroTitle: "ATTACK"
+                macroTitle: "REVERB"
                 macroColor: "#ec4899"
                 macroValue: Bridge.macro8
             }
@@ -202,9 +202,15 @@ Rectangle {
                 // Numeric Readout in center of arc
                 Text {
                     anchors.centerIn: parent
-                    text: knobRoot.macroValue
+                    text: {
+                        if (knobRoot.macroIndex <= 4) {
+                            const off = knobRoot.macroValue - 64;
+                            return (off >= 0 ? "+" : "") + off;
+                        }
+                        return knobRoot.macroValue.toString();
+                    }
                     font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(15)
+                    font.pixelSize: ScaleMetrics.sp(14)
                     font.family: Theme.fontMono
                     color: Theme.textPrimary
                 }

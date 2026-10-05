@@ -48,12 +48,9 @@ Rectangle {
             } else if (currentView === "WAVETABLE") {
                 const names = ["MORPH", "SPEED", "SWEEP", "CURVE", "T1 LVL", "T2 LVL", "T3 LVL", "T4 LVL"];
                 return names[knobIndex - 1] || "PARAM";
-            } else if (currentView === "MACROS") {
-                const names = ["BRIGHT", "WARMTH", "SUB OSC", "AIR", "DRIVE", "SPACE", "MOTION", "ATTACK"];
+            } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
+                const names = ["CUTOFF", "RESO", "ATTACK", "RELEASE", "PORTA", "WARMTH", "CHORUS", "REVERB"];
                 return names[knobIndex - 1] || "MACRO";
-            } else if (currentView === "PATCH EDIT") {
-                const names = ["CUTOFF", "RESO", "ATTACK", "RELEASE", "T1 LVL", "T2 LVL", "T3 LVL", "T4 LVL"];
-                return names[knobIndex - 1] || "EDIT";
             } else if (currentView === "PERF MIXER") {
                 return "P" + knobIndex + " VOL";
             } else if (currentView === "EFFECTS") {
@@ -93,7 +90,7 @@ Rectangle {
                     case 7: return Bridge.tone3Level / 127.0;
                     case 8: return Bridge.tone4Level / 127.0;
                 }
-            } else if (currentView === "MACROS") {
+            } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
                 const val = knobIndex === 1 ? Bridge.macro1 :
                             knobIndex === 2 ? Bridge.macro2 :
                             knobIndex === 3 ? Bridge.macro3 :
@@ -102,17 +99,6 @@ Rectangle {
                             knobIndex === 6 ? Bridge.macro6 :
                             knobIndex === 7 ? Bridge.macro7 : Bridge.macro8;
                 return val / 127.0;
-            } else if (currentView === "PATCH EDIT") {
-                switch (knobIndex) {
-                    case 1: return (Bridge.masterCutoff - 1) / 126.0;
-                    case 2: return (Bridge.masterReso - 1) / 126.0;
-                    case 3: return (Bridge.masterAttack - 1) / 126.0;
-                    case 4: return (Bridge.masterRelease - 1) / 126.0;
-                    case 5: return Bridge.tone1Level / 127.0;
-                    case 6: return Bridge.tone2Level / 127.0;
-                    case 7: return Bridge.tone3Level / 127.0;
-                    case 8: return Bridge.tone4Level / 127.0;
-                }
             }
             return card.internalVal;
         }
@@ -141,25 +127,16 @@ Rectangle {
                     case 7: return Bridge.tone3Level.toString();
                     case 8: return Bridge.tone4Level.toString();
                 }
-            } else if (currentView === "MACROS") {
-                const val = knobIndex === 1 ? Bridge.macro1 :
-                            knobIndex === 2 ? Bridge.macro2 :
-                            knobIndex === 3 ? Bridge.macro3 :
-                            knobIndex === 4 ? Bridge.macro4 :
-                            knobIndex === 5 ? Bridge.macro5 :
-                            knobIndex === 6 ? Bridge.macro6 :
-                            knobIndex === 7 ? Bridge.macro7 : Bridge.macro8;
-                return val.toString();
-            } else if (currentView === "PATCH EDIT") {
+            } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
                 switch (knobIndex) {
-                    case 1: return (Bridge.masterCutoff >= 64 ? "+" : "") + (Bridge.masterCutoff - 64);
-                    case 2: return (Bridge.masterReso >= 64 ? "+" : "") + (Bridge.masterReso - 64);
-                    case 3: return (Bridge.masterAttack >= 64 ? "+" : "") + (Bridge.masterAttack - 64);
-                    case 4: return (Bridge.masterRelease >= 64 ? "+" : "") + (Bridge.masterRelease - 64);
-                    case 5: return Bridge.tone1Level.toString();
-                    case 6: return Bridge.tone2Level.toString();
-                    case 7: return Bridge.tone3Level.toString();
-                    case 8: return Bridge.tone4Level.toString();
+                    case 1: { const off = Bridge.macro1 - 64; return (off >= 0 ? "+" : "") + off; }
+                    case 2: { const off = Bridge.macro2 - 64; return (off >= 0 ? "+" : "") + off; }
+                    case 3: { const off = Bridge.macro3 - 64; return (off >= 0 ? "+" : "") + off; }
+                    case 4: { const off = Bridge.macro4 - 64; return (off >= 0 ? "+" : "") + off; }
+                    case 5: return Bridge.macro5.toString();
+                    case 6: return Bridge.macro6.toString();
+                    case 7: return Bridge.macro7.toString();
+                    case 8: return Bridge.macro8.toString();
                 }
             } else if (currentView === "PERF MIXER") {
                 return Math.round(card.internalVal * 127).toString();
@@ -200,16 +177,8 @@ Rectangle {
                 else if (knobIndex >= 5 && knobIndex <= 8) {
                     Bridge.setToneLevel(knobIndex - 4, Math.round(clamped * 127));
                 }
-            } else if (currentView === "MACROS") {
+            } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
                 Bridge.setMacro(knobIndex, Math.round(clamped * 127));
-            } else if (currentView === "PATCH EDIT") {
-                if (knobIndex === 1) Bridge.setMasterCutoff(Math.round(1 + clamped * 126));
-                else if (knobIndex === 2) Bridge.setMasterReso(Math.round(1 + clamped * 126));
-                else if (knobIndex === 3) Bridge.setMasterAttack(Math.round(1 + clamped * 126));
-                else if (knobIndex === 4) Bridge.setMasterRelease(Math.round(1 + clamped * 126));
-                else if (knobIndex >= 5 && knobIndex <= 8) {
-                    Bridge.setToneLevel(knobIndex - 4, Math.round(clamped * 127));
-                }
             }
         }
 

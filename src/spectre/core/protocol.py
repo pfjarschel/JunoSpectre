@@ -48,6 +48,7 @@ from .sysex import (
     OFFSET_PATCH_TONE_2,
     OFFSET_PATCH_TONE_3,
     OFFSET_PATCH_TONE_4,
+    PATCH_PARAM_ANALOG_FEEL,
     PATCH_PARAM_ATTACK_OFFSET,
     PATCH_PARAM_CHORUS_SEND,
     PATCH_PARAM_CUTOFF_OFFSET,
@@ -57,8 +58,10 @@ from .sysex import (
     PATCH_PARAM_MATRIX_CTRL_2,
     PATCH_PARAM_MATRIX_CTRL_3,
     PATCH_PARAM_MATRIX_CTRL_4,
+    PATCH_PARAM_MONO_POLY,
     PATCH_PARAM_NAME,
     PATCH_PARAM_PAN,
+    PATCH_PARAM_PORTAMENTO_MODE,
     PATCH_PARAM_PORTAMENTO_SWITCH,
     PATCH_PARAM_PORTAMENTO_TIME,
     PATCH_PARAM_RELEASE_OFFSET,
@@ -67,9 +70,14 @@ from .sysex import (
     REVERB_PARAM_DATA_START,
     REVERB_PARAM_LEVEL,
     REVERB_PARAM_TYPE,
+    TMT_PARAM_TONE1_SWITCH,
+    TMT_PARAM_TONE2_SWITCH,
+    TMT_PARAM_TONE3_SWITCH,
+    TMT_PARAM_TONE4_SWITCH,
     TONE_PARAM_CHORUS_SEND,
     TONE_PARAM_COARSE_TUNE,
     TONE_PARAM_DRY_SEND,
+    TONE_PARAM_ENV_MODE,
     TONE_PARAM_FINE_TUNE,
     TONE_PARAM_LEVEL,
     TONE_PARAM_LFO1_DELAY_TIME,
@@ -90,6 +98,9 @@ from .sysex import (
     TONE_PARAM_LFO2_TVA_DEPTH,
     TONE_PARAM_LFO2_TVF_DEPTH,
     TONE_PARAM_LFO2_WAVEFORM,
+    TONE_PARAM_LFO_STEP_1,
+    TONE_PARAM_LFO_STEP_TYPE,
+    TONE_PARAM_MATRIX_CTRL_SW_BASE,
     TONE_PARAM_PAN,
     TONE_PARAM_PITCH_ENV_DEPTH,
     TONE_PARAM_PITCH_ENV_L0,
@@ -106,6 +117,7 @@ from .sysex import (
     TONE_PARAM_PITCH_ENV_TIME_KEYFOLLOW,
     TONE_PARAM_PITCH_ENV_VEL_SENS,
     TONE_PARAM_REVERB_SEND,
+    TONE_PARAM_TVA_BIAS_LEVEL,
     TONE_PARAM_TVA_ENV_L1,
     TONE_PARAM_TVA_ENV_L2,
     TONE_PARAM_TVA_ENV_L3,
@@ -119,6 +131,7 @@ from .sysex import (
     TONE_PARAM_TVF_CUTOFF,
     TONE_PARAM_TVF_CUTOFF_KEYFOLLOW,
     TONE_PARAM_TVF_ENV_DEPTH,
+    TONE_PARAM_TVF_ENV_L0,
     TONE_PARAM_TVF_ENV_L1,
     TONE_PARAM_TVF_ENV_L2,
     TONE_PARAM_TVF_ENV_L3,
@@ -389,7 +402,7 @@ class JunoClient:
         sustain: Optional[int] = None,
         release: Optional[int] = None,
     ) -> None:
-        """Set TVF (Filter) parameters for a tone."""
+        """Set TVF (Filter) parameters for a tone with 4-stage simplified ADSR."""
         if cutoff is not None:
             self.set_tone_param(tone_index, TONE_PARAM_TVF_CUTOFF, max(0, min(127, cutoff)))
         if resonance is not None:
@@ -398,14 +411,28 @@ class JunoClient:
             self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_DEPTH, max(1, min(127, env_depth)))
         if filter_type is not None:
             self.set_tone_param(tone_index, TONE_PARAM_TVF_FILTER_TYPE, max(0, min(6, filter_type)))
-        if attack is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T1, max(0, min(127, attack)))
-        if decay is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T2, max(0, min(127, decay)))
-        if sustain is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_L3, max(0, min(127, sustain)))
-        if release is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T4, max(0, min(127, release)))
+
+        # ADSR Envelope mapping
+        if attack is not None and decay is not None and sustain is not None and release is not None:
+            a = max(0, min(127, int(attack)))
+            d = max(0, min(127, int(decay)))
+            s = max(0, min(127, int(sustain)))
+            r = max(0, min(127, int(release)))
+            # Contiguous 9-byte block: 0x0055 to 0x005D
+            # [T1, T2, T3, T4, L0, L1, L2, L3, L4]
+            # L0=0 (start at cutoff), L1=127 (peak), L2=s, L3=s (sustain), L4=0 (end at cutoff)
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T1, [a, d, 0, r, 0, 127, s, s, 0])
+        else:
+            if attack is not None:
+                self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T1, max(0, min(127, int(attack))))
+                self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_L0, [0, 127])
+            if decay is not None:
+                self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T2, [max(0, min(127, int(decay))), 0])
+            if sustain is not None:
+                s = max(0, min(127, int(sustain)))
+                self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_L2, [s, s, 0])
+            if release is not None:
+                self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T4, max(0, min(127, int(release))))
 
     def set_tone_tva(
         self,
@@ -417,19 +444,33 @@ class JunoClient:
         sustain: Optional[int] = None,
         release: Optional[int] = None,
     ) -> None:
-        """Set TVA (Amp) parameters for a tone."""
+        """Set TVA (Amp) parameters for a tone with 4-stage simplified ADSR."""
         if level is not None:
             self.set_tone_level(tone_index, level)
         if pan is not None:
             self.set_tone_param(tone_index, TONE_PARAM_TVA_PAN, max(0, min(127, pan)))
-        if attack is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T1, max(0, min(127, attack)))
-        if decay is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T2, max(0, min(127, decay)))
-        if sustain is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_L3, max(0, min(127, sustain)))
-        if release is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T4, max(0, min(127, release)))
+
+        # ADSR Envelope mapping
+        if attack is not None and decay is not None and sustain is not None and release is not None:
+            a = max(0, min(127, int(attack)))
+            d = max(0, min(127, int(decay)))
+            s = max(0, min(127, int(sustain)))
+            r = max(0, min(127, int(release)))
+            # Contiguous 7-byte block: 0x0066 to 0x006C
+            # [T1, T2, T3, T4, L1, L2, L3]
+            # L1=127 (peak), L2=s, L3=s (sustain)
+            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T1, [a, d, 0, r, 127, s, s])
+        else:
+            if attack is not None:
+                self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T1, max(0, min(127, int(attack))))
+                self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_L1, 127)
+            if decay is not None:
+                self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T2, [max(0, min(127, int(decay))), 0])
+            if sustain is not None:
+                s = max(0, min(127, int(sustain)))
+                self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_L2, [s, s])
+            if release is not None:
+                self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T4, max(0, min(127, int(release))))
 
     def set_tone_pitch(
         self,
@@ -446,22 +487,28 @@ class JunoClient:
         if env_depth is not None:
             self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_DEPTH, max(52, min(76, env_depth)))
 
-    def ensure_tone_enabled(self, tone_index: int) -> None:
-        """Ensure tone switch is enabled (ON) in the Tone Mix Table and routed to dry send."""
+    def set_tone_switch(self, tone_index: int, enabled: bool) -> None:
+        """Set tone switch (ON/OFF) in Tone Mix Table (TMT)."""
         if tone_index not in (1, 2, 3, 4):
             raise ValueError(f"Tone index must be 1..4, got {tone_index}")
         tmt_switch_offsets = {
-            1: 0x0005,
-            2: 0x000E,
-            3: 0x0017,
-            4: 0x0020,
+            1: TMT_PARAM_TONE1_SWITCH,
+            2: TMT_PARAM_TONE2_SWITCH,
+            3: TMT_PARAM_TONE3_SWITCH,
+            4: TMT_PARAM_TONE4_SWITCH,
         }
         base = self.get_active_patch_base()
         tmt_base = add_address(base, OFFSET_PATCH_TMT)
         switch_addr = add_address(tmt_base, tmt_switch_offsets[tone_index])
-        self.send_data(switch_addr, [1])
+        self.send_data(switch_addr, [1 if enabled else 0])
+
+    def ensure_tone_enabled(self, tone_index: int) -> None:
+        """Ensure tone switch is enabled (ON) in Tone Mix Table, routed to dry send,
+        Tone Env Mode is set to SUSTAIN, and TVA Bias is neutral."""
+        self.set_tone_switch(tone_index, True)
 
         # Also ensure tone dry send is non-zero (127) so it reaches the main output
+        base = self.get_active_patch_base()
         offsets = {
             1: OFFSET_PATCH_TONE_1,
             2: OFFSET_PATCH_TONE_2,
@@ -470,6 +517,9 @@ class JunoClient:
         }
         t_addr = add_address(base, offsets[tone_index])
         self.send_data(add_address(t_addr, TONE_PARAM_DRY_SEND), [127])
+        self.send_data(add_address(t_addr, TONE_PARAM_ENV_MODE), [1])  # 1 = SUSTAIN (allow infinite hold)
+        self.send_data(add_address(t_addr, TONE_PARAM_TVA_BIAS_LEVEL), [64])  # 64 = 0 neutral (no keyboard attenuation)
+        self.send_data(add_address(t_addr, TONE_PARAM_MATRIX_CTRL_SW_BASE), [1] * 16)  # Default all 16 matrix switches to ON
 
     def get_tone_wave(self, tone_index: int, timeout: float = 1.0) -> Tuple[str, int, int]:
         """Query active wave (bank, wave_num, group_type) for a tone (1..4)."""
@@ -578,6 +628,32 @@ class JunoClient:
         if pan_depth is not None:
             self.set_tone_param(tone_index, pan_off, max(1, min(127, pan_depth)))
 
+    def set_tone_step_lfo_type(self, tone_index: int, step_type: int) -> None:
+        """Set Tone LFO Step Type (0 = TYP1/STEP, 1 = TYP2/GLIDE)."""
+        self.set_tone_param(tone_index, TONE_PARAM_LFO_STEP_TYPE, max(0, min(1, int(step_type))))
+
+    def set_tone_step_lfo_step(self, tone_index: int, step_index: int, val: int) -> None:
+        """Set a single Tone LFO Step (step_index: 0..15, val: -36..+36 -> raw 28..100)."""
+        if not (0 <= step_index < 16):
+            raise ValueError(f"step_index must be 0..15, got {step_index}")
+        raw = max(28, min(100, int(val) + 64))
+        self.set_tone_param(tone_index, TONE_PARAM_LFO_STEP_1 + step_index, raw)
+
+    def set_tone_step_lfo_steps(self, tone_index: int, steps: Sequence[int]) -> None:
+        """Set all 16 steps in a contiguous 16-byte block starting at 0x010A."""
+        raw_steps = [max(28, min(100, int(s) + 64)) for s in steps[:16]]
+        if len(raw_steps) < 16:
+            raw_steps.extend([64] * (16 - len(raw_steps)))
+        self.set_tone_param(tone_index, TONE_PARAM_LFO_STEP_1, raw_steps)
+
+    def set_tone_step_lfo_all(self, tone_index: int, step_type: int, steps: Sequence[int]) -> None:
+        """Set all 16 steps and Step Type in a single contiguous 17-byte block to 0x0109."""
+        t_type = max(0, min(1, int(step_type)))
+        raw_steps = [max(28, min(100, int(s) + 64)) for s in steps[:16]]
+        if len(raw_steps) < 16:
+            raw_steps.extend([64] * (16 - len(raw_steps)))
+        self.set_tone_param(tone_index, TONE_PARAM_LFO_STEP_TYPE, [t_type] + raw_steps)
+
     def set_portamento(self, enabled: bool, time: Optional[int] = None) -> None:
         """Set Portamento switch and optional time."""
         base = self.get_active_patch_base()
@@ -586,9 +662,41 @@ class JunoClient:
             self.send_data(add_address(base, PATCH_PARAM_PORTAMENTO_TIME), [max(0, min(127, int(time)))])
 
     def set_legato(self, enabled: bool) -> None:
-        """Set Legato switch."""
+        """Set Legato switch and Mono/Poly mode.
+        Roland synthesis engine requires Mono/Poly to be MONO (0) for Legato to function.
+        """
         base = self.get_active_patch_base()
-        self.send_data(add_address(base, PATCH_PARAM_LEGATO_SWITCH), [1 if enabled else 0])
+        if enabled:
+            self.send_data(add_address(base, PATCH_PARAM_MONO_POLY), [0])  # 0 = MONO
+            self.send_data(add_address(base, PATCH_PARAM_LEGATO_SWITCH), [1])
+            self.send_data(add_address(base, PATCH_PARAM_PORTAMENTO_MODE), [1])  # 1 = LEGATO
+        else:
+            self.send_data(add_address(base, PATCH_PARAM_LEGATO_SWITCH), [0])
+            self.send_data(add_address(base, PATCH_PARAM_MONO_POLY), [1])  # 1 = POLY
+            self.send_data(add_address(base, PATCH_PARAM_PORTAMENTO_MODE), [0])  # 0 = NORMAL
+
+    def set_patch_analog_feel(self, val: int) -> None:
+        """Set Patch Analog Feel (0..127)."""
+        base = self.get_active_patch_base()
+        self.send_data(add_address(base, PATCH_PARAM_ANALOG_FEEL), [max(0, min(127, int(val)))])
+
+    def set_patch_offsets(
+        self,
+        cutoff: Optional[int] = None,
+        resonance: Optional[int] = None,
+        attack: Optional[int] = None,
+        release: Optional[int] = None,
+    ) -> None:
+        """Set Patch Common macro offsets (1..127, center 64=0)."""
+        base = self.get_active_patch_base()
+        if cutoff is not None:
+            self.send_data(add_address(base, PATCH_PARAM_CUTOFF_OFFSET), [max(1, min(127, int(cutoff)))])
+        if resonance is not None:
+            self.send_data(add_address(base, PATCH_PARAM_RESONANCE_OFFSET), [max(1, min(127, int(resonance)))])
+        if attack is not None:
+            self.send_data(add_address(base, PATCH_PARAM_ATTACK_OFFSET), [max(1, min(127, int(attack)))])
+        if release is not None:
+            self.send_data(add_address(base, PATCH_PARAM_RELEASE_OFFSET), [max(1, min(127, int(release)))])
 
     def set_matrix_control(
         self,
@@ -626,6 +734,32 @@ class JunoClient:
             max(1, min(127, int(sens4))),
         ]
         self.send_data(addr, data)
+
+    def set_tone_matrix_switch(
+        self,
+        tone_index: int,
+        ctrl_index: int,
+        dest_index: int,
+        switch_val: int = 1,
+    ) -> None:
+        """Set Tone Control Switch (ctrl_index 1..4, dest_index 1..4) for tone 1..4.
+        switch_val: 0 = OFF, 1 = ON, 2 = REVERSE.
+        """
+        if not (1 <= tone_index <= 4 and 1 <= ctrl_index <= 4 and 1 <= dest_index <= 4):
+            raise ValueError(
+                f"tone_index, ctrl_index, and dest_index must be 1..4, got ({tone_index}, {ctrl_index}, {dest_index})"
+            )
+        offset = TONE_PARAM_MATRIX_CTRL_SW_BASE + (ctrl_index - 1) * 4 + (dest_index - 1)
+        base = self.get_active_patch_base()
+        offsets = {
+            1: OFFSET_PATCH_TONE_1,
+            2: OFFSET_PATCH_TONE_2,
+            3: OFFSET_PATCH_TONE_3,
+            4: OFFSET_PATCH_TONE_4,
+        }
+        t_addr = add_address(base, offsets[tone_index])
+        addr = add_address(t_addr, offset)
+        self.send_data(addr, [max(0, min(2, int(switch_val)))])
 
     def set_mfx(
         self,
@@ -796,6 +930,12 @@ class JunoClient:
         coarse = res1[0x01]
         fine = res1[0x02]
         pan = res1[0x04]
+        matrix_switches = [
+            list(res1[0x17:0x1B]),
+            list(res1[0x1B:0x1F]),
+            list(res1[0x1F:0x23]),
+            list(res1[0x23:0x27]),
+        ]
 
         # Wave
         group_type = res1[0x27]
@@ -834,7 +974,7 @@ class JunoClient:
         tvf_t1 = res1[0x55]
         tvf_t2 = res1[0x56]
         tvf_t4 = res1[0x58]
-        tvf_l3 = res1[0x5B]
+        tvf_l3 = res1[0x5C]
 
         # TVA
         tva_vel = res1[0x62]
@@ -861,7 +1001,7 @@ class JunoClient:
         lfo2_rate = unpack_2nibbles(res2a[1:3]) if res2a and len(res2a) >= 3 else 45
 
         lfo2_addr_b = add_address(t_base, 0x0100)
-        res2b = self.request_data(lfo2_addr_b, (0x00, 0x00, 0x00, 0x09), timeout=timeout)
+        res2b = self.request_data(lfo2_addr_b, (0x00, 0x00, 0x00, 0x1A), timeout=timeout)
         lfo2_delay = res2b[0] if res2b and len(res2b) > 0 else 0
         lfo2_fade_m = res2b[2] if res2b and len(res2b) > 2 else 0
         lfo2_fade_t = res2b[3] if res2b and len(res2b) > 3 else 0
@@ -869,6 +1009,8 @@ class JunoClient:
         lfo2_f_dep = res2b[6] if res2b and len(res2b) > 6 else 64
         lfo2_a_dep = res2b[7] if res2b and len(res2b) > 7 else 64
         lfo2_pan_dep = res2b[8] if res2b and len(res2b) > 8 else 64
+        step_lfo_type = res2b[9] if res2b and len(res2b) > 9 else 0
+        step_lfo_steps = [b - 64 for b in res2b[10:26]] if res2b and len(res2b) >= 26 else [0] * 16
 
         return ToneState(
             tone_index=tone_index,
@@ -931,6 +1073,9 @@ class JunoClient:
             lfo2_delay_time=lfo2_delay,
             lfo2_fade_mode=lfo2_fade_m,
             lfo2_fade_time=lfo2_fade_t,
+            step_lfo_type=step_lfo_type,
+            step_lfo_steps=step_lfo_steps,
+            matrix_switches=matrix_switches,
         )
 
     def read_all_tones(self, timeout: float = 1.0) -> list[ToneState]:
@@ -1091,4 +1236,6 @@ class JunoClient:
             # LFO 1 & 2: Depths = 64 (0)
             self.set_tone_lfo(idx, lfo_index=1, waveform=1, rate=64, pitch_depth=64, tvf_depth=64, tva_depth=64, pan_depth=64)
             self.set_tone_lfo(idx, lfo_index=2, waveform=0, rate=45, pitch_depth=64, tvf_depth=64, tva_depth=64, pan_depth=64)
+            # Step LFO: TYP1 (STEP), all 16 steps 0
+            self.set_tone_step_lfo_all(idx, step_type=0, steps=[0] * 16)
 

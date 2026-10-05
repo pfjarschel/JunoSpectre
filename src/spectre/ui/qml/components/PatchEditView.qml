@@ -12,6 +12,11 @@ Rectangle {
 
     property int selectedTone: Bridge.selectedTone
     property int activeLfoTab: 1 // 1 or 2
+    property bool lfoWavePickerOpen: false
+    readonly property var lfoWaveforms: [
+        "SIN", "TRI", "SAW-UP", "SAW-DW", "SQR", "RND",
+        "BEND-UP", "BEND-DW", "TRP", "S&H", "CHS", "VSIN", "STEP"
+    ]
 
     // Active LFO properties helpers
     readonly property var lfoData: activeLfoTab === 1 ? {
@@ -518,9 +523,9 @@ Rectangle {
                     TouchFader {
                         Layout.fillWidth: true
                         label: "LEVEL"
-                        valText: Bridge.masterLevel.toString()
-                        normVal: Bridge.masterLevel / 127.0
-                        onMoved: (norm) => Bridge.setMasterLevel(Math.round(norm * 127))
+                        valText: Bridge.tvaLevel.toString()
+                        normVal: Bridge.tvaLevel / 127.0
+                        onMoved: (norm) => Bridge.setTvaLevel(Math.round(norm * 127))
                     }
 
                     TouchFader {
@@ -556,9 +561,9 @@ Rectangle {
                     TouchFader {
                         Layout.fillWidth: true
                         label: "ATTACK (A)"
-                        valText: Bridge.masterAttack.toString()
-                        normVal: (Bridge.masterAttack - 1) / 126.0
-                        onMoved: (norm) => Bridge.setMasterAttack(Math.round(1 + norm * 126))
+                        valText: Bridge.tvaAttack.toString()
+                        normVal: Bridge.tvaAttack / 127.0
+                        onMoved: (norm) => Bridge.setTvaAttack(Math.round(norm * 127))
                     }
 
                     TouchFader {
@@ -580,9 +585,9 @@ Rectangle {
                     TouchFader {
                         Layout.fillWidth: true
                         label: "RELEASE (R)"
-                        valText: Bridge.masterRelease.toString()
-                        normVal: (Bridge.masterRelease - 1) / 126.0
-                        onMoved: (norm) => Bridge.setMasterRelease(Math.round(1 + norm * 126))
+                        valText: Bridge.tvaRelease.toString()
+                        normVal: Bridge.tvaRelease / 127.0
+                        onMoved: (norm) => Bridge.setTvaRelease(Math.round(norm * 127))
                     }
 
                     Item { Layout.fillHeight: true }
@@ -653,32 +658,107 @@ Rectangle {
                         }
                     }
 
-                    // Wave selector chips (2 rows of 4)
-                    GridLayout {
+                    // Interactive Wave Selector: [<] [ WAVE NAME (idx/13) ▼ ] [>]
+                    RowLayout {
                         Layout.fillWidth: true
-                        columns: 4
-                        rowSpacing: 2; columnSpacing: 2
-                        Repeater {
-                            model: ["TRI", "SIN", "SAW", "SQR", "TRP", "S&H", "RND", "CHS"]
-                            delegate: Rectangle {
-                                Layout.fillWidth: true
-                                height: ScaleMetrics.dp(20)
-                                radius: 3
-                                color: root.lfoData.wave === modelData ? Theme.bgCardActive : "#10141d"
-                                border.color: root.lfoData.wave === modelData ? "#38bdf8" : Theme.borderCard
-                                border.width: 1
+                        spacing: ScaleMetrics.dp(4)
+
+                        // Prev Wave Button
+                        Rectangle {
+                            width: ScaleMetrics.dp(28)
+                            height: ScaleMetrics.dp(24)
+                            radius: 3
+                            color: prevWaveArea.pressed ? Theme.bgCardActive : "#10141d"
+                            border.color: prevWaveArea.pressed ? "#38bdf8" : Theme.borderCard
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "◀"
+                                font.pixelSize: ScaleMetrics.sp(8)
+                                color: Theme.textPrimary
+                            }
+
+                            MouseArea {
+                                id: prevWaveArea
+                                anchors.fill: parent
+                                onClicked: {
+                                    let idx = root.lfoWaveforms.indexOf(root.lfoData.wave);
+                                    if (idx <= 0) idx = root.lfoWaveforms.length - 1;
+                                    else idx--;
+                                    Bridge.setLfoParam(root.activeLfoTab, "wave", root.lfoWaveforms[idx]);
+                                }
+                            }
+                        }
+
+                        // Current Wave Button (Taps to open Wave Picker Modal)
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: ScaleMetrics.dp(24)
+                            radius: 3
+                            color: currentWaveArea.pressed ? "#162032" : Theme.bgCardActive
+                            border.color: "#38bdf8"
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: ScaleMetrics.dp(8)
+                                anchors.rightMargin: ScaleMetrics.dp(8)
 
                                 Text {
-                                    anchors.centerIn: parent
-                                    text: modelData
-                                    font.bold: root.lfoData.wave === modelData
+                                    text: "WAVE"
+                                    font.bold: true
                                     font.pixelSize: ScaleMetrics.sp(7)
-                                    color: root.lfoData.wave === modelData ? Theme.textPrimary : Theme.textDim
+                                    color: Theme.textDim
                                 }
 
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: Bridge.setLfoParam(root.activeLfoTab, "wave", modelData)
+                                Item { Layout.fillWidth: true }
+
+                                Text {
+                                    text: root.lfoData.wave
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(9)
+                                    color: "#38bdf8"
+                                }
+
+                                Text {
+                                    text: "▼"
+                                    font.pixelSize: ScaleMetrics.sp(7)
+                                    color: Theme.textDim
+                                }
+                            }
+
+                            MouseArea {
+                                id: currentWaveArea
+                                anchors.fill: parent
+                                onClicked: root.lfoWavePickerOpen = !root.lfoWavePickerOpen
+                            }
+                        }
+
+                        // Next Wave Button
+                        Rectangle {
+                            width: ScaleMetrics.dp(28)
+                            height: ScaleMetrics.dp(24)
+                            radius: 3
+                            color: nextWaveArea.pressed ? Theme.bgCardActive : "#10141d"
+                            border.color: nextWaveArea.pressed ? "#38bdf8" : Theme.borderCard
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "▶"
+                                font.pixelSize: ScaleMetrics.sp(8)
+                                color: Theme.textPrimary
+                            }
+
+                            MouseArea {
+                                id: nextWaveArea
+                                anchors.fill: parent
+                                onClicked: {
+                                    let idx = root.lfoWaveforms.indexOf(root.lfoData.wave);
+                                    if (idx < 0 || idx >= root.lfoWaveforms.length - 1) idx = 0;
+                                    else idx++;
+                                    Bridge.setLfoParam(root.activeLfoTab, "wave", root.lfoWaveforms[idx]);
                                 }
                             }
                         }
@@ -799,6 +879,12 @@ Rectangle {
         border.color: isSelected ? toneColor : Theme.borderCard
         border.width: isSelected ? 2 : 1
 
+        // Base mouse area to select tab on clicking background
+        MouseArea {
+            anchors.fill: parent
+            onClicked: tb.selected()
+        }
+
         RowLayout {
             anchors.fill: parent
             anchors.margins: ScaleMetrics.dp(5)
@@ -806,6 +892,7 @@ Rectangle {
 
             // Mute / On Button
             Rectangle {
+                z: 2
                 width: ScaleMetrics.dp(34)
                 height: ScaleMetrics.dp(26)
                 radius: ScaleMetrics.dp(4)
@@ -823,13 +910,16 @@ Rectangle {
 
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: Bridge.toggleToneMute(tb.toneNumber)
+                    onClicked: {
+                        tb.selected();
+                        Bridge.toggleToneMute(tb.toneNumber);
+                    }
                 }
             }
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 1
+                spacing: 2
 
                 RowLayout {
                     Text {
@@ -848,11 +938,13 @@ Rectangle {
                     }
                 }
 
-                // Mini horizontal level bar
+                // Interactive horizontal level bar
                 Rectangle {
+                    id: levelTrack
+                    z: 2
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(4)
-                    radius: 2
+                    height: ScaleMetrics.dp(7)
+                    radius: 3
                     color: "#1e293b"
                     clip: true
 
@@ -863,13 +955,25 @@ Rectangle {
                         width: parent.width * (tb.isMuted ? 0 : (tb.toneLevel / 127.0))
                         color: tb.toneColor
                     }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        preventStealing: true
+
+                        function updateLevel(mouse) {
+                            tb.selected();
+                            let norm = Math.max(0.0, Math.min(1.0, mouse.x / levelTrack.width));
+                            let newLvl = Math.round(norm * 127);
+                            Bridge.setToneLevel(tb.toneNumber, newLvl);
+                        }
+
+                        onPressed: (mouse) => updateLevel(mouse)
+                        onPositionChanged: (mouse) => {
+                            if (pressed) updateLevel(mouse)
+                        }
+                    }
                 }
             }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: tb.selected()
         }
     }
 
@@ -940,6 +1044,107 @@ Rectangle {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: Bridge.openWaveBrowser(wc.toneIdx)
+                    }
+                }
+            }
+        }
+    }
+
+    // LFO Wave Picker Overlay Modal
+    Rectangle {
+        id: wavePickerModal
+        anchors.fill: parent
+        z: 999
+        color: Qt.rgba(0, 0, 0, 0.75)
+        visible: root.lfoWavePickerOpen
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.lfoWavePickerOpen = false
+        }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - ScaleMetrics.dp(40), ScaleMetrics.dp(380))
+            height: ScaleMetrics.dp(250)
+            radius: ScaleMetrics.dp(8)
+            color: "#0f172a"
+            border.color: "#38bdf8"
+            border.width: 1
+
+            MouseArea {
+                anchors.fill: parent
+                // Prevent dismissing modal on clicking inside the card
+            }
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: ScaleMetrics.dp(12)
+                spacing: ScaleMetrics.dp(10)
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        text: "SELECT LFO " + root.activeLfoTab + " WAVEFORM"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(10)
+                        color: Theme.textPrimary
+                    }
+                    Item { Layout.fillWidth: true }
+                    Rectangle {
+                        width: ScaleMetrics.dp(24)
+                        height: ScaleMetrics.dp(24)
+                        radius: 4
+                        color: "#1e293b"
+                        border.color: Theme.borderCard
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "✕"
+                            color: Theme.textDim
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(10)
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: root.lfoWavePickerOpen = false
+                        }
+                    }
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    columns: 4
+                    rowSpacing: ScaleMetrics.dp(6)
+                    columnSpacing: ScaleMetrics.dp(6)
+
+                    Repeater {
+                        model: root.lfoWaveforms
+                        delegate: Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            radius: ScaleMetrics.dp(4)
+                            color: root.lfoData.wave === modelData ? Theme.bgCardActive : "#10141d"
+                            border.color: root.lfoData.wave === modelData ? "#38bdf8" : Theme.borderCard
+                            border.width: root.lfoData.wave === modelData ? 2 : 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData
+                                font.bold: true
+                                font.pixelSize: ScaleMetrics.sp(9)
+                                color: root.lfoData.wave === modelData ? "#38bdf8" : Theme.textPrimary
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    Bridge.setLfoParam(root.activeLfoTab, "wave", modelData);
+                                    root.lfoWavePickerOpen = false;
+                                }
+                            }
+                        }
                     }
                 }
             }

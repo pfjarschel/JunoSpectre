@@ -80,9 +80,9 @@ Rectangle {
 
                     Item { Layout.fillWidth: true }
 
-                    // Unison Button
+                    // Auto Detune Button
                     Rectangle {
-                        width: ScaleMetrics.dp(100)
+                        width: ScaleMetrics.dp(125)
                         height: ScaleMetrics.dp(26)
                         radius: ScaleMetrics.dp(4)
                         color: root.unisonActive ? Theme.bgCardActive : "#10141d"
@@ -97,7 +97,7 @@ Rectangle {
                                 color: root.unisonActive ? "#38bdf8" : Theme.textDim
                             }
                             Text {
-                                text: root.unisonActive ? "UNISON: ON" : "UNISON: OFF"
+                                text: root.unisonActive ? "AUTO DETUNE: ON" : "AUTO DETUNE: OFF"
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(8)
                                 color: root.unisonActive ? Theme.textPrimary : Theme.textDim
@@ -181,6 +181,7 @@ Rectangle {
                         oscIndex: 1
                         title: "OSC 1"
                         accent: Theme.tone1
+                        autoDetuneActive: root.unisonActive
                         waveIdx: root.osc1Wave
                         coarseVal: root.osc1Coarse
                         fineVal: root.osc1Fine
@@ -202,6 +203,7 @@ Rectangle {
                         oscIndex: 2
                         title: "OSC 2"
                         accent: Theme.tone2
+                        autoDetuneActive: root.unisonActive
                         waveIdx: root.osc2Wave
                         coarseVal: root.osc2Coarse
                         fineVal: root.osc2Fine
@@ -223,6 +225,7 @@ Rectangle {
                         oscIndex: 3
                         title: "OSC 3"
                         accent: Theme.tone3
+                        autoDetuneActive: root.unisonActive
                         waveIdx: root.osc3Wave
                         coarseVal: root.osc3Coarse
                         fineVal: root.osc3Fine
@@ -244,6 +247,7 @@ Rectangle {
                         oscIndex: 4
                         title: "OSC 4"
                         accent: Theme.tone4
+                        autoDetuneActive: root.unisonActive
                         waveIdx: root.osc4Wave
                         coarseVal: root.osc4Coarse
                         fineVal: root.osc4Fine
@@ -278,6 +282,7 @@ Rectangle {
         property int oscIndex: 1
         property string title: "OSC"
         property color accent: Theme.tone1
+        property bool autoDetuneActive: false
         property int waveIdx: 0
         property int coarseVal: 0
         property int fineVal: 0
@@ -427,11 +432,13 @@ Rectangle {
             TouchFader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: ScaleMetrics.dp(24)
-                label: "FINE"
+                label: osc.autoDetuneActive ? "FINE (AUTO)" : "FINE"
                 valText: (osc.fineVal > 0 ? "+" + osc.fineVal : osc.fineVal.toString()) + " c"
                 normVal: (osc.fineVal + 50) / 100.0
                 isBipolar: true
                 barColor: osc.accent
+                enabled: !osc.autoDetuneActive
+                opacity: osc.autoDetuneActive ? 0.45 : 1.0
                 onMoved: (n) => osc.fineChanged(Math.round(n * 100 - 50))
             }
 

@@ -12,7 +12,21 @@ from typing import Any, Dict, List, Tuple
 
 # Conversion helper maps
 TVF_TYPE_NAMES = ["OFF", "LPF", "BPF", "HPF", "PKG", "LPF2", "LPF3"]
-LFO_WAVE_NAMES = ["TRI", "SIN", "SAW", "SQR", "TRP", "S&H", "RND", "CHS"]
+LFO_WAVE_NAMES = [
+    "SIN",
+    "TRI",
+    "SAW-UP",
+    "SAW-DW",
+    "SQR",
+    "RND",
+    "BEND-UP",
+    "BEND-DW",
+    "TRP",
+    "S&H",
+    "CHS",
+    "VSIN",
+    "STEP",
+]
 LFO_FADE_MODE_NAMES = ["ON-IN", "ON-OUT", "OFF-IN", "OFF-OUT"]
 
 
@@ -92,6 +106,20 @@ class ToneState:
     lfo2_delay_time: int = 0     # 0..127
     lfo2_fade_mode: int = 0      # 0..3 (0: ON-IN)
     lfo2_fade_time: int = 0      # 0..127
+
+    # Tone Step LFO (Waveform #12 shape table: offsets 0x0109..0x0119)
+    step_lfo_type: int = 0       # 0=TYP1 (STEP / HOLD), 1=TYP2 (GLIDE / LINEAR)
+    step_lfo_steps: list[int] = field(default_factory=lambda: [0] * 16)  # -36 .. +36 (raw 28..100)
+
+    # Tone Control 1..4 Destination 1..4 Switches (4 controllers x 4 destinations: 0=OFF, 1=ON, 2=REVERSE)
+    matrix_switches: list[list[int]] = field(
+        default_factory=lambda: [
+            [1, 1, 1, 1],  # Ctrl 1: Dest 1..4
+            [1, 1, 1, 1],  # Ctrl 2: Dest 1..4
+            [1, 1, 1, 1],  # Ctrl 3: Dest 1..4
+            [1, 1, 1, 1],  # Ctrl 4: Dest 1..4
+        ]
+    )
 
     # Convenience properties for UI bipolar representations
     @property
@@ -192,6 +220,10 @@ class ToneState:
             return LFO_FADE_MODE_NAMES[self.lfo2_fade_mode]
         return "ON-IN"
 
+    @property
+    def step_lfo_type_str(self) -> str:
+        return "GLIDE" if self.step_lfo_type == 1 else "STEP"
+
 
 @dataclass
 class MatrixCtrlState:
@@ -220,14 +252,17 @@ class PatchCommonState:
     release_offset: int = 64     # 1..127 (64=0)
     portamento_switch: bool = False
     portamento_time: int = 20    # 0..127
+    portamento_mode: int = 0     # 0=NORMAL, 1=LEGATO
     legato_switch: bool = False
+    mono_poly: int = 1           # 0=MONO, 1=POLY
+    analog_feel: int = 0         # 0..127
     chorus_send: int = 0         # 0..127
     reverb_send: int = 0         # 0..127
     matrix_ctrls: list[MatrixCtrlState] = field(default_factory=lambda: [
-        MatrixCtrlState(source=0, dest1=1, sens1=94),  # CC01 Mod Wheel -> PITCH (+30)
-        MatrixCtrlState(source=4, dest1=2, sens1=39),  # Pitch Bend -> TVF CUT (-25)
-        MatrixCtrlState(source=6, dest1=0, sens1=64),  # Velocity
-        MatrixCtrlState(source=8, dest1=0, sens1=64),  # LFO 1
+        MatrixCtrlState(source=1, dest1=1, sens1=94),   # CC01 Mod Wheel (id 1) -> PITCH (+30)
+        MatrixCtrlState(source=96, dest1=2, sens1=39),  # Pitch Bend (id 96) -> TVF CUT (-25)
+        MatrixCtrlState(source=102, dest1=4, sens1=64), # Velocity (id 102) -> TVA LEVEL (0)
+        MatrixCtrlState(source=105, dest1=2, sens1=64), # LFO 1 (id 105) -> TVF CUT (0)
     ])
 
 
@@ -275,10 +310,8 @@ class EffectsState:
 @dataclass
 class StepLfoState:
     """State for 16-Step Pattern Modulator."""
-    steps: list[int] = field(default_factory=lambda: [
-        0, 15, 30, 45, 60, 45, 30, 15, 0, -15, -30, -45, -60, -45, -30, -15
-    ])
-    curve_type: int = 1          # 0: HOLD, 1: LINEAR, 2: SMOOTH
+    steps: list[int] = field(default_factory=lambda: [0] * 16)
+    curve_type: int = 0          # 0: STEP (HOLD), 1: GLIDE (LINEAR)
     sync_rate_idx: int = 2       # 2 = 1/16
     dest_idx: int = 1            # 0: PITCH, 1: TVF CUTOFF, 2: TVA LEVEL, 3: PAN
     depth: int = 48              # 0..127
@@ -312,11 +345,12 @@ class PatchState:
         PerfPartState(part_index=i, name=f"Part {i}", volume=110 if i == 1 else (85 if i == 2 else 0))
         for i in range(1, 17)
     ])
-    macros: list[int] = field(default_factory=lambda: [64] * 8)
+    macros: list[int] = field(default_factory=lambda: [64, 64, 64, 64, 20, 0, 0, 25])
 
     # Workstation / VA state
-    va_unison: bool = True
+    va_unison: bool = False  # Auto-detune disabled by default
     va_unison_detune: int = 15   # 0..50 cents
+    va_custom_detunes: list[int] = field(default_factory=lambda: [64, 64, 64, 64])  # Cached raw Roland fine tune 14..114 (-50..+50 cents)
     va_pw: list[int] = field(default_factory=lambda: [50, 50, 50, 50])
     va_pwm: list[int] = field(default_factory=lambda: [0, 0, 0, 0])
 
@@ -340,16 +374,20 @@ class PatchState:
             release_offset=64,
             portamento_switch=False,
             portamento_time=20,
+            portamento_mode=0,
             legato_switch=False,
+            mono_poly=1,
+            analog_feel=0,
             chorus_send=0,
-            reverb_send=0,
+            reverb_send=25,
             matrix_ctrls=[
-                MatrixCtrlState(source=0, dest1=0, sens1=64),
-                MatrixCtrlState(source=0, dest1=0, sens1=64),
-                MatrixCtrlState(source=0, dest1=0, sens1=64),
-                MatrixCtrlState(source=0, dest1=0, sens1=64),
+                MatrixCtrlState(source=1, dest1=1, sens1=94),   # CC01 Mod Wheel (id 1) -> PITCH (+30)
+                MatrixCtrlState(source=96, dest1=2, sens1=39),  # Pitch Bend (id 96) -> TVF CUT (-25)
+                MatrixCtrlState(source=102, dest1=4, sens1=64), # Velocity (id 102) -> TVA LEVEL (0)
+                MatrixCtrlState(source=105, dest1=2, sens1=64), # LFO 1 (id 105) -> TVF CUT (0)
             ]
         )
+        state.macros = [64, 64, 64, 64, 20, 0, 0, 25]
 
         init_waves = [
             ("INTA", 579), # Juno Saw HD
@@ -444,16 +482,17 @@ class PatchState:
         )
 
         state.step_lfo = StepLfoState(
-            steps=[0, 15, 30, 45, 60, 45, 30, 15, 0, -15, -30, -45, -60, -45, -30, -15],
-            curve_type=1,
+            steps=[0] * 16,
+            curve_type=0,
             sync_rate_idx=2,
             dest_idx=1,
             depth=0,
         )
 
         state.macros = [64] * 8
-        state.va_unison = True
+        state.va_unison = False
         state.va_unison_detune = 15
+        state.va_custom_detunes = [64, 64, 64, 64]
         state.va_pw = [50, 50, 50, 50]
         state.va_pwm = [0, 0, 0, 0]
 

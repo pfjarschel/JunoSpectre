@@ -96,3 +96,18 @@ def test_tone_address_calculation():
     assert t2_addr == (0x1F, 0x00, 0x22, 0x00)
     assert t3_addr == (0x1F, 0x00, 0x24, 0x00)
     assert t4_addr == (0x1F, 0x00, 0x26, 0x00)
+
+
+def test_lfo2_address_calculation():
+    """Test calculating LFO2 addresses beyond 0x007F threshold."""
+    base = ADDR_TEMP_PATCH_PART_1
+    t1_base = add_address(base, OFFSET_PATCH_TONE_1)
+    
+    # LFO2 Delay Time is 0x0100
+    addr_delay = add_address(t1_base, 0x0100)
+    assert addr_delay == (0x1F, 0x00, 0x21, 0x00)
+
+    # LFO2 Pitch Depth is 0x0105
+    addr_pitch = add_address(t1_base, 0x0105)
+    assert addr_pitch == (0x1F, 0x00, 0x21, 0x05)
+
