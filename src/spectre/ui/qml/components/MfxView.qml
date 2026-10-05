@@ -11,7 +11,6 @@ Rectangle {
     border.width: 1
 
     property int activeAlgoId: Bridge.mfxAlgoId
-    property int activeAlgoIdx: 3
     property bool isBypassed: Bridge.mfxBypassed
     property string selectedCategory: "ALL"
     property string searchQuery: ""
@@ -20,182 +19,23 @@ Rectangle {
     Connections {
         target: Bridge
         function onMfxParamsChanged() {
+            root.activeAlgoId = Bridge.mfxAlgoId;
+            root.isBypassed = Bridge.mfxBypassed;
         }
     }
 
-    onActiveAlgoIdxChanged: {
-        if (activeAlgoIdx >= 0 && activeAlgoIdx < algoList.length) {
-            activeAlgoId = algoList[activeAlgoIdx].id;
-        }
-    }
+    property var categories: Bridge.mfxCategories && Bridge.mfxCategories.length > 0 ?
+        Bridge.mfxCategories :
+        ["ALL", "FILTER/EQ", "MOD", "CHORUS", "DRIVE", "DYNAMICS", "DELAY", "LO-FI", "PITCH", "REVERB", "COMBINATION", "SPECIAL"]
 
-    readonly property var categories: [
-        "ALL", "FILTER/EQ", "DRIVE", "MOD", "CHORUS", "DELAY", "PITCH", "SPECIAL"
-    ]
+    property var algoList: Bridge.mfxCatalog ? Bridge.mfxCatalog : []
 
-    property var algoList: [
-        {
-            id: 1,
-            name: "01 EQUALIZER",
-            cat: "FILTER/EQ",
-            params: [
-                { label: "LOW GAIN", val: 64, min: 0, max: 127, unit: "dB" },
-                { label: "LOW FREQ", val: 32, min: 0, max: 127, unit: "Hz" },
-                { label: "MID GAIN", val: 68, min: 0, max: 127, unit: "dB" },
-                { label: "MID FREQ", val: 50, min: 0, max: 127, unit: "Hz" },
-                { label: "MID Q", val: 40, min: 0, max: 127, unit: "" },
-                { label: "HIGH GAIN", val: 64, min: 0, max: 127, unit: "dB" },
-                { label: "HIGH FREQ", val: 96, min: 0, max: 127, unit: "Hz" },
-                { label: "LEVEL", val: 100, min: 0, max: 127, unit: "" }
-            ]
-        },
-        {
-            id: 4,
-            name: "04 DISTORTION",
-            cat: "DRIVE",
-            params: [
-                { label: "DRIVE", val: 85, min: 0, max: 127, unit: "" },
-                { label: "TYPE", val: 2, min: 0, max: 5, unit: "" },
-                { label: "TONE", val: 72, min: 0, max: 127, unit: "" },
-                { label: "BOTTOM", val: 55, min: 0, max: 127, unit: "" },
-                { label: "PRESENCE", val: 60, min: 0, max: 127, unit: "" },
-                { label: "LEVEL", val: 90, min: 0, max: 127, unit: "" }
-            ]
-        },
-        {
-            id: 11,
-            name: "11 PHASER",
-            cat: "MOD",
-            params: [
-                { label: "MODE", val: 4, min: 0, max: 7, unit: "STAGES" },
-                { label: "RATE", val: 45, min: 0, max: 127, unit: "Hz" },
-                { label: "DEPTH", val: 80, min: 0, max: 127, unit: "" },
-                { label: "MANUAL", val: 60, min: 0, max: 127, unit: "" },
-                { label: "FEEDBACK", val: 60, min: 0, max: 127, unit: "%" },
-                { label: "MIX", val: 85, min: 0, max: 127, unit: "%" }
-            ]
-        },
-        {
-            id: 15,
-            name: "15 TAPE ECHO",
-            cat: "DELAY",
-            params: [
-                { label: "TIME", val: 75, min: 0, max: 127, unit: "ms" },
-                { label: "FEEDBACK", val: 65, min: 0, max: 127, unit: "%" },
-                { label: "WOW/FLUTTER", val: 40, min: 0, max: 127, unit: "" },
-                { label: "BASS", val: 64, min: 0, max: 127, unit: "dB" },
-                { label: "TREBLE", val: 64, min: 0, max: 127, unit: "dB" },
-                { label: "HF DAMP", val: 55, min: 0, max: 127, unit: "Hz" },
-                { label: "PAN", val: 64, min: 0, max: 127, unit: "" },
-                { label: "DRY/WET", val: 70, min: 0, max: 127, unit: "%" }
-            ]
-        },
-        {
-            id: 16,
-            name: "16 SPACE-D",
-            cat: "CHORUS",
-            params: [
-                { label: "RATE", val: 30, min: 0, max: 127, unit: "Hz" },
-                { label: "DEPTH", val: 90, min: 0, max: 127, unit: "" },
-                { label: "MANUAL", val: 45, min: 0, max: 127, unit: "" },
-                { label: "PHASE", val: 90, min: 0, max: 180, unit: "deg" },
-                { label: "BALANCE", val: 80, min: 0, max: 127, unit: "%" },
-                { label: "LEVEL", val: 100, min: 0, max: 127, unit: "" }
-            ]
-        },
-        {
-            id: 25,
-            name: "25 ROTARY",
-            cat: "MOD",
-            params: [
-                { label: "SPEED", val: 80, min: 0, max: 127, unit: "Hz" },
-                { label: "ACCEL", val: 60, min: 0, max: 127, unit: "" },
-                { label: "WOOFER", val: 64, min: 0, max: 127, unit: "" },
-                { label: "TWEETER", val: 70, min: 0, max: 127, unit: "" },
-                { label: "SEPARATION", val: 90, min: 0, max: 127, unit: "deg" },
-                { label: "DRIVE", val: 30, min: 0, max: 127, unit: "" },
-                { label: "LEVEL", val: 95, min: 0, max: 127, unit: "" }
-            ]
-        },
-        {
-            id: 33,
-            name: "33 SBF-325 FLANGER",
-            cat: "CHORUS",
-            params: [
-                { label: "RATE", val: 25, min: 0, max: 127, unit: "Hz" },
-                { label: "DEPTH", val: 70, min: 0, max: 127, unit: "" },
-                { label: "MANUAL", val: 50, min: 0, max: 127, unit: "" },
-                { label: "FEEDBACK", val: 85, min: 0, max: 127, unit: "%" },
-                { label: "CROSS FEED", val: 40, min: 0, max: 127, unit: "%" },
-                { label: "MIX", val: 80, min: 0, max: 127, unit: "%" }
-            ]
-        },
-        {
-            id: 45,
-            name: "45 STEP PHASER",
-            cat: "MOD",
-            params: [
-                { label: "STEP RATE", val: 60, min: 0, max: 127, unit: "Hz" },
-                { label: "PHASER RATE", val: 35, min: 0, max: 127, unit: "Hz" },
-                { label: "DEPTH", val: 80, min: 0, max: 127, unit: "" },
-                { label: "RESONANCE", val: 65, min: 0, max: 127, unit: "" },
-                { label: "STEP RESET", val: 0, min: 0, max: 1, unit: "" },
-                { label: "MIX", val: 90, min: 0, max: 127, unit: "%" }
-            ]
-        },
-        {
-            id: 56,
-            name: "56 PITCH SHIFTER",
-            cat: "PITCH",
-            params: [
-                { label: "COARSE", val: 76, min: 0, max: 127, unit: "st" },
-                { label: "FINE", val: 64, min: 0, max: 127, unit: "c" },
-                { label: "FEEDBACK", val: 30, min: 0, max: 127, unit: "%" },
-                { label: "DELAY TIME", val: 45, min: 0, max: 127, unit: "ms" },
-                { label: "PAN", val: 64, min: 0, max: 127, unit: "" },
-                { label: "BALANCE", val: 64, min: 0, max: 127, unit: "%" }
-            ]
-        },
-        {
-            id: 68,
-            name: "68 SLICER",
-            cat: "SPECIAL",
-            params: [
-                { label: "TIMING", val: 80, min: 0, max: 127, unit: "BPM" },
-                { label: "PATTERN", val: 12, min: 1, max: 20, unit: "" },
-                { label: "ATTACK", val: 40, min: 0, max: 127, unit: "" },
-                { label: "SHUFFLE", val: 25, min: 0, max: 127, unit: "%" },
-                { label: "RESET", val: 0, min: 0, max: 1, unit: "" },
-                { label: "LEVEL", val: 100, min: 0, max: 127, unit: "" }
-            ]
-        }
-    ]
-
-    function getAlgoById(targetId) {
-        for (var i = 0; i < root.algoList.length; i++) {
-            if (root.algoList[i].id === targetId) return root.algoList[i];
-        }
-        return root.algoList[0];
-    }
-
-    readonly property var currentAlgo: getAlgoById(root.activeAlgoId)
+    // Full info (with params) for the active algorithm only; fetched on demand from Python.
+    property var currentAlgo: Bridge.getMfxAlgoInfo(root.activeAlgoId)
+    onActiveAlgoIdChanged: currentAlgo = Bridge.getMfxAlgoInfo(root.activeAlgoId)
 
     function getFilteredAlgos() {
-        var query = root.searchQuery.trim().toLowerCase();
-        var cat = root.selectedCategory;
-        var res = [];
-        for (var i = 0; i < root.algoList.length; i++) {
-            var item = root.algoList[i];
-            var matchCat = (cat === "ALL" || item.cat === cat);
-            var matchQuery = (query === "" ||
-                              item.name.toLowerCase().indexOf(query) !== -1 ||
-                              item.cat.toLowerCase().indexOf(query) !== -1 ||
-                              item.id.toString().indexOf(query) !== -1);
-            if (matchCat && matchQuery) {
-                res.push(item);
-            }
-        }
-        return res;
+        return Bridge.filterMfxAlgos(root.selectedCategory, root.searchQuery);
     }
 
     property var filteredAlgos: getFilteredAlgos()
@@ -538,40 +378,61 @@ Rectangle {
                     color: Theme.borderCard
                 }
 
-                // Flexible 4-to-8 Parameter Grid (Scrollable if needed)
-                Flickable {
+                // Flexible Parameter Grid (Scrollable if needed)
+                Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    contentWidth: width
-                    contentHeight: paramGrid.implicitHeight
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
 
-                    GridLayout {
-                        id: paramGrid
-                        width: parent.width
-                        columns: 2
-                        rowSpacing: ScaleMetrics.dp(8)
-                        columnSpacing: ScaleMetrics.dp(8)
+                    Flickable {
+                        id: paramFlickable
+                        anchors.fill: parent
+                        contentWidth: width
+                        contentHeight: paramGrid.implicitHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
 
-                        Repeater {
-                            model: root.currentAlgo && root.currentAlgo.params ? root.currentAlgo.params : []
+                        GridLayout {
+                            id: paramGrid
+                            width: parent.width
+                            columns: 2
+                            rowSpacing: ScaleMetrics.dp(6)
+                            columnSpacing: ScaleMetrics.dp(8)
 
-                            delegate: MfxSlider {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: ScaleMetrics.dp(66)
-                                label: modelData.label
-                                val: modelData.val
-                                minVal: (modelData.min !== undefined) ? modelData.min : 0
-                                maxVal: (modelData.max !== undefined) ? modelData.max : 127
-                                unitText: (modelData.unit !== undefined) ? modelData.unit : ""
-                                accent: "#ec4899"
-                                isDimmed: root.isBypassed
-                                onValChanged: {
-                                    modelData.val = val;
+                            Repeater {
+                                model: root.currentAlgo && root.currentAlgo.params ? root.currentAlgo.params : []
+
+                                delegate: MfxSlider {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: ScaleMetrics.dp(52)
+                                    paramIdx: modelData.idx
+                                    label: modelData.label
+                                    val: (Bridge.mfxParamValues && modelData.idx < Bridge.mfxParamValues.length) ?
+                                            Bridge.mfxParamValues[modelData.idx] :
+                                            modelData.val
+                                    minVal: (modelData.min !== undefined) ? modelData.min : 0
+                                    maxVal: (modelData.max !== undefined) ? modelData.max : 127
+                                    unitText: (modelData.unit !== undefined) ? modelData.unit : ""
+                                    options: (modelData.options !== undefined) ? modelData.options : []
+                                    accent: "#ec4899"
+                                    isDimmed: root.isBypassed
+                                    onUserModified: (newVal) => {
+                                        Bridge.setMfxParam(modelData.idx, newVal);
+                                    }
                                 }
                             }
                         }
+                    }
+
+                    // Subtle vertical scroll indicator
+                    Rectangle {
+                        anchors.right: parent.right
+                        anchors.rightMargin: ScaleMetrics.dp(1)
+                        y: paramFlickable.visibleArea.yPosition * paramFlickable.height
+                        width: ScaleMetrics.dp(3)
+                        height: Math.max(ScaleMetrics.dp(18), paramFlickable.visibleArea.heightRatio * paramFlickable.height)
+                        radius: 1.5
+                        color: "#ec4899"
+                        opacity: paramFlickable.visibleArea.heightRatio < 0.99 ? 0.6 : 0.0
                     }
                 }
 
@@ -612,13 +473,17 @@ Rectangle {
 
     component MfxSlider: Rectangle {
         id: ms
+        property int paramIdx: 0
         property string label: "PARAM"
         property int val: 64
         property int minVal: 0
         property int maxVal: 127
         property string unitText: ""
+        property var options: []
         property color accent: Theme.primary
         property bool isDimmed: false
+
+        signal userModified(int newVal)
 
         radius: ScaleMetrics.dp(4)
         color: "#10141d"
@@ -628,24 +493,33 @@ Rectangle {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: ScaleMetrics.dp(6)
-            spacing: ScaleMetrics.dp(4)
+            anchors.margins: ScaleMetrics.dp(5)
+            spacing: ScaleMetrics.dp(2)
 
             RowLayout {
                 Layout.fillWidth: true
                 Text {
                     text: ms.label
                     font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(9)
+                    font.pixelSize: ScaleMetrics.sp(8.5)
                     color: Theme.textPrimary
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
                 Text {
-                    text: ms.val.toString() + (ms.unitText !== "" ? " " + ms.unitText : "")
+                    text: {
+                        if (ms.options && ms.options.length > 0) {
+                            var optIdx = ms.val;
+                            if (optIdx >= 600) optIdx -= 600;
+                            if (optIdx >= 0 && optIdx < ms.options.length) {
+                                return ms.options[optIdx];
+                            }
+                        }
+                        return ms.val.toString() + (ms.unitText !== "" ? " " + ms.unitText : "");
+                    }
                     font.family: Theme.fontMono
                     font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(9)
+                    font.pixelSize: ScaleMetrics.sp(8.5)
                     color: ms.accent
                 }
             }
@@ -660,7 +534,11 @@ Rectangle {
 
                 Rectangle {
                     x: 0; y: 0
-                    width: parent.width * Math.max(0.0, Math.min(1.0, (ms.val - ms.minVal) / Math.max(1, ms.maxVal - ms.minVal)))
+                    width: {
+                        var v = ms.val;
+                        if (ms.options && ms.options.length > 0 && v >= 600) v -= 600;
+                        return parent.width * Math.max(0.0, Math.min(1.0, (v - ms.minVal) / Math.max(1, ms.maxVal - ms.minVal)));
+                    }
                     height: parent.height
                     radius: 3
                     color: Qt.rgba(ms.accent.r, ms.accent.g, ms.accent.b, 0.35)
@@ -668,7 +546,10 @@ Rectangle {
 
                 function updateVal(mouseX) {
                     var norm = Math.max(0.0, Math.min(1.0, mouseX / width));
-                    ms.val = Math.round(ms.minVal + norm * (ms.maxVal - ms.minVal));
+                    var newVal = Math.round(ms.minVal + norm * (ms.maxVal - ms.minVal));
+                    if (newVal !== ms.val) {
+                        ms.userModified(newVal);
+                    }
                 }
 
                 MouseArea {

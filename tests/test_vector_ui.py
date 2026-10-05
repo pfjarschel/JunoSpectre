@@ -451,44 +451,48 @@ def test_mfx_view_features():
     assert mfx_view.property("isBypassed") is False
     assert mfx_view.property("selectedCategory") == "ALL"
 
-    curr_algo = mfx_view.property("currentAlgo").toVariant()
+    def to_py(v):
+        return v.toVariant() if hasattr(v, "toVariant") else v
+
+    curr_algo = to_py(mfx_view.property("currentAlgo"))
     assert curr_algo["id"] == 15
-    assert "TAPE ECHO" in curr_algo["name"]
-    assert curr_algo["cat"] == "DELAY"
-    assert len(curr_algo["params"]) == 8
+    assert "RING MOD" in curr_algo["name"]
+    assert curr_algo["cat"] == "MOD"
 
     # Test category filtering
     mfx_view.setProperty("selectedCategory", "FILTER/EQ")
-    filtered = mfx_view.property("filteredAlgos").toVariant()
-    assert len(filtered) == 1
+    filtered = to_py(mfx_view.property("filteredAlgos"))
+    assert len(filtered) == 10
     assert filtered[0]["id"] == 1
 
     mfx_view.setProperty("selectedCategory", "CHORUS")
-    filtered = mfx_view.property("filteredAlgos").toVariant()
-    assert len(filtered) == 2
+    filtered = to_py(mfx_view.property("filteredAlgos"))
+    assert len(filtered) == 12
     assert all(item["cat"] == "CHORUS" for item in filtered)
 
     # Test search filtering
     mfx_view.setProperty("selectedCategory", "ALL")
     mfx_view.setProperty("searchQuery", "phaser")
-    filtered = mfx_view.property("filteredAlgos").toVariant()
-    assert len(filtered) == 2  # 11 Phaser and 45 Step Phaser
+    filtered = to_py(mfx_view.property("filteredAlgos"))
+    assert len(filtered) == 4  # 11, 12, 13, 14
     assert any(item["id"] == 11 for item in filtered)
-    assert any(item["id"] == 45 for item in filtered)
+    assert any(item["id"] == 12 for item in filtered)
 
     # Search by ID
-    mfx_view.setProperty("searchQuery", "68")
-    filtered = mfx_view.property("filteredAlgos").toVariant()
-    assert len(filtered) == 1
-    assert filtered[0]["id"] == 68
-    assert "SLICER" in filtered[0]["name"]
+    mfx_view.setProperty("searchQuery", "20")
+    filtered = to_py(mfx_view.property("filteredAlgos"))
+    assert any(item["id"] == 20 for item in filtered)
 
     # Test selecting an algorithm
-    mfx_view.setProperty("activeAlgoId", 68)
-    curr_algo = mfx_view.property("currentAlgo").toVariant()
-    assert curr_algo["id"] == 68
-    assert "SLICER" in curr_algo["name"]
-    assert len(curr_algo["params"]) == 6
+    bridge.setMfxAlgoId(80)
+    curr_algo = to_py(mfx_view.property("currentAlgo"))
+    assert curr_algo["id"] == 80
+    assert "BIT CRUSHER" in curr_algo["name"]
+    assert len(curr_algo["params"]) == 4
+
+    # Test setting an individual MFX parameter
+    bridge.setMfxParam(0, 95)
+    assert bridge.patch_state.effects.mfx_params[0] == 95
 
     # Test bypass toggle
     mfx_view.setProperty("isBypassed", True)

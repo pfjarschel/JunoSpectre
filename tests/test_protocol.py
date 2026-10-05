@@ -271,6 +271,99 @@ def test_juno_client_set_tone_matrix_switch(mock_midi_mgr):
     assert sent_packet[10] == 1
 
 
+def test_mfx_catalog_integrity():
+    from src.spectre.core.mfx_catalog import get_mfx_catalog, get_mfx_algo, get_mfx_categories
+
+    catalog = get_mfx_catalog()
+    assert len(catalog) == 80
+    ids = [a["id"] for a in catalog]
+    assert ids == list(range(1, 81))
+
+    categories = set(get_mfx_categories())
+    for algo in catalog:
+        assert algo["cat"] in categories
+        assert len(algo["params"]) >= 4
+        for p in algo["params"]:
+            assert "idx" in p
+            assert "label" in p
+            assert "min" in p
+            assert "max" in p
+
+    # Test lookup
+    algo1 = get_mfx_algo(1)
+    assert algo1 is not None
+    assert "EQUALIZER" in algo1["name"]
+
+    algo80 = get_mfx_algo(80)
+    assert algo80 is not None
+    assert "BIT CRUSHER" in algo80["name"]
+
+
+def test_juno_client_set_mfx_param(mock_midi_mgr):
+    from src.spectre.core.sysex import pack_4nibbles
+
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+
+    # Test setting param 0 (Param 1) to value 10
+    client.set_mfx_param(0, 10)
+    assert mock_midi_mgr.send_juno_sysex.call_count == 2
+    # First call targets Patch MFX (1F 00 02 11), second mirrors to Perf Common MFX1 (10 00 02 11)
+    call1 = mock_midi_mgr.send_juno_sysex.call_args_list[-2][0][0]
+    call2 = mock_midi_mgr.send_juno_sysex.call_args_list[-1][0][0]
+    assert call1[6:10] == [0x1F, 0x00, 0x02, 0x11]
+    assert call2[6:10] == [0x10, 0x00, 0x02, 0x11]
+    expected_nibbles = pack_4nibbles(10 + 32768)
+    assert call1[10:14] == expected_nibbles
+    assert call2[10:14] == expected_nibbles
+
+    # Test setting param 1 (Param 2)
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_mfx_param(1, -5)
+    call1 = mock_midi_mgr.send_juno_sysex.call_args_list[-2][0][0]
+    call2 = mock_midi_mgr.send_juno_sysex.call_args_list[-1][0][0]
+    assert call1[6:10] == [0x1F, 0x00, 0x02, 0x15]
+    assert call2[6:10] == [0x10, 0x00, 0x02, 0x15]
+    assert call1[10:14] == pack_4nibbles(-5 + 32768)
+
+    # Test bulk setting
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_mfx_params_bulk([10, 20, 30])
+    assert mock_midi_mgr.send_juno_sysex.call_count == 2
+    bulk_call1 = mock_midi_mgr.send_juno_sysex.call_args_list[-2][0][0]
+    bulk_call2 = mock_midi_mgr.send_juno_sysex.call_args_list[-1][0][0]
+    assert bulk_call1[6:10] == [0x1F, 0x00, 0x02, 0x11]
+    assert bulk_call2[6:10] == [0x10, 0x00, 0x02, 0x11]
+    expected_bulk_payload = pack_4nibbles(10 + 32768) + pack_4nibbles(20 + 32768) + pack_4nibbles(30 + 32768)
+    assert bulk_call1[10:22] == expected_bulk_payload
+
+
+def test_juno_client_read_mfx(mock_midi_mgr):
+    from src.spectre.core.sysex import pack_4nibbles
+
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+
+    # Construct mock 145-byte MFX response
+    # bytes 0..3: Type (4), Dry (127), Chorus (10), Reverb (20)
+    # bytes 4..16: controls (dummy)
+    # bytes 17..144: 32 params (4 nibbles each)
+    mock_resp = [4, 127, 10, 20] + [0] * 13
+    for i in range(32):
+        mock_resp.extend(pack_4nibbles(i + 32768))
+
+    client.request_data = MagicMock(return_value=bytes(mock_resp))
+    mfx_type, dry, cho, rev, params = client.read_mfx()
+    assert mfx_type == 4
+    assert dry == 127
+    assert cho == 10
+    assert rev == 20
+    assert len(params) == 32
+    assert params[0] == 0
+    assert params[5] == 5
+    assert params[31] == 31
+
+
 
 
 

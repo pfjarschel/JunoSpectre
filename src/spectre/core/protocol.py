@@ -772,12 +772,50 @@ class JunoClient:
         base = self.get_active_patch_base()
         mfx_base = add_address(base, OFFSET_PATCH_COMMON_MFX)
         self.send_data(add_address(mfx_base, MFX_PARAM_TYPE), [max(0, min(80, int(mfx_type)))])
+        # On Roland JUNO-DS, also sync Performance Common MFX1 (10 00 02 00)
+        perf_type_addr = (0x10, 0x00, 0x02, MFX_PARAM_TYPE)
+        if add_address(mfx_base, MFX_PARAM_TYPE) != perf_type_addr:
+            self.send_data(perf_type_addr, [max(0, min(80, int(mfx_type)))])
         if dry_send is not None:
             self.send_data(add_address(mfx_base, MFX_PARAM_DRY_SEND), [max(0, min(127, int(dry_send)))])
+            self.send_data((0x10, 0x00, 0x02, MFX_PARAM_DRY_SEND), [max(0, min(127, int(dry_send)))])
         if chorus_send is not None:
             self.send_data(add_address(mfx_base, MFX_PARAM_CHORUS_SEND), [max(0, min(127, int(chorus_send)))])
+            self.send_data((0x10, 0x00, 0x02, MFX_PARAM_CHORUS_SEND), [max(0, min(127, int(chorus_send)))])
         if reverb_send is not None:
             self.send_data(add_address(mfx_base, MFX_PARAM_REVERB_SEND), [max(0, min(127, int(reverb_send)))])
+            self.send_data((0x10, 0x00, 0x02, MFX_PARAM_REVERB_SEND), [max(0, min(127, int(reverb_send)))])
+
+    def set_mfx_param(self, param_index: int, value: int) -> None:
+        """Set an individual MFX parameter (0..31) via Roland 4-nibble SysEx."""
+        if not (0 <= param_index <= 31):
+            raise ValueError(f"MFX parameter index must be 0..31, got {param_index}")
+        base = self.get_active_patch_base()
+        mfx_base = add_address(base, OFFSET_PATCH_COMMON_MFX)
+        param_addr = add_address(mfx_base, MFX_PARAM_DATA_START + param_index * 4)
+        raw_val = int(value) + 32768
+        nibbles = pack_4nibbles(raw_val)
+        self.send_data(param_addr, nibbles)
+        # Also mirror to Performance Common MFX1 (10 00 02 xx)
+        perf_param_addr = (0x10, 0x00, param_addr[2], param_addr[3])
+        if param_addr != perf_param_addr:
+            self.send_data(perf_param_addr, nibbles)
+
+    def set_mfx_params_bulk(self, param_values: Sequence[int], start_index: int = 0) -> None:
+        """Set a contiguous sequence of MFX parameters in a single SysEx DT1 packet."""
+        if not param_values:
+            return
+        nibbles = []
+        for val in param_values:
+            raw_val = int(val) + 32768
+            nibbles.extend(pack_4nibbles(raw_val))
+        base = self.get_active_patch_base()
+        mfx_base = add_address(base, OFFSET_PATCH_COMMON_MFX)
+        param_addr = add_address(mfx_base, MFX_PARAM_DATA_START + start_index * 4)
+        self.send_data(param_addr, nibbles)
+        perf_param_addr = (0x10, 0x00, param_addr[2], param_addr[3])
+        if param_addr != perf_param_addr:
+            self.send_data(perf_param_addr, nibbles)
 
     def set_chorus(
         self,
@@ -1085,14 +1123,26 @@ class JunoClient:
             tones.append(self.read_tone(i, timeout=timeout))
         return tones
 
-    def read_mfx(self, timeout: float = 1.0) -> Tuple[int, int, int, int]:
-        """Read MFX Type, Dry Send, Chorus Send, Reverb Send."""
+    def read_mfx(self, timeout: float = 1.0) -> Tuple[int, int, int, int, list[int]]:
+        """Read MFX Type, Dry Send, Chorus Send, Reverb Send, and Parameters 1..32."""
         base = self.get_active_patch_base(timeout=timeout)
         mfx_addr = add_address(base, OFFSET_PATCH_COMMON_MFX)
-        res = self.request_data(mfx_addr, (0x00, 0x00, 0x00, 0x04), timeout=timeout)
+        # Size 0x0111 in 7-bit arithmetic (145 bytes) reads type, sends, controls, and 32 params
+        res = self.request_data(mfx_addr, (0x00, 0x00, 0x01, 0x11), timeout=timeout)
+        if res is None or len(res) < 4:
+            # Fallback to Performance Common MFX1 (10 00 02 00)
+            res = self.request_data((0x10, 0x00, 0x02, 0x00), (0x00, 0x00, 0x01, 0x11), timeout=timeout)
         if res is None or len(res) < 4:
             raise TimeoutError("Timed out reading MFX block.")
-        return (res[0], res[1], res[2], res[3])
+        mfx_type, dry, cho, rev = res[0], res[1], res[2], res[3]
+        params = [0] * 32
+        param_start = 0x11
+        if len(res) >= param_start + 4:
+            avail_params = min(32, (len(res) - param_start) // 4)
+            for i in range(avail_params):
+                chunk = res[param_start + i * 4 : param_start + (i + 1) * 4]
+                params[i] = unpack_4nibbles(chunk) - 32768
+        return (mfx_type, dry, cho, rev, params)
 
     def read_chorus(self, timeout: float = 1.0) -> Tuple[int, int, int]:
         """Read Chorus Type, Level, Output Select."""
@@ -1117,9 +1167,9 @@ class JunoClient:
         common = self.read_patch_common(timeout=timeout)
         tones = self.read_all_tones(timeout=timeout)
 
-        mfx_type, dry, cho, rev = (0, 127, 0, 0)
+        mfx_type, dry, cho, rev, mfx_params = (0, 127, 0, 0, [0] * 32)
         try:
-            mfx_type, dry, cho, rev = self.read_mfx(timeout=timeout)
+            mfx_type, dry, cho, rev, mfx_params = self.read_mfx(timeout=timeout)
         except Exception as e:
             logger.warning(f"Could not read MFX: {e}")
 
@@ -1141,6 +1191,7 @@ class JunoClient:
             mfx_chorus_send=cho,
             mfx_reverb_send=rev,
             mfx_bypassed=(mfx_type == 0),
+            mfx_params=mfx_params,
             chorus_type=c_type,
             chorus_level=c_lvl,
             chorus_to_reverb=c_out,

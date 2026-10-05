@@ -26,6 +26,7 @@ from ..core.patch_state import (
     LFO_FADE_MODE_NAMES,
 )
 from ..core.waves import WaveCatalogManager
+from ..core.mfx_catalog import get_mfx_catalog, get_mfx_algo, get_mfx_categories, get_mfx_light_catalog
 from ..vector.engine import MorphMode, VectorEngine, VectorState
 from ..vector.math import CrossfadeCurve
 from ..vector.motion import AutomatorType, LoopMode, RecorderState, WavetableSweepMode
@@ -101,6 +102,7 @@ class SpectreBridge(QObject):
     reverbParamsChanged = pyqtSignal()
     masterEqChanged = pyqtSignal()
     mfxParamsChanged = pyqtSignal()
+    mfxValuesChanged = pyqtSignal()
     matrixCtrlChanged = pyqtSignal()
     stepLfoChanged = pyqtSignal()
     perfPartsChanged = pyqtSignal()
@@ -235,6 +237,7 @@ class SpectreBridge(QObject):
         self.reverbParamsChanged.emit()
         self.masterEqChanged.emit()
         self.mfxParamsChanged.emit()
+        self.mfxValuesChanged.emit()
         self.matrixCtrlChanged.emit()
         self.stepLfoChanged.emit()
         self.perfPartsChanged.emit()
@@ -704,6 +707,36 @@ class SpectreBridge(QObject):
     # -------------------------------------------------------------------------
     # Properties for QML: MFX Studio
     # -------------------------------------------------------------------------
+
+    @pyqtProperty("QVariantList", constant=True)
+    def mfxCatalog(self) -> list:
+        """Lightweight catalog (id, name, cat only); params are fetched per-algo."""
+        return get_mfx_light_catalog("ALL")
+
+    @pyqtProperty("QVariantList", constant=True)
+    def mfxCategories(self) -> list:
+        return get_mfx_categories()
+
+    @pyqtSlot(str, str, result="QVariantList")
+    def filterMfxAlgos(self, category: str, query: str) -> list:
+        """Fast precomputed filtering: 0ms for category switch, simple string check for search."""
+        q = (query or "").strip().lower()
+        base_list = get_mfx_light_catalog(category)
+        if not q:
+            return base_list
+        return [
+            a for a in base_list
+            if q in a["name"].lower() or q in a["cat"].lower() or q in str(a["id"])
+        ]
+
+    @pyqtSlot(int, result="QVariant")
+    def getMfxAlgoInfo(self, algo_id: int):
+        """Full info (including params) for a single algorithm."""
+        return get_mfx_algo(int(algo_id)) or {}
+
+    @pyqtProperty("QVariantList", notify=mfxValuesChanged)
+    def mfxParamValues(self) -> list:
+        return list(self.patch_state.effects.mfx_params)
 
     @pyqtProperty(int, notify=mfxParamsChanged)
     def mfxAlgoId(self) -> int:
@@ -2172,16 +2205,45 @@ class SpectreBridge(QObject):
         if clamped > 0:
             eff.mfx_last_active_type = clamped
             eff.mfx_bypassed = False
+            # Load default parameter values from catalog
+            algo = get_mfx_algo(clamped)
+            if algo and "params" in algo:
+                for p in algo["params"]:
+                    idx = p["idx"]
+                    if 0 <= idx < 32:
+                        eff.mfx_params[idx] = p.get("val", 0)
         else:
             eff.mfx_bypassed = True
 
         if self.engine.juno:
             try:
                 self.engine.juno.set_mfx(eff.mfx_type)
+                if clamped > 0:
+                    algo = get_mfx_algo(clamped)
+                    if algo and "params" in algo:
+                        vals = [eff.mfx_params[p["idx"]] for p in algo["params"]]
+                        self.engine.juno.set_mfx_params_bulk(vals)
             except Exception as e:
                 logger.error(f"Error setting MFX type on synth: {e}")
 
+        self.mfxValuesChanged.emit()
         self.mfxParamsChanged.emit()
+
+    @pyqtSlot(int, int)
+    def setMfxParam(self, param_index: int, val: int) -> None:
+        """Set an individual MFX parameter (0..31) and transmit live SysEx to synth."""
+        if not (0 <= param_index < 32):
+            return
+        eff = self.patch_state.effects
+        eff.mfx_params[param_index] = int(val)
+
+        if self.engine.juno:
+            try:
+                self.engine.juno.set_mfx_param(param_index, int(val))
+            except Exception as e:
+                logger.error(f"Error setting MFX param {param_index} on synth: {e}")
+
+        self.mfxValuesChanged.emit()
 
     @pyqtSlot(bool)
     def setMfxBypass(self, bypassed: bool) -> None:
