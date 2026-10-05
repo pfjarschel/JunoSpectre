@@ -26,6 +26,7 @@ Rectangle {
     property int reverbTone: Bridge.reverbTone
     property int reverbLevel: Bridge.reverbLevel
 
+    property bool eqSwitch: Bridge.eqSwitch
     property int eqLowGain: Bridge.eqLowGain
     property int eqLowFreq: Bridge.eqLowFreq
     property int eqMidGain: Bridge.eqMidGain
@@ -37,6 +38,9 @@ Rectangle {
 
     property int draggedEqBand: -1 // 0: Low, 1: Mid, 2: High
 
+    readonly property var midFreqs: [200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000]
+
+    onEqSwitchChanged: eqCanvas.requestPaint()
     onEqLowGainChanged: eqCanvas.requestPaint()
     onEqLowFreqChanged: eqCanvas.requestPaint()
     onEqMidGainChanged: eqCanvas.requestPaint()
@@ -46,23 +50,30 @@ Rectangle {
     onEqHighFreqChanged: eqCanvas.requestPaint()
 
     function setLowFreq(f) {
-        var maxAllowed = root.eqMidFreq - 20;
-        var val = Math.max(30, Math.min(maxAllowed, f));
+        var val = f <= 300 ? 200 : 400;
         Bridge.setMasterEqParam("lowFreq", val);
         eqCanvas.requestPaint();
     }
 
     function setMidFreq(f) {
-        var minAllowed = root.eqLowFreq + 20;
-        var maxAllowed = root.eqHighFreq - 20;
-        var val = Math.max(minAllowed, Math.min(maxAllowed, f));
-        Bridge.setMasterEqParam("midFreq", val);
+        var best = root.midFreqs[0];
+        var minDiff = Math.abs(f - best);
+        for (var i = 1; i < root.midFreqs.length; i++) {
+            var d = Math.abs(f - root.midFreqs[i]);
+            if (d < minDiff) {
+                minDiff = d;
+                best = root.midFreqs[i];
+            }
+        }
+        Bridge.setMasterEqParam("midFreq", best);
         eqCanvas.requestPaint();
     }
 
     function setHighFreq(f) {
-        var minAllowed = root.eqMidFreq + 20;
-        var val = Math.max(minAllowed, Math.min(16000, f));
+        var val = 4000;
+        if (f <= 3000) val = 2000;
+        else if (f <= 6000) val = 4000;
+        else val = 8000;
         Bridge.setMasterEqParam("highFreq", val);
         eqCanvas.requestPaint();
     }
@@ -179,7 +190,7 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 2
                         Repeater {
-                            model: ["OFF", "CHO 1", "CHO 2", "CHO 3", "FB-CHO", "FLANG"]
+                            model: ["OFF", "CHORUS", "DELAY", "GM2 CHO"]
                             delegate: Rectangle {
                                 Layout.fillWidth: true
                                 height: ScaleMetrics.dp(24)
@@ -199,12 +210,46 @@ Rectangle {
                         }
                     }
 
-                    // 6 Full Scaled Chorus Sliders
+                    // Chorus Output Routing Selector Chips
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(4)
+                        Text {
+                            text: "OUTPUT:"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Theme.textDim
+                        }
+                        Item { Layout.fillWidth: true }
+                        Repeater {
+                            model: ["MAIN", "REV", "MAIN+REV"]
+                            delegate: Rectangle {
+                                Layout.preferredWidth: ScaleMetrics.dp(60)
+                                height: ScaleMetrics.dp(20)
+                                radius: 3
+                                color: root.chorusToReverb === index ? "#0284c7" : "#10141d"
+                                border.color: root.chorusToReverb === index ? "#38bdf8" : Theme.borderCard
+                                border.width: 1
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    font.bold: root.chorusToReverb === index
+                                    font.pixelSize: ScaleMetrics.sp(7)
+                                    color: root.chorusToReverb === index ? "#ffffff" : Theme.textDim
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: Bridge.setChorusParam("toReverb", index)
+                                }
+                            }
+                        }
+                    }
+
+                    // 5 Full Scaled Chorus Sliders
                     FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "RATE"; val: root.chorusRate; accent: "#38bdf8"; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("rate", v) }
                     FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "DEPTH"; val: root.chorusDepth; accent: "#38bdf8"; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("depth", v) }
                     FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "PRE-DELAY"; val: root.chorusPreDelay; unitText: "ms"; accent: "#38bdf8"; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("preDelay", v) }
                     FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "FEEDBACK"; val: root.chorusFeedback; unitText: "%"; accent: "#38bdf8"; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("feedback", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "TO REVERB"; val: root.chorusToReverb; accent: "#38bdf8"; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("toReverb", v) }
                     FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "LEVEL"; val: root.chorusLevel; accent: "#38bdf8"; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("level", v) }
 
                     // Routing status
@@ -217,7 +262,7 @@ Rectangle {
                         border.width: 1
                         Text {
                             anchors.centerIn: parent
-                            text: root.chorusType === 0 ? "CHORUS BYPASSED (DRY ROUTED)" : "ROUTING: TONES ➔ CHORUS ➔ MAIN / REV"
+                            text: root.chorusType === 0 ? "CHORUS BYPASSED (DRY ROUTED)" : ("ROUTING: TONES ➔ CHORUS ➔ " + (root.chorusToReverb === 0 ? "MAIN" : root.chorusToReverb === 1 ? "REV" : "MAIN + REV"))
                             font.family: Theme.fontMono
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(7)
@@ -270,7 +315,7 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 2
                         Repeater {
-                            model: ["OFF", "ROOM 1", "ROOM 2", "HALL 1", "HALL 2", "PLATE"]
+                            model: ["OFF", "REVERB", "ROOM", "HALL", "PLATE", "GM2"]
                             delegate: Rectangle {
                                 Layout.fillWidth: true
                                 height: ScaleMetrics.dp(24)
@@ -292,10 +337,10 @@ Rectangle {
 
                     // 6 Full Scaled Reverb Sliders
                     FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "TIME"; val: root.reverbTime; unitText: "s"; accent: "#a855f7"; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("time", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "HF DAMP"; val: root.reverbDamp; unitText: "Hz"; accent: "#a855f7"; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("damp", v) }
+                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "HF DAMP"; val: root.reverbDamp; accent: "#a855f7"; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("damp", v) }
                     FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "PRE-DELAY"; val: root.reverbPreDelay; unitText: "ms"; accent: "#a855f7"; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("preDelay", v) }
                     FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "DIFFUSION"; val: root.reverbDiffusion; accent: "#a855f7"; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("diffusion", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "LOW CUT / TONE"; val: root.reverbTone; unitText: "Hz"; accent: "#a855f7"; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("tone", v) }
+                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "LOW CUT / TONE"; val: root.reverbTone; accent: "#a855f7"; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("tone", v) }
                     FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "LEVEL"; val: root.reverbLevel; accent: "#a855f7"; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("level", v) }
 
                     // Routing status
@@ -336,8 +381,30 @@ Rectangle {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: ScaleMetrics.dp(6)
-                        Rectangle { width: 6; height: 6; radius: 3; color: "#10b981" }
-                        Text { text: "3-BAND MASTER PARAMETRIC EQ"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: "#10b981" }
+                        Rectangle { width: 6; height: 6; radius: 3; color: root.eqSwitch ? "#10b981" : Theme.recording }
+                        Text { text: "3-BAND MASTER PARAMETRIC EQ"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: root.eqSwitch ? "#10b981" : Theme.recording }
+                        Rectangle {
+                            height: ScaleMetrics.dp(18)
+                            width: ScaleMetrics.dp(44)
+                            radius: 3
+                            color: !root.eqSwitch ? "#2b1b1b" : "#0d3828"
+                            border.color: !root.eqSwitch ? Theme.recording : "#10b981"
+                            border.width: 1
+                            Text {
+                                anchors.centerIn: parent
+                                text: !root.eqSwitch ? "OFF" : "ON"
+                                font.bold: true
+                                font.pixelSize: ScaleMetrics.sp(8)
+                                color: !root.eqSwitch ? Theme.recording : "#10b981"
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    Bridge.setMasterEqParam("switch", !root.eqSwitch);
+                                    eqCanvas.requestPaint();
+                                }
+                            }
+                        }
                         Item { Layout.fillWidth: true }
                         Rectangle {
                             height: ScaleMetrics.dp(20)
@@ -360,7 +427,7 @@ Rectangle {
                                     Bridge.setMasterEqParam("midGain", 0);
                                     Bridge.setMasterEqParam("highGain", 0);
                                     Bridge.setMasterEqParam("lowFreq", 400);
-                                    Bridge.setMasterEqParam("midFreq", 1200);
+                                    Bridge.setMasterEqParam("midFreq", 1250);
                                     Bridge.setMasterEqParam("midQ", 1.0);
                                     Bridge.setMasterEqParam("highFreq", 4000);
                                     Bridge.setMasterEqParam("masterLevel", 100);
@@ -624,18 +691,49 @@ Rectangle {
                                     Rectangle { width: 6; height: 6; radius: 3; color: "#38bdf8" }
                                     Text { text: "LOW SHELF"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: "#38bdf8" }
                                     Item { Layout.fillWidth: true }
-                                    Text { text: "30 Hz .. 1.0 kHz"; font.family: Theme.fontMono; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
+                                    Text { text: "200 / 400 Hz"; font.family: Theme.fontMono; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
                                 }
 
-                                // Low Freq Slider (30 .. 1000 Hz)
-                                EqFreqSlider {
+                                // Low Freq Discrete Chips
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    label: "LOW FREQ"
-                                    minFreq: 30
-                                    maxFreq: 1000
-                                    freqVal: root.eqLowFreq
-                                    accent: "#38bdf8"
-                                    onMoved: (f) => root.setLowFreq(f)
+                                    spacing: ScaleMetrics.dp(4)
+
+                                    Text {
+                                        text: "FREQ:"
+                                        font.bold: true
+                                        font.pixelSize: ScaleMetrics.sp(8)
+                                        color: Theme.textDim
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Repeater {
+                                        model: [
+                                            { label: "200 Hz", val: 200 },
+                                            { label: "400 Hz", val: 400 }
+                                        ]
+                                        delegate: Rectangle {
+                                            Layout.preferredWidth: ScaleMetrics.dp(70)
+                                            height: ScaleMetrics.dp(20)
+                                            radius: 3
+                                            property bool isSelected: (root.eqLowFreq <= 300 && modelData.val === 200) || (root.eqLowFreq > 300 && modelData.val === 400)
+                                            color: isSelected ? "#0284c7" : "#080b11"
+                                            border.color: isSelected ? "#38bdf8" : Theme.borderCard
+                                            border.width: 1
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: modelData.label
+                                                font.pixelSize: ScaleMetrics.sp(7)
+                                                font.bold: parent.isSelected
+                                                color: parent.isSelected ? "#ffffff" : Theme.textDim
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                onClicked: root.setLowFreq(modelData.val)
+                                            }
+                                        }
+                                    }
                                 }
 
                                 // Low Gain Slider (-15 .. +15 dB)
@@ -670,15 +768,15 @@ Rectangle {
                                     Rectangle { width: 6; height: 6; radius: 3; color: "#10b981" }
                                     Text { text: "MID PARAMETRIC"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: "#10b981" }
                                     Item { Layout.fillWidth: true }
-                                    Text { text: "PEAKING EQ"; font.family: Theme.fontMono; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
+                                    Text { text: "18 DISCRETE STEPS (200..8000 Hz)"; font.family: Theme.fontMono; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
                                 }
 
-                                // Mid Freq Slider (100 .. 10000 Hz, strictly clamped between Low and High)
+                                // Mid Freq Slider (snapped to 18 discrete steps 200..8000 Hz)
                                 EqFreqSlider {
                                     Layout.fillWidth: true
                                     label: "MID FREQ"
-                                    minFreq: 100
-                                    maxFreq: 10000
+                                    minFreq: 200
+                                    maxFreq: 8000
                                     freqVal: root.eqMidFreq
                                     accent: "#10b981"
                                     onMoved: (f) => root.setMidFreq(f)
@@ -693,13 +791,13 @@ Rectangle {
                                     onMoved: (g) => { Bridge.setMasterEqParam("midGain", g); eqCanvas.requestPaint(); }
                                 }
 
-                                // Q Bandwidth Chips
+                                // Q Bandwidth Chips (8 discrete steps: 0.5, 0.7, 1.0, 1.4, 2.0, 4.0, 8.0, 16.0)
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: ScaleMetrics.dp(4)
+                                    spacing: 2
 
                                     Text {
-                                        text: "Q BANDWIDTH:"
+                                        text: "Q:"
                                         font.bold: true
                                         font.pixelSize: ScaleMetrics.sp(8)
                                         color: Theme.textDim
@@ -708,20 +806,21 @@ Rectangle {
                                     Item { Layout.fillWidth: true }
 
                                     Repeater {
-                                        model: [0.5, 1.0, 2.0, 4.0]
+                                        model: [0.5, 0.7, 1.0, 1.4, 2.0, 4.0, 8.0, 16.0]
                                         delegate: Rectangle {
-                                            Layout.preferredWidth: ScaleMetrics.dp(44)
+                                            Layout.fillWidth: true
                                             height: ScaleMetrics.dp(18)
                                             radius: 2
-                                            color: root.eqMidQ === modelData ? "#10b981" : "#080b11"
-                                            border.color: root.eqMidQ === modelData ? "#10b981" : Theme.borderCard
+                                            property bool isSelected: Math.abs(root.eqMidQ - modelData) < 0.05
+                                            color: isSelected ? "#10b981" : "#080b11"
+                                            border.color: isSelected ? "#10b981" : Theme.borderCard
                                             border.width: 1
                                             Text {
                                                 anchors.centerIn: parent
-                                                text: modelData.toFixed(1)
+                                                text: modelData >= 10 ? modelData.toFixed(0) : modelData.toFixed(1)
                                                 font.pixelSize: ScaleMetrics.sp(7)
-                                                font.bold: root.eqMidQ === modelData
-                                                color: root.eqMidQ === modelData ? "#000000" : Theme.textDim
+                                                font.bold: parent.isSelected
+                                                color: parent.isSelected ? "#000000" : Theme.textDim
                                             }
                                             MouseArea {
                                                 anchors.fill: parent
@@ -757,18 +856,52 @@ Rectangle {
                                     Rectangle { width: 6; height: 6; radius: 3; color: "#fbbf24" }
                                     Text { text: "HIGH SHELF"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: "#fbbf24" }
                                     Item { Layout.fillWidth: true }
-                                    Text { text: "1.0 kHz .. 16.0 kHz"; font.family: Theme.fontMono; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
+                                    Text { text: "2.0 / 4.0 / 8.0 kHz"; font.family: Theme.fontMono; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
                                 }
 
-                                // High Freq Slider (1000 .. 16000 Hz)
-                                EqFreqSlider {
+                                // High Freq Discrete Chips
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    label: "HIGH FREQ"
-                                    minFreq: 1000
-                                    maxFreq: 16000
-                                    freqVal: root.eqHighFreq
-                                    accent: "#fbbf24"
-                                    onMoved: (f) => root.setHighFreq(f)
+                                    spacing: ScaleMetrics.dp(4)
+
+                                    Text {
+                                        text: "FREQ:"
+                                        font.bold: true
+                                        font.pixelSize: ScaleMetrics.sp(8)
+                                        color: Theme.textDim
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Repeater {
+                                        model: [
+                                            { label: "2 kHz", val: 2000 },
+                                            { label: "4 kHz", val: 4000 },
+                                            { label: "8 kHz", val: 8000 }
+                                        ]
+                                        delegate: Rectangle {
+                                            Layout.preferredWidth: ScaleMetrics.dp(50)
+                                            height: ScaleMetrics.dp(20)
+                                            radius: 3
+                                            property bool isSelected: (root.eqHighFreq <= 3000 && modelData.val === 2000) ||
+                                                                      (root.eqHighFreq > 3000 && root.eqHighFreq <= 6000 && modelData.val === 4000) ||
+                                                                      (root.eqHighFreq > 6000 && modelData.val === 8000)
+                                            color: isSelected ? "#d97706" : "#080b11"
+                                            border.color: isSelected ? "#fbbf24" : Theme.borderCard
+                                            border.width: 1
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: modelData.label
+                                                font.pixelSize: ScaleMetrics.sp(7)
+                                                font.bold: parent.isSelected
+                                                color: parent.isSelected ? "#ffffff" : Theme.textDim
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                onClicked: root.setHighFreq(modelData.val)
+                                            }
+                                        }
+                                    }
                                 }
 
                                 // High Gain Slider (-15 .. +15 dB)

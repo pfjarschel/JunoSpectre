@@ -25,15 +25,32 @@ from .patch_state import (
     ToneState,
 )
 from .sysex import (
+    ADDR_MASTER_EQ_BASE,
     ADDR_SETUP,
+    ADDR_SETUP_CHORUS_SWITCH,
+    ADDR_SETUP_REVERB_SWITCH,
+    ADDR_SYSTEM_MASTER_LEVEL,
+    ADDR_SYSTEM_PROCESSING_SWITCH,
     ADDR_TEMP_PATCH_PART_1,
     ADDR_TEMP_PERF_PART_1,
     CHORUS_PARAM_DATA_START,
+    CHORUS_PARAM_DEPTH,
+    CHORUS_PARAM_FEEDBACK,
     CHORUS_PARAM_LEVEL,
     CHORUS_PARAM_OUTPUT_SELECT,
+    CHORUS_PARAM_PREDELAY,
+    CHORUS_PARAM_RATE,
     CHORUS_PARAM_TYPE,
     DEFAULT_DEVICE_ID,
     JUNO_DS_MODEL_ID,
+    MASTER_EQ_PARAM_HIGH_FREQ,
+    MASTER_EQ_PARAM_HIGH_GAIN,
+    MASTER_EQ_PARAM_LOW_FREQ,
+    MASTER_EQ_PARAM_LOW_GAIN,
+    MASTER_EQ_PARAM_MID_FREQ,
+    MASTER_EQ_PARAM_MID_GAIN,
+    MASTER_EQ_PARAM_MID_Q,
+    MASTER_EQ_PARAM_SWITCH,
     MFX_PARAM_CHORUS_SEND,
     MFX_PARAM_DATA_START,
     MFX_PARAM_DRY_SEND,
@@ -43,6 +60,14 @@ from .sysex import (
     OFFSET_PATCH_COMMON_CHORUS,
     OFFSET_PATCH_COMMON_MFX,
     OFFSET_PATCH_COMMON_REVERB,
+    REVERB_PARAM_DATA_START,
+    REVERB_PARAM_DIFFUSION,
+    REVERB_PARAM_HF_DAMP,
+    REVERB_PARAM_LEVEL,
+    REVERB_PARAM_PREDELAY,
+    REVERB_PARAM_TIME,
+    REVERB_PARAM_TONE,
+    REVERB_PARAM_TYPE,
     OFFSET_PATCH_TMT,
     OFFSET_PATCH_TONE_1,
     OFFSET_PATCH_TONE_2,
@@ -823,14 +848,44 @@ class JunoClient:
         level: Optional[int] = None,
         output_select: Optional[int] = None,
     ) -> None:
-        """Set Master Chorus type and level."""
+        """Set Master Chorus type, level, and output routing."""
+        c_type = max(0, min(3, int(chorus_type)))
         base = self.get_active_patch_base()
         cho_base = add_address(base, OFFSET_PATCH_COMMON_CHORUS)
-        self.send_data(add_address(cho_base, CHORUS_PARAM_TYPE), [max(0, min(3, int(chorus_type)))])
+        self.send_data(add_address(cho_base, CHORUS_PARAM_TYPE), [c_type])
+        perf_base = (0x10, 0x00, 0x04, 0x00)
+        self.send_data(perf_base, [c_type])
+        self.send_data(ADDR_SETUP_CHORUS_SWITCH, [0 if c_type == 0 else 1])
         if level is not None:
-            self.send_data(add_address(cho_base, CHORUS_PARAM_LEVEL), [max(0, min(127, int(level)))])
+            lvl = max(0, min(127, int(level)))
+            self.send_data(add_address(cho_base, CHORUS_PARAM_LEVEL), [lvl])
+            self.send_data((perf_base[0], perf_base[1], perf_base[2], CHORUS_PARAM_LEVEL), [lvl])
         if output_select is not None:
-            self.send_data(add_address(cho_base, CHORUS_PARAM_OUTPUT_SELECT), [max(0, min(2, int(output_select)))])
+            out = max(0, min(2, int(output_select)))
+            self.send_data(add_address(cho_base, CHORUS_PARAM_OUTPUT_SELECT), [out])
+            self.send_data((perf_base[0], perf_base[1], perf_base[2], CHORUS_PARAM_OUTPUT_SELECT), [out])
+
+    def set_chorus_param(self, param: str, val: int) -> None:
+        """Set an individual Master Chorus 4-nibble parameter (rate, depth, preDelay, feedback)."""
+        offset_map = {
+            "preDelay": CHORUS_PARAM_PREDELAY,
+            "predelay": CHORUS_PARAM_PREDELAY,
+            "rate": CHORUS_PARAM_RATE,
+            "depth": CHORUS_PARAM_DEPTH,
+            "feedback": CHORUS_PARAM_FEEDBACK,
+        }
+        if param not in offset_map:
+            logger.warning(f"Unknown chorus parameter: {param}")
+            return
+        offset = offset_map[param]
+        clamped_val = max(0, min(127, int(val)))
+        nibbles = pack_4nibbles(clamped_val + 32768)
+        base = self.get_active_patch_base()
+        cho_base = add_address(base, OFFSET_PATCH_COMMON_CHORUS)
+        self.send_data(add_address(cho_base, offset), nibbles)
+        perf_param_addr = (0x10, 0x00, 0x04, offset)
+        if add_address(cho_base, offset) != perf_param_addr:
+            self.send_data(perf_param_addr, nibbles)
 
     def set_reverb(
         self,
@@ -838,11 +893,87 @@ class JunoClient:
         level: Optional[int] = None,
     ) -> None:
         """Set Master Reverb type and level."""
+        r_type = max(0, min(5, int(reverb_type)))
         base = self.get_active_patch_base()
         rev_base = add_address(base, OFFSET_PATCH_COMMON_REVERB)
-        self.send_data(add_address(rev_base, REVERB_PARAM_TYPE), [max(0, min(5, int(reverb_type)))])
+        self.send_data(add_address(rev_base, REVERB_PARAM_TYPE), [r_type])
+        perf_base = (0x10, 0x00, 0x06, 0x00)
+        self.send_data(perf_base, [r_type])
+        self.send_data(ADDR_SETUP_REVERB_SWITCH, [0 if r_type == 0 else 1])
         if level is not None:
-            self.send_data(add_address(rev_base, REVERB_PARAM_LEVEL), [max(0, min(127, int(level)))])
+            lvl = max(0, min(127, int(level)))
+            self.send_data(add_address(rev_base, REVERB_PARAM_LEVEL), [lvl])
+            self.send_data((perf_base[0], perf_base[1], perf_base[2], REVERB_PARAM_LEVEL), [lvl])
+
+    def set_reverb_param(self, param: str, val: int) -> None:
+        """Set an individual Master Reverb 4-nibble parameter (time, damp, preDelay, diffusion, tone)."""
+        offset_map = {
+            "preDelay": REVERB_PARAM_PREDELAY,
+            "predelay": REVERB_PARAM_PREDELAY,
+            "time": REVERB_PARAM_TIME,
+            "damp": REVERB_PARAM_HF_DAMP,
+            "hfDamp": REVERB_PARAM_HF_DAMP,
+            "diffusion": REVERB_PARAM_DIFFUSION,
+            "tone": REVERB_PARAM_TONE,
+            "lowCut": REVERB_PARAM_TONE,
+        }
+        if param not in offset_map:
+            logger.warning(f"Unknown reverb parameter: {param}")
+            return
+        offset = offset_map[param]
+        clamped_val = max(0, min(127, int(val)))
+        nibbles = pack_4nibbles(clamped_val + 32768)
+        base = self.get_active_patch_base()
+        rev_base = add_address(base, OFFSET_PATCH_COMMON_REVERB)
+        self.send_data(add_address(rev_base, offset), nibbles)
+        perf_param_addr = (0x10, 0x00, 0x06, offset)
+        if add_address(rev_base, offset) != perf_param_addr:
+            self.send_data(perf_param_addr, nibbles)
+
+    def set_master_eq_param(self, param: str, val: Any) -> None:
+        """Set Master 3-Band Parametric EQ parameter via Roland SysEx."""
+        MID_FREQS = [200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000]
+        MID_QS = [0.5, 0.7, 1.0, 1.4, 2.0, 4.0, 8.0, 16.0]
+
+        if param == "switch":
+            sw = 1 if val else 0
+            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_SWITCH), [sw])
+            self.send_data(ADDR_SYSTEM_PROCESSING_SWITCH, [sw])
+        elif param == "lowFreq":
+            freq_idx = int(val) if int(val) in (0, 1) else (1 if int(val) >= 300 else 0)
+            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_LOW_FREQ), [freq_idx])
+        elif param == "lowGain":
+            gain_val = max(49, min(79, int(val) + 64))
+            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_LOW_GAIN), [gain_val])
+        elif param == "midFreq":
+            target_f = int(val)
+            closest_idx = min(range(len(MID_FREQS)), key=lambda i: abs(MID_FREQS[i] - target_f))
+            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_MID_FREQ), [closest_idx])
+        elif param == "midQ":
+            target_q = float(val)
+            closest_idx = min(range(len(MID_QS)), key=lambda i: abs(MID_QS[i] - target_q))
+            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_MID_Q), [closest_idx])
+        elif param == "midGain":
+            gain_val = max(49, min(79, int(val) + 64))
+            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_MID_GAIN), [gain_val])
+        elif param == "highFreq":
+            if int(val) in (0, 1, 2):
+                h_idx = int(val)
+            else:
+                f = int(val)
+                if f <= 3000:
+                    h_idx = 0
+                elif f <= 6000:
+                    h_idx = 1
+                else:
+                    h_idx = 2
+            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_HIGH_FREQ), [h_idx])
+        elif param == "highGain":
+            gain_val = max(49, min(79, int(val) + 64))
+            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_HIGH_GAIN), [gain_val])
+        elif param == "masterLevel":
+            lvl = max(0, min(127, int(val)))
+            self.send_data(ADDR_SYSTEM_MASTER_LEVEL, [lvl])
 
     def set_tone_pitch_env(
         self,
@@ -1144,23 +1275,37 @@ class JunoClient:
                 params[i] = unpack_4nibbles(chunk) - 32768
         return (mfx_type, dry, cho, rev, params)
 
-    def read_chorus(self, timeout: float = 1.0) -> Tuple[int, int, int]:
-        """Read Chorus Type, Level, Output Select."""
+    def read_chorus(self, timeout: float = 1.0) -> Tuple[int, int, int, int, int, int, int]:
+        """Read Chorus Type, Level, Output Select, Pre-Delay, Rate, Depth, Feedback."""
         base = self.get_active_patch_base(timeout=timeout)
         cho_addr = add_address(base, OFFSET_PATCH_COMMON_CHORUS)
-        res = self.request_data(cho_addr, (0x00, 0x00, 0x00, 0x04), timeout=timeout)
+        res = self.request_data(cho_addr, (0x00, 0x00, 0x00, 0x28), timeout=timeout)
         if res is None or len(res) < 4:
             raise TimeoutError("Timed out reading Chorus block.")
-        return (res[0], res[1], res[3])
+        c_type = res[0]
+        c_lvl = res[1]
+        c_out = res[3] if len(res) > 3 else 0
+        predelay = unpack_4nibbles(res[0x0C:0x10]) - 32768 if len(res) >= 0x10 else 0
+        rate = unpack_4nibbles(res[0x14:0x18]) - 32768 if len(res) >= 0x18 else 0
+        depth = unpack_4nibbles(res[0x1C:0x20]) - 32768 if len(res) >= 0x20 else 0
+        feedback = unpack_4nibbles(res[0x24:0x28]) - 32768 if len(res) >= 0x28 else 0
+        return (c_type, c_lvl, c_out, max(0, predelay), max(0, rate), max(0, depth), max(0, feedback))
 
-    def read_reverb(self, timeout: float = 1.0) -> Tuple[int, int]:
-        """Read Reverb Type and Level."""
+    def read_reverb(self, timeout: float = 1.0) -> Tuple[int, int, int, int, int, int, int]:
+        """Read Reverb Type, Level, Pre-Delay, Time, HF Damp, Diffusion, Tone."""
         base = self.get_active_patch_base(timeout=timeout)
         rev_addr = add_address(base, OFFSET_PATCH_COMMON_REVERB)
-        res = self.request_data(rev_addr, (0x00, 0x00, 0x00, 0x02), timeout=timeout)
+        res = self.request_data(rev_addr, (0x00, 0x00, 0x00, 0x20), timeout=timeout)
         if res is None or len(res) < 2:
             raise TimeoutError("Timed out reading Reverb block.")
-        return (res[0], res[1])
+        r_type = res[0]
+        r_lvl = res[1]
+        predelay = unpack_4nibbles(res[0x03:0x07]) - 32768 if len(res) >= 0x07 else 0
+        time_val = unpack_4nibbles(res[0x07:0x0B]) - 32768 if len(res) >= 0x0B else 0
+        damp = unpack_4nibbles(res[0x0F:0x13]) - 32768 if len(res) >= 0x13 else 0
+        diffusion = unpack_4nibbles(res[0x17:0x1B]) - 32768 if len(res) >= 0x1B else 0
+        tone = unpack_4nibbles(res[0x1B:0x1F]) - 32768 if len(res) >= 0x1F else 0
+        return (r_type, r_lvl, max(0, predelay), max(0, time_val), max(0, damp), max(0, diffusion), max(0, tone))
 
     def read_full_patch(self, timeout: float = 1.0) -> PatchState:
         """Read complete patch state from Roland synth RAM."""
@@ -1173,15 +1318,15 @@ class JunoClient:
         except Exception as e:
             logger.warning(f"Could not read MFX: {e}")
 
-        c_type, c_lvl, c_out = (0, 0, 0)
+        c_type, c_lvl, c_out, c_pre, c_rate, c_dep, c_fb = (0, 0, 0, 0, 0, 0, 0)
         try:
-            c_type, c_lvl, c_out = self.read_chorus(timeout=timeout)
+            c_type, c_lvl, c_out, c_pre, c_rate, c_dep, c_fb = self.read_chorus(timeout=timeout)
         except Exception as e:
             logger.warning(f"Could not read Chorus: {e}")
 
-        r_type, r_lvl = (0, 0)
+        r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = (0, 0, 0, 0, 0, 0, 0)
         try:
-            r_type, r_lvl = self.read_reverb(timeout=timeout)
+            r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = self.read_reverb(timeout=timeout)
         except Exception as e:
             logger.warning(f"Could not read Reverb: {e}")
 
@@ -1195,8 +1340,17 @@ class JunoClient:
             chorus_type=c_type,
             chorus_level=c_lvl,
             chorus_to_reverb=c_out,
+            chorus_predelay=c_pre,
+            chorus_rate=c_rate,
+            chorus_depth=c_dep,
+            chorus_feedback=c_fb,
             reverb_type=r_type,
             reverb_level=r_lvl,
+            reverb_predelay=r_pre,
+            reverb_time=r_time,
+            reverb_damp=r_damp,
+            reverb_diffusion=r_diff,
+            reverb_tone=r_tone,
         )
 
         mode = self.get_sound_mode(timeout=timeout)

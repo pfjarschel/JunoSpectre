@@ -364,6 +364,164 @@ def test_juno_client_read_mfx(mock_midi_mgr):
     assert params[31] == 31
 
 
+def test_juno_client_chorus_sysex(mock_midi_mgr):
+    from src.spectre.core.sysex import pack_4nibbles
+
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_chorus(1, level=90, output_select=2)
+    # Check sends to Patch common and Perf common
+    patch_call = mock_midi_mgr.send_juno_sysex.call_args_list[-4][0][0]
+    perf_call = mock_midi_mgr.send_juno_sysex.call_args_list[-3][0][0]
+    assert patch_call[6:10] == [0x1F, 0x00, 0x04, 0x01]  # level
+    assert patch_call[10] == 90
+    assert perf_call[6:10] == [0x10, 0x00, 0x04, 0x01]
+    assert perf_call[10] == 90
+
+    # Rate 4-nibbles
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_chorus_param("rate", 55)
+    call1 = mock_midi_mgr.send_juno_sysex.call_args_list[-2][0][0]
+    call2 = mock_midi_mgr.send_juno_sysex.call_args_list[-1][0][0]
+    assert call1[6:10] == [0x1F, 0x00, 0x04, 0x14]
+    assert call2[6:10] == [0x10, 0x00, 0x04, 0x14]
+    assert call1[10:14] == pack_4nibbles(55 + 32768)
+
+    # Depth 4-nibbles
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_chorus_param("depth", 75)
+    call1 = mock_midi_mgr.send_juno_sysex.call_args_list[-2][0][0]
+    assert call1[6:10] == [0x1F, 0x00, 0x04, 0x1C]
+    assert call1[10:14] == pack_4nibbles(75 + 32768)
+
+
+def test_juno_client_reverb_sysex(mock_midi_mgr):
+    from src.spectre.core.sysex import pack_4nibbles
+
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_reverb(4, level=70)
+    patch_call = mock_midi_mgr.send_juno_sysex.call_args_list[-2][0][0]
+    assert patch_call[6:10] == [0x1F, 0x00, 0x06, 0x01]  # level
+    assert patch_call[10] == 70
+
+    # Time 4-nibbles
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_reverb_param("time", 65)
+    call1 = mock_midi_mgr.send_juno_sysex.call_args_list[-2][0][0]
+    call2 = mock_midi_mgr.send_juno_sysex.call_args_list[-1][0][0]
+    assert call1[6:10] == [0x1F, 0x00, 0x06, 0x07]
+    assert call2[6:10] == [0x10, 0x00, 0x06, 0x07]
+    assert call1[10:14] == pack_4nibbles(65 + 32768)
+
+
+def test_juno_client_master_eq_sysex(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+
+    # Switch
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_master_eq_param("switch", True)
+    call1 = mock_midi_mgr.send_juno_sysex.call_args_list[-2][0][0]
+    call2 = mock_midi_mgr.send_juno_sysex.call_args_list[-1][0][0]
+    assert call1[6:10] == [0x00, 0x00, 0x04, 0x00]
+    assert call1[10] == 1
+    assert call2[6:10] == [0x02, 0x00, 0x02, 0x00]
+    assert call2[10] == 1
+
+    # Low Freq
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_master_eq_param("lowFreq", 200)
+    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x01, 0]
+    client.set_master_eq_param("lowFreq", 400)
+    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x01, 1]
+
+    # Low Gain (offset 64: +3 -> 67)
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_master_eq_param("lowGain", 3)
+    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x02, 67]
+
+    # Mid Freq (1000 Hz is index 7)
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_master_eq_param("midFreq", 1000)
+    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x03, 7]
+
+    # Mid Q (2.0 is index 4)
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_master_eq_param("midQ", 2.0)
+    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x04, 4]
+
+    # Mid Gain (-5 -> 59)
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_master_eq_param("midGain", -5)
+    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x05, 59]
+
+    # High Freq (4000 Hz is index 1)
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_master_eq_param("highFreq", 4000)
+    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x06, 1]
+
+    # High Gain (+4 -> 68)
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_master_eq_param("highGain", 4)
+    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x07, 68]
+
+    # System Master Level
+    mock_midi_mgr.send_juno_sysex.reset_mock()
+    client.set_master_eq_param("masterLevel", 112)
+    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x02, 0x00, 0x00, 0x05, 112]
+
+
+def test_juno_client_read_chorus_and_reverb(mock_midi_mgr):
+    from src.spectre.core.sysex import pack_4nibbles
+
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+
+    # Chorus mock response (40 bytes)
+    c_resp = [1, 95, 0, 2] + [0] * 8
+    c_resp.extend(pack_4nibbles(12 + 32768))  # predelay at 0x0C
+    c_resp.extend([0] * 4)
+    c_resp.extend(pack_4nibbles(45 + 32768))  # rate at 0x14
+    c_resp.extend([0] * 4)
+    c_resp.extend(pack_4nibbles(70 + 32768))  # depth at 0x1C
+    c_resp.extend([0] * 4)
+    c_resp.extend(pack_4nibbles(25 + 32768))  # feedback at 0x24
+
+    client.request_data = MagicMock(return_value=bytes(c_resp))
+    c_type, c_lvl, c_out, c_pre, c_rate, c_dep, c_fb = client.read_chorus()
+    assert c_type == 1
+    assert c_lvl == 95
+    assert c_out == 2
+    assert c_pre == 12
+    assert c_rate == 45
+    assert c_dep == 70
+    assert c_fb == 25
+
+    # Reverb mock response (32 bytes)
+    r_resp = [4, 80, 0]
+    r_resp.extend(pack_4nibbles(18 + 32768))  # predelay at 0x03
+    r_resp.extend(pack_4nibbles(65 + 32768))  # time at 0x07
+    r_resp.extend([0] * 4)
+    r_resp.extend(pack_4nibbles(40 + 32768))  # damp at 0x0F
+    r_resp.extend([0] * 4)
+    r_resp.extend(pack_4nibbles(55 + 32768))  # diffusion at 0x17
+    r_resp.extend(pack_4nibbles(60 + 32768))  # tone at 0x1B
+
+    client.request_data = MagicMock(return_value=bytes(r_resp))
+    r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = client.read_reverb()
+    assert r_type == 4
+    assert r_lvl == 80
+    assert r_pre == 18
+    assert r_time == 65
+    assert r_damp == 40
+    assert r_diff == 55
+    assert r_tone == 60
+
+
 
 
 

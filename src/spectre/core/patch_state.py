@@ -297,6 +297,7 @@ class EffectsState:
     reverb_tone: int = 64        # 0..127
 
     # Master / System 3-Band Parametric EQ
+    eq_switch: bool = True       # Master EQ Switch (ON / OFF)
     eq_low_gain: int = 2         # -15 .. +15 dB
     eq_low_freq: int = 400       # 200 or 400 Hz
     eq_mid_gain: int = -3        # -15 .. +15 dB
@@ -471,6 +472,7 @@ class PatchState:
             chorus_level=0,
             reverb_type=0, # OFF
             reverb_level=0,
+            eq_switch=True,
             eq_low_gain=0,
             eq_low_freq=400,
             eq_mid_gain=0,
