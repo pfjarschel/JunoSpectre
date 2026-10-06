@@ -5,9 +5,10 @@ Select the template patch on the synth (PATCH mode), then run:
     python scripts/capture_init_template.py
 
 The script reads every patch region (Common, MFX, Chorus, Reverb, TMT, Tones 1-4)
-via RQR requests, applies the enforced normalization overlays (name, serial-chain FX
-routing, chorus/reverb off, tone SUSTAIN env mode), and writes the golden image to
-src/spectre/assets/init_template.json. Use --raw to skip overlays.
+via RQR requests and writes the golden image to src/spectre/assets/init_template.json.
+The patch is the source of truth: the image is preserved byte-for-byte; the only
+overlays are the canonical name and a safety net enforcing tone SUSTAIN env mode.
+Use --raw to skip even those.
 """
 
 from __future__ import annotations
@@ -37,14 +38,6 @@ from src.spectre.core.sysex import (
     OFFSET_PATCH_TONE_2,
     OFFSET_PATCH_TONE_3,
     OFFSET_PATCH_TONE_4,
-    MFX_PARAM_DRY_SEND,
-    MFX_PARAM_CHORUS_SEND,
-    MFX_PARAM_REVERB_SEND,
-    CHORUS_PARAM_TYPE,
-    CHORUS_PARAM_LEVEL,
-    CHORUS_PARAM_OUTPUT_SELECT,
-    REVERB_PARAM_TYPE,
-    REVERB_PARAM_LEVEL,
     TONE_PARAM_ENV_MODE,
 )
 
@@ -114,32 +107,6 @@ def overlay_name(regions: dict) -> str:
     return f"name {old!r} -> {INIT_PATCH_NAME!r}"
 
 
-def overlay_serial_chain_fx(regions: dict) -> str:
-    changes = []
-    b = chunk0(regions, "mfx")
-    changes.append(f"mfx dry {b[MFX_PARAM_DRY_SEND]}->0")
-    changes.append(f"mfx chorus_send {b[MFX_PARAM_CHORUS_SEND]}->127")
-    changes.append(f"mfx reverb_send {b[MFX_PARAM_REVERB_SEND]}->0")
-    b[MFX_PARAM_DRY_SEND] = 0
-    b[MFX_PARAM_CHORUS_SEND] = 127
-    b[MFX_PARAM_REVERB_SEND] = 0
-    regions["mfx"][0] = (0x000, bytes(b))
-
-    c = chunk0(regions, "chorus")
-    changes.append(f"chorus type {c[CHORUS_PARAM_TYPE]}->0 lvl {c[CHORUS_PARAM_LEVEL]}->0 outsel {c[CHORUS_PARAM_OUTPUT_SELECT]}->1(REV)")
-    c[CHORUS_PARAM_TYPE] = 0
-    c[CHORUS_PARAM_LEVEL] = 0
-    c[CHORUS_PARAM_OUTPUT_SELECT] = 1
-    regions["chorus"][0] = (0x000, bytes(c))
-
-    r = chunk0(regions, "reverb")
-    changes.append(f"reverb type {r[REVERB_PARAM_TYPE]}->0 lvl {r[REVERB_PARAM_LEVEL]}->0")
-    r[REVERB_PARAM_TYPE] = 0
-    r[REVERB_PARAM_LEVEL] = 0
-    regions["reverb"][0] = (0x000, bytes(r))
-    return "; ".join(changes)
-
-
 def overlay_force_sustain(regions: dict) -> str:
     changes = []
     for key in ("tone_1", "tone_2", "tone_3", "tone_4"):
@@ -153,7 +120,6 @@ def overlay_force_sustain(regions: dict) -> str:
 
 OVERLAYS: list[Callable[[dict], str]] = [
     overlay_name,
-    overlay_serial_chain_fx,
     overlay_force_sustain,
 ]
 

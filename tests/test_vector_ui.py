@@ -658,9 +658,9 @@ def test_init_patch_workflow():
     assert bridge.portamentoSwitch is False
     assert bridge.lfo1PitchDepth == 0
     assert bridge.lfo2TvfDepth == 0
-    assert bridge.patch_state.effects.routing_preset == "SERIAL_CHAIN"
-    assert bridge.macro7 == 0
-    assert bridge.macro8 == 0
+    assert bridge.patch_state.effects.routing_preset == ""  # raw template patch, no preset
+    assert bridge.macro7 == bridge.patch_state.effects.chorus_level
+    assert bridge.macro8 == bridge.patch_state.effects.reverb_level
 
     # Verify tone waves set to JUNO SPECTRE 4-osc defaults
     waves = bridge.toneWaveData
@@ -672,8 +672,8 @@ def test_init_patch_workflow():
 
     # Verify QML views reacted via onPatchInitialized
     assert mfx_view.property("isBypassed") is True
-    assert master_fx_view.property("chorusLevel") == 0
-    assert master_fx_view.property("reverbLevel") == 0
+    assert master_fx_view.property("chorusLevel") == bridge.patch_state.effects.chorus_level
+    assert master_fx_view.property("reverbLevel") == bridge.patch_state.effects.reverb_level
     assert master_fx_view.property("eqLowGain") == 0
     assert env_view.property("envDepth") == 0
 

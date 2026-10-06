@@ -1509,6 +1509,8 @@ class JunoClient:
         """
         base = self.get_active_patch_base(timeout=timeout)
         failures = 0
+        chorus_type = 0
+        reverb_type = 0
         for key, region in payload["regions"].items():
             region_addr = add_address(base, tuple(region["offset"]))
             for chunk in region["chunks"]:
@@ -1517,14 +1519,22 @@ class JunoClient:
                 except Exception as e:
                     failures += 1
                     logger.warning(f"Init template write failed for {key} @0x{chunk['start']:03X}: {e}")
+            if key == "chorus" and region["chunks"]:
+                chorus_type = region["chunks"][0]["bytes"][0]
+            if key == "reverb" and region["chunks"]:
+                reverb_type = region["chunks"][0]["bytes"][0]
 
-        # Enforce global Chorus/Reverb bypass (Setup memory, outside the patch regions)
-        for addr, label in ((ADDR_SETUP_CHORUS_SWITCH, "chorus"), (ADDR_SETUP_REVERB_SWITCH, "reverb")):
+        # Mirror the Setup global FX switches to the image's chorus/reverb types
+        # (same behavior as selecting the patch on the keyboard).
+        for addr, ftype, label in (
+            (ADDR_SETUP_CHORUS_SWITCH, chorus_type, "chorus"),
+            (ADDR_SETUP_REVERB_SWITCH, reverb_type, "reverb"),
+        ):
             try:
-                self.send_data(addr, [0])
+                self.send_data(addr, [0 if ftype == 0 else 1])
             except Exception as e:
                 failures += 1
-                logger.warning(f"Could not force master {label} bypass switch during init: {e}")
+                logger.warning(f"Could not sync master {label} setup switch during init: {e}")
         return failures
 
     def init_patch(self, timeout: float = 1.0) -> bool:

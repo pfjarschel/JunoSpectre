@@ -635,22 +635,22 @@ class PatchState:
 
         state.effects = EffectsState(
             mfx_type=0, # Bypassed
-            mfx_dry_send=0,
-            mfx_chorus_send=127,
+            mfx_dry_send=127, # Tones feed the MFX block and pass through to Main (zero residue)
+            mfx_chorus_send=0,
             mfx_reverb_send=0,
             mfx_bypassed=True,
             mfx_last_active_type=15,
-            routing_preset="SERIAL_CHAIN",
+            routing_preset="",
             manual_routing_unlocked=False,
-            chorus_type=0, # OFF
-            chorus_level=0,
-            chorus_to_reverb=1, # REV only: pure serial chain
+            chorus_type=1, # Armed, but fed zero sends from the tones -> inaudible (template-true)
+            chorus_level=127,
+            chorus_to_reverb=0,
             chorus_rate=10,
             chorus_depth=20,
             chorus_predelay=20,
             chorus_feedback=0,
-            reverb_type=0, # OFF
-            reverb_level=0,
+            reverb_type=3,
+            reverb_level=127,
             reverb_predelay=10,
             reverb_time=64,
             reverb_damp=19,
@@ -819,7 +819,8 @@ class PatchState:
         eff.mfx_params = [
             cls._param4v(mfx, 0x11 + 4 * i) for i in range(14)
         ]
-        eff.routing_preset = "SERIAL_CHAIN"
+        # The golden image is a raw patch: no routing preset was selected on it.
+        eff.routing_preset = ""
         eff.manual_routing_unlocked = False
         eff.chorus_type = cho[0]
         eff.chorus_level = cho[1]

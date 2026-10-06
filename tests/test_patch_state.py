@@ -52,10 +52,17 @@ def test_init_patch_creation():
     assert patch.tones[2].wave_num_l == 622
     assert patch.tones[3].wave_num_l == 625
 
-    # Effects
+    # Effects: tones feed bypassed MFX straight to Main; chorus/reverb armed
+    # but unfed (zero sends) - exactly like the template patch
     assert patch.effects.mfx_bypassed is True
-    assert patch.effects.chorus_level == 0
-    assert patch.effects.reverb_level == 0
+    assert patch.effects.mfx_dry_send == 127
+    assert patch.effects.mfx_chorus_send == 0
+    assert patch.effects.mfx_reverb_send == 0
+    assert patch.effects.chorus_level == 127
+    assert patch.effects.reverb_level == 127
+    for t in patch.tones:
+        assert t.chorus_send == 0
+        assert t.reverb_send == 0
     assert patch.effects.eq_low_gain == 0
     assert patch.effects.eq_mid_gain == 0
     assert patch.effects.eq_high_gain == 0
@@ -177,20 +184,18 @@ def test_golden_template_asset_decodes():
     # Golden image carries the four canonical waves
     assert [t.wave_num_l for t in patch.tones] == [579, 600, 622, 625]
 
-    # Enforced overlays present in the decoded state
-    assert patch.effects.routing_preset == "SERIAL_CHAIN"
+    # Golden image preserves the template patch byte-for-byte (no preset selected)
+    assert patch.effects.routing_preset == ""
     assert patch.effects.manual_routing_unlocked is False
     assert patch.effects.mfx_bypassed is True
-    assert patch.effects.chorus_type == 0
-    assert patch.effects.chorus_level == 0
-    assert patch.effects.reverb_type == 0
-    assert patch.effects.reverb_level == 0
-    assert patch.effects.chorus_to_reverb == 1
+    assert patch.effects.mfx_dry_send == 127
+    assert patch.effects.mfx_chorus_send == 0
+    assert patch.effects.mfx_reverb_send == 0
 
     # Matrix routings are preserved verbatim from the template patch (not cleared)
     assert patch.common.matrix_ctrls[0].source == 98
 
-    # Every tone decoded fully: SUSTAIN enforced, sane sends/assign
+    # Every tone decoded fully: SUSTAIN enforced, clean serial feed, zero sends
     for t in patch.tones:
         assert t.output_assign == 0  # MFX
         assert t.output_level == 127

@@ -2801,6 +2801,12 @@ class SpectreBridge(QObject):
             eff.chorus_level = 80
             eff.chorus_to_reverb = 1  # REV only: pure serial chain (Chorus cascades exclusively into Reverb)
             eff.reverb_level = 60
+            # dry=0 routing depends on live FX units to reach Main; ensure the
+            # chain has endpoints (a preset that plays no sound is a broken preset)
+            if eff.chorus_type == 0:
+                eff.chorus_type = 1
+            if eff.reverb_type == 0:
+                eff.reverb_type = 4
 
         elif preset == "STUDIO_AUX":
             # Tones -> MFX (Insert) -> Out; MFX sends parallel to Chorus & Reverb
@@ -2864,6 +2870,10 @@ class SpectreBridge(QObject):
             eff.chorus_level = 90
             eff.chorus_to_reverb = 1   # REV only: chorus is entirely submerged in reverb
             eff.reverb_level = 95
+            if eff.chorus_type == 0:
+                eff.chorus_type = 1
+            if eff.reverb_type == 0:
+                eff.reverb_type = 4
 
         elif preset in ("CUSTOM", "MANUAL"):
             eff.routing_preset = "CUSTOM"
