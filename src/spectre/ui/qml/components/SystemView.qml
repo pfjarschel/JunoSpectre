@@ -207,25 +207,25 @@ Rectangle {
 
                     Text { text: "HARDWARE TELEMETRY"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.tone3 }
 
-                    StatBar { label: "CPU LOAD"; stat: "14%"; norm: 0.14; color: Theme.tone1 }
-                    StatBar { label: "CPU TEMPERATURE"; stat: "47.2 °C"; norm: 0.47; color: "#10b981" }
-                    StatBar { label: "RAM ALLOCATION"; stat: "420 MB / 4096 MB"; norm: 0.10; color: Theme.tone2 }
-                    StatBar { label: "EMMC DISK SPACE"; stat: "18.4 GB FREE"; norm: 0.65; color: Theme.tone3 }
+                    StatBar { label: "CPU LOAD"; stat: Bridge.cpuLoadText; norm: Bridge.cpuLoadNorm; color: Theme.tone1 }
+                    StatBar { label: "CPU TEMPERATURE"; stat: Bridge.cpuTempText; norm: Bridge.cpuTempNorm; color: "#10b981" }
+                    StatBar { label: "RAM ALLOCATION"; stat: Bridge.ramText; norm: Bridge.ramNorm; color: Theme.tone2 }
+                    StatBar { label: "EMMC DISK SPACE"; stat: Bridge.diskText; norm: Bridge.diskNorm; color: Theme.tone3 }
 
                     Rectangle { Layout.fillWidth: true; height: 1; color: Theme.borderCard }
 
-                    Text { text: "DSP & AUDIO LATENCY"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textDim }
+                    Text { text: "MIDI & CONTROL LINK"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textDim }
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "BUFFER SIZE:"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
+                        Text { text: "CONTROL RATE:"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
                         Item { Layout.fillWidth: true }
-                        Text { text: "64 samples @ 44.1 kHz"; font.family: Theme.fontMono; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textPrimary }
+                        Text { text: Bridge.controlRateText; font.family: Theme.fontMono; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textPrimary }
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "ROUNDTRIP LATENCY:"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
+                        Text { text: "SYNTH LINK:"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
                         Item { Layout.fillWidth: true }
-                        Text { text: "1.45 ms (ALSA / JACK)"; font.family: Theme.fontMono; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: "#10b981" }
+                        Text { text: Bridge.midiLinkText; font.family: Theme.fontMono; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: "#10b981" }
                     }
 
                     Item { Layout.fillHeight: true }

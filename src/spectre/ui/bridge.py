@@ -76,6 +76,7 @@ class SpectreBridge(QObject):
     requestOpenEnvOverlay = pyqtSignal(str)
     patchInitialized = pyqtSignal()
     powerActionChanged = pyqtSignal(str)
+    telemetryChanged = pyqtSignal()
 
     # Tone selection & linked mode
     selectedToneChanged = pyqtSignal(int)
@@ -192,6 +193,15 @@ class SpectreBridge(QObject):
         self._timer.timeout.connect(self._on_timer_tick)
         self._timer.start()
 
+        # Hardware telemetry (System page only, ~1.5 s cadence)
+        from ..core.telemetry import SystemTelemetry
+
+        self._telemetry: SystemTelemetry = SystemTelemetry()
+        self._telemetry_prev_cpu = None
+        self._telemetry_timer = QTimer(self)
+        self._telemetry_timer.setInterval(1500)
+        self._telemetry_timer.timeout.connect(self._poll_telemetry)
+
     def _on_timer_tick(self) -> None:
         """Tick engine time forward to update motion loops and automators."""
         now = time.perf_counter()
@@ -200,6 +210,32 @@ class SpectreBridge(QObject):
         self.engine.update(dt)
         if self.engine.motion.state == RecorderState.RECORDING:
             self.motionPointsChanged.emit()
+
+    def _poll_telemetry(self) -> None:
+        """Refresh host stats; timer-gated to the SYSTEM view only."""
+        if self._active_view != "SYSTEM":
+            return
+        try:
+            from ..core.telemetry import read_telemetry
+
+            snap, self._telemetry_prev_cpu = read_telemetry(self._telemetry_prev_cpu)
+            self._telemetry = snap
+            self.telemetryChanged.emit()
+        except Exception as e:
+            logger.debug(f"Telemetry poll failed: {e}")
+
+    def _update_telemetry_polling(self) -> None:
+        """Start/stop the 1.5 s telemetry timer based on active view."""
+        try:
+            if self._active_view == "SYSTEM":
+                self._poll_telemetry()  # immediate refresh, no stale mock
+                if not self._telemetry_timer.isActive():
+                    self._telemetry_timer.start()
+            else:
+                if self._telemetry_timer.isActive():
+                    self._telemetry_timer.stop()
+        except Exception as e:
+            logger.debug(f"Telemetry timer update failed: {e}")
 
     def _on_engine_state_changed(self, state: VectorState) -> None:
         """Handle state notification from VectorEngine with dirty-change detection."""
@@ -445,6 +481,78 @@ class SpectreBridge(QObject):
     @pyqtProperty(str, notify=brightnessChanged)
     def brightnessMethod(self) -> str:
         return str(getattr(getattr(self, "_backlight", None), "method", "none"))
+
+    # -------------------------------------------------------------------------
+    # Properties for QML: Hardware telemetry (System page, 1.5 s poll)
+    # -------------------------------------------------------------------------
+
+    @pyqtProperty(str, notify=telemetryChanged)
+    def cpuLoadText(self) -> str:
+        return f"{self._telemetry.cpu_percent:.0f}%"
+
+    @pyqtProperty(float, notify=telemetryChanged)
+    def cpuLoadNorm(self) -> float:
+        return max(0.0, min(1.0, self._telemetry.cpu_percent / 100.0))
+
+    @pyqtProperty(str, notify=telemetryChanged)
+    def cpuTempText(self) -> str:
+        t = self._telemetry.cpu_temp_c
+        return f"{t:.1f} °C" if t is not None else "N/A"
+
+    @pyqtProperty(float, notify=telemetryChanged)
+    def cpuTempNorm(self) -> float:
+        t = self._telemetry.cpu_temp_c
+        return max(0.0, min(1.0, t / 100.0)) if t is not None else 0.0
+
+    @pyqtProperty(str, notify=telemetryChanged)
+    def ramText(self) -> str:
+        return f"{self._telemetry.mem_used_mb} MB / {self._telemetry.mem_total_mb} MB"
+
+    @pyqtProperty(float, notify=telemetryChanged)
+    def ramNorm(self) -> float:
+        total = self._telemetry.mem_total_mb
+        if total <= 0:
+            return 0.0
+        return max(0.0, min(1.0, self._telemetry.mem_used_mb / total))
+
+    @pyqtProperty(str, notify=telemetryChanged)
+    def diskText(self) -> str:
+        return f"{self._telemetry.disk_free_gb:.1f} GB FREE"
+
+    @pyqtProperty(float, notify=telemetryChanged)
+    def diskNorm(self) -> float:
+        total = self._telemetry.disk_total_gb
+        if total <= 0:
+            return 0.0
+        used = max(0.0, total - self._telemetry.disk_free_gb)
+        return max(0.0, min(1.0, used / total))
+
+    # -------------------------------------------------------------------------
+    # Properties for QML: MIDI & control link (System page, honest link status)
+    # -------------------------------------------------------------------------
+
+    @pyqtProperty(str, notify=telemetryChanged)
+    def controlRateText(self) -> str:
+        try:
+            hz = float(getattr(self.engine, "max_update_hz", 50.0))
+        except (TypeError, ValueError):
+            hz = 50.0
+        if hz <= 0:
+            hz = 50.0
+        return f"{hz:.0f} Hz SysEx dispatch ({1000.0 / hz:.0f} ms)"
+
+    @pyqtProperty(str, notify=telemetryChanged)
+    def midiLinkText(self) -> str:
+        try:
+            juno = getattr(getattr(self, "engine", None), "juno", None)
+            midi = getattr(juno, "midi", None) if juno is not None else None
+            out = getattr(midi, "juno_out", None) if midi is not None else None
+            if out is None or getattr(out, "closed", True):
+                return "MOCK / OFFLINE"
+            name = str(getattr(out, "name", "") or "").strip()
+            return f"USB-MIDI CONNECTED ({name})" if name else "USB-MIDI CONNECTED"
+        except Exception:
+            return "MOCK / OFFLINE"
 
     # -------------------------------------------------------------------------
     # Properties for QML: Tone Selection & Linked Mode
@@ -1313,6 +1421,7 @@ class SpectreBridge(QObject):
             elif v == "WAVETABLE":
                 self.setMorphMode("wavetable_1d")
             self.activeViewChanged.emit(self._active_view)
+            self._update_telemetry_polling()
 
     @pyqtSlot(int)
     def setSelectedTone(self, tone_number: int) -> None:

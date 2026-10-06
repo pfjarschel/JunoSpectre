@@ -27,6 +27,13 @@ SYSFS_BACKLIGHT_ROOT = Path("/sys/class/backlight")
 MIN_PERCENT = 10
 MAX_PERCENT = 100
 
+# Devices already warned about (permission denied) — warn once, then debug.
+_PERM_WARNED: set[str] = set()
+
+# Set SPECTRE_NO_BACKLIGHT=1 to force UI-only slider (dev PCs: dragging the
+# slider won't dim your laptop screen).
+_NO_BACKLIGHT_ENV = "SPECTRE_NO_BACKLIGHT"
+
 
 @dataclass
 class SysfsBacklightDevice:
@@ -83,11 +90,19 @@ def set_sysfs(device: SysfsBacklightDevice, percent: int) -> bool:
         logger.info(f"Backlight (sysfs:{device.name}) set {percent}% (raw {raw})")
         return True
     except PermissionError:
-        logger.warning(
-            f"Backlight permission denied on {device.path}/brightness. "
-            "Add user to video/backlight group or install udev rule: "
-            'SUBSYSTEM==\"backlight\", GROUP=\"video\", MODE=\"0664\"'
-        )
+        key = str(device.path)
+        if key not in _PERM_WARNED:
+            _PERM_WARNED.add(key)
+            logger.warning(
+                f"Backlight permission denied on {device.path}/brightness. "
+                "Add user to video group (sudo usermod -aG video $USER, then "
+                "re-login) or install udev rule: "
+                'SUBSYSTEM=="backlight", GROUP="video", MODE="0664". '
+                "Further denials for this device log at debug level. "
+                "Dev PCs: set SPECTRE_NO_BACKLIGHT=1 to keep the slider UI-only."
+            )
+        else:
+            logger.debug(f"Backlight permission denied on {device.path}/brightness")
         return False
     except OSError as e:
         logger.warning(f"Backlight sysfs write failed ({device.name}): {e}")
@@ -186,6 +201,13 @@ class BacklightController:
         self._xrandr_output = xrandr_output
         self._enable_ddcutil = enable_ddcutil
         self._enable_xrandr = enable_xrandr
+        if os.environ.get(_NO_BACKLIGHT_ENV, "").lower() in ("1", "true", "yes"):
+            self._sysfs_device = None
+            self._enable_ddcutil = False
+            self._enable_xrandr = False
+            self.method = "none"
+            logger.debug("Backlight disabled via SPECTRE_NO_BACKLIGHT=1 (UI-only)")
+            return
         self._sysfs_device = find_sysfs_device(sysfs_root)
         if self._sysfs_device is not None:
             self.method = f"sysfs:{self._sysfs_device.name}"
