@@ -185,9 +185,9 @@ JunoSpectre/
 - ✅ **Phase 1:** SysEx core and bidirectional communication
 - ✅ **Phase 2:** MIDI learn engine and smooth scaler
 - ✅ **Phase 3:** Waveform database and touch keyboard
-- 🚧 **v1.0:** Vector, wavetable and 4-OSC VA workstation. Done: the engines, Juno PCM editor, MFX, Master FX, Routing. Remaining: dynamic buffer router for Performance parts, Program Change auto-sync, Init Patch generator, Performance mixer, Macro deck, Librarian, splash screen.
+- 🚧 **v1.0:** Vector, wavetable and 4-OSC VA workstation. Done: the engines, Juno PCM editor, MFX, Master FX, Routing. Remaining: dynamic buffer router for Performance parts, Program Change auto-sync, Init Patch generator, Performance control, Macro deck, Librarian, splash screen.
 - 🔮 **v2.0:** Multi-part performance engine, 16-partial additive synth with touch-drawn waveforms and custom harmonic sweeps
-- 🔮 **v3.0 (EX Mode):** Embedded soft synth host, 24-bit USB audio streaming into the synth, automatic Local Control switching, SoundFont/sample playback
+- 🔮 **v3.0 (EX Mode):** Embedded soft synth host, 24-bit USB audio streaming into the synth, automatic Local Control switching, SoundFont/sample playback. Likely not going to happen, except maybe for the sample playing part.
 
 ---
 
