@@ -260,7 +260,7 @@ Rectangle {
             height: ScaleMetrics.dp(28)
             width: ScaleMetrics.dp(54)
             radius: ScaleMetrics.dp(4)
-            color: "#3f1a1a"
+            color: panicArea.pressed ? "#591c1c" : "#3f1a1a"
             border.color: Theme.recording
             border.width: 1
 
@@ -273,6 +273,7 @@ Rectangle {
             }
 
             MouseArea {
+                id: panicArea
                 anchors.fill: parent
                 onClicked: Bridge.panic()
             }
