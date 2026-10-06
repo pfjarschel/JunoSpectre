@@ -149,9 +149,14 @@ from .sysex import (
     TONE_PARAM_TVA_ENV_L2,
     TONE_PARAM_TVA_ENV_L3,
     TONE_PARAM_TVA_ENV_T1,
+    TONE_PARAM_TVA_ENV_T1_VEL_SENS,
     TONE_PARAM_TVA_ENV_T2,
     TONE_PARAM_TVA_ENV_T3,
     TONE_PARAM_TVA_ENV_T4,
+    TONE_PARAM_TVA_ENV_T4_VEL_SENS,
+    TONE_PARAM_TVA_ENV_TIME_KEYFOLLOW,
+    TONE_PARAM_TVA_ENV_T4_VEL_SENS,
+    TONE_PARAM_TVA_ENV_TIME_KEYFOLLOW,
     TONE_PARAM_TVA_LEVEL,
     TONE_PARAM_TVA_PAN,
     TONE_PARAM_TVA_VEL_SENS,
@@ -164,9 +169,12 @@ from .sysex import (
     TONE_PARAM_TVF_ENV_L3,
     TONE_PARAM_TVF_ENV_L4,
     TONE_PARAM_TVF_ENV_T1,
+    TONE_PARAM_TVF_ENV_T1_VEL_SENS,
     TONE_PARAM_TVF_ENV_T2,
     TONE_PARAM_TVF_ENV_T3,
     TONE_PARAM_TVF_ENV_T4,
+    TONE_PARAM_TVF_ENV_T4_VEL_SENS,
+    TONE_PARAM_TVF_ENV_TIME_KEYFOLLOW,
     TONE_PARAM_TVF_ENV_VEL_SENS,
     TONE_PARAM_TVF_FILTER_TYPE,
     TONE_PARAM_TVF_RESONANCE,
@@ -428,6 +436,10 @@ class JunoClient:
         decay: Optional[int] = None,
         sustain: Optional[int] = None,
         release: Optional[int] = None,
+        env_vel_sens: Optional[int] = None,
+        env_t1_vel_sens: Optional[int] = None,
+        env_t4_vel_sens: Optional[int] = None,
+        env_time_keyfollow: Optional[int] = None,
     ) -> None:
         """Set TVF (Filter) parameters for a tone with 4-stage simplified ADSR."""
         if cutoff is not None:
@@ -438,6 +450,14 @@ class JunoClient:
             self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_DEPTH, max(1, min(127, env_depth)))
         if filter_type is not None:
             self.set_tone_param(tone_index, TONE_PARAM_TVF_FILTER_TYPE, max(0, min(6, filter_type)))
+        if env_vel_sens is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_VEL_SENS, max(1, min(127, env_vel_sens)))
+        if env_t1_vel_sens is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T1_VEL_SENS, max(1, min(127, env_t1_vel_sens)))
+        if env_t4_vel_sens is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T4_VEL_SENS, max(1, min(127, env_t4_vel_sens)))
+        if env_time_keyfollow is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_TIME_KEYFOLLOW, max(54, min(74, env_time_keyfollow)))
 
         # ADSR Envelope mapping
         if attack is not None and decay is not None and sustain is not None and release is not None:
@@ -452,14 +472,24 @@ class JunoClient:
         else:
             if attack is not None:
                 self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T1, max(0, min(127, int(attack))))
-                self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_L0, [0, 127])
             if decay is not None:
-                self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T2, [max(0, min(127, int(decay))), 0])
+                self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T2, max(0, min(127, int(decay))))
             if sustain is not None:
                 s = max(0, min(127, int(sustain)))
-                self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_L2, [s, s, 0])
+                self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_L2, [s, s])
             if release is not None:
                 self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T4, max(0, min(127, int(release))))
+
+    def set_tone_tvf_env(
+        self,
+        tone_index: int,
+        block: Sequence[int],
+    ) -> None:
+        """Write the raw contiguous 9-byte TVF envelope block [T1..T4, L0..L4] at 0x0055."""
+        if len(block) != 9:
+            raise ValueError(f"TVF envelope block must have 9 values, got {len(block)}")
+        data = [max(0, min(127, int(v))) for v in block]
+        self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_T1, data)
 
     def set_tone_tva(
         self,
@@ -470,12 +500,24 @@ class JunoClient:
         decay: Optional[int] = None,
         sustain: Optional[int] = None,
         release: Optional[int] = None,
+        env_vel_sens: Optional[int] = None,
+        env_t1_vel_sens: Optional[int] = None,
+        env_t4_vel_sens: Optional[int] = None,
+        env_time_keyfollow: Optional[int] = None,
     ) -> None:
         """Set TVA (Amp) parameters for a tone with 4-stage simplified ADSR."""
         if level is not None:
             self.set_tone_level(tone_index, level)
         if pan is not None:
             self.set_tone_param(tone_index, TONE_PARAM_TVA_PAN, max(0, min(127, pan)))
+        if env_vel_sens is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVA_VEL_SENS, max(1, min(127, env_vel_sens)))
+        if env_t1_vel_sens is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T1_VEL_SENS, max(1, min(127, env_t1_vel_sens)))
+        if env_t4_vel_sens is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T4_VEL_SENS, max(1, min(127, env_t4_vel_sens)))
+        if env_time_keyfollow is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_TIME_KEYFOLLOW, max(54, min(74, env_time_keyfollow)))
 
         # ADSR Envelope mapping
         if attack is not None and decay is not None and sustain is not None and release is not None:
@@ -490,14 +532,24 @@ class JunoClient:
         else:
             if attack is not None:
                 self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T1, max(0, min(127, int(attack))))
-                self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_L1, 127)
             if decay is not None:
-                self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T2, [max(0, min(127, int(decay))), 0])
+                self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T2, max(0, min(127, int(decay))))
             if sustain is not None:
                 s = max(0, min(127, int(sustain)))
                 self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_L2, [s, s])
             if release is not None:
                 self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T4, max(0, min(127, int(release))))
+
+    def set_tone_tva_env(
+        self,
+        tone_index: int,
+        block: Sequence[int],
+    ) -> None:
+        """Write the raw contiguous 7-byte TVA envelope block [T1..T4, L1..L3] at 0x0066."""
+        if len(block) != 7:
+            raise ValueError(f"TVA envelope block must have 7 values, got {len(block)}")
+        data = [max(0, min(127, int(v))) for v in block]
+        self.set_tone_param(tone_index, TONE_PARAM_TVA_ENV_T1, data)
 
     def set_tone_pitch(
         self,
@@ -1168,16 +1220,30 @@ class JunoClient:
         tvf_reso = res1[0x4D]
         tvf_env_depth = res1[0x4F]
         tvf_env_vel = res1[0x51]
+        tvf_env_t1_vel = res1[0x52]
+        tvf_env_t4_vel = res1[0x53]
+        tvf_env_time_kf = res1[0x54]
         tvf_t1 = res1[0x55]
         tvf_t2 = res1[0x56]
+        tvf_t3 = res1[0x57]
         tvf_t4 = res1[0x58]
+        tvf_l0 = res1[0x59]
+        tvf_l1 = res1[0x5A]
+        tvf_l2 = res1[0x5B]
         tvf_l3 = res1[0x5C]
+        tvf_l4 = res1[0x5D]
 
         # TVA
         tva_vel = res1[0x62]
+        tva_env_t1_vel = res1[0x63]
+        tva_env_t4_vel = res1[0x64]
+        tva_env_time_kf = res1[0x65]
         tva_t1 = res1[0x66]
         tva_t2 = res1[0x67]
+        tva_t3 = res1[0x68]
         tva_t4 = res1[0x69]
+        tva_l1 = res1[0x6A]
+        tva_l2 = res1[0x6B]
         tva_l3 = res1[0x6C]
 
         # LFO 1
@@ -1214,20 +1280,34 @@ class JunoClient:
             level=level,
             pan=pan,
             tva_velo_sens=tva_vel,
-            tva_attack=tva_t1,
-            tva_decay=tva_t2,
-            tva_sustain=tva_l3,
-            tva_release=tva_t4,
+            tva_env_t1_vel_sens=tva_env_t1_vel,
+            tva_env_t4_vel_sens=tva_env_t4_vel,
+            tva_env_time_keyfollow=tva_env_time_kf,
+            tva_t1=tva_t1,
+            tva_t2=tva_t2,
+            tva_t3=tva_t3,
+            tva_t4=tva_t4,
+            tva_l1=tva_l1,
+            tva_l2=tva_l2,
+            tva_l3=tva_l3,
             tvf_filter_type=tvf_type,
             tvf_cutoff=tvf_cutoff,
             tvf_resonance=tvf_reso,
             tvf_cutoff_keyfollow=tvf_kf,
             tvf_env_depth=tvf_env_depth,
             tvf_env_velo_sens=tvf_env_vel,
-            tvf_attack=tvf_t1,
-            tvf_decay=tvf_t2,
-            tvf_sustain=tvf_l3,
-            tvf_release=tvf_t4,
+            tvf_env_t1_vel_sens=tvf_env_t1_vel,
+            tvf_env_t4_vel_sens=tvf_env_t4_vel,
+            tvf_env_time_keyfollow=tvf_env_time_kf,
+            tvf_t1=tvf_t1,
+            tvf_t2=tvf_t2,
+            tvf_t3=tvf_t3,
+            tvf_t4=tvf_t4,
+            tvf_l0=tvf_l0,
+            tvf_l1=tvf_l1,
+            tvf_l2=tvf_l2,
+            tvf_l3=tvf_l3,
+            tvf_l4=tvf_l4,
             coarse_tune=coarse,
             fine_tune=fine,
             wave_bank_l=bank,
@@ -1444,6 +1524,10 @@ class JunoClient:
                 decay=0,
                 sustain=127,
                 release=0,
+                env_vel_sens=64,
+                env_t1_vel_sens=64,
+                env_t4_vel_sens=64,
+                env_time_keyfollow=64,
             )
             # TVA: Attack 0, Decay 0, Sustain 127, Release 0, Pan center 64
             self.set_tone_tva(
@@ -1454,6 +1538,10 @@ class JunoClient:
                 decay=0,
                 sustain=127,
                 release=0,
+                env_vel_sens=64,
+                env_t1_vel_sens=64,
+                env_t4_vel_sens=64,
+                env_time_keyfollow=64,
             )
             # Pitch: Coarse 64 (0 st), Fine 64 (0 c), Depth 64 (0)
             self.set_tone_pitch(idx, coarse=64, fine=64, env_depth=64)

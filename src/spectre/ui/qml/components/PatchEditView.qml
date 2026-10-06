@@ -389,6 +389,38 @@ Rectangle {
                         onMoved: (norm) => Bridge.setPitchFine(Math.round(norm * 100 - 50))
                     }
 
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 1
+                        color: Theme.borderCard
+                    }
+
+                    // Pitch Envelope quick access: depth fader + curve thumbnail
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(4)
+                        Text {
+                            text: "PITCH ENVELOPE (MSEG)"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Theme.textDim
+                        }
+                        Item { Layout.fillWidth: true }
+                        EnvThumb {
+                            objectName: "pcmPitchEnvThumb"
+                            env: "PITCH"
+                        }
+                    }
+
+                    TouchFader {
+                        Layout.fillWidth: true
+                        label: "ENV DEPTH"
+                        valText: (Bridge.pitchEnvDepth >= 0 ? "+" : "") + Bridge.pitchEnvDepth + " st"
+                        normVal: (Bridge.pitchEnvDepth + 12) / 24.0
+                        isBipolar: true
+                        onMoved: (norm) => Bridge.setPitchEnvParam("depth", Math.round(norm * 24 - 12))
+                    }
+
                     Item { Layout.fillHeight: true }
                 }
             }
@@ -497,11 +529,20 @@ Rectangle {
                         color: Theme.borderCard
                     }
 
-                    Text {
-                        text: "TVF ENVELOPE (ADSR)"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.textDim
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(4)
+                        Text {
+                            text: "TVF ENVELOPE (ADSR)"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Theme.textDim
+                        }
+                        Item { Layout.fillWidth: true }
+                        EnvThumb {
+                            objectName: "pcmTvfEnvThumb"
+                            env: "TVF"
+                        }
                     }
 
                     TouchFader {
@@ -598,11 +639,20 @@ Rectangle {
                         color: Theme.borderCard
                     }
 
-                    Text {
-                        text: "TVA ENVELOPE (ADSR)"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.textDim
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(4)
+                        Text {
+                            text: "TVA ENVELOPE (ADSR)"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Theme.textDim
+                        }
+                        Item { Layout.fillWidth: true }
+                        EnvThumb {
+                            objectName: "pcmTvaEnvThumb"
+                            env: "TVA"
+                        }
                     }
 
                     TouchFader {
@@ -1065,7 +1115,7 @@ Rectangle {
 
                 Text {
                     Layout.fillWidth: true
-                    text: wc.waveData ? (wc.waveData.bank + " " + wc.waveData.number + ": " + wc.waveData.name) : "INTA 579: Juno Saw HD"
+                    text: wc.waveData ? wc.waveData.name : "Juno Saw HD"
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(8)
                     color: Theme.textPrimary

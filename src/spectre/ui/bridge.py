@@ -25,6 +25,7 @@ from ..core.patch_state import (
     LFO_WAVE_NAMES,
     LFO_FADE_MODE_NAMES,
 )
+from ..core.env_presets import env_preset_names, get_env_preset
 from ..core.waves import WaveCatalogManager
 from ..core.mfx_catalog import get_mfx_catalog, get_mfx_algo, get_mfx_categories, get_mfx_light_catalog
 from ..vector.engine import MorphMode, VectorEngine, VectorState
@@ -69,6 +70,7 @@ class SpectreBridge(QObject):
     requestOpenWaveBrowser = pyqtSignal(int)
     requestOpenScreensOverlay = pyqtSignal()
     requestOpenInitPatchModal = pyqtSignal()
+    requestOpenEnvOverlay = pyqtSignal(str)
     patchInitialized = pyqtSignal()
 
     # Tone selection & linked mode
@@ -102,6 +104,7 @@ class SpectreBridge(QObject):
 
     # Workstation views parameter signals
     pitchEnvChanged = pyqtSignal()
+    envShapeChanged = pyqtSignal(str)
     chorusParamsChanged = pyqtSignal()
     reverbParamsChanged = pyqtSignal()
     masterEqChanged = pyqtSignal()
@@ -240,6 +243,9 @@ class SpectreBridge(QObject):
         self.pitchFineChanged.emit(self.pitchFine)
         self.lfoParamsChanged.emit()
         self.pitchEnvChanged.emit()
+        self.envShapeChanged.emit("TVF")
+        self.envShapeChanged.emit("TVA")
+        self.envShapeChanged.emit("PITCH")
         self.chorusParamsChanged.emit()
         self.reverbParamsChanged.emit()
         self.masterEqChanged.emit()
@@ -1229,8 +1235,8 @@ class SpectreBridge(QObject):
             v = "MASTER FX"
         elif v in ("STEP-LFO", "STEPLFO"):
             v = "STEP LFO"
-        elif v in ("PITCH-ENV", "PITCHENV"):
-            v = "PITCH ENV"
+        elif v in ("PITCH-ENV", "PITCHENV", "PITCH ENV", "MSEG ENVELOPE", "ENVELOPE EDITOR", "ENV EDITOR"):
+            v = "MSEG ENVELOPES"
         elif v in ("MOD-MATRIX", "MODMATRIX"):
             v = "MOD MATRIX"
         elif v in ("PERF-MIXER", "PERFMIXER"):
@@ -1279,6 +1285,9 @@ class SpectreBridge(QObject):
             self.masterReleaseChanged.emit(self.masterRelease)
             self.lfoParamsChanged.emit()
             self.pitchEnvChanged.emit()
+            self.envShapeChanged.emit("TVF")
+            self.envShapeChanged.emit("TVA")
+            self.envShapeChanged.emit("PITCH")
             self.stepLfoChanged.emit()
 
     @pyqtSlot(bool)
@@ -1388,6 +1397,7 @@ class SpectreBridge(QObject):
                     self.patch_state.common.attack_offset = offset_val
                     self._active_tone().tva_attack = offset_val
                     self.masterAttackChanged.emit(offset_val)
+                    self.envShapeChanged.emit("TVA")
                     if juno:
                         juno.set_patch_offsets(attack=offset_val)
                 elif index == 4:
@@ -1395,6 +1405,7 @@ class SpectreBridge(QObject):
                     self.patch_state.common.release_offset = offset_val
                     self._active_tone().tva_release = offset_val
                     self.masterReleaseChanged.emit(offset_val)
+                    self.envShapeChanged.emit("TVA")
                     if juno:
                         juno.set_patch_offsets(release=offset_val)
                 elif index == 5:
@@ -1508,6 +1519,7 @@ class SpectreBridge(QObject):
                 except Exception as e:
                     logger.error(f"Error setting TVF env depth on synth: {e}")
         self.tvfEnvDepthChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def setTvfVeloSens(self, val: int) -> None:
@@ -1518,10 +1530,11 @@ class SpectreBridge(QObject):
             t.tvf_env_velo_sens = clamped
             if self.engine.juno:
                 try:
-                    self.engine.juno.set_tone_param(t.tone_index, 0x0051, clamped)
+                    self.engine.juno.set_tone_tvf(t.tone_index, env_vel_sens=clamped)
                 except Exception as e:
                     logger.error(f"Error setting TVF velo sens on synth: {e}")
         self.tvfVeloSensChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def setTvfAttack(self, val: int) -> None:
@@ -1529,12 +1542,9 @@ class SpectreBridge(QObject):
         targets = self._target_tones()
         for t in targets:
             t.tvf_attack = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, attack=clamped)
-                except Exception as e:
-                    logger.error(f"Error setting TVF attack on synth: {e}")
+            self._push_tvf_env(t)
         self.tvfAttackChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def setTvfDecay(self, val: int) -> None:
@@ -1542,12 +1552,9 @@ class SpectreBridge(QObject):
         targets = self._target_tones()
         for t in targets:
             t.tvf_decay = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, decay=clamped)
-                except Exception as e:
-                    logger.error(f"Error setting TVF decay on synth: {e}")
+            self._push_tvf_env(t)
         self.tvfDecayChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def setTvfSustain(self, val: int) -> None:
@@ -1555,12 +1562,9 @@ class SpectreBridge(QObject):
         targets = self._target_tones()
         for t in targets:
             t.tvf_sustain = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, sustain=clamped)
-                except Exception as e:
-                    logger.error(f"Error setting TVF sustain on synth: {e}")
+            self._push_tvf_env(t)
         self.tvfSustainChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def setTvfRelease(self, val: int) -> None:
@@ -1568,12 +1572,9 @@ class SpectreBridge(QObject):
         targets = self._target_tones()
         for t in targets:
             t.tvf_release = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, release=clamped)
-                except Exception as e:
-                    logger.error(f"Error setting TVF release on synth: {e}")
+            self._push_tvf_env(t)
         self.tvfReleaseChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def setTvaAttack(self, val: int) -> None:
@@ -1582,13 +1583,10 @@ class SpectreBridge(QObject):
         targets = self._target_tones()
         for t in targets:
             t.tva_attack = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tva(t.tone_index, attack=clamped)
-                except Exception as e:
-                    logger.error(f"Error setting TVA attack on synth: {e}")
+            self._push_tva_env(t)
         self.tvaAttackChanged.emit(clamped)
         self.masterAttackChanged.emit(clamped)
+        self.envShapeChanged.emit("TVA")
 
     @pyqtSlot(int)
     def setMasterAttack(self, val: int) -> None:
@@ -1600,12 +1598,9 @@ class SpectreBridge(QObject):
         targets = self._target_tones()
         for t in targets:
             t.tva_decay = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tva(t.tone_index, decay=clamped)
-                except Exception as e:
-                    logger.error(f"Error setting TVA decay on synth: {e}")
+            self._push_tva_env(t)
         self.tvaDecayChanged.emit(clamped)
+        self.envShapeChanged.emit("TVA")
 
     @pyqtSlot(int)
     def setTvaSustain(self, val: int) -> None:
@@ -1613,12 +1608,9 @@ class SpectreBridge(QObject):
         targets = self._target_tones()
         for t in targets:
             t.tva_sustain = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tva(t.tone_index, sustain=clamped)
-                except Exception as e:
-                    logger.error(f"Error setting TVA sustain on synth: {e}")
+            self._push_tva_env(t)
         self.tvaSustainChanged.emit(clamped)
+        self.envShapeChanged.emit("TVA")
 
     @pyqtSlot(int)
     def setTvaRelease(self, val: int) -> None:
@@ -1627,13 +1619,10 @@ class SpectreBridge(QObject):
         targets = self._target_tones()
         for t in targets:
             t.tva_release = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tva(t.tone_index, release=clamped)
-                except Exception as e:
-                    logger.error(f"Error setting TVA release on synth: {e}")
+            self._push_tva_env(t)
         self.tvaReleaseChanged.emit(clamped)
         self.masterReleaseChanged.emit(clamped)
+        self.envShapeChanged.emit("TVA")
 
     @pyqtSlot(int)
     def setMasterRelease(self, val: int) -> None:
@@ -1667,6 +1656,7 @@ class SpectreBridge(QObject):
                 except Exception as e:
                     logger.error(f"Error setting TVA velo sens on synth: {e}")
         self.tvaVeloSensChanged.emit(clamped)
+        self.envShapeChanged.emit("TVA")
 
     @pyqtSlot(int)
     def setPitchCoarse(self, val: int) -> None:
@@ -1911,6 +1901,7 @@ class SpectreBridge(QObject):
                 except Exception as e:
                     logger.error(f"Error sculpting TVF env depth on synth: {e}")
         self.tvfEnvDepthChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def sculptTvfVeloSens(self, val: int) -> None:
@@ -1924,6 +1915,7 @@ class SpectreBridge(QObject):
                 except Exception as e:
                     logger.error(f"Error sculpting TVF velo sens on synth: {e}")
         self.tvfVeloSensChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def sculptTvfAttack(self, val: int) -> None:
@@ -1931,12 +1923,9 @@ class SpectreBridge(QObject):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tvf_attack = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, attack=clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVF attack on synth: {e}")
+            self._push_tvf_env(t)
         self.tvfAttackChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def sculptTvfDecay(self, val: int) -> None:
@@ -1944,12 +1933,9 @@ class SpectreBridge(QObject):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tvf_decay = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, decay=clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVF decay on synth: {e}")
+            self._push_tvf_env(t)
         self.tvfDecayChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def sculptTvfSustain(self, val: int) -> None:
@@ -1957,12 +1943,9 @@ class SpectreBridge(QObject):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tvf_sustain = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, sustain=clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVF sustain on synth: {e}")
+            self._push_tvf_env(t)
         self.tvfSustainChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def sculptTvfRelease(self, val: int) -> None:
@@ -1970,12 +1953,9 @@ class SpectreBridge(QObject):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tvf_release = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, release=clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVF release on synth: {e}")
+            self._push_tvf_env(t)
         self.tvfReleaseChanged.emit(clamped)
+        self.envShapeChanged.emit("TVF")
 
     @pyqtSlot(int)
     def sculptTvaPan(self, val: int) -> None:
@@ -2003,6 +1983,7 @@ class SpectreBridge(QObject):
                 except Exception as e:
                     logger.error(f"Error sculpting TVA velo sens on synth: {e}")
         self.tvaVeloSensChanged.emit(clamped)
+        self.envShapeChanged.emit("TVA")
 
     @pyqtSlot(int)
     def sculptTvaAttack(self, val: int) -> None:
@@ -2010,13 +1991,10 @@ class SpectreBridge(QObject):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tva_attack = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tva(t.tone_index, attack=clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVA attack on synth: {e}")
+            self._push_tva_env(t)
         self.tvaAttackChanged.emit(clamped)
         self.masterAttackChanged.emit(clamped)
+        self.envShapeChanged.emit("TVA")
 
     @pyqtSlot(int)
     def sculptTvaDecay(self, val: int) -> None:
@@ -2024,12 +2002,9 @@ class SpectreBridge(QObject):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tva_decay = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tva(t.tone_index, decay=clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVA decay on synth: {e}")
+            self._push_tva_env(t)
         self.tvaDecayChanged.emit(clamped)
+        self.envShapeChanged.emit("TVA")
 
     @pyqtSlot(int)
     def sculptTvaSustain(self, val: int) -> None:
@@ -2037,12 +2012,9 @@ class SpectreBridge(QObject):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tva_sustain = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tva(t.tone_index, sustain=clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVA sustain on synth: {e}")
+            self._push_tva_env(t)
         self.tvaSustainChanged.emit(clamped)
+        self.envShapeChanged.emit("TVA")
 
     @pyqtSlot(int)
     def sculptTvaRelease(self, val: int) -> None:
@@ -2050,13 +2022,10 @@ class SpectreBridge(QObject):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tva_release = clamped
-            if self.engine.juno:
-                try:
-                    self.engine.juno.set_tone_tva(t.tone_index, release=clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVA release on synth: {e}")
+            self._push_tva_env(t)
         self.tvaReleaseChanged.emit(clamped)
         self.masterReleaseChanged.emit(clamped)
+        self.envShapeChanged.emit("TVA")
 
     @pyqtSlot(int, str, "QVariant")
     def sculptLfoParam(self, lfo_idx: int, param: str, val) -> None:
@@ -2210,21 +2179,290 @@ class SpectreBridge(QObject):
             elif param == "l4":
                 t.pitch_env_l4 = max(1, min(127, int(val) + 64))
 
-            if self.engine.juno:
-                try:
-                    kwargs = {
-                        "depth": t.pitch_env_depth, "vel_sens": t.pitch_env_vel_sens,
-                        "time_keyfollow": t.pitch_env_time_keyfollow,
-                        "t1_vel_sens": t.pitch_env_t1_vel_sens, "t4_vel_sens": t.pitch_env_t4_vel_sens,
-                        "t1": t.pitch_env_t1, "t2": t.pitch_env_t2, "t3": t.pitch_env_t3, "t4": t.pitch_env_t4,
-                        "l0": t.pitch_env_l0, "l1": t.pitch_env_l1, "l2": t.pitch_env_l2,
-                        "l3": t.pitch_env_l3, "l4": t.pitch_env_l4,
-                    }
-                    self.engine.juno.set_tone_pitch_env(t.tone_index, **kwargs)
-                except Exception as e:
-                    logger.error(f"Error setting pitch env on synth: {e}")
+            self._push_pitch_env(t)
 
         self.pitchEnvChanged.emit()
+        self.envShapeChanged.emit("PITCH")
+
+    # -------------------------------------------------------------------------
+    # Hardware Envelope Block Pushers
+    # -------------------------------------------------------------------------
+
+    def _push_tvf_env(self, t: ToneState) -> None:
+        """Send the raw TVF MSEG block [T1..T4, L0..L4] for a tone."""
+        if self.engine.juno:
+            try:
+                self.engine.juno.set_tone_tvf_env(t.tone_index, t.tvf_env_block())
+            except Exception as e:
+                logger.error(f"Error setting TVF envelope block on synth: {e}")
+
+    def _push_tva_env(self, t: ToneState) -> None:
+        """Send the raw TVA MSEG block [T1..T4, L1..L3] for a tone."""
+        if self.engine.juno:
+            try:
+                self.engine.juno.set_tone_tva_env(t.tone_index, t.tva_env_block())
+            except Exception as e:
+                logger.error(f"Error setting TVA envelope block on synth: {e}")
+
+    def _push_pitch_env(self, t: ToneState) -> None:
+        """Send all Pitch Envelope parameters for a tone."""
+        if self.engine.juno:
+            try:
+                kwargs = {
+                    "depth": t.pitch_env_depth, "vel_sens": t.pitch_env_vel_sens,
+                    "time_keyfollow": t.pitch_env_time_keyfollow,
+                    "t1_vel_sens": t.pitch_env_t1_vel_sens, "t4_vel_sens": t.pitch_env_t4_vel_sens,
+                    "t1": t.pitch_env_t1, "t2": t.pitch_env_t2, "t3": t.pitch_env_t3, "t4": t.pitch_env_t4,
+                    "l0": t.pitch_env_l0, "l1": t.pitch_env_l1, "l2": t.pitch_env_l2,
+                    "l3": t.pitch_env_l3, "l4": t.pitch_env_l4,
+                }
+                self.engine.juno.set_tone_pitch_env(t.tone_index, **kwargs)
+            except Exception as e:
+                logger.error(f"Error setting pitch env on synth: {e}")
+
+    # -------------------------------------------------------------------------
+    # Invokable API for QML: Generic Multi-Segment Envelope Editor
+    # -------------------------------------------------------------------------
+
+    @pyqtSlot(str, result="QVariantMap")
+    def getEnvSegments(self, env: str) -> dict:
+        """Return editable segment data for 'TVF' | 'TVA' | 'PITCH' (active tone).
+
+        times: raw 0..127 [T1..T4].
+        levels: TVF -> raw [L0..L4]; TVA -> raw [L1..L3]; PITCH -> signed [-63..63].
+        mods: signed envelope modifiers (velSens/t1VelSens/t4VelSens -63..+63,
+              timeKf -100..+100; TVF also envDepth -63..+63; PITCH also depth +-12 st).
+        """
+        env = env.upper()
+        t = self._active_tone()
+        if env == "TVF":
+            return {
+                "times": [t.tvf_t1, t.tvf_t2, t.tvf_t3, t.tvf_t4],
+                "levels": [t.tvf_l0, t.tvf_l1, t.tvf_l2, t.tvf_l3, t.tvf_l4],
+                "bipolar": False, "custom": t.tvf_env_custom,
+                "mods": {
+                    "envDepth": t.tvf_env_depth_bipolar,
+                    "velSens": t.tvf_velo_sens_bipolar,
+                    "t1VelSens": t.tvf_env_t1_vel_sens_bipolar,
+                    "t4VelSens": t.tvf_env_t4_vel_sens_bipolar,
+                    "timeKf": t.tvf_env_time_kf_bipolar,
+                },
+            }
+        if env == "TVA":
+            return {
+                "times": [t.tva_t1, t.tva_t2, t.tva_t3, t.tva_t4],
+                "levels": [t.tva_l1, t.tva_l2, t.tva_l3],
+                "bipolar": False, "custom": t.tva_env_custom,
+                "mods": {
+                    "velSens": t.tva_velo_sens_bipolar,
+                    "t1VelSens": t.tva_env_t1_vel_sens_bipolar,
+                    "t4VelSens": t.tva_env_t4_vel_sens_bipolar,
+                    "timeKf": t.tva_env_time_kf_bipolar,
+                },
+            }
+        return {
+            "times": [t.pitch_env_t1, t.pitch_env_t2, t.pitch_env_t3, t.pitch_env_t4],
+            "levels": [
+                t.pitch_env_l0_bipolar, t.pitch_env_l1_bipolar, t.pitch_env_l2_bipolar,
+                t.pitch_env_l3_bipolar, t.pitch_env_l4_bipolar,
+            ],
+            "bipolar": True, "custom": False,
+            "mods": {
+                "depth": t.pitch_env_depth_st,
+                "velSens": t.pitch_env_vel_sens_bipolar,
+                "t1VelSens": t.pitch_env_t1_vel_sens_bipolar,
+                "t4VelSens": t.pitch_env_t4_vel_sens_bipolar,
+                "timeKf": t.pitch_env_time_kf_bipolar,
+            },
+        }
+
+    @pyqtSlot(str, str, int)
+    def setEnvModParam(self, env: str, param: str, val: int) -> None:
+        """Set a signed envelope modifier on target tone(s).
+
+        param: 'velSens' | 't1VelSens' | 't4VelSens' | 'timeKeyfollow'
+               plus 'envDepth' (TVF) or 'depth' (PITCH). All values signed.
+        """
+        env = env.upper()
+        val = int(val)
+        if env == "PITCH":
+            # Pitch keeps its established signed semantics
+            self.setPitchEnvParam(param, val)
+            self.envShapeChanged.emit("PITCH")
+            return
+
+        def signed_raw(v: int) -> int:
+            return max(1, min(127, v + 64))
+
+        def kf_raw(v: int) -> int:
+            return max(54, min(74, v // 10 + 64))
+
+        targets = self._target_tones()
+        for t in targets:
+            kwargs = {}
+            if param == "velSens":
+                raw = signed_raw(val)
+                if env == "TVF":
+                    t.tvf_env_velo_sens = raw
+                    kwargs["env_vel_sens"] = raw
+                else:
+                    t.tva_velo_sens = raw
+                    kwargs["env_vel_sens"] = raw
+            elif param == "envDepth" and env == "TVF":
+                t.tvf_env_depth = signed_raw(val)
+                kwargs["env_depth"] = t.tvf_env_depth
+            elif param == "t1VelSens":
+                if env == "TVF":
+                    t.tvf_env_t1_vel_sens = signed_raw(val)
+                    kwargs["env_t1_vel_sens"] = t.tvf_env_t1_vel_sens
+                else:
+                    t.tva_env_t1_vel_sens = signed_raw(val)
+                    kwargs["env_t1_vel_sens"] = t.tva_env_t1_vel_sens
+            elif param == "t4VelSens":
+                if env == "TVF":
+                    t.tvf_env_t4_vel_sens = signed_raw(val)
+                    kwargs["env_t4_vel_sens"] = t.tvf_env_t4_vel_sens
+                else:
+                    t.tva_env_t4_vel_sens = signed_raw(val)
+                    kwargs["env_t4_vel_sens"] = t.tva_env_t4_vel_sens
+            elif param == "timeKeyfollow":
+                if env == "TVF":
+                    t.tvf_env_time_keyfollow = kf_raw(val)
+                    kwargs["env_time_keyfollow"] = t.tvf_env_time_keyfollow
+                else:
+                    t.tva_env_time_keyfollow = kf_raw(val)
+                    kwargs["env_time_keyfollow"] = t.tva_env_time_keyfollow
+            else:
+                logger.warning(f"Unknown envelope modifier: {env}/{param}")
+                return
+
+            if self.engine.juno:
+                try:
+                    setter = (self.engine.juno.set_tone_tvf if env == "TVF"
+                              else self.engine.juno.set_tone_tva)
+                    setter(t.tone_index, **kwargs)
+                except Exception as e:
+                    logger.error(f"Error setting {env} env modifier {param} on synth: {e}")
+
+        if env == "TVF":
+            if param == "velSens":
+                self.tvfVeloSensChanged.emit(t.tvf_env_velo_sens)
+            elif param == "envDepth":
+                self.tvfEnvDepthChanged.emit(t.tvf_env_depth_bipolar)
+        elif env == "TVA" and param == "velSens":
+            self.tvaVeloSensChanged.emit(t.tva_velo_sens)
+        self.envShapeChanged.emit(env)
+
+    @pyqtSlot(str, str, int)
+    def setEnvSegment(self, env: str, param: str, val: int) -> None:
+        """Set a raw envelope segment on target tone(s).
+
+        param: 't1'..'t4' (0..127) or 'l0'..'l4'.
+        Level semantics: TVF/TVA levels are raw 0..127; PITCH levels are signed
+        (-63..+63) matching setPitchEnvParam.
+        """
+        env = env.upper()
+        val = int(val)
+        is_time = param.startswith("t")
+        if is_time:
+            clamped = max(0, min(127, val))
+        elif env == "PITCH":
+            clamped = max(-63, min(63, val))
+        else:
+            clamped = max(0, min(127, val))
+
+        attr = "pitch_env_" + param if env == "PITCH" else env.lower() + "_" + param
+        targets = self._target_tones()
+        if not hasattr(targets[0], attr):
+            logger.warning(f"Unknown envelope segment: {env}/{param}")
+            return
+
+        for t in targets:
+            if not is_time and env == "PITCH":
+                setattr(t, attr, clamped + 64)
+            else:
+                setattr(t, attr, clamped)
+
+            if env == "TVF":
+                self._push_tvf_env(t)
+            elif env == "TVA":
+                self._push_tva_env(t)
+            else:
+                self._push_pitch_env(t)
+
+        if env == "TVF":
+            self.envShapeChanged.emit("TVF")
+            for sig, v in (
+                (self.tvfAttackChanged, t.tvf_attack), (self.tvfDecayChanged, t.tvf_decay),
+                (self.tvfSustainChanged, t.tvf_sustain), (self.tvfReleaseChanged, t.tvf_release),
+            ):
+                sig.emit(v)
+        elif env == "TVA":
+            self.envShapeChanged.emit("TVA")
+            for sig, v in (
+                (self.tvaAttackChanged, t.tva_attack), (self.tvaDecayChanged, t.tva_decay),
+                (self.tvaSustainChanged, t.tva_sustain), (self.tvaReleaseChanged, t.tva_release),
+            ):
+                sig.emit(v)
+            self.masterAttackChanged.emit(t.tva_attack)
+            self.masterReleaseChanged.emit(t.tva_release)
+        else:
+            self.pitchEnvChanged.emit()
+            self.envShapeChanged.emit("PITCH")
+
+    @pyqtSlot(str, result="QVariantList")
+    def envPresetNames(self, env: str) -> list:
+        """List preset shape names available for an envelope."""
+        return env_preset_names(env)
+
+    @pyqtSlot(str, str)
+    def applyEnvPreset(self, env: str, name: str) -> None:
+        """Apply a preset shape (see core/env_presets.py) to target tone(s)."""
+        env = env.upper()
+        preset = get_env_preset(env, name)
+        if not preset:
+            logger.warning(f"Unknown envelope preset: {env}/{name}")
+            return
+
+        times = preset["t"]
+        levels = preset["l"]
+        targets = self._target_tones()
+        for t in targets:
+            if env == "TVF":
+                t.tvf_t1, t.tvf_t2, t.tvf_t3, t.tvf_t4 = times
+                t.tvf_l0, t.tvf_l1, t.tvf_l2, t.tvf_l3, t.tvf_l4 = levels
+                self._push_tvf_env(t)
+            elif env == "TVA":
+                t.tva_t1, t.tva_t2, t.tva_t3, t.tva_t4 = times
+                t.tva_l1, t.tva_l2, t.tva_l3 = levels
+                self._push_tva_env(t)
+            else:
+                t.pitch_env_t1, t.pitch_env_t2, t.pitch_env_t3, t.pitch_env_t4 = times
+                t.pitch_env_l0, t.pitch_env_l1, t.pitch_env_l2, t.pitch_env_l3, t.pitch_env_l4 = (
+                    max(1, min(127, int(v) + 64)) for v in levels
+                )
+                self._push_pitch_env(t)
+
+        if env == "TVF":
+            for sig, v in (
+                (self.tvfAttackChanged, t.tvf_attack), (self.tvfDecayChanged, t.tvf_decay),
+                (self.tvfSustainChanged, t.tvf_sustain), (self.tvfReleaseChanged, t.tvf_release),
+            ):
+                sig.emit(v)
+        elif env == "TVA":
+            for sig, v in (
+                (self.tvaAttackChanged, t.tva_attack), (self.tvaDecayChanged, t.tva_decay),
+                (self.tvaSustainChanged, t.tva_sustain), (self.tvaReleaseChanged, t.tva_release),
+            ):
+                sig.emit(v)
+        self.envShapeChanged.emit(env)
+        if env == "PITCH":
+            self.pitchEnvChanged.emit()
+
+    @pyqtSlot(str)
+    def openEnvOverlay(self, env: str) -> None:
+        """Request the UI to open the quick-edit Envelope Overlay for an envelope."""
+        self.requestOpenEnvOverlay.emit(env.upper())
 
     # -------------------------------------------------------------------------
     # Invokable Slots from QML: Master Effects & EQ View

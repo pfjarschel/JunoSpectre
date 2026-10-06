@@ -92,7 +92,7 @@ def test_workstation_views_switching():
 
     all_views = [
         "JUNO PCM", "VECTOR", "WAVETABLE", "VA",
-        "MOD MATRIX", "STEP LFO", "PITCH ENV", "MFX", "ROUTING", "MASTER FX",
+        "MOD MATRIX", "STEP LFO", "MSEG ENVELOPES", "MFX", "ROUTING", "MASTER FX",
         "MACROS", "PERF MIXER", "SEQUENCER",
         "LIBRARIAN", "MIDI LEARN", "HARDWARE", "SYSTEM"
     ]
@@ -387,52 +387,57 @@ def test_modmatrix_tone_switches():
     assert bridge.patch_state.tones[0].matrix_switches[0][0] == 1
 
 
-def test_pitchenv_draggable_mseg():
-    """Verify PitchEnvView properties and MSEG getPoints calculation."""
+def test_mseg_env_editor_view():
+    """Verify the full-page MSEG Envelope Editor (EnvEditorView) properties."""
     from PyQt6.QtCore import QObject
 
     engine = VectorEngine()
     app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
     root = qml_engine.rootObjects()[0]
 
-    pitch_view = root.findChild(QObject, "pitchEnvView")
-    assert pitch_view is not None
+    env_view = root.findChild(QObject, "envEditorView")
+    assert env_view is not None
 
-    assert pitch_view.property("t1") == 20
-    assert pitch_view.property("l1") == 24
-    assert pitch_view.property("draggedPoint") == -1
+    # Full page now edits all three hardware MSEG envelopes (TVF default tab)
+    assert env_view.property("activeEnv") == "TVF"
+    env_view.setProperty("activeEnv", "PITCH")
+    assert env_view.property("activeEnv") == "PITCH"
+
+    assert env_view.property("t1") == 20
+    assert env_view.property("l1") == 24
+    assert env_view.property("draggedPoint") == -1
 
     # Verify Roland Dynamics & Velocity Sensitivity properties
-    assert pitch_view.property("envDepth") == 12
-    assert pitch_view.property("velSens") == 30
-    assert pitch_view.property("t1VelSens") == 0
-    assert pitch_view.property("t4VelSens") == 0
-    assert pitch_view.property("timeKeyfollow") == 0
+    assert env_view.property("envDepth") == 12
+    assert env_view.property("velSens") == 30
+    assert env_view.property("t1VelSens") == 0
+    assert env_view.property("t4VelSens") == 0
+    assert env_view.property("timeKeyfollow") == 0
 
     # Test updating segment values
-    pitch_view.setProperty("t1", 55)
-    pitch_view.setProperty("l1", -15)
-    assert pitch_view.property("t1") == 55
-    assert pitch_view.property("l1") == -15
+    env_view.setProperty("t1", 55)
+    env_view.setProperty("l1", -15)
+    assert env_view.property("t1") == 55
+    assert env_view.property("l1") == -15
 
     # Test updating dynamics & velocity properties
-    pitch_view.setProperty("envDepth", -6)
-    pitch_view.setProperty("velSens", 45)
-    pitch_view.setProperty("t1VelSens", 20)
-    pitch_view.setProperty("t4VelSens", -15)
-    pitch_view.setProperty("timeKeyfollow", 50)
+    env_view.setProperty("envDepth", -6)
+    env_view.setProperty("velSens", 45)
+    env_view.setProperty("t1VelSens", 20)
+    env_view.setProperty("t4VelSens", -15)
+    env_view.setProperty("timeKeyfollow", 50)
 
-    assert pitch_view.property("envDepth") == -6
-    assert pitch_view.property("velSens") == 45
-    assert pitch_view.property("t1VelSens") == 20
-    assert pitch_view.property("t4VelSens") == -15
-    assert pitch_view.property("timeKeyfollow") == 50
+    assert env_view.property("envDepth") == -6
+    assert env_view.property("velSens") == 45
+    assert env_view.property("t1VelSens") == 20
+    assert env_view.property("t4VelSens") == -15
+    assert env_view.property("timeKeyfollow") == 50
 
     # Test draggedPoint active state
-    pitch_view.setProperty("draggedPoint", 1)
-    assert pitch_view.property("draggedPoint") == 1
-    pitch_view.setProperty("draggedPoint", -1)
-    assert pitch_view.property("draggedPoint") == -1
+    env_view.setProperty("draggedPoint", 1)
+    assert env_view.property("draggedPoint") == 1
+    env_view.setProperty("draggedPoint", -1)
+    assert env_view.property("draggedPoint") == -1
 
 
 def test_mfx_view_features():
@@ -626,8 +631,8 @@ def test_init_patch_workflow():
     master_fx_view.setProperty("reverbLevel", 75)
     master_fx_view.setProperty("eqLowGain", 8)
 
-    pitch_view = root.findChild(QObject, "pitchEnvView")
-    pitch_view.setProperty("envDepth", 12)
+    env_view = root.findChild(QObject, "envEditorView")
+    env_view.setProperty("envDepth", 12)
 
     # Execute initPatch
     patch_init_signal_received = False
@@ -667,7 +672,7 @@ def test_init_patch_workflow():
     assert master_fx_view.property("chorusLevel") == 0
     assert master_fx_view.property("reverbLevel") == 0
     assert master_fx_view.property("eqLowGain") == 0
-    assert pitch_view.property("envDepth") == 0
+    assert env_view.property("envDepth") == 0
 
 
 def test_pcm_sound_designer_enhancements():
@@ -921,3 +926,138 @@ def test_ui_bridge_step_lfo():
 
 
 
+
+
+def test_envelope_overlay_bridge_api():
+    """Generic MSEG editing API: segments, lossless rules, presets, overlay request."""
+    from PyQt6.QtCore import QObject
+
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    root = qml_engine.rootObjects()[0]
+
+    # Global overlay + thumbnails are instantiated
+    assert root.findChild(QObject, "envEditOverlay") is not None
+    assert root.findChild(QObject, "pcmTvfEnvThumb") is not None
+    assert root.findChild(QObject, "pcmTvaEnvThumb") is not None
+    assert root.findChild(QObject, "pcmPitchEnvThumb") is not None
+    assert root.findChild(QObject, "sculptTvfEnvThumb") is not None
+    assert root.findChild(QObject, "sculptPitchEnvThumb") is not None
+
+    tone = bridge.patch_state.tones[0]
+
+    # Defaults read as canonical (non-custom) shapes
+    tvf = bridge.getEnvSegments("TVF")
+    assert tvf["times"] == [0, 0, 0, 0]
+    assert tvf["levels"] == [0, 127, 127, 127, 0]
+    assert tvf["bipolar"] is False
+    assert tvf["custom"] is False
+
+    # Raw break-level edit makes a custom shape without touching ADSR sustain
+    bridge.setEnvSegment("TVF", "l2", 40)
+    assert tone.tvf_l2 == 40
+    assert tone.tvf_l3 == 127
+    assert bridge.tvfSustain == 127
+    assert bridge.getEnvSegments("TVF")["custom"] is True
+
+    # With L2 untied, ADSR sustain must only move L3 (lossless rule)
+    bridge.setTvfSustain(100)
+    assert tone.tvf_l2 == 40
+    assert tone.tvf_l3 == 100
+
+    # TVF preset applies a canonical ADSR-shaped MSEG that ADSR faders describe
+    assert "PLUCK" in bridge.envPresetNames("TVF")
+    bridge.applyEnvPreset("TVF", "PLUCK")
+    seg = bridge.getEnvSegments("TVF")
+    assert seg["times"] == [2, 40, 0, 12]
+    assert seg["levels"] == [0, 127, 50, 50, 0]
+    assert seg["custom"] is False
+    assert bridge.tvfAttack == 2
+    assert bridge.tvfDecay == 40
+    assert bridge.tvfSustain == 50
+    assert bridge.tvfRelease == 12
+
+    # TVA preset with L2 != L3 flags custom and preserves 3-level hardware map
+    bridge.applyEnvPreset("TVA", "PAD")
+    assert (tone.tva_t1, tone.tva_t2, tone.tva_t3, tone.tva_t4) == (80, 30, 40, 60)
+    assert (tone.tva_l1, tone.tva_l2, tone.tva_l3) == (127, 96, 110)
+    tva = bridge.getEnvSegments("TVA")
+    assert tva["custom"] is True
+    assert tva["levels"] == [127, 96, 110]
+    assert bridge.tvaSustain == 110
+
+    # PITCH levels keep signed semantics through the generic API
+    bridge.setEnvSegment("PITCH", "l1", -15)
+    assert tone.pitch_env_l1 == 49  # raw 64-15
+    assert bridge.pitchEnvL1 == -15
+    assert bridge.getEnvSegments("PITCH")["bipolar"] is True
+
+    bridge.applyEnvPreset("PITCH", "KICK THUMP")
+    assert tone.pitch_env_l0 == 124  # +60 signed -> raw
+    assert (tone.pitch_env_t1, tone.pitch_env_t2, tone.pitch_env_t3, tone.pitch_env_t4) == (2, 25, 10, 15)
+
+    # Overlay open request reaches QML layer with normalized env name
+    captured = []
+    bridge.requestOpenEnvOverlay.connect(lambda e: captured.append(e))
+    bridge.openEnvOverlay("tva")
+    assert captured == ["TVA"]
+
+
+def test_tone_switch_refreshes_env_shapes():
+    """envShapeChanged fires on tone switch so thumbs/overlays repaint per tone."""
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+
+    received = []
+    bridge.envShapeChanged.connect(lambda e: received.append(e))
+
+    bridge.applyEnvPreset("TVF", "PLUCK")
+    bridge.setSelectedTone(2)
+
+    assert "TVF" in received
+    assert received.count("TVF") >= 2
+    # Tone 2 stays canonical after editing Tone 1
+    assert bridge.getEnvSegments("TVF")["levels"] == [0, 127, 127, 127, 0]
+    assert bridge.getEnvSegments("TVF")["custom"] is False
+
+
+def test_env_modifier_bridge_api():
+    """Shared signed-modifier API across TVF / TVA / Pitch envelopes."""
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    tone = bridge.patch_state.tones[0]
+
+    # TVF: signed input maps to raw 64-center, time-KF snaps to 10% steps
+    bridge.setEnvModParam("TVF", "envDepth", -20)
+    assert tone.tvf_env_depth == 44
+    assert bridge.getEnvSegments("TVF")["mods"]["envDepth"] == -20
+
+    bridge.setEnvModParam("TVF", "t1VelSens", 30)
+    assert tone.tvf_env_t1_vel_sens == 94
+    bridge.setEnvModParam("TVF", "t4VelSens", -10)
+    assert tone.tvf_env_t4_vel_sens == 54
+    bridge.setEnvModParam("TVF", "timeKeyfollow", 50)
+    assert tone.tvf_env_time_keyfollow == 69
+    assert bridge.getEnvSegments("TVF")["mods"]["timeKf"] == 50
+
+    # TVA: velSens shares the main-page Level V-Sens raw value
+    bridge.setEnvModParam("TVA", "velSens", 25)
+    assert tone.tva_velo_sens == 89
+    assert bridge.tvaVeloSens == 89
+    assert bridge.getEnvSegments("TVA")["mods"]["velSens"] == 25
+    bridge.setEnvModParam("TVA", "t4VelSens", -10)
+    assert tone.tva_env_t4_vel_sens == 54
+
+    # Pitch modifiers keep established signed semantics via delegation
+    bridge.setEnvModParam("PITCH", "timeKeyfollow", -50)
+    assert tone.pitch_env_time_keyfollow == 59
+    assert bridge.getEnvSegments("PITCH")["mods"]["timeKf"] == -50
+    bridge.setEnvModParam("PITCH", "depth", 6)
+    assert bridge.pitchEnvDepth == 6
+
+    # Emitted envShapeChanged carries the edited envelope name
+    received = []
+    bridge.envShapeChanged.connect(lambda e: received.append(e))
+    bridge.setEnvModParam("TVF", "velSens", 10)
+    bridge.setEnvModParam("TVA", "t1VelSens", -5)
+    assert received == ["TVF", "TVA"]

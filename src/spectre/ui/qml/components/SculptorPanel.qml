@@ -238,11 +238,20 @@ Rectangle {
                     color: Theme.borderCard
                 }
 
-                Text {
-                    text: "TVF ENVELOPE (ADSR)"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: Theme.textDim
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: ScaleMetrics.dp(4)
+                    Text {
+                        text: "TVF ENVELOPE (ADSR)"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Theme.textDim
+                    }
+                    Item { Layout.fillWidth: true }
+                    EnvThumb {
+                        objectName: "sculptTvfEnvThumb"
+                        env: "TVF"
+                    }
                 }
 
                 TouchFader {
@@ -331,11 +340,20 @@ Rectangle {
                     color: Theme.borderCard
                 }
 
-                Text {
-                    text: "TVA ENVELOPE (ADSR)"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: Theme.textDim
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: ScaleMetrics.dp(4)
+                    Text {
+                        text: "TVA ENVELOPE (ADSR)"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Theme.textDim
+                    }
+                    Item { Layout.fillWidth: true }
+                    EnvThumb {
+                        objectName: "sculptTvaEnvThumb"
+                        env: "TVA"
+                    }
                 }
 
                 TouchFader {
@@ -596,6 +614,38 @@ Rectangle {
                     normVal: (Bridge.pitchFine + 50) / 100.0
                     isBipolar: true
                     onMoved: (norm) => Bridge.sculptPitchFine(Math.round(norm * 100 - 50))
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 1
+                    color: Theme.borderCard
+                }
+
+                // Pitch Envelope quick access: depth fader + curve thumbnail
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: ScaleMetrics.dp(4)
+                    Text {
+                        text: "PITCH ENVELOPE (MSEG)"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Theme.textDim
+                    }
+                    Item { Layout.fillWidth: true }
+                    EnvThumb {
+                        objectName: "sculptPitchEnvThumb"
+                        env: "PITCH"
+                    }
+                }
+
+                TouchFader {
+                    Layout.fillWidth: true
+                    label: "ENV DEPTH"
+                    valText: (Bridge.pitchEnvDepth >= 0 ? "+" : "") + Bridge.pitchEnvDepth + " st"
+                    normVal: (Bridge.pitchEnvDepth + 12) / 24.0
+                    isBipolar: true
+                    onMoved: (norm) => Bridge.setPitchEnvParam("depth", Math.round(norm * 24 - 12))
                 }
 
                 Rectangle {

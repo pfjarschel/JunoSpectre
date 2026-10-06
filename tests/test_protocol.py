@@ -525,3 +525,173 @@ def test_juno_client_read_chorus_and_reverb(mock_midi_mgr):
 
 
 
+
+
+def test_juno_client_set_tone_tvf_env_block(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+
+    client.set_tone_tvf_env(1, [10, 20, 30, 40, 0, 127, 90, 90, 5])
+    sent_packet = mock_midi_mgr.send_juno_sysex.call_args[0][0]
+    # Tone 1 base + TVF T1 offset: 1F 00 20 55, contiguous 9-byte block
+    assert sent_packet[6:10] == [0x1F, 0x00, 0x20, 0x55]
+    assert sent_packet[10:19] == [10, 20, 30, 40, 0, 127, 90, 90, 5]
+
+    with pytest.raises(ValueError):
+        client.set_tone_tvf_env(1, [1, 2, 3])
+
+
+def test_juno_client_set_tone_tva_env_block_clamps(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+
+    client.set_tone_tva_env(1, [15, 250, 0, 45, 127, -8, 85])
+    sent_packet = mock_midi_mgr.send_juno_sysex.call_args[0][0]
+    # Tone 1 base + TVA T1 offset: 1F 00 20 66, contiguous 7-byte block
+    assert sent_packet[6:10] == [0x1F, 0x00, 0x20, 0x66]
+    assert sent_packet[10:17] == [15, 127, 0, 45, 127, 0, 85]
+
+
+def test_juno_client_single_adsr_param_writes_minimal_segment(mock_midi_mgr):
+    """ADSR quick edits (e.g. MIDI-learned knobs) must not stomp custom levels."""
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+
+    # Attack alone -> exactly one byte to T1 (0x55), no L0/L1 canonicalization
+    mock_midi_mgr.reset_mock()
+    client.set_tone_tvf(1, attack=7)
+    assert mock_midi_mgr.send_juno_sysex.call_count == 1
+    sent = mock_midi_mgr.send_juno_sysex.call_args[0][0]
+    assert sent[6:10] == [0x1F, 0x00, 0x20, 0x55]
+    assert sent[10] == 7
+
+    # Release alone -> single byte at T4 (0x58)
+    mock_midi_mgr.reset_mock()
+    client.set_tone_tvf(1, release=66)
+    assert mock_midi_mgr.send_juno_sysex.call_count == 1
+    sent = mock_midi_mgr.send_juno_sysex.call_args[0][0]
+    assert sent[6:10] == [0x1F, 0x00, 0x20, 0x58]
+    assert sent[10] == 66
+
+    # Decay alone -> single byte at TVA T2 (0x67), T3 untouched
+    mock_midi_mgr.reset_mock()
+    client.set_tone_tva(1, decay=33)
+    assert mock_midi_mgr.send_juno_sysex.call_count == 1
+    sent = mock_midi_mgr.send_juno_sysex.call_args[0][0]
+    assert sent[6:10] == [0x1F, 0x00, 0x20, 0x67]
+    assert sent[10] == 33
+
+
+def test_juno_client_read_tone_populates_raw_segments(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    mode_msg = mido.Message(
+        "sysex",
+        data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12, 0x01, 0x00, 0x00, 0x00, 0x00, 0x7F],
+    )
+
+    chunk1_data = [0] * 0x7B
+    # TVF two-step shape: T1=5 T2=50 T3=60 T4=20, L0=0 L1=127 L2=30 L3=95 L4=0
+    chunk1_data[0x55] = 5
+    chunk1_data[0x56] = 50
+    chunk1_data[0x57] = 60
+    chunk1_data[0x58] = 20
+    chunk1_data[0x59] = 0
+    chunk1_data[0x5A] = 127
+    chunk1_data[0x5B] = 30
+    chunk1_data[0x5C] = 95
+    chunk1_data[0x5D] = 0
+    # TVA: T1=80 T2=30 T3=40 T4=60, L1=127 L2=96 L3=110
+    chunk1_data[0x66] = 80
+    chunk1_data[0x67] = 30
+    chunk1_data[0x68] = 40
+    chunk1_data[0x69] = 60
+    chunk1_data[0x6A] = 127
+    chunk1_data[0x6B] = 96
+    chunk1_data[0x6C] = 110
+
+    addr1 = [0x1F, 0x00, 0x20, 0x00]
+    csum1 = calculate_checksum(addr1 + chunk1_data)
+    msg1 = mido.Message("sysex", data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12] + addr1 + chunk1_data + [csum1])
+
+    addr2a = [0x1F, 0x00, 0x20, 0x7B]
+    csum2a = calculate_checksum(addr2a)
+    msg2a = mido.Message("sysex", data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12] + addr2a + [csum2a])
+
+    addr2b = [0x1F, 0x00, 0x21, 0x00]
+    data2b = [0] * 26
+    csum2b = calculate_checksum(addr2b + data2b)
+    msg2b = mido.Message("sysex", data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12] + addr2b + data2b + [csum2b])
+
+    mock_midi_mgr.iter_juno_messages.return_value = [mode_msg, msg1, msg2a, msg2b]
+
+    tone = client.read_tone(1, timeout=0.1)
+    assert tone.tvf_env_block() == [5, 50, 60, 20, 0, 127, 30, 95, 0]
+    assert tone.tvf_env_custom is True
+    assert tone.tvf_sustain == 95
+    assert tone.tva_env_block() == [80, 30, 40, 60, 127, 96, 110]
+    assert tone.tva_env_custom is True
+
+
+def test_juno_client_env_modifier_writes(mock_midi_mgr):
+    """TVF/TVA signed envelope modifiers land on their documented offsets."""
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+
+    sent = []
+    mock_midi_mgr.send_juno_sysex.side_effect = lambda p: sent.append((p[6:10], p[10]))
+
+    # TVF T1 vel sens -> 0x52, T4 vel sens -> 0x53, time keyfollow -> 0x54
+    client.set_tone_tvf(1, env_t1_vel_sens=94, env_t4_vel_sens=54, env_time_keyfollow=69)
+    addrs = [a[3] for a, _ in sent]
+    assert addrs == [0x52, 0x53, 0x54]
+
+    # Time keyfollow is clamped to the -100..+100 raw window 54..74
+    sent.clear()
+    client.set_tone_tvf(1, env_time_keyfollow=999)
+    assert sent[0][1] == 74
+    sent.clear()
+    client.set_tone_tva(1, env_time_keyfollow=-999)
+    assert sent[0][1] == 54
+
+    # TVA env modifiers use the 0x62/0x63/0x64/0x65 cluster
+    sent.clear()
+    client.set_tone_tva(1, env_vel_sens=89, env_t1_vel_sens=64, env_t4_vel_sens=64, env_time_keyfollow=64)
+    assert [a[3] for a, _ in sent] == [0x62, 0x63, 0x64, 0x65]
+
+
+def test_juno_client_read_tone_env_modifiers(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    mode_msg = mido.Message(
+        "sysex",
+        data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12, 0x01, 0x00, 0x00, 0x00, 0x00, 0x7F],
+    )
+
+    chunk1_data = [64] * 0x7B
+    chunk1_data[0x52] = 100   # TVF T1 vel sens +36
+    chunk1_data[0x53] = 30    # TVF T4 vel sens -34
+    chunk1_data[0x54] = 69    # TVF time keyfollow +50%
+    chunk1_data[0x63] = 80    # TVA T1 vel sens +16
+    chunk1_data[0x65] = 59    # TVA time keyfollow -50%
+
+    addr1 = [0x1F, 0x00, 0x20, 0x00]
+    csum1 = calculate_checksum(addr1 + chunk1_data)
+    msg1 = mido.Message("sysex", data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12] + addr1 + chunk1_data + [csum1])
+
+    addr2a = [0x1F, 0x00, 0x20, 0x7B]
+    data2a = [0, 0, 0, 0]
+    csum2a = calculate_checksum(addr2a + data2a)
+    msg2a = mido.Message("sysex", data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12] + addr2a + data2a + [csum2a])
+
+    addr2b = [0x1F, 0x00, 0x21, 0x00]
+    data2b = [0] * 26
+    csum2b = calculate_checksum(addr2b + data2b)
+    msg2b = mido.Message("sysex", data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12] + addr2b + data2b + [csum2b])
+
+    mock_midi_mgr.iter_juno_messages.return_value = [mode_msg, msg1, msg2a, msg2b]
+
+    tone = client.read_tone(1, timeout=0.1)
+    assert tone.tvf_env_t1_vel_sens_bipolar == 36
+    assert tone.tvf_env_t4_vel_sens_bipolar == -34
+    assert tone.tvf_env_time_kf_bipolar == 50
+    assert tone.tva_env_t1_vel_sens_bipolar == 16
+    assert tone.tva_env_time_kf_bipolar == -50

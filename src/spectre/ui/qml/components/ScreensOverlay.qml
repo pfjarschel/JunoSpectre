@@ -202,9 +202,9 @@ Rectangle {
 
                         AppTile {
                             Layout.fillWidth: true
-                            viewKey: "PITCH ENV"
-                            title: "PITCH ENV"
-                            subtitle: "Bi-polar multi-segment pitch contour"
+                            viewKey: "MSEG ENVELOPES"
+                            title: "MSEG ENVELOPES"
+                            subtitle: "TVF / TVA / Pitch multi-segment editors"
                             glyph: "📈"
                             accentColor: "#fbbf24"
                         }

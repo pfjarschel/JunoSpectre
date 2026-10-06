@@ -58,7 +58,7 @@ Window {
                     case "VA": return 3;
                     case "MOD MATRIX": return 4;
                     case "STEP LFO": return 5;
-                    case "PITCH ENV": return 6;
+                    case "MSEG ENVELOPES": return 6;
                     case "MFX": return 7;
                     case "ROUTING": return 8;
                     case "MASTER FX": return 9;
@@ -117,10 +117,10 @@ Window {
                 objectName: "stepLfoView"
             }
 
-            // View 6: Multi-Segment Bipolar Pitch Envelope
-            PitchEnvView {
-                id: pitchEnvView
-                objectName: "pitchEnvView"
+            // View 6: Multi-Segment Envelope Editor (TVF / TVA / PITCH)
+            EnvEditorView {
+                id: envEditorView
+                objectName: "envEditorView"
             }
 
             // View 7: Dedicated Multi-Effects (MFX) Studio (80 Algorithms)
@@ -211,6 +211,12 @@ Window {
         objectName: "initPatchModal"
     }
 
+    // Global Modal: Quick-Edit Envelope Overlay (TVF / TVA / PITCH)
+    EnvEditOverlay {
+        id: envEditOverlay
+        objectName: "envEditOverlay"
+    }
+
     // Global Bridge signal listeners
     Connections {
         target: Bridge
@@ -222,6 +228,9 @@ Window {
         }
         function onRequestOpenInitPatchModal() {
             initPatchModal.open();
+        }
+        function onRequestOpenEnvOverlay(env) {
+            envEditOverlay.open(env);
         }
     }
 }

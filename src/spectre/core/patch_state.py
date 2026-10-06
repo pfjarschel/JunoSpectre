@@ -7,7 +7,7 @@ Effects (MFX, Chorus, Reverb, Master EQ), Step LFO, and Performance Parts.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 
 # Conversion helper maps
@@ -39,10 +39,16 @@ class ToneState:
     level: int = 127             # 0..127
     pan: int = 64                # 0..127 (L64 .. 63R, 64=Center)
     tva_velo_sens: int = 64      # 1..127 (-63 .. +63, 64=0)
-    tva_attack: int = 0          # T1: 0..127
-    tva_decay: int = 0           # T2: 0..127
-    tva_sustain: int = 127       # L3: 0..127
-    tva_release: int = 0         # T4: 0..127
+    tva_env_t1_vel_sens: int = 64 # 1..127 (-63 .. +63, 64=0)
+    tva_env_t4_vel_sens: int = 64 # 1..127 (-63 .. +63, 64=0)
+    tva_env_time_keyfollow: int = 64 # 54..74 (-100 .. +100, 64=0)
+    tva_t1: int = 0              # 0..127 (Attack time)
+    tva_t2: int = 0              # 0..127 (Decay 1 time)
+    tva_t3: int = 0              # 0..127 (Decay 2 time)
+    tva_t4: int = 0              # 0..127 (Release time)
+    tva_l1: int = 127            # 0..127 (Attack peak level)
+    tva_l2: int = 127            # 0..127 (Decay break level)
+    tva_l3: int = 127            # 0..127 (Sustain level)
     muted: bool = False
 
     # Tone Routing & Sends
@@ -58,10 +64,18 @@ class ToneState:
     tvf_cutoff_keyfollow: int = 64 # 44..84 (-200 .. +200, 64=0)
     tvf_env_depth: int = 64      # 1..127 (-63 .. +63, 64=0)
     tvf_env_velo_sens: int = 64  # 1..127 (-63 .. +63, 64=0)
-    tvf_attack: int = 0          # T1: 0..127
-    tvf_decay: int = 0           # T2: 0..127
-    tvf_sustain: int = 127       # L3: 0..127
-    tvf_release: int = 0         # T4: 0..127
+    tvf_env_t1_vel_sens: int = 64 # 1..127 (-63 .. +63, 64=0)
+    tvf_env_t4_vel_sens: int = 64 # 1..127 (-63 .. +63, 64=0)
+    tvf_env_time_keyfollow: int = 64 # 54..74 (-100 .. +100, 64=0)
+    tvf_t1: int = 0              # 0..127 (Attack time)
+    tvf_t2: int = 0              # 0..127 (Decay 1 time)
+    tvf_t3: int = 0              # 0..127 (Decay 2 time)
+    tvf_t4: int = 0              # 0..127 (Release time)
+    tvf_l0: int = 0              # 0..127 (Start level)
+    tvf_l1: int = 127            # 0..127 (Attack peak level)
+    tvf_l2: int = 127            # 0..127 (Decay 1 break level)
+    tvf_l3: int = 127            # 0..127 (Sustain level)
+    tvf_l4: int = 0              # 0..127 (Release end level)
 
     # Pitch & Tuning
     coarse_tune: int = 64        # 16..112 (-48 .. +48, 64=0)
@@ -153,8 +167,143 @@ class ToneState:
         return self.tvf_env_velo_sens - 64
 
     @property
+    def tvf_env_t1_vel_sens_bipolar(self) -> int:
+        return self.tvf_env_t1_vel_sens - 64
+
+    @property
+    def tvf_env_t4_vel_sens_bipolar(self) -> int:
+        return self.tvf_env_t4_vel_sens - 64
+
+    @property
+    def tvf_env_time_kf_bipolar(self) -> int:
+        return (self.tvf_env_time_keyfollow - 64) * 10
+
+    @property
     def tva_velo_sens_bipolar(self) -> int:
         return self.tva_velo_sens - 64
+
+    @property
+    def tva_env_t1_vel_sens_bipolar(self) -> int:
+        return self.tva_env_t1_vel_sens - 64
+
+    @property
+    def tva_env_t4_vel_sens_bipolar(self) -> int:
+        return self.tva_env_t4_vel_sens - 64
+
+    @property
+    def tva_env_time_kf_bipolar(self) -> int:
+        return (self.tva_env_time_keyfollow - 64) * 10
+
+    # --- TVF envelope: ADSR quick controls as a lossless projection of the ---
+    # --- real 4-time / 5-level hardware MSEG (T1..T4 / L0..L4).           ---
+    @property
+    def tvf_attack(self) -> int:
+        return self.tvf_t1
+
+    @tvf_attack.setter
+    def tvf_attack(self, val: int) -> None:
+        self.tvf_t1 = max(0, min(127, int(val)))
+
+    @property
+    def tvf_decay(self) -> int:
+        return self.tvf_t2
+
+    @tvf_decay.setter
+    def tvf_decay(self, val: int) -> None:
+        self.tvf_t2 = max(0, min(127, int(val)))
+
+    @property
+    def tvf_sustain(self) -> int:
+        return self.tvf_l3
+
+    @tvf_sustain.setter
+    def tvf_sustain(self, val: int) -> None:
+        val = max(0, min(127, int(val)))
+        if self.tvf_l2 == self.tvf_l3:
+            self.tvf_l2 = val
+        self.tvf_l3 = val
+
+    @property
+    def tvf_release(self) -> int:
+        return self.tvf_t4
+
+    @tvf_release.setter
+    def tvf_release(self, val: int) -> None:
+        self.tvf_t4 = max(0, min(127, int(val)))
+
+    @property
+    def tvf_env_custom(self) -> bool:
+        """True when TVF shape deviates from the canonical ADSR projection."""
+        return bool(
+            self.tvf_t3 != 0
+            or self.tvf_l0 != 0
+            or self.tvf_l1 != 127
+            or self.tvf_l2 != self.tvf_l3
+            or self.tvf_l4 != 0
+        )
+
+    def tvf_env_block(self) -> list[int]:
+        """Raw contiguous hardware block: [T1..T4, L0..L4]."""
+        return [self.tvf_t1, self.tvf_t2, self.tvf_t3, self.tvf_t4,
+                self.tvf_l0, self.tvf_l1, self.tvf_l2, self.tvf_l3, self.tvf_l4]
+
+    def set_tvf_env_block(self, block: Sequence[int]) -> None:
+        self.tvf_t1, self.tvf_t2, self.tvf_t3, self.tvf_t4 = (int(v) for v in block[0:4])
+        self.tvf_l0, self.tvf_l1, self.tvf_l2, self.tvf_l3, self.tvf_l4 = (int(v) for v in block[4:9])
+
+    # --- TVA envelope: ADSR projection of 4-time / 3-level hardware MSEG ---
+    @property
+    def tva_attack(self) -> int:
+        return self.tva_t1
+
+    @tva_attack.setter
+    def tva_attack(self, val: int) -> None:
+        self.tva_t1 = max(0, min(127, int(val)))
+
+    @property
+    def tva_decay(self) -> int:
+        return self.tva_t2
+
+    @tva_decay.setter
+    def tva_decay(self, val: int) -> None:
+        self.tva_t2 = max(0, min(127, int(val)))
+
+    @property
+    def tva_sustain(self) -> int:
+        return self.tva_l3
+
+    @tva_sustain.setter
+    def tva_sustain(self, val: int) -> None:
+        val = max(0, min(127, int(val)))
+        if self.tva_l2 == self.tva_l3:
+            self.tva_l2 = val
+        self.tva_l3 = val
+
+    @property
+    def tva_release(self) -> int:
+        return self.tva_t4
+
+    @tva_release.setter
+    def tva_release(self, val: int) -> None:
+        self.tva_t4 = max(0, min(127, int(val)))
+
+    @property
+    def tva_env_custom(self) -> bool:
+        """True when TVA shape deviates from the canonical ADSR projection."""
+        return bool(
+            self.tva_t3 != 0
+            or self.tva_l1 != 127
+            or self.tva_l2 != self.tva_l3
+        )
+
+    def tva_env_block(self) -> list[int]:
+        """Raw contiguous hardware block: [T1..T4, L1..L3]."""
+        return [self.tva_t1, self.tva_t2, self.tva_t3, self.tva_t4,
+                self.tva_l1, self.tva_l2, self.tva_l3]
+
+    def set_tva_env_block(self, block: Sequence[int]) -> None:
+        self.tva_t1, self.tva_t2, self.tva_t3, self.tva_t4 = (int(v) for v in block[0:4])
+        self.tva_l1, self.tva_l2, self.tva_l3 = (int(v) for v in block[4:7])
 
     @property
     def tvf_type_str(self) -> str:
@@ -427,16 +576,13 @@ class PatchState:
                 tvf_cutoff_keyfollow=64,
                 tvf_env_depth=64,
                 tvf_env_velo_sens=64,
-                tvf_attack=0,
-                tvf_decay=0,
-                tvf_sustain=127,
-                tvf_release=0,
-                # TVA clean gate
+                # TVF envelope raw segments (canonical flat gate shape)
+                tvf_t1=0, tvf_t2=0, tvf_t3=0, tvf_t4=0,
+                tvf_l0=0, tvf_l1=127, tvf_l2=127, tvf_l3=127, tvf_l4=0,
+                # TVA envelope raw segments (canonical clean gate shape)
                 tva_velo_sens=64,
-                tva_attack=0,
-                tva_decay=0,
-                tva_sustain=127,
-                tva_release=0,
+                tva_t1=0, tva_t2=0, tva_t3=0, tva_t4=0,
+                tva_l1=127, tva_l2=127, tva_l3=127,
                 # Pitch Env neutral
                 pitch_env_depth=64,
                 pitch_env_vel_sens=64,
