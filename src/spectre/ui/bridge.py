@@ -155,6 +155,13 @@ class SpectreBridge(QObject):
         # Workstation Shell State
         self._active_view: str = "JUNO PCM"
         self._brightness: int = 85
+        try:
+            from ..core.backlight import BacklightController
+
+            self._backlight = BacklightController()
+        except Exception as e:
+            logger.debug(f"Backlight controller unavailable: {e}")
+            self._backlight = None
 
         # Appliance git-release self updater
         self._updater = GitUpdater(Path(__file__).resolve().parents[3])
@@ -434,6 +441,10 @@ class SpectreBridge(QObject):
     @pyqtProperty(int, notify=brightnessChanged)
     def brightness(self) -> int:
         return self._brightness
+
+    @pyqtProperty(str, notify=brightnessChanged)
+    def brightnessMethod(self) -> str:
+        return str(getattr(getattr(self, "_backlight", None), "method", "none"))
 
     # -------------------------------------------------------------------------
     # Properties for QML: Tone Selection & Linked Mode
@@ -3477,6 +3488,16 @@ class SpectreBridge(QObject):
         if self._brightness != clamped:
             self._brightness = clamped
             self.brightnessChanged.emit(self._brightness)
+        try:
+            backlight = getattr(self, "_backlight", None)
+            if backlight is not None:
+                if not backlight.set_percent(clamped):
+                    logger.debug(
+                        f"Brightness {clamped}% UI-only "
+                        f"(method={getattr(backlight, 'method', 'none')})"
+                    )
+        except Exception as e:
+            logger.debug(f"Brightness hardware apply failed: {e}")
 
     @pyqtSlot()
     def restartApp(self) -> None:
