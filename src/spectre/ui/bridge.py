@@ -3404,36 +3404,49 @@ class SpectreBridge(QObject):
         """Initialize the active sound in RAM to the golden JUNO SPECTRE template."""
         logger.info("Initializing active patch in RAM to JUNO SPECTRE template...")
 
-        # 1. Restore the golden image on hardware (one DT1 per region, zero residue).
-        #    Falls back to the per-parameter reset sequence if the asset is missing.
-        hw_ok = False
-        if self.engine.juno:
-            try:
-                hw_ok = self.engine.juno.init_patch()
-            except Exception as e:
-                logger.error(f"Error sending init_patch to synth: {e}")
-        if not hw_ok and not self.engine.juno:
-            logger.info("No synth connected; resetting in-memory state only.")
+        # Pause motion playback without destroying the recorded trajectory, and hold
+        # engine-driven SysEx for the whole critical section. Recording is left alone.
+        motion_was_playing = self.engine.motion.state == RecorderState.PLAYING
+        if motion_was_playing:
+            self.engine.motion.pause()
+            self.transportStateChanged.emit(self.engine.motion.state.value)
 
-        # 2. Reset in-memory state from the SAME golden image the hardware received,
-        #    so UI and synth provably match (decoded blob, or hand-built fallback).
-        self.patch_state = PatchState.from_template_file() or PatchState.create_init_patch()
+        try:
+            with self.engine.hold_hardware_writes():
+                # 1. Restore the golden image on hardware (one DT1 per region, zero residue).
+                #    Falls back to the per-parameter reset sequence if the asset is missing.
+                hw_ok = False
+                if self.engine.juno:
+                    try:
+                        hw_ok = self.engine.juno.init_patch()
+                    except Exception as e:
+                        logger.error(f"Error sending init_patch to synth: {e}")
+                if not hw_ok and not self.engine.juno:
+                    logger.info("No synth connected; resetting in-memory state only.")
 
-        # 3. Sync tone wave caches from the decoded template
-        self._tone_waves = [
-            (t.wave_bank_l, t.wave_num_l) for t in self.patch_state.tones
-        ]
-        self._cached_tone_wave_data = [
-            self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
-        ]
+                # 2. Reset in-memory state from the SAME golden image the hardware received,
+                #    so UI and synth provably match (decoded blob, or hand-built fallback).
+                self.patch_state = PatchState.from_template_file() or PatchState.create_init_patch()
 
-        # 4. Update patch name & mode
-        self._patch_name = self.patch_state.common.name
-        self._sound_mode = self.patch_state.sound_mode
+                # 3. Sync tone wave caches from the decoded template
+                self._tone_waves = [
+                    (t.wave_bank_l, t.wave_num_l) for t in self.patch_state.tones
+                ]
+                self._cached_tone_wave_data = [
+                    self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
+                ]
 
-        # 5. Reset Vector Engine position and tone levels
-        self.engine.set_coordinates(0.5, 0.5)
-        self.engine.tone_levels = tuple(t.level for t in self.patch_state.tones)
+                # 4. Update patch name & mode
+                self._patch_name = self.patch_state.common.name
+                self._sound_mode = self.patch_state.sound_mode
+
+                # 5. Reset Vector Engine position and tone levels
+                self.engine.set_coordinates(0.5, 0.5)
+                self.engine.tone_levels = tuple(t.level for t in self.patch_state.tones)
+        finally:
+            if motion_was_playing and self.engine.motion.state != RecorderState.PLAYING:
+                self.engine.motion.play()
+                self.transportStateChanged.emit(self.engine.motion.state.value)
 
         # 6. Emit all signals to trigger live UI refresh across all tabs and screens
         #    (macro deck values are derived getters, so they refresh automatically)

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import enum
 import logging
 import time
+from contextlib import contextmanager
 from typing import Callable, List, Optional, Tuple
 
 from ..core.protocol import JunoClient
@@ -69,6 +70,7 @@ class VectorEngine:
         self._last_dispatch_time: float = 0.0
         self._last_dispatched_levels: Tuple[int, int, int, int] = (-1, -1, -1, -1)
         self._subscribers: List[Callable[[VectorState], None]] = []
+        self._hardware_write_holds: int = 0
 
         # Calculate initial levels
         self._recalculate_levels()
@@ -81,6 +83,18 @@ class VectorEngine:
         """Unregister a subscriber callback."""
         if callback in self._subscribers:
             self._subscribers.remove(callback)
+
+    @contextmanager
+    def hold_hardware_writes(self):
+        """Temporarily suppress engine-driven SysEx without losing motion state."""
+        self._hardware_write_holds += 1
+        try:
+            yield self
+        finally:
+            self._hardware_write_holds = max(0, self._hardware_write_holds - 1)
+
+    def _hardware_writes_held(self) -> bool:
+        return self._hardware_write_holds > 0
 
     def set_mode(self, mode: MorphMode) -> None:
         """Switch between 2D Vector Pad and 1D Wavetable Scanner."""
@@ -155,6 +169,8 @@ class VectorEngine:
 
     def update(self, dt: float) -> None:
         """Tick engine by delta-time dt (advances motion loops / automators / wavetable sweeps)."""
+        if self._hardware_writes_held():
+            return
         if self.mode == MorphMode.VECTOR_2D:
             if self.motion.state == RecorderState.PLAYING:
                 pos = self.motion.update(dt)
@@ -181,6 +197,8 @@ class VectorEngine:
 
     def _dispatch_if_needed(self, force: bool = False) -> None:
         """Send SysEx to synth with rate-limiting and change detection."""
+        if self._hardware_writes_held():
+            return
         now = time.perf_counter()
         interval = 1.0 / max(1.0, self.max_update_hz)
 

@@ -678,6 +678,26 @@ def test_init_patch_workflow():
     assert env_view.property("envDepth") == 0
 
 
+def test_init_patch_preserves_motion_playback():
+    """Init holds engine traffic during the restore and resumes prior playback."""
+    from unittest.mock import MagicMock
+
+    from src.spectre.vector.motion import AutomatorType, RecorderState
+
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    bridge.engine.motion.automator = AutomatorType.CIRCLE
+    bridge.engine.motion.play()
+    assert bridge.engine.motion.state is RecorderState.PLAYING
+
+    bridge.engine.juno = MagicMock()
+    bridge.engine.juno.init_patch.return_value = True
+    bridge.initPatch()
+
+    assert bridge.engine.motion.state is RecorderState.PLAYING
+    assert bridge.patch_state.effects.routing_preset == ""
+
+
 def test_pcm_sound_designer_enhancements():
     engine = VectorEngine()
     app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")

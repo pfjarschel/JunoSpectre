@@ -10,9 +10,10 @@ import enum
 import json
 import logging
 import time
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,10 @@ from .sysex import (
 )
 
 
+INIT_WRITE_GAP_S = 0.012
+INIT_MAX_VERIFY_REPAIRS = 1
+
+
 class SoundMode(enum.IntEnum):
     PATCH = 0
     PERFORM = 1
@@ -217,6 +222,29 @@ class IdentityInfo:
         return self.family_code == (0x3A, 0x02)
 
 
+@dataclass(frozen=True)
+class InitWriteMismatch:
+    """One expected init byte sequence that did not read back correctly."""
+
+    label: str
+    address: Tuple[int, int, int, int]
+    expected: bytes
+    actual: Optional[bytes]
+
+
+@dataclass
+class InitVerification:
+    """Outcome of post-init readback, including attempted selective repairs."""
+
+    detected: List[InitWriteMismatch] = field(default_factory=list)
+    repaired: List[InitWriteMismatch] = field(default_factory=list)
+    failed: List[InitWriteMismatch] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.failed
+
+
 class JunoClient:
     """Client for bidirectional communication with Roland JUNO-DS / XPS-30."""
 
@@ -232,11 +260,23 @@ class JunoClient:
         self.sysex = RolandSysEx(device_id=self.device_id, model_id=self.model_id)
         self._cached_patch_base: Optional[Tuple[int, int, int, int]] = None
         self._cached_sound_mode: Optional[SoundMode] = None
+        self._min_send_interval_s: float = 0.0
+        self._last_send_time: float = 0.0
 
     def invalidate_cache(self) -> None:
         """Clear cached state (call when changing synth patches or modes)."""
         self._cached_patch_base = None
         self._cached_sound_mode = None
+
+    @contextmanager
+    def paced_init_writes(self, gap: float = INIT_WRITE_GAP_S):
+        """Temporarily enforce a minimum interval between outgoing DT1 writes."""
+        previous_gap = self._min_send_interval_s
+        self._min_send_interval_s = max(0.0, float(gap))
+        try:
+            yield self
+        finally:
+            self._min_send_interval_s = previous_gap
 
     def ping(self, timeout: float = 1.0) -> Optional[IdentityInfo]:
         """Send Universal Non-realtime Identity Request and wait for reply."""
@@ -259,6 +299,18 @@ class JunoClient:
                         )
             time.sleep(0.005)
         return None
+
+    @staticmethod
+    def _rq_size(length: int) -> Tuple[int, int, int, int]:
+        """Encode an RQ1 byte count as four Roland 7-bit size bytes."""
+        if length < 0 or length > 0x0FFFFFFF:
+            raise ValueError(f"RQ1 size out of range: {length}")
+        return (
+            (length >> 21) & 0x7F,
+            (length >> 14) & 0x7F,
+            (length >> 7) & 0x7F,
+            length & 0x7F,
+        )
 
     def request_data(
         self,
@@ -287,8 +339,13 @@ class JunoClient:
 
     def send_data(self, address: Sequence[int], data: Sequence[int]) -> None:
         """Send DT1 data set message directly to the synth."""
+        if self._min_send_interval_s > 0.0:
+            wait = self._min_send_interval_s - (time.monotonic() - self._last_send_time)
+            if wait > 0.0:
+                time.sleep(wait)
         packet = self.sysex.build_dt1(address, data)
         self.midi.send_juno_sysex(packet)
+        self._last_send_time = time.monotonic()
 
     def get_sound_mode(self, timeout: float = 1.0, force_refresh: bool = False) -> SoundMode:
         """Query synth Sound Mode (Setup address 01 00 00 00)."""
@@ -1502,79 +1559,352 @@ class JunoClient:
         except (OSError, ValueError):
             return None
 
-    def write_init_template(self, payload: dict, timeout: float = 1.0) -> int:
-        """Restore the golden image into the active temp patch RAM with one DT1 per chunk.
-
-        Returns the number of failed messages (0 = complete restore).
-        """
-        base = self.get_active_patch_base(timeout=timeout)
-        failures = 0
+    @staticmethod
+    def _expected_template_writes(
+        payload: dict, base: Tuple[int, int, int, int]
+    ) -> List[Tuple[str, Tuple[int, int, int, int], bytes]]:
+        """Expand a golden template payload into absolute address expectations."""
+        writes: List[Tuple[str, Tuple[int, int, int, int], bytes]] = []
         chorus_type = 0
         reverb_type = 0
         for key, region in payload["regions"].items():
             region_addr = add_address(base, tuple(region["offset"]))
             for chunk in region["chunks"]:
-                try:
-                    self.send_data(add_address(region_addr, chunk["start"]), chunk["bytes"])
-                except Exception as e:
-                    failures += 1
-                    logger.warning(f"Init template write failed for {key} @0x{chunk['start']:03X}: {e}")
+                start = int(chunk["start"])
+                expected = bytes(chunk["bytes"])
+                writes.append(
+                    (f"{key}@0x{start:03X}", add_address(region_addr, start), expected)
+                )
             if key == "chorus" and region["chunks"]:
-                chorus_type = region["chunks"][0]["bytes"][0]
+                chorus_type = int(region["chunks"][0]["bytes"][0])
             if key == "reverb" and region["chunks"]:
-                reverb_type = region["chunks"][0]["bytes"][0]
+                reverb_type = int(region["chunks"][0]["bytes"][0])
 
         # Mirror the Setup global FX switches to the image's chorus/reverb types
         # (same behavior as selecting the patch on the keyboard).
-        for addr, ftype, label in (
-            (ADDR_SETUP_CHORUS_SWITCH, chorus_type, "chorus"),
-            (ADDR_SETUP_REVERB_SWITCH, reverb_type, "reverb"),
-        ):
+        writes.append(
+            ("setup_chorus_switch", tuple(ADDR_SETUP_CHORUS_SWITCH), bytes([0 if chorus_type == 0 else 1]))
+        )
+        writes.append(
+            ("setup_reverb_switch", tuple(ADDR_SETUP_REVERB_SWITCH), bytes([0 if reverb_type == 0 else 1]))
+        )
+        return writes
+
+    def _read_write_mismatches(
+        self,
+        expected_writes: Sequence[Tuple[str, Tuple[int, int, int, int], bytes] | InitWriteMismatch],
+        timeout: float,
+    ) -> List[InitWriteMismatch]:
+        """Read back expected addresses and report byte-level differences."""
+        mismatches: List[InitWriteMismatch] = []
+        for item in expected_writes:
+            if isinstance(item, InitWriteMismatch):
+                label, address, expected = item.label, item.address, item.expected
+            else:
+                label, address, expected = item
             try:
-                self.send_data(addr, [0 if ftype == 0 else 1])
+                actual = self.request_data(address, self._rq_size(len(expected)), timeout=timeout)
             except Exception as e:
-                failures += 1
-                logger.warning(f"Could not sync master {label} setup switch during init: {e}")
+                logger.warning(f"Init verification read failed for {label}: {e}")
+                actual = None
+            actual_bytes = None if actual is None else bytes(actual)
+            if actual_bytes != bytes(expected):
+                mismatches.append(
+                    InitWriteMismatch(
+                        label=label,
+                        address=tuple(address),
+                        expected=bytes(expected),
+                        actual=actual_bytes,
+                    )
+                )
+        return mismatches
+
+    def verify_writes(
+        self,
+        expected_writes: Sequence[Tuple[str, Tuple[int, int, int, int], bytes]],
+        timeout: float = 1.0,
+        repair: bool = True,
+        max_repair_rounds: int = INIT_MAX_VERIFY_REPAIRS,
+        write_gap: float = INIT_WRITE_GAP_S,
+    ) -> InitVerification:
+        """Verify expected writes and selectively rewrite only mismatched chunks."""
+        result = InitVerification()
+        remaining = list(expected_writes)
+        for attempt in range(max(0, int(max_repair_rounds)) + 1):
+            mismatches = self._read_write_mismatches(remaining, timeout)
+            seen = {m.label for m in result.detected}
+            result.detected.extend([m for m in mismatches if m.label not in seen])
+            if not mismatches or not repair or attempt >= max(0, int(max_repair_rounds)):
+                result.failed.extend(mismatches)
+                break
+            with self.paced_init_writes(write_gap):
+                for mismatch in mismatches:
+                    try:
+                        self.send_data(mismatch.address, mismatch.expected)
+                    except Exception as e:
+                        logger.warning(f"Init repair write failed for {mismatch.label}: {e}")
+            result.repaired.extend(mismatches)
+            remaining = mismatches
+        if result.failed:
+            labels = ", ".join(m.label for m in result.failed)
+            logger.warning(f"Init verification failed for: {labels}")
+        elif result.repaired:
+            labels = ", ".join(m.label for m in result.repaired)
+            logger.info(f"Init verification repaired: {labels}")
+        return result
+
+    def verify_init_template(
+        self,
+        payload: dict,
+        base: Optional[Tuple[int, int, int, int]] = None,
+        timeout: float = 1.0,
+        repair: bool = True,
+        max_repair_rounds: int = INIT_MAX_VERIFY_REPAIRS,
+        write_gap: float = INIT_WRITE_GAP_S,
+    ) -> InitVerification:
+        """Verify a golden template payload byte-for-byte, repairing mismatches."""
+        resolved_base = base if base is not None else self.get_active_patch_base(
+            timeout=timeout, force_refresh=True
+        )
+        expected = self._expected_template_writes(payload, resolved_base)
+        return self.verify_writes(
+            expected,
+            timeout=timeout,
+            repair=repair,
+            max_repair_rounds=max_repair_rounds,
+            write_gap=write_gap,
+        )
+
+    def verify_init_fallback_subset(
+        self,
+        state: PatchState,
+        base: Optional[Tuple[int, int, int, int]] = None,
+        timeout: float = 1.0,
+        repair: bool = True,
+        max_repair_rounds: int = INIT_MAX_VERIFY_REPAIRS,
+        write_gap: float = INIT_WRITE_GAP_S,
+    ) -> InitVerification:
+        """Verify the fallback path's highest-risk writes: name, waves, and FX headers."""
+        resolved_base = base if base is not None else self.get_active_patch_base(
+            timeout=timeout, force_refresh=True
+        )
+        expected: List[Tuple[str, Tuple[int, int, int, int], bytes]] = []
+        raw_name = state.common.name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
+        expected.append(
+            ("patch_name", add_address(resolved_base, PATCH_PARAM_NAME), bytes(raw_name))
+        )
+
+        tone_offsets = {
+            1: OFFSET_PATCH_TONE_1,
+            2: OFFSET_PATCH_TONE_2,
+            3: OFFSET_PATCH_TONE_3,
+            4: OFFSET_PATCH_TONE_4,
+        }
+        for tone in state.tones:
+            bank_id = 1 if tone.wave_bank_l.upper() == "INTA" else 2
+            wave_bytes = bytes(
+                [0, *pack_4nibbles(bank_id), *pack_4nibbles(max(0, min(16384, tone.wave_num_l)))]
+            )
+            wave_addr = add_address(
+                add_address(resolved_base, tone_offsets[tone.tone_index]),
+                TONE_PARAM_WAVE_GROUP_TYPE,
+            )
+            expected.append((f"tone{tone.tone_index}_wave", wave_addr, wave_bytes))
+
+        effects = state.effects
+        mfx_base = add_address(resolved_base, OFFSET_PATCH_COMMON_MFX)
+        expected.append(
+            (
+                "mfx_header",
+                mfx_base,
+                bytes(
+                    [
+                        max(0, min(80, int(effects.mfx_type))),
+                        max(0, min(127, int(effects.mfx_dry_send))),
+                        max(0, min(127, int(effects.mfx_chorus_send))),
+                        max(0, min(127, int(effects.mfx_reverb_send))),
+                    ]
+                ),
+            )
+        )
+        cho_base = add_address(resolved_base, OFFSET_PATCH_COMMON_CHORUS)
+        expected.extend(
+            [
+                ("chorus_type", add_address(cho_base, CHORUS_PARAM_TYPE), bytes([max(0, min(3, int(effects.chorus_type)))])),
+                ("chorus_level", add_address(cho_base, CHORUS_PARAM_LEVEL), bytes([max(0, min(127, int(effects.chorus_level)))])),
+                (
+                    "chorus_output",
+                    add_address(cho_base, CHORUS_PARAM_OUTPUT_SELECT),
+                    bytes([max(0, min(2, int(effects.chorus_to_reverb)))]),
+                ),
+            ]
+        )
+        rev_base = add_address(resolved_base, OFFSET_PATCH_COMMON_REVERB)
+        expected.extend(
+            [
+                ("reverb_type", add_address(rev_base, REVERB_PARAM_TYPE), bytes([max(0, min(5, int(effects.reverb_type)))])),
+                ("reverb_level", add_address(rev_base, REVERB_PARAM_LEVEL), bytes([max(0, min(127, int(effects.reverb_level)))])),
+            ]
+        )
+        expected.extend(
+            [
+                (
+                    "setup_chorus_switch",
+                    tuple(ADDR_SETUP_CHORUS_SWITCH),
+                    bytes([0 if int(effects.chorus_type) == 0 else 1]),
+                ),
+                (
+                    "setup_reverb_switch",
+                    tuple(ADDR_SETUP_REVERB_SWITCH),
+                    bytes([0 if int(effects.reverb_type) == 0 else 1]),
+                ),
+            ]
+        )
+        return self.verify_writes(
+            expected,
+            timeout=timeout,
+            repair=repair,
+            max_repair_rounds=max_repair_rounds,
+            write_gap=write_gap,
+        )
+
+    def write_init_template(
+        self,
+        payload: dict,
+        timeout: float = 1.0,
+        base: Optional[Tuple[int, int, int, int]] = None,
+        write_gap: float = INIT_WRITE_GAP_S,
+    ) -> int:
+        """Restore the golden image into the active temp patch RAM with one DT1 per chunk.
+
+        Returns the number of failed messages (0 = complete restore).
+        """
+        resolved_base = base if base is not None else self.get_active_patch_base(timeout=timeout)
+        failures = 0
+        with self.paced_init_writes(write_gap):
+            for key, region in payload["regions"].items():
+                region_addr = add_address(resolved_base, tuple(region["offset"]))
+                for chunk in region["chunks"]:
+                    try:
+                        self.send_data(add_address(region_addr, chunk["start"]), chunk["bytes"])
+                    except Exception as e:
+                        failures += 1
+                        logger.warning(f"Init template write failed for {key} @0x{chunk['start']:03X}: {e}")
+
+            # Mirror the Setup global FX switches to the image's chorus/reverb types
+            # (same behavior as selecting the patch on the keyboard).
+            chorus_type = 0
+            reverb_type = 0
+            if payload["regions"].get("chorus", {}).get("chunks"):
+                chorus_type = int(payload["regions"]["chorus"]["chunks"][0]["bytes"][0])
+            if payload["regions"].get("reverb", {}).get("chunks"):
+                reverb_type = int(payload["regions"]["reverb"]["chunks"][0]["bytes"][0])
+            for addr, ftype, label in (
+                (ADDR_SETUP_CHORUS_SWITCH, chorus_type, "chorus"),
+                (ADDR_SETUP_REVERB_SWITCH, reverb_type, "reverb"),
+            ):
+                try:
+                    self.send_data(addr, [0 if ftype == 0 else 1])
+                except Exception as e:
+                    failures += 1
+                    logger.warning(f"Could not sync master {label} setup switch during init: {e}")
         return failures
 
-    def init_patch(self, timeout: float = 1.0) -> bool:
+    def init_patch(
+        self,
+        timeout: float = 1.0,
+        *,
+        write_gap: float = INIT_WRITE_GAP_S,
+        verify: bool = True,
+        max_repair_rounds: int = INIT_MAX_VERIFY_REPAIRS,
+    ) -> bool:
         """Initialize the active temporary patch buffer to the golden JUNO SPECTRE template.
 
         Preferred path: single contiguous image restore per region (zero residue,
         including parameters the app does not model). Falls back to the per-parameter
         reset sequence when the template asset is unavailable.
         """
+        self.invalidate_cache()
         payload = self.load_init_template()
-        if payload is not None:
-            try:
-                failures = self.write_init_template(payload, timeout=timeout)
-            except Exception as e:
-                logger.error(f"Init template restore failed: {e}; falling back to per-parameter reset.")
-                return self.init_patch_fallback()
+        if payload is None:
+            logger.info("init_template.json not found; using per-parameter fallback reset.")
+            return self.init_patch_fallback(
+                write_gap=write_gap,
+                verify_subset=verify,
+                timeout=timeout,
+                max_repair_rounds=max_repair_rounds,
+            )
+
+        try:
+            with self.paced_init_writes(write_gap):
+                base = self.get_active_patch_base(timeout=timeout, force_refresh=True)
+                failures = self.write_init_template(payload, timeout=timeout, base=base, write_gap=write_gap)
+        except Exception as e:
+            logger.error(f"Init template restore failed: {e}; falling back to per-parameter reset.")
+            return self.init_patch_fallback(
+                write_gap=write_gap,
+                verify_subset=False,
+                timeout=timeout,
+                max_repair_rounds=max_repair_rounds,
+            )
+        if failures:
+            logger.warning(f"Golden template restore reported {failures} failed message(s); verifying before giving up.")
+        if not verify:
             if failures == 0:
                 logger.info("Patch initialized from golden template image.")
                 return True
             logger.warning(f"Golden template restore completed with {failures} failed message(s).")
             return False
 
-        logger.info("init_template.json not found; using per-parameter fallback reset.")
-        return self.init_patch_fallback()
+        try:
+            verification = self.verify_init_template(
+                payload,
+                base=base,
+                timeout=timeout,
+                repair=True,
+                max_repair_rounds=max_repair_rounds,
+                write_gap=write_gap,
+            )
+        except Exception as e:
+            logger.error(f"Init template verification failed: {e}")
+            return False
+        if not verification.ok:
+            labels = ", ".join(m.label for m in verification.failed)
+            logger.warning(f"Golden template restore incomplete after repair: {labels}")
+            return False
+        if verification.repaired:
+            labels = ", ".join(m.label for m in verification.repaired)
+            logger.info(f"Patch initialized from golden template image after repairing: {labels}.")
+        else:
+            logger.info("Patch initialized from golden template image.")
+        return True
 
-    def init_patch_fallback(self) -> bool:
+    def init_patch_fallback(
+        self,
+        *,
+        write_gap: float = INIT_WRITE_GAP_S,
+        verify_subset: bool = True,
+        timeout: float = 1.0,
+        max_repair_rounds: int = INIT_MAX_VERIFY_REPAIRS,
+    ) -> bool:
         """Per-parameter reset sequence, driven entirely by create_init_patch() state.
 
         Used only when the golden template asset is unavailable. Kept consistent with
         the template so both paths converge on the same patch.
         """
+        self.invalidate_cache()
         st = PatchState.create_init_patch()
         failures: list[str] = []
 
         def _try(label: str, fn, *args, **kwargs) -> None:
             try:
-                fn(*args, **kwargs)
+                with self.paced_init_writes(write_gap):
+                    fn(*args, **kwargs)
             except Exception as e:
                 failures.append(label)
                 logger.warning(f"Init fallback '{label}' failed: {e}")
+            if write_gap > 0:
+                time.sleep(write_gap)
 
         _try("patch name", self.set_patch_name, st.common.name)
         _try("level", self.set_patch_param, "level", st.common.level)
@@ -1746,5 +2076,25 @@ class JunoClient:
         if failures:
             logger.warning(f"Init fallback completed with {len(failures)} failed parameter group(s).")
             return False
+        if not verify_subset:
+            return True
+        try:
+            verification = self.verify_init_fallback_subset(
+                st,
+                timeout=timeout,
+                repair=True,
+                max_repair_rounds=max_repair_rounds,
+                write_gap=write_gap,
+            )
+        except Exception as e:
+            logger.error(f"Init fallback verification failed: {e}")
+            return False
+        if not verification.ok:
+            labels = ", ".join(m.label for m in verification.failed)
+            logger.warning(f"Init fallback incomplete after repair: {labels}")
+            return False
+        if verification.repaired:
+            labels = ", ".join(m.label for m in verification.repaired)
+            logger.info(f"Init fallback completed after repairing: {labels}.")
         return True
 

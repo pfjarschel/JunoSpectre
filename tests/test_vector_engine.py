@@ -79,3 +79,23 @@ def test_vector_engine_tone_mutes():
     muted = engine.toggle_tone_mute(1)
     assert not muted
     assert engine.tone_levels == (127, 0, 0, 0)
+
+
+def test_vector_engine_hold_suppresses_hardware_dispatch():
+    from src.spectre.vector.motion import AutomatorType, RecorderState
+
+    mock_juno = MagicMock()
+    engine = VectorEngine(juno_client=mock_juno, max_update_hz=1000.0)
+    engine.motion.automator = AutomatorType.CIRCLE
+    engine.motion.play()
+    assert engine.motion.state is RecorderState.PLAYING
+
+    with engine.hold_hardware_writes():
+        engine.update(0.016)
+        engine.set_coordinates(0.0, 0.0)
+        engine.flush()
+        assert mock_juno.set_tone_levels.call_count == 0
+        assert engine.motion.state is RecorderState.PLAYING
+
+    engine.flush()
+    assert mock_juno.set_tone_levels.call_count >= 1

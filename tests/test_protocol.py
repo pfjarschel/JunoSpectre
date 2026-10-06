@@ -9,6 +9,7 @@ from src.spectre.core.protocol import JunoClient, SoundMode, IdentityInfo
 from src.spectre.core.sysex import (
     ADDR_SETUP,
     ADDR_TEMP_PATCH_PART_1,
+    ADDR_TEMP_PERF_PART_1,
     OFFSET_PATCH_TONE_1,
     calculate_checksum,
 )
@@ -137,7 +138,7 @@ def test_juno_client_init_patch(mock_midi_mgr):
     )
     mock_midi_mgr.iter_juno_messages.return_value = [mode_msg]
 
-    ok = client.init_patch()
+    ok = client.init_patch(write_gap=0, verify=False)
     assert ok is True
     # Golden template path: one DT1 per region chunk (9 regions / 13 chunks)
     # plus the two master chorus/reverb bypass switches plus mode query.
@@ -155,10 +156,100 @@ def test_juno_client_init_patch_fallback_without_asset(mock_midi_mgr, tmp_path, 
     )
     mock_midi_mgr.iter_juno_messages.return_value = [mode_msg]
 
-    ok = client.init_patch()
+    ok = client.init_patch(write_gap=0, verify=False)
     assert ok is True
     # Fallback path drives every setter: patch common, matrix, FX details, 4 tones.
     assert mock_midi_mgr.send_juno_sysex.call_count >= 30
+
+
+def test_init_patch_verifies_and_repairs_selected_chunk(mock_midi_mgr, monkeypatch):
+    client = JunoClient(mock_midi_mgr)
+    base = (0x1F, 0x00, 0x00, 0x00)
+    tone_wave_addr = (0x1F, 0x00, 0x20, 0x2C)
+    expected_wave = bytes([0, 2, 4, 3])
+    store = {
+        tone_wave_addr: b"\x00\x00\x00\x00",
+        (0x01, 0x00, 0x00, 0x0D): b"\x00",
+        (0x01, 0x00, 0x00, 0x0E): b"\x00",
+    }
+
+    def fake_send(address, data):
+        store[tuple(address)] = bytes(data)
+
+    def fake_request(address, size, timeout=1.0):
+        return store.get(tuple(address))
+
+    monkeypatch.setattr(client, "send_data", fake_send)
+    monkeypatch.setattr(client, "request_data", fake_request)
+    payload = {
+        "regions": {
+            "tone_1": {"offset": [0, 0, 0x20, 0], "chunks": [{"start": 0x2C, "bytes": list(expected_wave)}]}
+        }
+    }
+
+    result = client.verify_init_template(payload, base=base, timeout=0.05, write_gap=0)
+
+    assert result.ok is True
+    assert [m.label for m in result.repaired] == ["tone_1@0x02C"]
+    assert store[tone_wave_addr] == expected_wave
+
+
+def test_init_patch_fails_after_unrepairable_mismatch(mock_midi_mgr, monkeypatch):
+    client = JunoClient(mock_midi_mgr)
+    base = (0x1F, 0x00, 0x00, 0x00)
+    writes = []
+
+    def fake_request(address, size, timeout=1.0):
+        length = (size[0] << 21) | (size[1] << 14) | (size[2] << 7) | size[3]
+        if tuple(address) == (0x1F, 0x00, 0x20, 0x2C):
+            return b"\x00\x00\x00\x00"
+        return b"\x00" * length
+
+    def fake_send(address, data):
+        writes.append((tuple(address), bytes(data)))
+
+    monkeypatch.setattr(client, "request_data", fake_request)
+    monkeypatch.setattr(client, "send_data", fake_send)
+    payload = {
+        "regions": {
+            "tone_1": {"offset": [0, 0, 0x20, 0], "chunks": [{"start": 0x2C, "bytes": [0, 2, 4, 3]}]}
+        }
+    }
+
+    result = client.verify_init_template(
+        payload, base=base, timeout=0.05, max_repair_rounds=1, write_gap=0
+    )
+
+    assert result.ok is False
+    assert [m.label for m in result.failed] == ["tone_1@0x02C"]
+    assert len(writes) == 1
+
+
+def test_init_patch_refreshes_cached_base_and_mode(mock_midi_mgr, monkeypatch):
+    from src.spectre.core.patch_state import PatchState
+
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+    client._cached_patch_base = ADDR_TEMP_PATCH_PART_1
+    payload = JunoClient.load_init_template()
+    assert payload is not None
+    expected = {
+        address: expected_bytes
+        for _, address, expected_bytes in JunoClient._expected_template_writes(
+            payload, ADDR_TEMP_PERF_PART_1
+        )
+    }
+
+    def fake_request(address, size, timeout=1.0):
+        if tuple(address) == ADDR_SETUP:
+            return bytes([int(SoundMode.PERFORM)])
+        return expected[tuple(address)]
+
+    monkeypatch.setattr(client, "request_data", fake_request)
+
+    assert client.init_patch(write_gap=0) is True
+    assert client._cached_sound_mode is SoundMode.PERFORM
+    assert client._cached_patch_base == ADDR_TEMP_PERF_PART_1
 
 
 def test_juno_client_set_tone_tvf_adsr_atomic(mock_midi_mgr):
