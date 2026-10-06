@@ -13,7 +13,6 @@ Rectangle {
     property bool showWifiModal: false
     property string selectedSsid: "Studio-5GHz"
     property string wifiPassword: ""
-    property string updateStatus: "SYSTEM READY • VERSION 1.4.2 (RELEASE)"
 
     ColumnLayout {
         anchors.fill: parent
@@ -292,24 +291,25 @@ Rectangle {
                                 Text {
                                     anchors.fill: parent
                                     anchors.margins: 4
-                                    text: "$ uname -a\nLinux juno-spectre-pi 6.1.21-v8+ aarch64\n$ apt-check: 0 updates available\n" + root.updateStatus
+                                    text: "$ uname -a\nLinux juno-spectre-pi 6.1.21-v8+ aarch64\n$ git describe --tags\n" + Bridge.version + "\n" + Bridge.updaterLog
                                     font.family: Theme.fontMono
                                     font.pixelSize: ScaleMetrics.sp(8)
                                     color: "#6ee7b7"
                                 }
                             }
 
-                            // Check Updates Button
+                            // Check for Releases Button
                             Rectangle {
                                 Layout.fillWidth: true
                                 height: ScaleMetrics.dp(28)
                                 radius: 3
-                                color: updMouse.pressed ? Theme.bgCardActive : "#10141d"
+                                color: Bridge.updaterBusy ? "#10141d" : (updMouse.pressed ? Theme.bgCardActive : "#10141d")
                                 border.color: "#60a5fa"
                                 border.width: 1
+                                opacity: Bridge.updaterBusy ? 0.5 : 1.0
                                 Text {
                                     anchors.centerIn: parent
-                                    text: "CHECK FOR OS & SPECTRE UPDATES"
+                                    text: Bridge.updaterBusy ? "CONTACTING RELEASE CHANNEL..." : "CHECK FOR SPECTRE RELEASES"
                                     font.bold: true
                                     font.pixelSize: ScaleMetrics.sp(8)
                                     color: "#60a5fa"
@@ -317,9 +317,62 @@ Rectangle {
                                 MouseArea {
                                     id: updMouse
                                     anchors.fill: parent
+                                    enabled: !Bridge.updaterBusy
+                                    onClicked: Bridge.checkForUpdates()
+                                }
+                            }
+
+                            // Install Latest Release Button (toggles to RESTART when done)
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: ScaleMetrics.dp(28)
+                                radius: 3
+                                visible: Bridge.updateAvailable || Bridge.updateApplied
+                                color: instMouse.pressed ? "#14532d" : "#10141d"
+                                border.color: "#10b981"
+                                border.width: 1
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: Bridge.updateApplied
+                                        ? "RESTART NOW TO RUN " + Bridge.version
+                                        : "INSTALL RELEASE " + Bridge.latestVersion
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: "#10b981"
+                                }
+                                MouseArea {
+                                    id: instMouse
+                                    anchors.fill: parent
+                                    enabled: !Bridge.updaterBusy
                                     onClicked: {
-                                        root.updateStatus = "ALL SPECTRE PACKAGES UP TO DATE (OK)";
+                                        if (Bridge.updateApplied)
+                                            Bridge.restartApp();
+                                        else
+                                            Bridge.applyLatestRelease();
                                     }
+                                }
+                            }
+
+                            // Rollback to Previous Release Button
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: ScaleMetrics.dp(28)
+                                radius: 3
+                                color: rbMouse.pressed ? "#451a1a" : "#10141d"
+                                border.color: Theme.borderCard
+                                border.width: 1
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "ROLLBACK TO PREVIOUS RELEASE"
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: Theme.textSecondary
+                                }
+                                MouseArea {
+                                    id: rbMouse
+                                    anchors.fill: parent
+                                    enabled: !Bridge.updaterBusy
+                                    onClicked: Bridge.rollbackRelease()
                                 }
                             }
                         }

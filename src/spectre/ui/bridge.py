@@ -8,7 +8,9 @@ and full patch template initialization.
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import QObject, QTimer, pyqtProperty, pyqtSignal, pyqtSlot
@@ -26,6 +28,7 @@ from ..core.patch_state import (
     LFO_FADE_MODE_NAMES,
 )
 from ..core.env_presets import env_preset_names, get_env_preset
+from ..core.updater import GitUpdater, UpdaterError
 from ..core.waves import WaveCatalogManager
 from ..core.mfx_catalog import get_mfx_catalog, get_mfx_algo, get_mfx_categories, get_mfx_light_catalog
 from ..vector.engine import MorphMode, VectorEngine, VectorState
@@ -116,6 +119,14 @@ class SpectreBridge(QObject):
     vaParamsChanged = pyqtSignal()
     routingChanged = pyqtSignal()
 
+    # Appliance self-update signals (git release channel)
+    versionChanged = pyqtSignal(str)
+    updaterBusyChanged = pyqtSignal(bool)
+    updaterLogChanged = pyqtSignal(str)
+    updateAvailableChanged = pyqtSignal(bool)
+    latestVersionChanged = pyqtSignal(str)
+    updateAppliedChanged = pyqtSignal(bool)
+
     def __init__(self, engine: VectorEngine, parent: Optional[QObject] = None):
         super().__init__(parent)
         self.engine = engine
@@ -143,6 +154,19 @@ class SpectreBridge(QObject):
         # Workstation Shell State
         self._active_view: str = "JUNO PCM"
         self._brightness: int = 85
+
+        # Appliance git-release self updater
+        self._updater = GitUpdater(Path(__file__).resolve().parents[3])
+        self._updater_busy: bool = False
+        self._updater_log: str = "IDLE • RELEASE CHANNEL: GIT TAGS"
+        self._latest_version: str = ""
+        self._update_available: bool = False
+        self._update_applied: bool = False
+        try:
+            self._version: str = self._updater.version
+        except UpdaterError as e:
+            self._version = "DEV"
+            logger.warning(f"Updater unavailable: {e}")
 
         # Engine state tracking for dirty checks
         self._last_x: float = self.engine.x
@@ -373,6 +397,34 @@ class SpectreBridge(QObject):
     @pyqtProperty("QVariantList", notify=toneWavesChanged)
     def toneWaveData(self) -> list:
         return self._cached_tone_wave_data
+
+    # -------------------------------------------------------------------------
+    # Properties for QML: Appliance Self-Update (git release channel)
+    # -------------------------------------------------------------------------
+
+    @pyqtProperty(str, notify=versionChanged)
+    def version(self) -> str:
+        return self._version
+
+    @pyqtProperty(bool, notify=updaterBusyChanged)
+    def updaterBusy(self) -> bool:
+        return self._updater_busy
+
+    @pyqtProperty(str, notify=updaterLogChanged)
+    def updaterLog(self) -> str:
+        return self._updater_log
+
+    @pyqtProperty(bool, notify=updateAvailableChanged)
+    def updateAvailable(self) -> bool:
+        return self._update_available
+
+    @pyqtProperty(str, notify=latestVersionChanged)
+    def latestVersion(self) -> str:
+        return self._latest_version
+
+    @pyqtProperty(bool, notify=updateAppliedChanged)
+    def updateApplied(self) -> bool:
+        return self._update_applied
 
     @pyqtProperty(int, notify=brightnessChanged)
     def brightness(self) -> int:
@@ -3406,3 +3458,113 @@ class SpectreBridge(QObject):
         if app:
             app.quit()
         os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    # -------------------------------------------------------------------------
+    # Appliance Self-Update slots (git release channel)
+    # -------------------------------------------------------------------------
+
+    def _set_updater_busy(self, val: bool) -> None:
+        if self._updater_busy != val:
+            self._updater_busy = val
+            self.updaterBusyChanged.emit(val)
+
+    def _set_updater_log(self, msg: str) -> None:
+        if self._updater_log != msg:
+            self._updater_log = msg
+            self.updaterLogChanged.emit(msg)
+
+    def _set_update_applied(self, val: bool) -> None:
+        if self._update_applied != val:
+            self._update_applied = val
+            self.updateAppliedChanged.emit(val)
+
+    def _refresh_version(self) -> None:
+        new_version = self._updater.version
+        if new_version != self._version:
+            self._version = new_version
+            self.versionChanged.emit(self._version)
+
+    def _start_updater_task(self, action: str, work, on_success) -> None:
+        """Run a blocking git updater call on a worker thread, reporting via signals."""
+        if self._updater_busy:
+            logger.debug("Updater task already running, ignoring request")
+            return
+        self._set_updater_busy(True)
+        self._set_updater_log(f"$ {action} ...")
+
+        def finish(log_line: str) -> None:
+            self._set_updater_log(log_line)
+            self._set_updater_busy(False)
+
+        def runner() -> None:
+            try:
+                result = work()
+            except UpdaterError as e:
+                logger.warning(f"Updater '{action}' failed: {e}")
+                finish(f"ERROR • {str(e).upper()}")
+                return
+            except Exception as e:
+                logger.exception(f"Updater '{action}' crashed")
+                finish(f"ERROR • {str(e).upper()}")
+                return
+            on_success(result)
+            self._refresh_version()
+
+        threading.Thread(target=runner, daemon=True).start()
+
+    @pyqtSlot()
+    def checkForUpdates(self) -> None:
+        """Fetch origin tags and publish latest release availability to the UI."""
+
+        def on_ok(info: dict) -> None:
+            if self._latest_version != info["latest"]:
+                self._latest_version = info["latest"]
+                self.latestVersionChanged.emit(self._latest_version)
+            if self._update_available != info["available"]:
+                self._update_available = info["available"]
+                self.updateAvailableChanged.emit(self._update_available)
+            if info["available"]:
+                self._set_updater_log(
+                    f"UPDATE AVAILABLE • {info['current']} → {info['latest']} "
+                    f"({info['behind_commits']} COMMITS)"
+                )
+            else:
+                self._set_updater_log(f"UP TO DATE • {info['current']}")
+            self._set_update_applied(False)
+            self._set_updater_busy(False)
+
+        self._start_updater_task("git fetch --tags", lambda: self._updater.check(), on_ok)
+
+    @pyqtSlot()
+    def applyLatestRelease(self) -> None:
+        """Check out the newest release tag, then require an explicit app restart."""
+
+        def on_ok(result: dict) -> None:
+            self._update_available = False
+            self.updateAvailableChanged.emit(False)
+            if result["changed"]:
+                self._set_updater_log(
+                    f"RELEASE {result['to']} INSTALLED ({result['from']} → {result['to']}) "
+                    f"• TAP RESTART APPLICATION"
+                )
+                self._set_update_applied(True)
+            else:
+                self._set_updater_log(f"ALREADY ON RELEASE {result['to']}")
+            self._set_updater_busy(False)
+
+        self._start_updater_task("git checkout release", self._updater.apply, on_ok)
+
+    @pyqtSlot()
+    def rollbackRelease(self) -> None:
+        """Fall back to the previous release tag (detached HEAD checkout)."""
+
+        def on_ok(result: dict) -> None:
+            self._set_updater_log(
+                f"ROLLED BACK {result['from']} → {result['to']} • TAP RESTART APPLICATION"
+            )
+            self._update_available = False
+            self.updateAvailableChanged.emit(False)
+            self._set_update_applied(True)
+            self._set_updater_busy(False)
+
+        self._start_updater_task("git rollback", self._updater.rollback, on_ok)
