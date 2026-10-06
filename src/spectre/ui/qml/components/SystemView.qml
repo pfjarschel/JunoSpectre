@@ -103,67 +103,87 @@ Rectangle {
 
                     Rectangle { Layout.fillWidth: true; height: 1; color: Theme.borderCard }
 
-                    // Restart App Button (Safe, Fast Restart)
+                    // Restart App Button (Safe, Graceful Restart - two-tap confirm)
                     Rectangle {
+                        id: restartBtn
+                        property bool confirmAction: false
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(36)
                         radius: ScaleMetrics.dp(4)
-                        color: restartMouse.pressed ? Theme.bgCardActive : "#161d2b"
-                        border.color: Theme.tone1
+                        color: confirmAction ? "#1e3a2f" : (restartMouse.pressed ? Theme.bgCardActive : "#161d2b")
+                        border.color: confirmAction ? "#10b981" : Theme.tone1
                         border.width: 1
 
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 6
-                            Text { text: "↻"; font.bold: true; font.pixelSize: ScaleMetrics.sp(14); color: Theme.tone1 }
-                            Text { text: "RESTART APPLICATION"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.tone1 }
+                            Text { text: confirmAction ? "⚠" : "↻"; font.bold: true; font.pixelSize: ScaleMetrics.sp(14); color: confirmAction ? "#10b981" : Theme.tone1 }
+                            Text { text: confirmAction ? "TAP AGAIN TO RESTART" : "RESTART APPLICATION"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: confirmAction ? "#10b981" : Theme.tone1 }
                         }
+                        Timer { id: restartReset; interval: 3000; onTriggered: restartBtn.confirmAction = false }
                         MouseArea {
                             id: restartMouse
                             anchors.fill: parent
-                            onClicked: Bridge.restartApp()
+                            onClicked: {
+                                if (!restartBtn.confirmAction) { restartBtn.confirmAction = true; restartReset.restart(); }
+                                else { restartBtn.confirmAction = false; Bridge.restartApp(); }
+                            }
                         }
                     }
 
-                    // Reboot System Button
+                    // Reboot System Button (two-tap confirm -> systemctl reboot)
                     Rectangle {
+                        id: rebootBtn
+                        property bool confirmAction: false
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(36)
                         radius: ScaleMetrics.dp(4)
-                        color: rebootMouse.pressed ? "#451a1a" : "#10141d"
-                        border.color: Theme.borderCard
+                        color: confirmAction ? "#451a1a" : (rebootMouse.pressed ? "#451a1a" : "#10141d")
+                        border.color: confirmAction ? Theme.recording : Theme.borderCard
                         border.width: 1
 
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 6
-                            Text { text: "⚡"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: Theme.textSecondary }
-                            Text { text: "REBOOT WORKSTATION (PI)"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textSecondary }
+                            Text { text: confirmAction ? "⚠" : "⚡"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: confirmAction ? Theme.recording : Theme.textSecondary }
+                            Text { text: confirmAction ? "TAP AGAIN TO REBOOT" : "REBOOT WORKSTATION (PI)"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: confirmAction ? Theme.recording : Theme.textSecondary }
                         }
+                        Timer { id: rebootReset; interval: 3000; onTriggered: rebootBtn.confirmAction = false }
                         MouseArea {
                             id: rebootMouse
                             anchors.fill: parent
+                            onClicked: {
+                                if (!rebootBtn.confirmAction) { rebootBtn.confirmAction = true; rebootReset.restart(); }
+                                else { rebootBtn.confirmAction = false; Bridge.rebootSystem(); }
+                            }
                         }
                     }
 
-                    // Shutdown System Button
+                    // Shutdown System Button (two-tap confirm -> systemctl poweroff)
                     Rectangle {
+                        id: shutBtn
+                        property bool confirmAction: false
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(36)
                         radius: ScaleMetrics.dp(4)
-                        color: shutMouse.pressed ? "#591c1c" : "#1a1215"
+                        color: confirmAction ? "#591c1c" : (shutMouse.pressed ? "#591c1c" : "#1a1215")
                         border.color: Theme.recording
                         border.width: 1
 
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 6
-                            Text { text: "⏻"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: Theme.recording }
-                            Text { text: "SAFE SHUTDOWN"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.recording }
+                            Text { text: confirmAction ? "⚠" : "⏻"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: Theme.recording }
+                            Text { text: confirmAction ? "TAP AGAIN TO SHUTDOWN" : "SAFE SHUTDOWN"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.recording }
                         }
+                        Timer { id: shutReset; interval: 3000; onTriggered: shutBtn.confirmAction = false }
                         MouseArea {
                             id: shutMouse
                             anchors.fill: parent
+                            onClicked: {
+                                if (!shutBtn.confirmAction) { shutBtn.confirmAction = true; shutReset.restart(); }
+                                else { shutBtn.confirmAction = false; Bridge.shutdownSystem(); }
+                            }
                         }
                     }
 

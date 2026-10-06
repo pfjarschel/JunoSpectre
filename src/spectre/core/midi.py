@@ -167,6 +167,46 @@ class MidiDeviceManager:
         msg = mido.Message("sysex", data=data)
         self.juno_out.send(msg)
 
+    def send_juno_cc(self, control: int, value: int, channel: int = 0) -> None:
+        """Send a Control Change message to the Roland synth."""
+        if not self.juno_out or getattr(self.juno_out, "closed", False):
+            raise ConnectionError("JUNO-DS output port is not connected.")
+        msg = mido.Message(
+            "control_change",
+            channel=int(channel) & 0x0F,
+            control=int(control) & 0x7F,
+            value=max(0, min(127, int(value))),
+        )
+        self.juno_out.send(msg)
+
+    def send_all_notes_off(self, include_reset: bool = True) -> int:
+        """Panic: All Notes Off (CC 123) + Reset All Controllers (CC 121) on all 16 channels.
+
+        Returns number of messages actually sent. No-op (with warning) when
+        the Juno output port is not connected, so the UI panic button is
+        always safe to press.
+        """
+        if not self.juno_out or getattr(self.juno_out, "closed", False):
+            logger.warning("PANIC ignored: JUNO-DS output port is not connected.")
+            return 0
+        sent = 0
+        for channel in range(16):
+            try:
+                self.juno_out.send(
+                    mido.Message("control_change", channel=channel, control=123, value=0)
+                )
+                sent += 1
+                if include_reset:
+                    self.juno_out.send(
+                        mido.Message("control_change", channel=channel, control=121, value=0)
+                    )
+                    sent += 1
+            except Exception as e:
+                logger.warning(f"PANIC send failed on ch {channel}: {e}")
+                break
+        logger.info(f"PANIC: Sent All Notes Off (+Reset) on 16 channels ({sent} msgs)")
+        return sent
+
     def iter_juno_messages(self) -> Generator[mido.Message, None, None]:
         """Iterate over pending messages from the JUNO-DS."""
         if not self.juno_in:

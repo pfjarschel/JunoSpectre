@@ -75,6 +75,7 @@ class SpectreBridge(QObject):
     requestOpenInitPatchModal = pyqtSignal()
     requestOpenEnvOverlay = pyqtSignal(str)
     patchInitialized = pyqtSignal()
+    powerActionChanged = pyqtSignal(str)
 
     # Tone selection & linked mode
     selectedToneChanged = pyqtSignal(int)
@@ -1257,8 +1258,14 @@ class SpectreBridge(QObject):
     @pyqtSlot()
     def panic(self) -> None:
         """Send All Notes Off / Reset all controllers."""
-        if self.engine.juno and self.engine.juno.midi:
-            self.engine.juno.midi.send_all_notes_off()
+        try:
+            if self.engine.juno and self.engine.juno.midi:
+                self.engine.juno.midi.send_all_notes_off()
+            else:
+                logger.warning("PANIC ignored: synth not connected (mock/no MIDI).")
+        except Exception as e:
+            logger.warning(f"PANIC failed: {e}")
+            return
         logger.info("PANIC: Sent All Notes Off")
 
     @pyqtSlot(str)
@@ -3473,15 +3480,132 @@ class SpectreBridge(QObject):
 
     @pyqtSlot()
     def restartApp(self) -> None:
-        """Fast restart application."""
-        import sys
+        """Graceful in-place restart: silence synth, close MIDI, then exec.
+
+        Does NOT quit first — os.execv() replaces the process on success and
+        never returns. If exec fails the app keeps running instead of
+        black-screening the appliance.
+        """
         import os
-        from PyQt6.QtGui import QGuiApplication
+        import sys
+
+        exe = sys.executable
+        if not exe or not os.path.exists(exe):
+            logger.error(f"Restart aborted: invalid python executable {exe!r}")
+            return
         logger.info("Restarting application...")
-        app = QGuiApplication.instance()
-        if app:
-            app.quit()
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        self.powerActionChanged.emit("restarting")
+        self._perform_appliance_cleanup("restart")
+        argv = [exe] + sys.argv
+        try:
+            os.execv(exe, argv)
+        except Exception as e:
+            logger.error(f"Restart execv failed ({argv}): {e}")
+            self.powerActionChanged.emit("")
+            try:
+                if hasattr(self, "_timer") and not self._timer.isActive():
+                    self._timer.start()
+            except Exception:
+                pass
+
+    @pyqtSlot()
+    def rebootSystem(self) -> None:
+        """Reboot the host OS (Pi appliance). Safe no-op with warning off Linux."""
+        self._host_power("reboot")
+
+    @pyqtSlot()
+    def shutdownSystem(self) -> None:
+        """Power off the host OS (Pi appliance). Safe no-op with warning off Linux."""
+        self._host_power("poweroff")
+
+    def _perform_appliance_cleanup(self, reason: str) -> None:
+        """Best-effort graceful teardown before restart/reboot/shutdown."""
+        try:
+            if hasattr(self, "_timer") and self._timer.isActive():
+                self._timer.stop()
+        except Exception as e:
+            logger.debug(f"Cleanup ({reason}): timer stop failed: {e}")
+        try:
+            juno = getattr(getattr(self, "engine", None), "juno", None)
+            midi = getattr(juno, "midi", None) if juno is not None else None
+            if midi is not None:
+                try:
+                    if hasattr(midi, "send_all_notes_off"):
+                        midi.send_all_notes_off()
+                except Exception as e:
+                    logger.debug(f"Cleanup ({reason}): panic failed: {e}")
+                try:
+                    if hasattr(midi, "close"):
+                        midi.close()
+                except Exception as e:
+                    logger.debug(f"Cleanup ({reason}): MIDI close failed: {e}")
+        except Exception as e:
+            logger.debug(f"Cleanup ({reason}) failed: {e}")
+        try:
+            for handler in logging.getLogger().handlers:
+                try:
+                    handler.flush()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _host_power(self, action: str, dry_run: bool = False) -> str:
+        """Shared systemctl reboot/poweroff helper. Returns outcome string.
+
+        `dry_run=True` performs cleanup-free validation only (for tests).
+        """
+        import subprocess
+        import sys
+
+        if action not in ("reboot", "poweroff"):
+            raise ValueError(f"Unknown power action: {action}")
+        if dry_run:
+            return "dry-run"
+        if sys.platform != "linux":
+            logger.warning(
+                f"{action.upper()} ignored: host power control is Linux-only "
+                f"(running on {sys.platform})."
+            )
+            return "unsupported-platform"
+        from PyQt6.QtGui import QGuiApplication
+
+        logger.info(f"Host {action} requested...")
+        self.powerActionChanged.emit(action + "ing")
+        self._perform_appliance_cleanup(action)
+        cmds = [["systemctl", action], ["sudo", "-n", "systemctl", action]]
+        last_err = ""
+        for cmd in cmds:
+            try:
+                proc = subprocess.run(cmd, timeout=15, capture_output=True, text=True)
+            except FileNotFoundError as e:
+                last_err = str(e)
+                continue
+            except subprocess.TimeoutExpired:
+                last_err = f"{' '.join(cmd)} timed out"
+                continue
+            except Exception as e:
+                last_err = str(e)
+                continue
+            if proc.returncode == 0:
+                break
+            last_err = (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()
+        else:
+            logger.error(f"Host {action} failed: {last_err}")
+            self.powerActionChanged.emit("")
+            try:
+                if hasattr(self, "_timer") and not self._timer.isActive():
+                    self._timer.start()
+            except Exception:
+                pass
+            return f"failed: {last_err}"
+        try:
+            app = QGuiApplication.instance()
+            if app:
+                app.quit()
+        except Exception as e:
+            logger.debug(f"Qt quit after {action} failed: {e}")
+        return "ok"
 
     # -------------------------------------------------------------------------
     # Appliance Self-Update slots (git release channel)
