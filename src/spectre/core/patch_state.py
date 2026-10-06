@@ -529,6 +529,14 @@ class PatchState:
     va_pw: list[int] = field(default_factory=lambda: [50, 50, 50, 50])
     va_pwm: list[int] = field(default_factory=lambda: [0, 0, 0, 0])
 
+    # Full device image snapshot (parity with init_template.json regions), even for
+    # parameters the UI does not (yet) model. Snapshot-only: may go stale after
+    # local per-parameter DT1 edits; refreshed on Sync (read_full_patch) and Init
+    # (from_template). Layout: {"common": [80B], "mfx": [145B],
+    # "chorus": [84B], "reverb": [83B], "tmt": [41B],
+    # "tone_1": [154B, 26B], ...}.
+    raw_regions: Dict[str, list[bytes]] = field(default_factory=dict)
+
     def get_tone(self, tone_number: int) -> ToneState:
         """Get ToneState by 1-based tone number (1..4)."""
         idx = max(1, min(4, tone_number)) - 1
@@ -882,6 +890,13 @@ class PatchState:
             depth=0,
         )
         state.custom_detune_cache = [t.fine_tune for t in tones]
+        try:
+            state.raw_regions = {
+                key: [bytes(chunk) for chunk in cls._region_bytes(region)]
+                for key, region in regions.items()
+            }
+        except (KeyError, IndexError, ValueError, TypeError):
+            state.raw_regions = {}
         return state
 
     @classmethod

@@ -1181,25 +1181,88 @@ class JunoClient:
         if l4 is not None:
             self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_L4, max(1, min(127, l4)))
 
-    def read_patch_common(self, timeout: float = 1.0) -> PatchCommonState:
-        """Read Patch Common block from synth RAM (size 0x4E / 78 bytes)."""
-        base = self.get_active_patch_base(timeout=timeout)
-        addr = add_address(base, OFFSET_PATCH_COMMON)
-        res = self.request_data(addr, (0x00, 0x00, 0x00, 0x4E), timeout=timeout)
+    # ------------------------------------------------------------------
+    # Raw image readers (parity with init_template.json regions). These return
+    # the exact device bytes so callers can preserve unmodeled residue in
+    # PatchState.raw_regions even when the UI does not (yet) use it.
+    # ------------------------------------------------------------------
+
+    def _read_common_raw(self, base, timeout: float = 1.0) -> bytes:
+        res = self.request_data(
+            add_address(base, OFFSET_PATCH_COMMON), self._rq_size(80), timeout=timeout
+        )
         if res is None or len(res) < 0x26:
             raise TimeoutError("Timed out reading Patch Common block.")
+        return bytes(res)
+
+    def _read_tone_raws(self, t_base, timeout: float = 1.0) -> Tuple[bytes, Optional[bytes]]:
+        main = self.request_data(t_base, self._rq_size(154), timeout=timeout)
+        if main is None or len(main) < 0x7B:
+            raise TimeoutError("Timed out reading Tone chunk 1.")
+        lfo = self.request_data(add_address(t_base, 0x0100), self._rq_size(26), timeout=timeout)
+        return bytes(main), (bytes(lfo) if lfo is not None else None)
+
+    def _read_mfx_raw(self, base, timeout: float = 1.0) -> bytes:
+        res = self.request_data(
+            add_address(base, OFFSET_PATCH_COMMON_MFX),
+            (0x00, 0x00, 0x01, 0x11),
+            timeout=timeout,
+        )
+        if (res is None or len(res) < 4) and tuple(add_address(base, OFFSET_PATCH_COMMON_MFX)) != (0x10, 0x00, 0x02, 0x00):
+            res = self.request_data((0x10, 0x00, 0x02, 0x00), (0x00, 0x00, 0x01, 0x11), timeout=timeout)
+        if res is None or len(res) < 4:
+            raise TimeoutError("Timed out reading MFX block.")
+        return bytes(res)
+
+    def _read_chorus_raw(self, base, timeout: float = 1.0) -> bytes:
+        res = self.request_data(
+            add_address(base, OFFSET_PATCH_COMMON_CHORUS), self._rq_size(84), timeout=timeout
+        )
+        if res is None or len(res) < 4:
+            raise TimeoutError("Timed out reading Chorus block.")
+        return bytes(res)
+
+    def _read_reverb_raw(self, base, timeout: float = 1.0) -> bytes:
+        res = self.request_data(
+            add_address(base, OFFSET_PATCH_COMMON_REVERB), self._rq_size(83), timeout=timeout
+        )
+        if res is None or len(res) < 2:
+            raise TimeoutError("Timed out reading Reverb block.")
+        return bytes(res)
+
+    def _read_tmt_raw(self, base, timeout: float = 1.0) -> bytes:
+        res = self.request_data(
+            add_address(base, OFFSET_PATCH_TMT), self._rq_size(41), timeout=timeout
+        )
+        if res is None or len(res) < 0x21:
+            raise TimeoutError("Timed out reading TMT block.")
+        return bytes(res)
+
+    def read_patch_common(self, timeout: float = 1.0) -> PatchCommonState:
+        """Read Patch Common block from synth RAM (full 80 bytes, parity with init template)."""
+        base = self.get_active_patch_base(timeout=timeout)
+        res = self._read_common_raw(base, timeout=timeout)
+
+        # Full image available -> decode via the canonical template decoder
+        # (same code path as PatchState.from_template, used by init_patch).
+        if len(res) >= 80:
+            return PatchState._decode_common(bytes(res[:80]))
 
         name = res[0:12].decode("latin1", errors="replace").strip()
         cat = res[0x0C] if len(res) > 0x0C else 0
         lvl = res[0x0E] if len(res) > 0x0E else 100
         pan = res[0x0F] if len(res) > 0x0F else 64
+        analog_feel = res[0x15] if len(res) > 0x15 else 0
+        mono_poly = res[0x16] if len(res) > 0x16 else 1
         legato = bool(res[0x17]) if len(res) > 0x17 else False
         porta_sw = bool(res[0x19]) if len(res) > 0x19 else False
+        porta_mode = res[0x1A] if len(res) > 0x1A else 0
         porta_time = res[0x1D] if len(res) > 0x1D else 20
         cut_off = res[0x22] if len(res) > 0x22 else 64
         res_off = res[0x23] if len(res) > 0x23 else 64
         atk_off = res[0x24] if len(res) > 0x24 else 64
         rel_off = res[0x25] if len(res) > 0x25 else 64
+        out_assign = res[0x27] if len(res) > 0x27 else 13
 
         m_ctrls = []
         for i, off in enumerate([0x2B, 0x34, 0x3D, 0x46]):
@@ -1230,13 +1293,24 @@ class JunoClient:
             attack_offset=atk_off,
             release_offset=rel_off,
             portamento_switch=porta_sw,
+            portamento_mode=porta_mode,
             portamento_time=porta_time,
             legato_switch=legato,
+            mono_poly=mono_poly,
+            analog_feel=analog_feel,
+            patch_output_assign=out_assign,
             matrix_ctrls=m_ctrls,
         )
 
     def read_tone(self, tone_index: int, timeout: float = 1.0) -> ToneState:
-        """Read all parameters for a specific tone (1..4) from synth RAM."""
+        """Read all parameters for a specific tone (1..4) from synth RAM.
+
+        Reads the full 154-byte main block (0x00-0x99, parity with the init
+        template) plus the 26-byte LFO2/Step block at 0x100, and decodes via
+        the canonical PatchState._decode_tone used by init_patch. Falls back
+        to the legacy 123-byte + 4-byte split when the device returns a
+        short reply.
+        """
         if tone_index not in (1, 2, 3, 4):
             raise ValueError(f"Tone index must be 1..4, got {tone_index}")
         base = self.get_active_patch_base(timeout=timeout)
@@ -1248,15 +1322,26 @@ class JunoClient:
         }
         t_base = add_address(base, offsets[tone_index])
 
-        # Chunk 1: from 0x0000 to 0x007A (size 123 bytes = 0x7B)
-        res1 = self.request_data(t_base, (0x00, 0x00, 0x00, 0x7B), timeout=timeout)
-        if res1 is None or len(res1) < 0x7B:
-            raise TimeoutError(f"Timed out reading Tone {tone_index} chunk 1.")
+        # Chunk 1: full 154 bytes (0x00-0x99), matching init_template.json.
+        res1, res2b = self._read_tone_raws(t_base, timeout=timeout)
+
+        # Fast path: full image available -> canonical decoder (parity with init).
+        if len(res1) >= 154 and res2b is not None and len(res2b) >= 26:
+            try:
+                return PatchState._decode_tone(
+                    bytes(res1[:154]), bytes(res2b[:26]), tone_index
+                )
+            except Exception as e:
+                logger.warning(f"Tone {tone_index} canonical decode failed, using legacy: {e}")
 
         level = res1[0x00]
         coarse = res1[0x01]
         fine = res1[0x02]
         pan = res1[0x04]
+        output_level = res1[0x0C] if len(res1) > 0x0C else 127
+        chorus_send = res1[0x0D] if len(res1) > 0x0D else 0
+        reverb_send = res1[0x0E] if len(res1) > 0x0E else 0
+        output_assign = res1[0x11] if len(res1) > 0x11 else 0
         matrix_switches = [
             list(res1[0x17:0x1B]),
             list(res1[0x1B:0x1F]),
@@ -1265,7 +1350,6 @@ class JunoClient:
         ]
 
         # Wave
-        group_type = res1[0x27]
         group_id = unpack_4nibbles(res1[0x28:0x2C])
         bank = "INTA" if group_id == 1 else "INTB" if group_id == 2 else f"GROUP_{group_id}"
         wave_l = unpack_4nibbles(res1[0x2C:0x30])
@@ -1335,14 +1419,20 @@ class JunoClient:
         lfo1_a_dep = res1[0x79]
         lfo1_pan_dep = res1[0x7A]
 
-        # LFO 2 Chunk
-        lfo2_addr_a = add_address(t_base, 0x007B)
-        res2a = self.request_data(lfo2_addr_a, (0x00, 0x00, 0x00, 0x04), timeout=timeout)
-        lfo2_wave = res2a[0] if res2a and len(res2a) > 0 else 0
-        lfo2_rate = unpack_2nibbles(res2a[1:3]) if res2a and len(res2a) >= 3 else 45
+        # LFO 2: prefer bytes already in the full 154-byte block; otherwise
+        # fall back to the legacy dedicated 4-byte read (old mocks / short replies).
+        if len(res1) >= 0x7E:
+            lfo2_wave = res1[0x7B]
+            try:
+                lfo2_rate = unpack_2nibbles(res1[0x7C:0x7E])
+            except ValueError:
+                lfo2_rate = 45
+        else:
+            lfo2_addr_a = add_address(t_base, 0x007B)
+            res2a = self.request_data(lfo2_addr_a, (0x00, 0x00, 0x00, 0x04), timeout=timeout)
+            lfo2_wave = res2a[0] if res2a and len(res2a) > 0 else 0
+            lfo2_rate = unpack_2nibbles(res2a[1:3]) if res2a and len(res2a) >= 3 else 45
 
-        lfo2_addr_b = add_address(t_base, 0x0100)
-        res2b = self.request_data(lfo2_addr_b, (0x00, 0x00, 0x00, 0x1A), timeout=timeout)
         lfo2_delay = res2b[0] if res2b and len(res2b) > 0 else 0
         lfo2_fade_m = res2b[2] if res2b and len(res2b) > 2 else 0
         lfo2_fade_t = res2b[3] if res2b and len(res2b) > 3 else 0
@@ -1357,6 +1447,10 @@ class JunoClient:
             tone_index=tone_index,
             level=level,
             pan=pan,
+            output_level=output_level,
+            chorus_send=chorus_send,
+            reverb_send=reverb_send,
+            output_assign=output_assign,
             tva_velo_sens=tva_vel,
             tva_env_t1_vel_sens=tva_env_t1_vel,
             tva_env_t4_vel_sens=tva_env_t4_vel,
@@ -1390,7 +1484,7 @@ class JunoClient:
             fine_tune=fine,
             wave_bank_l=bank,
             wave_num_l=wave_l,
-            wave_bank_r="INTA",
+            wave_bank_r=bank,
             wave_num_r=wave_r,
             wave_gain=wave_gain,
             wave_fxm_switch=fxm_sw,
@@ -1443,14 +1537,7 @@ class JunoClient:
     def read_mfx(self, timeout: float = 1.0) -> Tuple[int, int, int, int, list[int]]:
         """Read MFX Type, Dry Send, Chorus Send, Reverb Send, and Parameters 1..32."""
         base = self.get_active_patch_base(timeout=timeout)
-        mfx_addr = add_address(base, OFFSET_PATCH_COMMON_MFX)
-        # Size 0x0111 in 7-bit arithmetic (145 bytes) reads type, sends, controls, and 32 params
-        res = self.request_data(mfx_addr, (0x00, 0x00, 0x01, 0x11), timeout=timeout)
-        if res is None or len(res) < 4:
-            # Fallback to Performance Common MFX1 (10 00 02 00)
-            res = self.request_data((0x10, 0x00, 0x02, 0x00), (0x00, 0x00, 0x01, 0x11), timeout=timeout)
-        if res is None or len(res) < 4:
-            raise TimeoutError("Timed out reading MFX block.")
+        res = self._read_mfx_raw(base, timeout=timeout)
         mfx_type, dry, cho, rev = res[0], res[1], res[2], res[3]
         params = [0] * 32
         param_start = 0x11
@@ -1462,12 +1549,13 @@ class JunoClient:
         return (mfx_type, dry, cho, rev, params)
 
     def read_chorus(self, timeout: float = 1.0) -> Tuple[int, int, int, int, int, int, int]:
-        """Read Chorus Type, Level, Output Select, Pre-Delay, Rate, Depth, Feedback."""
+        """Read Chorus Type, Level, Output Select, Pre-Delay, Rate, Depth, Feedback.
+
+        Reads the full 84-byte block (parity with the init template); the 7
+        modeled values live in the first 40 bytes so short replies still decode.
+        """
         base = self.get_active_patch_base(timeout=timeout)
-        cho_addr = add_address(base, OFFSET_PATCH_COMMON_CHORUS)
-        res = self.request_data(cho_addr, (0x00, 0x00, 0x00, 0x28), timeout=timeout)
-        if res is None or len(res) < 4:
-            raise TimeoutError("Timed out reading Chorus block.")
+        res = self._read_chorus_raw(base, timeout=timeout)
         c_type = res[0]
         c_lvl = res[1]
         c_out = res[3] if len(res) > 3 else 0
@@ -1478,12 +1566,13 @@ class JunoClient:
         return (c_type, c_lvl, c_out, max(0, predelay), max(0, rate), max(0, depth), max(0, feedback))
 
     def read_reverb(self, timeout: float = 1.0) -> Tuple[int, int, int, int, int, int, int]:
-        """Read Reverb Type, Level, Pre-Delay, Time, HF Damp, Diffusion, Tone."""
+        """Read Reverb Type, Level, Pre-Delay, Time, HF Damp, Diffusion, Tone.
+
+        Reads the full 83-byte block (parity with the init template); the 7
+        modeled values live in the first 32 bytes so short replies still decode.
+        """
         base = self.get_active_patch_base(timeout=timeout)
-        rev_addr = add_address(base, OFFSET_PATCH_COMMON_REVERB)
-        res = self.request_data(rev_addr, (0x00, 0x00, 0x00, 0x20), timeout=timeout)
-        if res is None or len(res) < 2:
-            raise TimeoutError("Timed out reading Reverb block.")
+        res = self._read_reverb_raw(base, timeout=timeout)
         r_type = res[0]
         r_lvl = res[1]
         predelay = unpack_4nibbles(res[0x03:0x07]) - 32768 if len(res) >= 0x07 else 0
@@ -1493,26 +1582,102 @@ class JunoClient:
         tone = unpack_4nibbles(res[0x1B:0x1F]) - 32768 if len(res) >= 0x1F else 0
         return (r_type, r_lvl, max(0, predelay), max(0, time_val), max(0, damp), max(0, diffusion), max(0, tone))
 
+    def read_tmt_mutes(self, timeout: float = 1.0) -> Tuple[bool, bool, bool, bool]:
+        """Read Tone Mix Table switches and return per-tone muted flags (True=muted)."""
+        base = self.get_active_patch_base(timeout=timeout)
+        res = self._read_tmt_raw(base, timeout=timeout)
+        return (
+            res[TMT_PARAM_TONE1_SWITCH] == 0,
+            res[TMT_PARAM_TONE2_SWITCH] == 0,
+            res[TMT_PARAM_TONE3_SWITCH] == 0,
+            res[TMT_PARAM_TONE4_SWITCH] == 0,
+        )
+
     def read_full_patch(self, timeout: float = 1.0) -> PatchState:
-        """Read complete patch state from Roland synth RAM."""
-        common = self.read_patch_common(timeout=timeout)
-        tones = self.read_all_tones(timeout=timeout)
+        """Read complete patch state from Roland synth RAM.
+
+        Covers the same regions the init template restores: common (80B),
+        4 tones (154B + 26B each), MFX (145B), chorus (84B), reverb (83B)
+        and TMT mutes (41B). Decodes via the canonical PatchState helpers
+        so Sync and Init provably converge. The exact device bytes are also
+        preserved in PatchState.raw_regions (including unmodeled residue).
+        """
+        base = self.get_active_patch_base(timeout=timeout)
+        raw_regions: dict[str, list[bytes]] = {}
+
+        common_raw = self._read_common_raw(base, timeout=timeout)
+        raw_regions["common"] = [bytes(common_raw[:80])]
+        common = PatchState._decode_common(bytes(common_raw[:80])) if len(common_raw) >= 80 else self.read_patch_common(timeout=timeout)
+
+        tone_offsets = (OFFSET_PATCH_TONE_1, OFFSET_PATCH_TONE_2, OFFSET_PATCH_TONE_3, OFFSET_PATCH_TONE_4)
+        tones: list[ToneState] = []
+        for idx, off in enumerate(tone_offsets, start=1):
+            t_base = add_address(base, off)
+            main_raw, lfo_raw = self._read_tone_raws(t_base, timeout=timeout)
+            raw_regions[f"tone_{idx}"] = [bytes(main_raw)] + (
+                [bytes(lfo_raw)] if lfo_raw is not None else []
+            )
+            if len(main_raw) >= 154 and lfo_raw is not None and len(lfo_raw) >= 26:
+                try:
+                    tones.append(PatchState._decode_tone(bytes(main_raw[:154]), bytes(lfo_raw[:26]), idx))
+                    continue
+                except Exception as e:
+                    logger.warning(f"Tone {idx} canonical decode failed, using legacy: {e}")
+            tones.append(self.read_tone(idx, timeout=timeout))
+
+        try:
+            tmt_raw = self._read_tmt_raw(base, timeout=timeout)
+            raw_regions["tmt"] = [bytes(tmt_raw)]
+            for tone, sw in zip(
+                tones,
+                (
+                    tmt_raw[TMT_PARAM_TONE1_SWITCH],
+                    tmt_raw[TMT_PARAM_TONE2_SWITCH],
+                    tmt_raw[TMT_PARAM_TONE3_SWITCH],
+                    tmt_raw[TMT_PARAM_TONE4_SWITCH],
+                ),
+            ):
+                tone.muted = (sw == 0)
+        except Exception as e:
+            logger.warning(f"Could not read TMT mutes: {e}")
 
         mfx_type, dry, cho, rev, mfx_params = (0, 127, 0, 0, [0] * 32)
         try:
-            mfx_type, dry, cho, rev, mfx_params = self.read_mfx(timeout=timeout)
+            mfx_raw = self._read_mfx_raw(base, timeout=timeout)
+            raw_regions["mfx"] = [bytes(mfx_raw)]
+            mfx_type, dry, cho, rev = mfx_raw[0], mfx_raw[1], mfx_raw[2], mfx_raw[3]
+            params = [0] * 32
+            if len(mfx_raw) >= 0x11 + 4:
+                for i in range(min(32, (len(mfx_raw) - 0x11) // 4)):
+                    params[i] = unpack_4nibbles(mfx_raw[0x11 + i * 4:0x11 + (i + 1) * 4]) - 32768
+            mfx_params = params
         except Exception as e:
             logger.warning(f"Could not read MFX: {e}")
 
         c_type, c_lvl, c_out, c_pre, c_rate, c_dep, c_fb = (0, 0, 0, 0, 0, 0, 0)
         try:
-            c_type, c_lvl, c_out, c_pre, c_rate, c_dep, c_fb = self.read_chorus(timeout=timeout)
+            cho_raw = self._read_chorus_raw(base, timeout=timeout)
+            raw_regions["chorus"] = [bytes(cho_raw)]
+            c_type, c_lvl, c_out = cho_raw[0], cho_raw[1], cho_raw[3] if len(cho_raw) > 3 else 0
+            c_pre = unpack_4nibbles(cho_raw[0x0C:0x10]) - 32768 if len(cho_raw) >= 0x10 else 0
+            c_rate = unpack_4nibbles(cho_raw[0x14:0x18]) - 32768 if len(cho_raw) >= 0x18 else 0
+            c_dep = unpack_4nibbles(cho_raw[0x1C:0x20]) - 32768 if len(cho_raw) >= 0x20 else 0
+            c_fb = unpack_4nibbles(cho_raw[0x24:0x28]) - 32768 if len(cho_raw) >= 0x28 else 0
+            c_pre, c_rate, c_dep, c_fb = max(0, c_pre), max(0, c_rate), max(0, c_dep), max(0, c_fb)
         except Exception as e:
             logger.warning(f"Could not read Chorus: {e}")
 
         r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = (0, 0, 0, 0, 0, 0, 0)
         try:
-            r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = self.read_reverb(timeout=timeout)
+            rev_raw = self._read_reverb_raw(base, timeout=timeout)
+            raw_regions["reverb"] = [bytes(rev_raw)]
+            r_type, r_lvl = rev_raw[0], rev_raw[1]
+            r_pre = unpack_4nibbles(rev_raw[0x03:0x07]) - 32768 if len(rev_raw) >= 0x07 else 0
+            r_time = unpack_4nibbles(rev_raw[0x07:0x0B]) - 32768 if len(rev_raw) >= 0x0B else 0
+            r_damp = unpack_4nibbles(rev_raw[0x0F:0x13]) - 32768 if len(rev_raw) >= 0x13 else 0
+            r_diff = unpack_4nibbles(rev_raw[0x17:0x1B]) - 32768 if len(rev_raw) >= 0x1B else 0
+            r_tone = unpack_4nibbles(rev_raw[0x1B:0x1F]) - 32768 if len(rev_raw) >= 0x1F else 0
+            r_pre, r_time, r_damp, r_diff, r_tone = max(0, r_pre), max(0, r_time), max(0, r_damp), max(0, r_diff), max(0, r_tone)
         except Exception as e:
             logger.warning(f"Could not read Reverb: {e}")
 
@@ -1522,7 +1687,12 @@ class JunoClient:
             mfx_chorus_send=cho,
             mfx_reverb_send=rev,
             mfx_bypassed=(mfx_type == 0),
-            mfx_params=mfx_params,
+            mfx_last_active_type=mfx_type if mfx_type != 0 else 15,
+            mfx_params=list(mfx_params) + [0] * (32 - len(mfx_params))
+            if len(mfx_params) < 32
+            else list(mfx_params[:32]),
+            routing_preset="",
+            manual_routing_unlocked=False,
             chorus_type=c_type,
             chorus_level=c_lvl,
             chorus_to_reverb=c_out,
@@ -1537,6 +1707,17 @@ class JunoClient:
             reverb_damp=r_damp,
             reverb_diffusion=r_diff,
             reverb_tone=r_tone,
+            # Master EQ lives in system memory, not the patch image: keep the
+            # app-side representation flat, identical to the init template.
+            eq_switch=True,
+            eq_low_gain=0,
+            eq_low_freq=400,
+            eq_mid_gain=0,
+            eq_mid_freq=1200,
+            eq_mid_q=1.0,
+            eq_high_gain=0,
+            eq_high_freq=4000,
+            eq_master_level=100,
         )
 
         mode = self.get_sound_mode(timeout=timeout)
@@ -1545,7 +1726,16 @@ class JunoClient:
             common=common,
             tones=tones,
             effects=effects,
+            raw_regions={k: [bytes(c) for c in v] for k, v in raw_regions.items()},
         )
+        patch_state.step_lfo = StepLfoState(
+            steps=[0] * 16,
+            curve_type=0,
+            sync_rate_idx=2,
+            dest_idx=1,
+            depth=0,
+        )
+        patch_state.custom_detune_cache = [t.fine_tune for t in tones]
         return patch_state
 
     @staticmethod

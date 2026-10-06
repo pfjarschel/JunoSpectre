@@ -805,3 +805,109 @@ def test_juno_client_read_tone_env_modifiers(mock_midi_mgr):
     assert tone.tvf_env_time_kf_bipolar == 50
     assert tone.tva_env_t1_vel_sens_bipolar == 16
     assert tone.tva_env_time_kf_bipolar == -50
+
+
+def test_juno_client_sync_reads_full_patch_parity_with_template(mock_midi_mgr):
+    """Sync must read the same regions Init restores (common/tone/FX/TMT)."""
+    import json
+    from src.spectre.core.patch_state import PatchState
+    from src.spectre.core.sysex import (
+        OFFSET_PATCH_COMMON,
+        OFFSET_PATCH_COMMON_CHORUS,
+        OFFSET_PATCH_COMMON_MFX,
+        OFFSET_PATCH_COMMON_REVERB,
+        OFFSET_PATCH_TMT,
+        OFFSET_PATCH_TONE_1,
+        OFFSET_PATCH_TONE_2,
+        OFFSET_PATCH_TONE_3,
+        OFFSET_PATCH_TONE_4,
+        add_address,
+    )
+
+    payload = JunoClient.load_init_template()
+    assert payload is not None
+    expected = PatchState.from_template(payload)
+
+    # Mutate a few previously-unsynced fields to prove they now round-trip.
+    common_b = bytearray(bytes(payload["regions"]["common"]["chunks"][0]["bytes"]))
+    common_b[0x15] = 100
+    common_b[0x16] = 0
+    common_b[0x1A] = 1
+    common_b[0x27] = 1
+    t1_b = bytearray(bytes(payload["regions"]["tone_1"]["chunks"][0]["bytes"]))
+    t1_b[0x0C] = 80
+    t1_b[0x0D] = 30
+    t1_b[0x0E] = 40
+    t1_b[0x11] = 1
+    tmt_b = bytearray(bytes(payload["regions"]["tmt"]["chunks"][0]["bytes"]))
+    tmt_b[0x05] = 0
+
+    def region_bytes(key, idx=0):
+        return bytes(payload["regions"][key]["chunks"][idx]["bytes"])
+
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+    client._cached_patch_base = ADDR_TEMP_PATCH_PART_1
+    base = ADDR_TEMP_PATCH_PART_1
+    store = {
+        add_address(base, OFFSET_PATCH_COMMON): bytes(common_b),
+        add_address(base, OFFSET_PATCH_COMMON_MFX): region_bytes("mfx"),
+        add_address(base, OFFSET_PATCH_COMMON_CHORUS): region_bytes("chorus"),
+        add_address(base, OFFSET_PATCH_COMMON_REVERB): region_bytes("reverb"),
+        add_address(base, OFFSET_PATCH_TMT): bytes(tmt_b),
+    }
+    for i, key in enumerate(["tone_1", "tone_2", "tone_3", "tone_4"]):
+        off = [OFFSET_PATCH_TONE_1, OFFSET_PATCH_TONE_2, OFFSET_PATCH_TONE_3, OFFSET_PATCH_TONE_4][i]
+        tbase = add_address(base, off)
+        store[tbase] = bytes(t1_b) if i == 0 else region_bytes(key, 0)
+        store[add_address(tbase, 0x0100)] = region_bytes(key, 1)
+    store[ADDR_SETUP] = bytes([int(SoundMode.PATCH)])
+
+    def fake_request(address, size, timeout=1.0):
+        length = (size[0] << 21) | (size[1] << 14) | (size[2] << 7) | size[3]
+        data = store.get(tuple(address))
+        assert data is not None, f"unexpected RQ1 {tuple(address)}"
+        return bytes(data[:length])
+
+    client.request_data = fake_request  # type: ignore[method-assign]
+
+    # Full-size RQ1s prove entire-patch coverage (not the old partial sizes).
+    requested = []
+    orig_request = client.request_data
+
+    def tracking_request(address, size, timeout=1.0):
+        requested.append(((size[0] << 21) | (size[1] << 14) | (size[2] << 7) | size[3], tuple(address)))
+        return orig_request(address, size, timeout=timeout)
+
+    client.request_data = tracking_request  # type: ignore[method-assign]
+    full = client.read_full_patch(timeout=0.1)
+    sizes = sorted(s for s, _ in requested)
+    assert 80 in sizes  # common
+    assert 154 in sizes  # tone main block
+    assert 26 in sizes  # tone LFO2/step block
+    assert 145 in sizes  # MFX
+    assert 84 in sizes  # chorus
+    assert 83 in sizes  # reverb
+    assert 41 in sizes  # TMT
+
+    assert full.common.analog_feel == 100
+    assert full.common.mono_poly == 0
+    assert full.common.portamento_mode == 1
+    assert full.common.patch_output_assign == 1
+    assert full.tones[0].output_level == 80
+    assert full.tones[0].chorus_send == 30
+    assert full.tones[0].reverb_send == 40
+    assert full.tones[0].output_assign == 1
+    assert full.tones[0].muted is True
+    assert full.tones[1].muted is False
+    assert full.tones[0].wave_bank_l == expected.tones[0].wave_bank_l
+    assert full.tones[0].wave_num_l == expected.tones[0].wave_num_l
+    assert len(full.effects.mfx_params) == 32
+    assert full.custom_detune_cache == [t.fine_tune for t in full.tones]
+    # Raw snapshot preserves the full image, including unmodeled residue.
+    assert set(full.raw_regions.keys()) == set(payload["regions"].keys())
+    assert full.raw_regions["common"][0] == bytes(common_b)
+    assert full.raw_regions["tmt"][0] == bytes(tmt_b)
+    assert full.raw_regions["chorus"][0][40:] == region_bytes("chorus")[40:]
+    assert full.raw_regions["tone_1"][0][0x7E:0x9A] == region_bytes("tone_1", 0)[0x7E:0x9A]
+    assert set(expected.raw_regions.keys()) == set(payload["regions"].keys())

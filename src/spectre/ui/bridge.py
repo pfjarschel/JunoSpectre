@@ -261,8 +261,12 @@ class SpectreBridge(QObject):
         self.tvfReleaseChanged.emit(self.tvfRelease)
         self.tvaPanChanged.emit(self.tvaPan)
         self.tvaVeloSensChanged.emit(self.tvaVeloSens)
+        self.tvaLevelChanged.emit(self.tvaLevel)
+        self.tvaAttackChanged.emit(self.tvaAttack)
         self.tvaDecayChanged.emit(self.tvaDecay)
         self.tvaSustainChanged.emit(self.tvaSustain)
+        self.tvaReleaseChanged.emit(self.tvaRelease)
+        self.analogFeelChanged.emit(self.analogFeel)
         self.pitchCoarseChanged.emit(self.pitchCoarse)
         self.pitchFineChanged.emit(self.pitchFine)
         self.lfoParamsChanged.emit()
@@ -3310,6 +3314,7 @@ class SpectreBridge(QObject):
 
         try:
             logger.info("Syncing entire patch and workstation state from Roland hardware...")
+            full_sync_ok = False
             if hasattr(self.engine.juno, "read_full_patch"):
                 try:
                     state = self.engine.juno.read_full_patch(timeout=1.0)
@@ -3329,43 +3334,48 @@ class SpectreBridge(QObject):
                             state.tones[3].level,
                         )
                         self.patch_state.custom_detune_cache = [t.fine_tune for t in state.tones]
+                        full_sync_ok = True
                 except Exception as e:
                     logger.warning(f"Could not read full patch: {e}")
 
-            # Fallback or supplemental check for individual query methods
-            if hasattr(self.engine.juno, "get_patch_name"):
-                try:
-                    name = self.engine.juno.get_patch_name(timeout=0.8)
-                    if isinstance(name, str):
-                        self._patch_name = name
-                        self.patch_state.common.name = name
-                except Exception as e:
-                    logger.warning(f"Could not read patch name: {e}")
+            # Legacy fallback only when the full image read failed/unavailable,
+            # so partial queries never clobber the complete decoded state.
+            if not full_sync_ok:
+                if hasattr(self.engine.juno, "get_patch_name"):
+                    try:
+                        name = self.engine.juno.get_patch_name(timeout=0.8)
+                        if isinstance(name, str):
+                            self._patch_name = name
+                            self.patch_state.common.name = name
+                    except Exception as e:
+                        logger.warning(f"Could not read patch name: {e}")
 
-            if hasattr(self.engine.juno, "get_sound_mode"):
-                try:
-                    mode = self.engine.juno.get_sound_mode(timeout=0.8)
-                    mode_str = mode.name if hasattr(mode, "name") else str(mode)
-                    if isinstance(mode_str, str):
-                        self._sound_mode = mode_str
-                        self.patch_state.sound_mode = mode_str
-                except Exception as e:
-                    logger.warning(f"Could not read sound mode: {e}")
+                if hasattr(self.engine.juno, "get_sound_mode"):
+                    try:
+                        mode = self.engine.juno.get_sound_mode(timeout=0.8)
+                        mode_str = mode.name if hasattr(mode, "name") else str(mode)
+                        if isinstance(mode_str, str):
+                            self._sound_mode = mode_str
+                            self.patch_state.sound_mode = mode_str
+                    except Exception as e:
+                        logger.warning(f"Could not read sound mode: {e}")
 
-            self.patchInfoChanged.emit(str(self._patch_name), str(self._sound_mode))
+                self.patchInfoChanged.emit(str(self._patch_name), str(self._sound_mode))
 
-            if hasattr(self.engine.juno, "get_all_tone_waves"):
-                try:
-                    active_waves = self.engine.juno.get_all_tone_waves(timeout=0.8)
-                    if isinstance(active_waves, (list, tuple)):
-                        for idx, item in enumerate(active_waves):
-                            if idx < 4 and isinstance(item, (list, tuple)) and len(item) == 2:
-                                bank, wnum = item
-                                self._tone_waves[idx] = (str(bank), int(wnum))
-                                self.patch_state.tones[idx].wave_bank_l = str(bank)
-                                self.patch_state.tones[idx].wave_num_l = int(wnum)
-                except Exception as e:
-                    logger.warning(f"Could not read tone waves: {e}")
+                if hasattr(self.engine.juno, "get_all_tone_waves"):
+                    try:
+                        active_waves = self.engine.juno.get_all_tone_waves(timeout=0.8)
+                        if isinstance(active_waves, (list, tuple)):
+                            for idx, item in enumerate(active_waves):
+                                if idx < 4 and isinstance(item, (list, tuple)) and len(item) == 2:
+                                    bank, wnum = item
+                                    self._tone_waves[idx] = (str(bank), int(wnum))
+                                    self.patch_state.tones[idx].wave_bank_l = str(bank)
+                                    self.patch_state.tones[idx].wave_num_l = int(wnum)
+                    except Exception as e:
+                        logger.warning(f"Could not read tone waves: {e}")
+            else:
+                self.patchInfoChanged.emit(str(self._patch_name), str(self._sound_mode))
 
             self._cached_tone_wave_data = [
                 self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
