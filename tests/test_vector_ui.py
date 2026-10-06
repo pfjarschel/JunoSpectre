@@ -644,20 +644,23 @@ def test_init_patch_workflow():
     bridge.initPatch()
     assert patch_init_signal_received is True
 
-    # Verify bridge state has reset to clean template
+    # Verify bridge state has reset to the golden template (decoded from init_template.json)
     assert bridge.patchName == "JUNO SPECTRE"
     assert bridge.masterCutoff == 127
     assert bridge.masterReso == 0
     assert bridge.tvfEnvDepth == 0
     assert bridge.tvfAttack == 0
-    assert bridge.tvfDecay == 0
+    assert bridge.tvfDecay == 10        # captured keyboard-init TVF T2
     assert bridge.tvfSustain == 127
-    assert bridge.tvfRelease == 0
+    assert bridge.tvfRelease == 64      # captured keyboard-init TVF T4
     assert bridge.tvaSustain == 127
     assert bridge.masterAttack == 0
     assert bridge.portamentoSwitch is False
     assert bridge.lfo1PitchDepth == 0
     assert bridge.lfo2TvfDepth == 0
+    assert bridge.patch_state.effects.routing_preset == "SERIAL_CHAIN"
+    assert bridge.macro7 == 0
+    assert bridge.macro8 == 0
 
     # Verify tone waves set to JUNO SPECTRE 4-osc defaults
     waves = bridge.toneWaveData
@@ -730,10 +733,10 @@ def test_pcm_sound_designer_enhancements():
     assert bridge.analogFeel == 60
     bridge.setMacro(7, 35)
     assert bridge.macro7 == 35
-    assert bridge.chorusSend == 35
+    assert bridge.patch_state.effects.chorus_level == 35
     bridge.setMacro(8, 55)
     assert bridge.macro8 == 55
-    assert bridge.reverbSend == 55
+    assert bridge.patch_state.effects.reverb_level == 55
 
 
 def test_analog_feel_dedicated_control_syncs_macro6():
@@ -745,7 +748,6 @@ def test_analog_feel_dedicated_control_syncs_macro6():
     bridge.setAnalogFeel(90)
     assert bridge.analogFeel == 90
     assert bridge.macro6 == 90
-    assert bridge.patch_state.macros[5] == 90
     assert bridge.patch_state.common.analog_feel == 90
 
     # Reverse direction: macro 6 drives analog_feel
@@ -813,8 +815,7 @@ def test_va_auto_detune_mode():
     app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
 
     # 1. Initial state is OFF
-    assert bridge.vaAutoDetune is False
-    assert bridge.vaUnison is False
+    assert bridge.autoDetune is False
 
     # 2. Set custom manual fine tunes on OSC 1..4
     bridge.setVaOscFine(1, 0)
@@ -828,12 +829,12 @@ def test_va_auto_detune_mode():
     assert bridge.vaOsc4Fine == -8
 
     # 3. Engage Auto Detune mode
-    bridge.setVaAutoDetune(True)
-    assert bridge.vaAutoDetune is True
+    bridge.setAutoDetune(True)
+    assert bridge.autoDetune is True
 
     # 4. Set auto detune spread to 20 cents
-    bridge.setVaAutoDetuneSpread(20)
-    assert bridge.vaAutoDetuneSpread == 20
+    bridge.setAutoDetuneCents(20)
+    assert bridge.autoDetuneCents == 20
     # Formula: [-d, d, -(d // 2), (d // 2)]
     assert bridge.vaOsc1Fine == -20
     assert bridge.vaOsc2Fine == 20
@@ -845,8 +846,8 @@ def test_va_auto_detune_mode():
     assert bridge.vaOsc1Fine == -20
 
     # 6. Disengage Auto Detune mode -> must restore custom fine tunes from memory cache
-    bridge.setVaAutoDetune(False)
-    assert bridge.vaAutoDetune is False
+    bridge.setAutoDetune(False)
+    assert bridge.autoDetune is False
     assert bridge.vaOsc1Fine == 0
     assert bridge.vaOsc2Fine == -5
     assert bridge.vaOsc3Fine == 12

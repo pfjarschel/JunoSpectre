@@ -954,20 +954,12 @@ class SpectreBridge(QObject):
         return self.patch_state.step_lfo.depth
 
     @pyqtProperty(bool, notify=vaParamsChanged)
-    def vaUnison(self) -> bool:
-        return self.patch_state.va_unison
+    def autoDetune(self) -> bool:
+        return self.patch_state.auto_detune
 
     @pyqtProperty(int, notify=vaParamsChanged)
-    def vaUnisonDetune(self) -> int:
-        return self.patch_state.va_unison_detune
-
-    @pyqtProperty(bool, notify=vaParamsChanged)
-    def vaAutoDetune(self) -> bool:
-        return self.patch_state.va_unison
-
-    @pyqtProperty(int, notify=vaParamsChanged)
-    def vaAutoDetuneSpread(self) -> int:
-        return self.patch_state.va_unison_detune
+    def autoDetuneCents(self) -> int:
+        return self.patch_state.auto_detune_cents
 
     @pyqtProperty(int, notify=vaParamsChanged)
     def vaOsc1Coarse(self) -> int:
@@ -1068,49 +1060,43 @@ class SpectreBridge(QObject):
             for p in self.patch_state.perf_parts[:8]
         ]
 
+    # Macro deck values are READ-ONLY reflections of the underlying synth parameters.
+    # setMacro() writes the parameters themselves; these getters always mirror truth.
     @pyqtProperty(int, notify=macrosChanged)
     def macro1(self) -> int:
-        return self.patch_state.macros[0]
+        return self.patch_state.common.cutoff_offset
 
     @pyqtProperty(int, notify=macrosChanged)
     def macro2(self) -> int:
-        return self.patch_state.macros[1]
+        return self.patch_state.common.resonance_offset
 
     @pyqtProperty(int, notify=macrosChanged)
     def macro3(self) -> int:
-        return self.patch_state.macros[2]
+        return self.patch_state.common.attack_offset
 
     @pyqtProperty(int, notify=macrosChanged)
     def macro4(self) -> int:
-        return self.patch_state.macros[3]
+        return self.patch_state.common.release_offset
 
     @pyqtProperty(int, notify=macrosChanged)
     def macro5(self) -> int:
-        return self.patch_state.macros[4]
+        return self.patch_state.common.portamento_time
 
     @pyqtProperty(int, notify=macrosChanged)
     def macro6(self) -> int:
-        return self.patch_state.macros[5]
+        return self.patch_state.common.analog_feel
 
     @pyqtProperty(int, notify=macrosChanged)
     def macro7(self) -> int:
-        return self.patch_state.macros[6]
+        return self.patch_state.effects.chorus_level
 
     @pyqtProperty(int, notify=macrosChanged)
     def macro8(self) -> int:
-        return self.patch_state.macros[7]
+        return self.patch_state.effects.reverb_level
 
     @pyqtProperty(int, notify=analogFeelChanged)
     def analogFeel(self) -> int:
         return self.patch_state.common.analog_feel
-
-    @pyqtProperty(int, notify=macrosChanged)
-    def chorusSend(self) -> int:
-        return self.patch_state.common.chorus_send
-
-    @pyqtProperty(int, notify=macrosChanged)
-    def reverbSend(self) -> int:
-        return self.patch_state.common.reverb_send
 
     # -------------------------------------------------------------------------
     # Invokable Slots from QML: Transport, Shell, Tone Selection
@@ -1420,66 +1406,71 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(int, int)
     def setMacro(self, index: int, value: int) -> None:
-        """Set macro 1..8 value (0..127) and dispatch to synth parameter."""
+        """Drive the underlying synth parameter for macro knob 1..8 (0..127).
+
+        Macro values are never stored: the macro1..8 properties read the parameters
+        back, keeping the deck honest as the single reflection layer.
+        """
         if not (1 <= index <= 8):
             return
         clamped = max(0, min(127, int(value)))
-        if self.patch_state.macros[index - 1] != clamped:
-            self.patch_state.macros[index - 1] = clamped
-            self.macrosChanged.emit()
 
-            juno = self.engine.juno
-            try:
-                if index == 1:
-                    offset_val = max(1, min(127, clamped))
-                    self.patch_state.common.cutoff_offset = offset_val
-                    self._active_tone().tvf_cutoff = offset_val
-                    self.masterCutoffChanged.emit(offset_val)
-                    if juno:
-                        juno.set_patch_offsets(cutoff=offset_val)
-                elif index == 2:
-                    offset_val = max(1, min(127, clamped))
-                    self.patch_state.common.resonance_offset = offset_val
-                    self._active_tone().tvf_resonance = offset_val
-                    self.masterResoChanged.emit(offset_val)
-                    if juno:
-                        juno.set_patch_offsets(resonance=offset_val)
-                elif index == 3:
-                    offset_val = max(1, min(127, clamped))
-                    self.patch_state.common.attack_offset = offset_val
-                    self._active_tone().tva_attack = offset_val
-                    self.masterAttackChanged.emit(offset_val)
-                    self.envShapeChanged.emit("TVA")
-                    if juno:
-                        juno.set_patch_offsets(attack=offset_val)
-                elif index == 4:
-                    offset_val = max(1, min(127, clamped))
-                    self.patch_state.common.release_offset = offset_val
-                    self._active_tone().tva_release = offset_val
-                    self.masterReleaseChanged.emit(offset_val)
-                    self.envShapeChanged.emit("TVA")
-                    if juno:
-                        juno.set_patch_offsets(release=offset_val)
-                elif index == 5:
-                    self.patch_state.common.portamento_time = clamped
-                    self.portamentoTimeChanged.emit(clamped)
-                    if juno:
-                        juno.set_portamento(self.patch_state.common.portamento_switch, time=clamped)
-                elif index == 6:
-                    self.patch_state.common.analog_feel = clamped
-                    self.analogFeelChanged.emit(clamped)
-                    if juno:
-                        juno.set_patch_analog_feel(clamped)
-                elif index == 7:
-                    self.patch_state.common.chorus_send = clamped
-                    if juno:
-                        juno.set_chorus(self.patch_state.effects.chorus_type, level=clamped)
-                elif index == 8:
-                    self.patch_state.common.reverb_send = clamped
-                    if juno:
-                        juno.set_reverb(self.patch_state.effects.reverb_type, level=clamped)
-            except Exception as e:
-                logger.error(f"Error dispatching macro {index} to synth: {e}")
+        juno = self.engine.juno
+        try:
+            if index == 1:
+                offset_val = max(1, min(127, clamped))
+                self.patch_state.common.cutoff_offset = offset_val
+                self._active_tone().tvf_cutoff = offset_val
+                self.masterCutoffChanged.emit(offset_val)
+                if juno:
+                    juno.set_patch_offsets(cutoff=offset_val)
+            elif index == 2:
+                offset_val = max(1, min(127, clamped))
+                self.patch_state.common.resonance_offset = offset_val
+                self._active_tone().tvf_resonance = offset_val
+                self.masterResoChanged.emit(offset_val)
+                if juno:
+                    juno.set_patch_offsets(resonance=offset_val)
+            elif index == 3:
+                offset_val = max(1, min(127, clamped))
+                self.patch_state.common.attack_offset = offset_val
+                self._active_tone().tva_attack = offset_val
+                self.masterAttackChanged.emit(offset_val)
+                self.envShapeChanged.emit("TVA")
+                if juno:
+                    juno.set_patch_offsets(attack=offset_val)
+            elif index == 4:
+                offset_val = max(1, min(127, clamped))
+                self.patch_state.common.release_offset = offset_val
+                self._active_tone().tva_release = offset_val
+                self.masterReleaseChanged.emit(offset_val)
+                self.envShapeChanged.emit("TVA")
+                if juno:
+                    juno.set_patch_offsets(release=offset_val)
+            elif index == 5:
+                self.patch_state.common.portamento_time = clamped
+                self.portamentoTimeChanged.emit(clamped)
+                if juno:
+                    juno.set_portamento(self.patch_state.common.portamento_switch, time=clamped)
+            elif index == 6:
+                self.patch_state.common.analog_feel = clamped
+                self.analogFeelChanged.emit(clamped)
+                if juno:
+                    juno.set_patch_analog_feel(clamped)
+            elif index == 7:
+                self.patch_state.effects.chorus_level = clamped
+                self.chorusParamsChanged.emit()
+                if juno:
+                    juno.set_chorus(self.patch_state.effects.chorus_type, level=clamped)
+            elif index == 8:
+                self.patch_state.effects.reverb_level = clamped
+                self.reverbParamsChanged.emit()
+                if juno:
+                    juno.set_reverb(self.patch_state.effects.reverb_type, level=clamped)
+        except Exception as e:
+            logger.error(f"Error dispatching macro {index} to synth: {e}")
+        finally:
+            self.macrosChanged.emit()
 
     # -------------------------------------------------------------------------
     # Invokable Slots from QML: Tone TVF, TVA, Pitch, Portamento
@@ -1733,8 +1724,8 @@ class SpectreBridge(QObject):
         targets = self._target_tones()
         for t in targets:
             t.fine_tune = raw_val
-            if not self.patch_state.va_unison:
-                self.patch_state.va_custom_detunes[t.tone_index - 1] = raw_val
+            if not self.patch_state.auto_detune:
+                self.patch_state.custom_detune_cache[t.tone_index - 1] = raw_val
             if self.engine.juno:
                 try:
                     self.engine.juno.set_tone_pitch(t.tone_index, fine=raw_val)
@@ -1750,6 +1741,7 @@ class SpectreBridge(QObject):
         if self.patch_state.common.portamento_time != clamped:
             self.patch_state.common.portamento_time = clamped
             self.portamentoTimeChanged.emit(clamped)
+            self.macrosChanged.emit()
             if self.engine.juno:
                 try:
                     self.engine.juno.set_portamento(self.patch_state.common.portamento_switch, time=clamped)
@@ -1788,7 +1780,6 @@ class SpectreBridge(QObject):
         clamped = max(0, min(127, int(val)))
         if self.patch_state.common.analog_feel != clamped:
             self.patch_state.common.analog_feel = clamped
-            self.patch_state.macros[5] = clamped
             self.analogFeelChanged.emit(clamped)
             self.macrosChanged.emit()
             if self.engine.juno:
@@ -2183,8 +2174,8 @@ class SpectreBridge(QObject):
         raw_val = clamped + 64
         for t in self.patch_state.tones:
             t.fine_tune = raw_val
-            if not self.patch_state.va_unison:
-                self.patch_state.va_custom_detunes[t.tone_index - 1] = raw_val
+            if not self.patch_state.auto_detune:
+                self.patch_state.custom_detune_cache[t.tone_index - 1] = raw_val
             if self.engine.juno:
                 try:
                     self.engine.juno.set_tone_pitch(t.tone_index, fine=raw_val)
@@ -2550,6 +2541,7 @@ class SpectreBridge(QObject):
 
         self.chorusParamsChanged.emit()
         self.routingChanged.emit()
+        self.macrosChanged.emit()
 
     @pyqtSlot(str, int)
     def setReverbParam(self, param: str, val: int) -> None:
@@ -2581,6 +2573,7 @@ class SpectreBridge(QObject):
 
         self.reverbParamsChanged.emit()
         self.routingChanged.emit()
+        self.macrosChanged.emit()
 
     @pyqtSlot(str, "QVariant")
     def setMasterEqParam(self, param: str, val) -> None:
@@ -2901,6 +2894,7 @@ class SpectreBridge(QObject):
         self.mfxParamsChanged.emit()
         self.chorusParamsChanged.emit()
         self.reverbParamsChanged.emit()
+        self.macrosChanged.emit()
 
     @pyqtSlot(bool)
     def setManualRoutingUnlocked(self, unlocked: bool) -> None:
@@ -3128,14 +3122,14 @@ class SpectreBridge(QObject):
     def setVaOscFine(self, osc_index: int, val: int) -> None:
         """Set fine tune in cents for oscillator 1..4."""
         if 1 <= osc_index <= 4:
-            if self.patch_state.va_unison:
+            if self.patch_state.auto_detune:
                 # Locked in Auto Detune mode
                 return
             clamped = max(-50, min(50, int(val)))
             raw = clamped + 64
             t = self.patch_state.tones[osc_index - 1]
             t.fine_tune = raw
-            self.patch_state.va_custom_detunes[osc_index - 1] = raw
+            self.patch_state.custom_detune_cache[osc_index - 1] = raw
             if self.engine.juno:
                 try:
                     self.engine.juno.set_tone_pitch(osc_index, fine=raw)
@@ -3172,17 +3166,21 @@ class SpectreBridge(QObject):
             self.vaParamsChanged.emit()
 
     @pyqtSlot(bool)
-    def setVaUnison(self, active: bool) -> None:
-        """Toggle VA Auto Detune mode with custom detune memory cache."""
+    def setAutoDetune(self, active: bool) -> None:
+        """Toggle software Auto Detune with custom detune memory cache.
+
+        Auto Detune is a workstation-side feature: it writes per-tone fine pitch to
+        the synth (the detune mechanism itself), but the on/off state is app-only.
+        """
         if active:
             # Snapshot custom detuning before engaging Auto Detune
-            self.patch_state.va_custom_detunes = [t.fine_tune for t in self.patch_state.tones]
-            self.patch_state.va_unison = True
-            self.applyVaUnisonDetune()
+            self.patch_state.custom_detune_cache = [t.fine_tune for t in self.patch_state.tones]
+            self.patch_state.auto_detune = True
+            self.applyAutoDetune()
         else:
-            self.patch_state.va_unison = False
+            self.patch_state.auto_detune = False
             # Restore cached custom fine detunings
-            for idx, raw in enumerate(self.patch_state.va_custom_detunes, start=1):
+            for idx, raw in enumerate(self.patch_state.custom_detune_cache, start=1):
                 self.patch_state.tones[idx - 1].fine_tune = raw
                 if self.engine.juno:
                     try:
@@ -3192,30 +3190,20 @@ class SpectreBridge(QObject):
         self.pitchFineChanged.emit(self.pitchFine)
         self.vaParamsChanged.emit()
 
-    @pyqtSlot(bool)
-    def setVaAutoDetune(self, active: bool) -> None:
-        """Alias for setVaUnison."""
-        self.setVaUnison(active)
-
     @pyqtSlot(int)
-    def setVaUnisonDetune(self, cents: int) -> None:
-        """Set VA Auto Detune spread (0..50 cents)."""
-        if not self.patch_state.va_unison:
+    def setAutoDetuneCents(self, cents: int) -> None:
+        """Set Auto Detune spread (0..50 cents)."""
+        if not self.patch_state.auto_detune:
             return
-        self.patch_state.va_unison_detune = max(0, min(50, int(cents)))
-        self.applyVaUnisonDetune()
+        self.patch_state.auto_detune_cents = max(0, min(50, int(cents)))
+        self.applyAutoDetune()
         self.vaParamsChanged.emit()
 
-    @pyqtSlot(int)
-    def setVaAutoDetuneSpread(self, cents: int) -> None:
-        """Alias for setVaUnisonDetune."""
-        self.setVaUnisonDetune(cents)
-
-    def applyVaUnisonDetune(self) -> None:
-        """Distribute symmetrical unison detuning across all 4 oscillators."""
-        if not self.patch_state.va_unison:
+    def applyAutoDetune(self) -> None:
+        """Distribute symmetrical auto-detuning across all 4 oscillators."""
+        if not self.patch_state.auto_detune:
             return
-        d = self.patch_state.va_unison_detune
+        d = self.patch_state.auto_detune_cents
         spreads = [-d, d, -(d // 2), (d // 2)]
 
         for idx, offset in enumerate(spreads, start=1):
@@ -3225,7 +3213,7 @@ class SpectreBridge(QObject):
                 try:
                     self.engine.juno.set_tone_pitch(idx, fine=raw)
                 except Exception as e:
-                    logger.error(f"Error applying unison detune on synth: {e}")
+                    logger.error(f"Error applying auto detune on synth: {e}")
         self.pitchFineChanged.emit(self.pitchFine)
         self.vaParamsChanged.emit()
 
@@ -3330,7 +3318,7 @@ class SpectreBridge(QObject):
                             state.tones[2].level,
                             state.tones[3].level,
                         )
-                        self.patch_state.va_custom_detunes = [t.fine_tune for t in state.tones]
+                        self.patch_state.custom_detune_cache = [t.fine_tune for t in state.tones]
                 except Exception as e:
                     logger.warning(f"Could not read full patch: {e}")
 
@@ -3403,39 +3391,42 @@ class SpectreBridge(QObject):
 
     @pyqtSlot()
     def initPatch(self) -> None:
-        """Initialize the active sound in RAM to the clean JUNO SPECTRE template."""
+        """Initialize the active sound in RAM to the golden JUNO SPECTRE template."""
         logger.info("Initializing active patch in RAM to JUNO SPECTRE template...")
 
-        # 1. Send hardware SysEx commands if synth is connected
+        # 1. Restore the golden image on hardware (one DT1 per region, zero residue).
+        #    Falls back to the per-parameter reset sequence if the asset is missing.
+        hw_ok = False
         if self.engine.juno:
             try:
-                self.engine.juno.init_patch()
+                hw_ok = self.engine.juno.init_patch()
             except Exception as e:
                 logger.error(f"Error sending init_patch to synth: {e}")
+        if not hw_ok and not self.engine.juno:
+            logger.info("No synth connected; resetting in-memory state only.")
 
-        # 2. Reset in-memory state to pristine template
-        self.patch_state = PatchState.create_init_patch()
+        # 2. Reset in-memory state from the SAME golden image the hardware received,
+        #    so UI and synth provably match (decoded blob, or hand-built fallback).
+        self.patch_state = PatchState.from_template_file() or PatchState.create_init_patch()
 
-        # 3. Update Tone Waves to JUNO SPECTRE defaults
+        # 3. Sync tone wave caches from the decoded template
         self._tone_waves = [
-            ("INTA", 579),  # Tone 1: Juno Saw HD
-            ("INTA", 600),  # Tone 2: Juno Sqr HD
-            ("INTA", 622),  # Tone 3: JD Triangle
-            ("INTA", 625),  # Tone 4: Sine
+            (t.wave_bank_l, t.wave_num_l) for t in self.patch_state.tones
         ]
         self._cached_tone_wave_data = [
             self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
         ]
 
         # 4. Update patch name & mode
-        self._patch_name = "JUNO SPECTRE"
-        self._sound_mode = "PATCH"
+        self._patch_name = self.patch_state.common.name
+        self._sound_mode = self.patch_state.sound_mode
 
         # 5. Reset Vector Engine position and tone levels
         self.engine.set_coordinates(0.5, 0.5)
-        self.engine.tone_levels = (127, 127, 127, 127)
+        self.engine.tone_levels = tuple(t.level for t in self.patch_state.tones)
 
         # 6. Emit all signals to trigger live UI refresh across all tabs and screens
+        #    (macro deck values are derived getters, so they refresh automatically)
         self._emit_all_state_signals()
         self.patchInitialized.emit()
         logger.info("Active patch initialization complete.")

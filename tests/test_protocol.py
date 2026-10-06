@@ -137,8 +137,27 @@ def test_juno_client_init_patch(mock_midi_mgr):
     )
     mock_midi_mgr.iter_juno_messages.return_value = [mode_msg]
 
-    client.init_patch()
-    # Verified multiple SysEx commands were dispatched for Patch Common and 4 tones
+    ok = client.init_patch()
+    assert ok is True
+    # Golden template path: one DT1 per region chunk (9 regions / 13 chunks)
+    # plus the two master chorus/reverb bypass switches plus mode query.
+    assert mock_midi_mgr.send_juno_sysex.call_count >= 12
+
+
+def test_juno_client_init_patch_fallback_without_asset(mock_midi_mgr, tmp_path, monkeypatch):
+    from src.spectre.core import protocol as protocol_mod
+
+    monkeypatch.setattr(protocol_mod, "TEMPLATE_ASSET_PATH", tmp_path / "missing.json")
+    client = JunoClient(mock_midi_mgr)
+    mode_msg = mido.Message(
+        "sysex",
+        data=[0x41, 0x10, 0x00, 0x00, 0x3A, 0x12, 0x01, 0x00, 0x00, 0x00, 0x00, 0x7F],
+    )
+    mock_midi_mgr.iter_juno_messages.return_value = [mode_msg]
+
+    ok = client.init_patch()
+    assert ok is True
+    # Fallback path drives every setter: patch common, matrix, FX details, 4 tones.
     assert mock_midi_mgr.send_juno_sysex.call_count >= 30
 
 

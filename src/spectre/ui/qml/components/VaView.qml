@@ -34,8 +34,8 @@ Rectangle {
     property int osc2Pwm: Bridge.vaOsc2Pwm
     property int osc3Pwm: Bridge.vaOsc3Pwm
     property int osc4Pwm: Bridge.vaOsc4Pwm
-    property bool unisonActive: Bridge.vaUnison
-    property int unisonDetune: Bridge.vaUnisonDetune
+    property bool unisonActive: Bridge.autoDetune
+    property int unisonDetune: Bridge.autoDetuneCents
 
     RowLayout {
         anchors.fill: parent
@@ -106,7 +106,7 @@ Rectangle {
 
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: Bridge.setVaUnison(!root.unisonActive)
+                            onClicked: Bridge.setAutoDetune(!root.unisonActive)
                         }
                     }
 
@@ -153,12 +153,12 @@ Rectangle {
                             enabled: root.unisonActive
                             onPressed: (mouse) => {
                                 const norm = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                                Bridge.setVaUnisonDetune(Math.round(norm * 50));
+                                Bridge.setAutoDetuneCents(Math.round(norm * 50));
                             }
                             onPositionChanged: (mouse) => {
                                 if (pressed) {
                                     const norm = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                                    Bridge.setVaUnisonDetune(Math.round(norm * 50));
+                                    Bridge.setAutoDetuneCents(Math.round(norm * 50));
                                 }
                             }
                         }

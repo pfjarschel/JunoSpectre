@@ -7,9 +7,11 @@ targeting the Temporary RAM Edit Buffers exclusively.
 from __future__ import annotations
 
 import enum
+import json
 import logging
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
@@ -22,6 +24,7 @@ from .patch_state import (
     PatchState,
     PerfPartState,
     StepLfoState,
+    TEMPLATE_ASSET_PATH,
     ToneState,
 )
 from .sysex import (
@@ -75,7 +78,6 @@ from .sysex import (
     OFFSET_PATCH_TONE_4,
     PATCH_PARAM_ANALOG_FEEL,
     PATCH_PARAM_ATTACK_OFFSET,
-    PATCH_PARAM_CHORUS_SEND,
     PATCH_PARAM_CUTOFF_OFFSET,
     PATCH_PARAM_LEGATO_SWITCH,
     PATCH_PARAM_LEVEL,
@@ -92,7 +94,6 @@ from .sysex import (
     PATCH_PARAM_PORTAMENTO_TIME,
     PATCH_PARAM_RELEASE_OFFSET,
     PATCH_PARAM_RESONANCE_OFFSET,
-    PATCH_PARAM_REVERB_SEND,
     REVERB_PARAM_DATA_START,
     REVERB_PARAM_LEVEL,
     REVERB_PARAM_TYPE,
@@ -400,8 +401,6 @@ class JunoClient:
             "resonance_offset": (PATCH_PARAM_RESONANCE_OFFSET, 1, 127),
             "attack_offset": (PATCH_PARAM_ATTACK_OFFSET, 1, 127),
             "release_offset": (PATCH_PARAM_RELEASE_OFFSET, 1, 127),
-            "chorus_send": (PATCH_PARAM_CHORUS_SEND, 0, 127),
-            "reverb_send": (PATCH_PARAM_REVERB_SEND, 0, 127),
         }
         if param_name not in mapping:
             raise ValueError(f"Unknown patch param '{param_name}'. Supported: {list(mapping.keys())}")
@@ -432,6 +431,7 @@ class JunoClient:
         resonance: Optional[int] = None,
         env_depth: Optional[int] = None,
         filter_type: Optional[int] = None,
+        key_follow: Optional[int] = None,
         attack: Optional[int] = None,
         decay: Optional[int] = None,
         sustain: Optional[int] = None,
@@ -450,6 +450,8 @@ class JunoClient:
             self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_DEPTH, max(1, min(127, env_depth)))
         if filter_type is not None:
             self.set_tone_param(tone_index, TONE_PARAM_TVF_FILTER_TYPE, max(0, min(6, filter_type)))
+        if key_follow is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_TVF_CUTOFF_KEYFOLLOW, max(44, min(84, int(key_follow))))
         if env_vel_sens is not None:
             self.set_tone_param(tone_index, TONE_PARAM_TVF_ENV_VEL_SENS, max(1, min(127, env_vel_sens)))
         if env_t1_vel_sens is not None:
@@ -697,6 +699,9 @@ class JunoClient:
         tvf_depth: Optional[int] = None,
         tva_depth: Optional[int] = None,
         pan_depth: Optional[int] = None,
+        delay_time: Optional[int] = None,
+        fade_mode: Optional[int] = None,
+        fade_time: Optional[int] = None,
     ) -> None:
         """Set LFO 1 or LFO 2 parameters for a tone."""
         if lfo_index == 1:
@@ -708,6 +713,11 @@ class JunoClient:
                 TONE_PARAM_LFO1_TVA_DEPTH,
                 TONE_PARAM_LFO1_PAN_DEPTH,
             )
+            dly_off, fdm_off, fmt_off = (
+                TONE_PARAM_LFO1_DELAY_TIME,
+                TONE_PARAM_LFO1_FADE_MODE,
+                TONE_PARAM_LFO1_FADE_TIME,
+            )
         elif lfo_index == 2:
             wf_off, rate_off, p_off, f_off, a_off, pan_off = (
                 TONE_PARAM_LFO2_WAVEFORM,
@@ -716,6 +726,11 @@ class JunoClient:
                 TONE_PARAM_LFO2_TVF_DEPTH,
                 TONE_PARAM_LFO2_TVA_DEPTH,
                 TONE_PARAM_LFO2_PAN_DEPTH,
+            )
+            dly_off, fdm_off, fmt_off = (
+                TONE_PARAM_LFO2_DELAY_TIME,
+                TONE_PARAM_LFO2_FADE_MODE,
+                TONE_PARAM_LFO2_FADE_TIME,
             )
         else:
             raise ValueError(f"LFO index must be 1 or 2, got {lfo_index}")
@@ -732,6 +747,12 @@ class JunoClient:
             self.set_tone_param(tone_index, a_off, max(1, min(127, tva_depth)))
         if pan_depth is not None:
             self.set_tone_param(tone_index, pan_off, max(1, min(127, pan_depth)))
+        if delay_time is not None:
+            self.set_tone_param(tone_index, dly_off, max(0, min(127, int(delay_time))))
+        if fade_mode is not None:
+            self.set_tone_param(tone_index, fdm_off, max(0, min(3, int(fade_mode))))
+        if fade_time is not None:
+            self.set_tone_param(tone_index, fmt_off, max(0, min(127, int(fade_time))))
 
     def set_tone_step_lfo_type(self, tone_index: int, step_type: int) -> None:
         """Set Tone LFO Step Type (0 = TYP1/STEP, 1 = TYP2/GLIDE)."""
@@ -1470,93 +1491,250 @@ class JunoClient:
         )
         return patch_state
 
-    def init_patch(self) -> None:
-        """Initialize the active temporary patch buffer to clean JUNO SPECTRE template."""
-        # 1. Patch Common
+    @staticmethod
+    def load_init_template() -> Optional[dict]:
+        """Read the golden init template captured by scripts/capture_init_template.py."""
         try:
-            self.set_patch_name("JUNO SPECTRE")
-        except Exception as e:
-            logger.warning(f"Could not set patch name during init: {e}")
+            payload = json.loads(Path(TEMPLATE_ASSET_PATH).read_text(encoding="utf-8"))
+            if payload.get("version") != 1 or "regions" not in payload:
+                return None
+            return payload
+        except (OSError, ValueError):
+            return None
 
-        self.set_patch_param("level", 100)
-        self.set_patch_param("pan", 64)
-        self.set_patch_param("cutoff_offset", 64)
-        self.set_patch_param("resonance_offset", 64)
-        self.set_patch_param("attack_offset", 64)
-        self.set_patch_param("release_offset", 64)
-        self.set_portamento(False, 20)
-        self.set_legato(False)
+    def write_init_template(self, payload: dict, timeout: float = 1.0) -> int:
+        """Restore the golden image into the active temp patch RAM with one DT1 per chunk.
 
-        # 2. Reset Matrix Controls 1..4
-        for i in (1, 2, 3, 4):
+        Returns the number of failed messages (0 = complete restore).
+        """
+        base = self.get_active_patch_base(timeout=timeout)
+        failures = 0
+        for key, region in payload["regions"].items():
+            region_addr = add_address(base, tuple(region["offset"]))
+            for chunk in region["chunks"]:
+                try:
+                    self.send_data(add_address(region_addr, chunk["start"]), chunk["bytes"])
+                except Exception as e:
+                    failures += 1
+                    logger.warning(f"Init template write failed for {key} @0x{chunk['start']:03X}: {e}")
+
+        # Enforce global Chorus/Reverb bypass (Setup memory, outside the patch regions)
+        for addr, label in ((ADDR_SETUP_CHORUS_SWITCH, "chorus"), (ADDR_SETUP_REVERB_SWITCH, "reverb")):
             try:
-                self.set_matrix_control(i, source=0, dest1=0, sens1=64)
+                self.send_data(addr, [0])
             except Exception as e:
-                logger.warning(f"Could not reset matrix control {i}: {e}")
+                failures += 1
+                logger.warning(f"Could not force master {label} bypass switch during init: {e}")
+        return failures
 
-        # 3. Effects: Bypass MFX, Turn Off Chorus & Reverb
-        try:
-            self.set_mfx(mfx_type=0, dry_send=127, chorus_send=0, reverb_send=0)
-            self.set_chorus(chorus_type=0, level=0)
-            self.set_reverb(reverb_type=0, level=0)
-        except Exception as e:
-            logger.warning(f"Could not reset effects: {e}")
+    def init_patch(self, timeout: float = 1.0) -> bool:
+        """Initialize the active temporary patch buffer to the golden JUNO SPECTRE template.
 
-        # 4. 4 Tones: User Preset 756 "JUNO SPECTRE" waveforms
-        default_waves = [
-            ("INTA", 579),  # Juno Saw HD
-            ("INTA", 600),  # Juno Sqr HD
-            ("INTA", 622),  # JD Triangle
-            ("INTA", 625),  # Sine
-        ]
+        Preferred path: single contiguous image restore per region (zero residue,
+        including parameters the app does not model). Falls back to the per-parameter
+        reset sequence when the template asset is unavailable.
+        """
+        payload = self.load_init_template()
+        if payload is not None:
+            try:
+                failures = self.write_init_template(payload, timeout=timeout)
+            except Exception as e:
+                logger.error(f"Init template restore failed: {e}; falling back to per-parameter reset.")
+                return self.init_patch_fallback()
+            if failures == 0:
+                logger.info("Patch initialized from golden template image.")
+                return True
+            logger.warning(f"Golden template restore completed with {failures} failed message(s).")
+            return False
 
-        for idx, (bank, wnum) in enumerate(default_waves, start=1):
-            self.ensure_tone_enabled(idx)
-            self.set_tone_wave(idx, bank=bank, wave_num=wnum, gain=1)  # 0 dB
-            # TVF: Max cutoff (127), reso 0, env depth 64 (0), LPF (1), full sustain
-            self.set_tone_tvf(
-                idx,
-                cutoff=127,
-                resonance=0,
-                env_depth=64,
-                filter_type=1,
-                attack=0,
-                decay=0,
-                sustain=127,
-                release=0,
-                env_vel_sens=64,
-                env_t1_vel_sens=64,
-                env_t4_vel_sens=64,
-                env_time_keyfollow=64,
+        logger.info("init_template.json not found; using per-parameter fallback reset.")
+        return self.init_patch_fallback()
+
+    def init_patch_fallback(self) -> bool:
+        """Per-parameter reset sequence, driven entirely by create_init_patch() state.
+
+        Used only when the golden template asset is unavailable. Kept consistent with
+        the template so both paths converge on the same patch.
+        """
+        st = PatchState.create_init_patch()
+        failures: list[str] = []
+
+        def _try(label: str, fn, *args, **kwargs) -> None:
+            try:
+                fn(*args, **kwargs)
+            except Exception as e:
+                failures.append(label)
+                logger.warning(f"Init fallback '{label}' failed: {e}")
+
+        _try("patch name", self.set_patch_name, st.common.name)
+        _try("level", self.set_patch_param, "level", st.common.level)
+        _try("pan", self.set_patch_param, "pan", st.common.pan)
+        _try("cutoff_offset", self.set_patch_param, "cutoff_offset", st.common.cutoff_offset)
+        _try("resonance_offset", self.set_patch_param, "resonance_offset", st.common.resonance_offset)
+        _try("attack_offset", self.set_patch_param, "attack_offset", st.common.attack_offset)
+        _try("release_offset", self.set_patch_param, "release_offset", st.common.release_offset)
+        _try("portamento", self.set_portamento, st.common.portamento_switch, st.common.portamento_time)
+        _try("legato", self.set_legato, st.common.legato_switch)
+        _try("analog_feel", self.set_patch_analog_feel, st.common.analog_feel)
+        _try("output_assign", self.set_patch_output_assign, st.common.patch_output_assign)
+
+        for i, m in enumerate(st.common.matrix_ctrls, start=1):
+            _try(
+                f"matrix_{i}",
+                self.set_matrix_control,
+                i,
+                source=m.source,
+                dest1=m.dest1, sens1=m.sens1,
+                dest2=m.dest2, sens2=m.sens2,
+                dest3=m.dest3, sens3=m.sens3,
+                dest4=m.dest4, sens4=m.sens4,
             )
-            # TVA: Attack 0, Decay 0, Sustain 127, Release 0, Pan center 64
-            self.set_tone_tva(
+
+        eff = st.effects
+        _try(
+            "mfx",
+            self.set_mfx,
+            mfx_type=eff.mfx_type,
+            dry_send=eff.mfx_dry_send,
+            chorus_send=eff.mfx_chorus_send,
+            reverb_send=eff.mfx_reverb_send,
+        )
+        if eff.mfx_type != 0:
+            _try("mfx_params", self.set_mfx_params_bulk, eff.mfx_params[:14])
+        _try("chorus", self.set_chorus, eff.chorus_type, level=eff.chorus_level, output_select=eff.chorus_to_reverb)
+        for param, val in (
+            ("preDelay", eff.chorus_predelay),
+            ("rate", eff.chorus_rate),
+            ("depth", eff.chorus_depth),
+            ("feedback", eff.chorus_feedback),
+        ):
+            _try(f"chorus_{param}", self.set_chorus_param, param, val)
+        _try("reverb", self.set_reverb, eff.reverb_type, level=eff.reverb_level)
+        for param, val in (
+            ("preDelay", eff.reverb_predelay),
+            ("time", eff.reverb_time),
+            ("damp", eff.reverb_damp),
+            ("diffusion", eff.reverb_diffusion),
+            ("tone", eff.reverb_tone),
+        ):
+            _try(f"reverb_{param}", self.set_reverb_param, param, val)
+
+        for t in st.tones:
+            idx = t.tone_index
+            _try(f"tone{idx}_enable", self.ensure_tone_enabled, idx)
+            _try(
+                f"tone{idx}_wave",
+                self.set_tone_wave,
                 idx,
-                level=127,
-                pan=64,
-                attack=0,
-                decay=0,
-                sustain=127,
-                release=0,
-                env_vel_sens=64,
-                env_t1_vel_sens=64,
-                env_t4_vel_sens=64,
-                env_time_keyfollow=64,
+                bank=t.wave_bank_l,
+                wave_num=t.wave_num_l,
+                gain=t.wave_gain,
+                fxm_switch=1 if t.wave_fxm_switch else 0,
+                fxm_depth=t.wave_fxm_depth,
             )
-            # Pitch: Coarse 64 (0 st), Fine 64 (0 c), Depth 64 (0)
-            self.set_tone_pitch(idx, coarse=64, fine=64, env_depth=64)
-            # Pitch Env: Neutral
-            self.set_tone_pitch_env(
+            _try(
+                f"tone{idx}_output",
+                self.set_tone_output,
                 idx,
-                depth=64,
-                vel_sens=64,
-                time_keyfollow=64,
-                t1=0, t2=0, t3=0, t4=0,
-                l0=64, l1=64, l2=64, l3=64, l4=64
+                output_assign=t.output_assign,
+                output_level=t.output_level,
+                chorus_send=t.chorus_send,
+                reverb_send=t.reverb_send,
             )
-            # LFO 1 & 2: Depths = 64 (0)
-            self.set_tone_lfo(idx, lfo_index=1, waveform=1, rate=64, pitch_depth=64, tvf_depth=64, tva_depth=64, pan_depth=64)
-            self.set_tone_lfo(idx, lfo_index=2, waveform=0, rate=45, pitch_depth=64, tvf_depth=64, tva_depth=64, pan_depth=64)
-            # Step LFO: TYP1 (STEP), all 16 steps 0
-            self.set_tone_step_lfo_all(idx, step_type=0, steps=[0] * 16)
+            _try(
+                f"tone{idx}_tvf",
+                self.set_tone_tvf,
+                idx,
+                cutoff=t.tvf_cutoff,
+                resonance=t.tvf_resonance,
+                env_depth=t.tvf_env_depth,
+                filter_type=t.tvf_filter_type,
+                attack=t.tvf_t1,
+                decay=t.tvf_t2,
+                sustain=t.tvf_l3,
+                release=t.tvf_t4,
+                key_follow=t.tvf_cutoff_keyfollow,
+                env_vel_sens=t.tvf_env_velo_sens,
+                env_t1_vel_sens=t.tvf_env_t1_vel_sens,
+                env_t4_vel_sens=t.tvf_env_t4_vel_sens,
+                env_time_keyfollow=t.tvf_env_time_keyfollow,
+            )
+            _try(
+                f"tone{idx}_tva",
+                self.set_tone_tva,
+                idx,
+                level=t.level,
+                pan=t.pan,
+                attack=t.tva_t1,
+                decay=t.tva_t2,
+                sustain=t.tva_l3,
+                release=t.tva_t4,
+                env_vel_sens=t.tva_velo_sens,
+                env_t1_vel_sens=t.tva_env_t1_vel_sens,
+                env_t4_vel_sens=t.tva_env_t4_vel_sens,
+                env_time_keyfollow=t.tva_env_time_keyfollow,
+            )
+            _try(
+                f"tone{idx}_pitch",
+                self.set_tone_pitch,
+                idx,
+                coarse=t.coarse_tune,
+                fine=t.fine_tune,
+                env_depth=t.pitch_env_depth,
+            )
+            _try(
+                f"tone{idx}_pitch_env",
+                self.set_tone_pitch_env,
+                idx,
+                depth=t.pitch_env_depth,
+                vel_sens=t.pitch_env_vel_sens,
+                time_keyfollow=t.pitch_env_time_keyfollow,
+                t1_vel_sens=t.pitch_env_t1_vel_sens,
+                t4_vel_sens=t.pitch_env_t4_vel_sens,
+                t1=t.pitch_env_t1, t2=t.pitch_env_t2, t3=t.pitch_env_t3, t4=t.pitch_env_t4,
+                l0=t.pitch_env_l0, l1=t.pitch_env_l1, l2=t.pitch_env_l2,
+                l3=t.pitch_env_l3, l4=t.pitch_env_l4,
+            )
+            _try(
+                f"tone{idx}_lfo1",
+                self.set_tone_lfo,
+                idx,
+                lfo_index=1,
+                waveform=t.lfo1_waveform,
+                rate=t.lfo1_rate,
+                pitch_depth=t.lfo1_pitch_depth,
+                tvf_depth=t.lfo1_tvf_depth,
+                tva_depth=t.lfo1_tva_depth,
+                pan_depth=t.lfo1_pan_depth,
+                delay_time=t.lfo1_delay_time,
+                fade_mode=t.lfo1_fade_mode,
+                fade_time=t.lfo1_fade_time,
+            )
+            _try(
+                f"tone{idx}_lfo2",
+                self.set_tone_lfo,
+                idx,
+                lfo_index=2,
+                waveform=t.lfo2_waveform,
+                rate=t.lfo2_rate,
+                pitch_depth=t.lfo2_pitch_depth,
+                tvf_depth=t.lfo2_tvf_depth,
+                tva_depth=t.lfo2_tva_depth,
+                pan_depth=t.lfo2_pan_depth,
+                delay_time=t.lfo2_delay_time,
+                fade_mode=t.lfo2_fade_mode,
+                fade_time=t.lfo2_fade_time,
+            )
+            _try(
+                f"tone{idx}_step_lfo",
+                self.set_tone_step_lfo_all,
+                idx,
+                step_type=t.step_lfo_type,
+                steps=t.step_lfo_steps,
+            )
+
+        if failures:
+            logger.warning(f"Init fallback completed with {len(failures)} failed parameter group(s).")
+            return False
+        return True
 

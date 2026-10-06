@@ -6,8 +6,26 @@ Effects (MFX, Chorus, Reverb, Master EQ), Step LFO, and Performance Parts.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Sequence, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from .sysex import unpack_2nibbles, unpack_4nibbles
+
+
+# Canonical initialization template (single source of truth shared by
+# protocol.init_patch, create_init_patch, PatchState.from_template, and bridge.initPatch).
+INIT_PATCH_NAME = "JUNO SPECTRE"
+INIT_TONE_WAVES: List[Tuple[str, int]] = [
+    ("INTA", 579),  # Juno Saw HD
+    ("INTA", 600),  # Juno Sqr HD
+    ("INTA", 622),  # JD Triangle
+    ("INTA", 625),  # Sine
+]
+TEMPLATE_ASSET_PATH = (
+    Path(__file__).resolve().parent.parent / "assets" / "init_template.json"
+)
 
 
 # Conversion helper maps
@@ -411,14 +429,13 @@ class PatchCommonState:
     legato_switch: bool = False
     mono_poly: int = 1           # 0=MONO, 1=POLY
     analog_feel: int = 0         # 0..127
-    chorus_send: int = 0         # 0..127
-    reverb_send: int = 0         # 0..127
-    patch_output_assign: int = 4 # 0: MFX, 1: L+R, 2: L, 3: R, 4: TONE (respect per-tone assign)
+    patch_output_assign: int = 13 # 0: MFX, 1: L+R, 2: L, 3: R, ... 13: TONE (respect per-tone assign)
     matrix_ctrls: list[MatrixCtrlState] = field(default_factory=lambda: [
-        MatrixCtrlState(source=1, dest1=1, sens1=94),   # CC01 Mod Wheel (id 1) -> PITCH (+30)
-        MatrixCtrlState(source=96, dest1=2, sens1=39),  # Pitch Bend (id 96) -> TVF CUT (-25)
-        MatrixCtrlState(source=102, dest1=4, sens1=64), # Velocity (id 102) -> TVA LEVEL (0)
-        MatrixCtrlState(source=105, dest1=2, sens1=64), # LFO 1 (id 105) -> TVF CUT (0)
+        # Raw values captured from the user template patch (preserved as-is):
+        MatrixCtrlState(source=98, dest1=9, sens1=74),
+        MatrixCtrlState(source=99, dest1=4, sens1=64),
+        MatrixCtrlState(source=100, dest1=4, sens1=64),
+        MatrixCtrlState(source=101, dest1=4, sens1=64),
     ])
 
 
@@ -495,10 +512,8 @@ class PatchState:
     sound_mode: str = "PATCH"
     common: PatchCommonState = field(default_factory=PatchCommonState)
     tones: list[ToneState] = field(default_factory=lambda: [
-        ToneState(tone_index=1, wave_bank_l="INTA", wave_num_l=579), # Juno Saw HD
-        ToneState(tone_index=2, wave_bank_l="INTA", wave_num_l=600), # Juno Sqr HD
-        ToneState(tone_index=3, wave_bank_l="INTA", wave_num_l=622), # JD Triangle
-        ToneState(tone_index=4, wave_bank_l="INTA", wave_num_l=625), # Sine
+        ToneState(tone_index=i, wave_bank_l=bank, wave_num_l=wnum)
+        for i, (bank, wnum) in enumerate(INIT_TONE_WAVES, start=1)
     ])
     effects: EffectsState = field(default_factory=EffectsState)
     step_lfo: StepLfoState = field(default_factory=StepLfoState)
@@ -506,12 +521,11 @@ class PatchState:
         PerfPartState(part_index=i, name=f"Part {i}", volume=110 if i == 1 else (85 if i == 2 else 0))
         for i in range(1, 17)
     ])
-    macros: list[int] = field(default_factory=lambda: [64, 64, 64, 64, 20, 0, 0, 25])
 
-    # Workstation / VA state
-    va_unison: bool = False  # Auto-detune disabled by default
-    va_unison_detune: int = 15   # 0..50 cents
-    va_custom_detunes: list[int] = field(default_factory=lambda: [64, 64, 64, 64])  # Cached raw Roland fine tune 14..114 (-50..+50 cents)
+    # Workstation / VA state (software-side only, never sent as a dedicated SysEx message)
+    auto_detune: bool = False           # Auto Detune disabled by default
+    auto_detune_cents: int = 15         # 0..50 cents
+    custom_detune_cache: list[int] = field(default_factory=lambda: [64, 64, 64, 64])  # Cached raw Roland fine tune 14..114 (-50..+50 cents)
     va_pw: list[int] = field(default_factory=lambda: [50, 50, 50, 50])
     va_pwm: list[int] = field(default_factory=lambda: [0, 0, 0, 0])
 
@@ -522,12 +536,16 @@ class PatchState:
 
     @classmethod
     def create_init_patch(cls) -> "PatchState":
-        """Generate a pristine, unmodulated JUNO SPECTRE initialization patch."""
+        """Offline fallback template matching the captured hardware image.
+
+        When the init_template.json asset exists, prefer PatchState.from_template_file()
+        so software state and hardware come from the exact same golden image.
+        """
         state = cls()
         state.sound_mode = "PATCH"
         state.common = PatchCommonState(
-            name="JUNO SPECTRE",
-            level=100,
+            name=INIT_PATCH_NAME,
+            level=127,
             pan=64,
             cutoff_offset=64,
             resonance_offset=64,
@@ -539,23 +557,8 @@ class PatchState:
             legato_switch=False,
             mono_poly=1,
             analog_feel=0,
-            chorus_send=0,
-            reverb_send=25,
-            matrix_ctrls=[
-                MatrixCtrlState(source=1, dest1=1, sens1=94),   # CC01 Mod Wheel (id 1) -> PITCH (+30)
-                MatrixCtrlState(source=96, dest1=2, sens1=39),  # Pitch Bend (id 96) -> TVF CUT (-25)
-                MatrixCtrlState(source=102, dest1=4, sens1=64), # Velocity (id 102) -> TVA LEVEL (0)
-                MatrixCtrlState(source=105, dest1=2, sens1=64), # LFO 1 (id 105) -> TVF CUT (0)
-            ]
+            patch_output_assign=13,
         )
-        state.macros = [64, 64, 64, 64, 20, 0, 0, 25]
-
-        init_waves = [
-            ("INTA", 579), # Juno Saw HD
-            ("INTA", 600), # Juno Sqr HD
-            ("INTA", 622), # JD Triangle
-            ("INTA", 625), # Sine
-        ]
 
         state.tones = [
             ToneState(
@@ -569,44 +572,56 @@ class PatchState:
                 wave_gain=1, # 0 dB
                 wave_fxm_switch=False,
                 wave_fxm_depth=0,
-                # TVF wide open LPF, 0 resonance, 0 env depth
+                # Tone routing: serial chain (Tone -> MFX)
+                output_assign=0,
+                output_level=127,
+                chorus_send=0,
+                reverb_send=0,
+                # TVF: LPF wide open, captured keyboard-init envelope shape
                 tvf_filter_type=1,
                 tvf_cutoff=127,
                 tvf_resonance=0,
                 tvf_cutoff_keyfollow=64,
                 tvf_env_depth=64,
                 tvf_env_velo_sens=64,
-                # TVF envelope raw segments (canonical flat gate shape)
-                tvf_t1=0, tvf_t2=0, tvf_t3=0, tvf_t4=0,
+                tvf_env_t1_vel_sens=64,
+                tvf_env_t4_vel_sens=64,
+                tvf_env_time_keyfollow=64,
+                tvf_t1=0, tvf_t2=10, tvf_t3=10, tvf_t4=64,
                 tvf_l0=0, tvf_l1=127, tvf_l2=127, tvf_l3=127, tvf_l4=0,
-                # TVA envelope raw segments (canonical clean gate shape)
-                tva_velo_sens=64,
-                tva_t1=0, tva_t2=0, tva_t3=0, tva_t4=0,
+                # TVA: captured keyboard-init envelope shape
+                tva_velo_sens=96,
+                tva_env_t1_vel_sens=64,
+                tva_env_t4_vel_sens=64,
+                tva_env_time_keyfollow=64,
+                tva_t1=0, tva_t2=10, tva_t3=10, tva_t4=10,
                 tva_l1=127, tva_l2=127, tva_l3=127,
-                # Pitch Env neutral
+                # Pitch Env: captured keyboard-init shape
                 pitch_env_depth=64,
                 pitch_env_vel_sens=64,
+                pitch_env_t1_vel_sens=64,
+                pitch_env_t4_vel_sens=64,
                 pitch_env_time_keyfollow=64,
-                pitch_env_t1=0,
-                pitch_env_t2=0,
-                pitch_env_t3=0,
+                pitch_env_t1=40,
+                pitch_env_t2=80,
+                pitch_env_t3=40,
                 pitch_env_t4=0,
                 pitch_env_l0=64,
-                pitch_env_l1=64,
-                pitch_env_l2=64,
+                pitch_env_l1=34,
+                pitch_env_l2=94,
                 pitch_env_l3=64,
                 pitch_env_l4=64,
-                # LFO 1 & 2 neutral depths
+                # LFO 1 & 2 neutral depths, captured defaults
                 lfo1_waveform=1, # TRI
-                lfo1_rate=64,
+                lfo1_rate=92,
                 lfo1_pitch_depth=64,
                 lfo1_tvf_depth=64,
                 lfo1_tva_depth=64,
                 lfo1_pan_depth=64,
                 lfo1_delay_time=0,
                 lfo1_fade_time=0,
-                lfo2_waveform=0, # SIN
-                lfo2_rate=45,
+                lfo2_waveform=1, # TRI
+                lfo2_rate=92,
                 lfo2_pitch_depth=64,
                 lfo2_tvf_depth=64,
                 lfo2_tva_depth=64,
@@ -615,20 +630,32 @@ class PatchState:
                 lfo2_fade_time=0,
                 muted=False,
             )
-            for idx, (bank, wnum) in enumerate(init_waves, start=1)
+            for idx, (bank, wnum) in enumerate(INIT_TONE_WAVES, start=1)
         ]
 
         state.effects = EffectsState(
             mfx_type=0, # Bypassed
-            mfx_dry_send=127,
-            mfx_chorus_send=0,
+            mfx_dry_send=0,
+            mfx_chorus_send=127,
             mfx_reverb_send=0,
             mfx_bypassed=True,
             mfx_last_active_type=15,
+            routing_preset="SERIAL_CHAIN",
+            manual_routing_unlocked=False,
             chorus_type=0, # OFF
             chorus_level=0,
+            chorus_to_reverb=1, # REV only: pure serial chain
+            chorus_rate=10,
+            chorus_depth=20,
+            chorus_predelay=20,
+            chorus_feedback=0,
             reverb_type=0, # OFF
             reverb_level=0,
+            reverb_predelay=10,
+            reverb_time=64,
+            reverb_damp=19,
+            reverb_diffusion=127,
+            reverb_tone=19,
             eq_switch=True,
             eq_low_gain=0,
             eq_low_freq=400,
@@ -648,11 +675,222 @@ class PatchState:
             depth=0,
         )
 
-        state.macros = [64] * 8
-        state.va_unison = False
-        state.va_unison_detune = 15
-        state.va_custom_detunes = [64, 64, 64, 64]
+        state.auto_detune = False
+        state.auto_detune_cents = 15
+        state.custom_detune_cache = [64, 64, 64, 64]
         state.va_pw = [50, 50, 50, 50]
         state.va_pwm = [0, 0, 0, 0]
 
         return state
+
+    # ------------------------------------------------------------------
+    # Golden init template: decode the captured hardware image (init_template.json)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _region_bytes(payload_region: Dict[str, Any]) -> list[bytes]:
+        return [bytes(c["bytes"]) for c in payload_region["chunks"]]
+
+    @staticmethod
+    def _param4v(block: bytes, offset: int) -> int:
+        """Decode a 4-nibble parameter value and remove the 32768 bias."""
+        return unpack_4nibbles(block[offset:offset + 4]) - 32768
+
+    @classmethod
+    def _decode_common(cls, b: bytes) -> PatchCommonState:
+        matrices = []
+        for off in (0x2B, 0x34, 0x3D, 0x46):
+            matrices.append(MatrixCtrlState(
+                source=b[off],
+                dest1=b[off + 1], sens1=b[off + 2],
+                dest2=b[off + 3], sens2=b[off + 4],
+                dest3=b[off + 5], sens3=b[off + 6],
+                dest4=b[off + 7], sens4=b[off + 8],
+            ))
+        return PatchCommonState(
+            name=b[0:12].decode("latin1", errors="replace").strip(),
+            category=b[0x0C],
+            level=b[0x0E],
+            pan=b[0x0F],
+            analog_feel=b[0x15],
+            mono_poly=b[0x16],
+            legato_switch=bool(b[0x17]),
+            portamento_switch=bool(b[0x19]),
+            portamento_mode=b[0x1A],
+            portamento_time=b[0x1D],
+            cutoff_offset=b[0x22],
+            resonance_offset=b[0x23],
+            attack_offset=b[0x24],
+            release_offset=b[0x25],
+            patch_output_assign=b[0x27],
+            matrix_ctrls=matrices,
+        )
+
+    @classmethod
+    def _decode_tone(cls, a: bytes, b: bytes, tone_index: int) -> ToneState:
+        return ToneState(
+            tone_index=tone_index,
+            level=a[0x00],
+            coarse_tune=a[0x01],
+            fine_tune=a[0x02],
+            pan=a[0x04],
+            output_level=a[0x0C],
+            chorus_send=a[0x0D],
+            reverb_send=a[0x0E],
+            output_assign=a[0x11],
+            matrix_switches=[
+                list(a[0x17:0x1B]),
+                list(a[0x1B:0x1F]),
+                list(a[0x1F:0x23]),
+                list(a[0x23:0x27]),
+            ],
+            wave_bank_l="INTA" if unpack_4nibbles(a[0x28:0x2C]) == 1 else "INTB",
+            wave_num_l=unpack_4nibbles(a[0x2C:0x30]),
+            wave_bank_r="INTA" if unpack_4nibbles(a[0x28:0x2C]) == 1 else "INTB",
+            wave_num_r=unpack_4nibbles(a[0x30:0x34]),
+            wave_gain=a[0x34],
+            wave_fxm_switch=bool(a[0x35]),
+            wave_fxm_color=a[0x36],
+            wave_fxm_depth=a[0x37],
+            pitch_env_depth=a[0x3A],
+            pitch_env_vel_sens=a[0x3B],
+            pitch_env_t1_vel_sens=a[0x3C],
+            pitch_env_t4_vel_sens=a[0x3D],
+            pitch_env_time_keyfollow=a[0x3E],
+            pitch_env_t1=a[0x3F],
+            pitch_env_t2=a[0x40],
+            pitch_env_t3=a[0x41],
+            pitch_env_t4=a[0x42],
+            pitch_env_l0=a[0x43],
+            pitch_env_l1=a[0x44],
+            pitch_env_l2=a[0x45],
+            pitch_env_l3=a[0x46],
+            pitch_env_l4=a[0x47],
+            tvf_filter_type=a[0x48],
+            tvf_cutoff=a[0x49],
+            tvf_cutoff_keyfollow=a[0x4A],
+            tvf_resonance=a[0x4D],
+            tvf_env_depth=a[0x4F],
+            tvf_env_velo_sens=a[0x51],
+            tvf_env_t1_vel_sens=a[0x52],
+            tvf_env_t4_vel_sens=a[0x53],
+            tvf_env_time_keyfollow=a[0x54],
+            tvf_t1=a[0x55], tvf_t2=a[0x56], tvf_t3=a[0x57], tvf_t4=a[0x58],
+            tvf_l0=a[0x59], tvf_l1=a[0x5A], tvf_l2=a[0x5B], tvf_l3=a[0x5C], tvf_l4=a[0x5D],
+            tva_velo_sens=a[0x62],
+            tva_env_t1_vel_sens=a[0x63],
+            tva_env_t4_vel_sens=a[0x64],
+            tva_env_time_keyfollow=a[0x65],
+            tva_t1=a[0x66], tva_t2=a[0x67], tva_t3=a[0x68], tva_t4=a[0x69],
+            tva_l1=a[0x6A], tva_l2=a[0x6B], tva_l3=a[0x6C],
+            lfo1_waveform=a[0x6D],
+            lfo1_rate=unpack_2nibbles(a[0x6E:0x70]),
+            lfo1_delay_time=a[0x72],
+            lfo1_fade_mode=a[0x74],
+            lfo1_fade_time=a[0x75],
+            lfo1_pitch_depth=a[0x77],
+            lfo1_tvf_depth=a[0x78],
+            lfo1_tva_depth=a[0x79],
+            lfo1_pan_depth=a[0x7A],
+            lfo2_waveform=a[0x7B],
+            lfo2_rate=unpack_2nibbles(a[0x7C:0x7E]),
+            lfo2_delay_time=b[0],
+            lfo2_fade_mode=b[2],
+            lfo2_fade_time=b[3],
+            lfo2_pitch_depth=b[5],
+            lfo2_tvf_depth=b[6],
+            lfo2_tva_depth=b[7],
+            lfo2_pan_depth=b[8],
+            step_lfo_type=b[9],
+            step_lfo_steps=[x - 64 for x in b[10:26]],
+            muted=False,
+        )
+
+    @classmethod
+    def _decode_effects(cls, mfx: bytes, cho: bytes, rev: bytes) -> EffectsState:
+        eff = EffectsState()
+        eff.mfx_type = mfx[0]
+        eff.mfx_dry_send = mfx[1]
+        eff.mfx_chorus_send = mfx[2]
+        eff.mfx_reverb_send = mfx[3]
+        eff.mfx_bypassed = (mfx[0] == 0)
+        if mfx[0] != 0:
+            eff.mfx_last_active_type = mfx[0]
+        eff.mfx_params = [
+            cls._param4v(mfx, 0x11 + 4 * i) for i in range(14)
+        ]
+        eff.routing_preset = "SERIAL_CHAIN"
+        eff.manual_routing_unlocked = False
+        eff.chorus_type = cho[0]
+        eff.chorus_level = cho[1]
+        eff.chorus_to_reverb = cho[3]
+        eff.chorus_predelay = cls._param4v(cho, 0x0C)
+        eff.chorus_rate = cls._param4v(cho, 0x14)
+        eff.chorus_depth = cls._param4v(cho, 0x1C)
+        eff.chorus_feedback = cls._param4v(cho, 0x24)
+        eff.reverb_type = rev[0]
+        eff.reverb_level = rev[1]
+        eff.reverb_predelay = cls._param4v(rev, 0x03)
+        eff.reverb_time = cls._param4v(rev, 0x07)
+        eff.reverb_damp = cls._param4v(rev, 0x0F)
+        eff.reverb_diffusion = cls._param4v(rev, 0x17)
+        eff.reverb_tone = cls._param4v(rev, 0x1B)
+        # Master EQ lives in system memory (not the patch image) and does not respond
+        # to SysEx writes on this unit; reset the app-side representation to flat,
+        # identical to the hand-built fallback template.
+        eff.eq_switch = True
+        eff.eq_low_gain = 0
+        eff.eq_low_freq = 400
+        eff.eq_mid_gain = 0
+        eff.eq_mid_freq = 1200
+        eff.eq_mid_q = 1.0
+        eff.eq_high_gain = 0
+        eff.eq_high_freq = 4000
+        eff.eq_master_level = 100
+        return eff
+
+    @classmethod
+    def from_template(cls, payload: Dict[str, Any]) -> "PatchState":
+        """Build the canonical PatchState by decoding the captured hardware image blob."""
+        regions = payload["regions"]
+        common = cls._decode_common(cls._region_bytes(regions["common"])[0])
+
+        tones = []
+        for idx in range(1, 5):
+            chunks = cls._region_bytes(regions[f"tone_{idx}"])
+            tones.append(cls._decode_tone(chunks[0], chunks[1], idx))
+
+        effects = cls._decode_effects(
+            cls._region_bytes(regions["mfx"])[0],
+            cls._region_bytes(regions["chorus"])[0],
+            cls._region_bytes(regions["reverb"])[0],
+        )
+
+        # TMT tone switches -> mute state
+        tmt = cls._region_bytes(regions["tmt"])[0]
+        for idx, sw in enumerate((tmt[0x05], tmt[0x0E], tmt[0x17], tmt[0x20]), start=1):
+            tones[idx - 1].muted = (sw == 0)
+
+        state = cls(common=common, tones=tones, effects=effects)
+        state.sound_mode = "PATCH"
+        state.step_lfo = StepLfoState(
+            steps=[0] * 16,
+            curve_type=0,
+            sync_rate_idx=2,
+            dest_idx=1,
+            depth=0,
+        )
+        state.custom_detune_cache = [t.fine_tune for t in tones]
+        return state
+
+    @classmethod
+    def from_template_file(cls, path: Optional[Path] = None) -> Optional["PatchState"]:
+        """Load and decode init_template.json; returns None when the asset is absent/corrupt."""
+        asset = path or TEMPLATE_ASSET_PATH
+        try:
+            payload = json.loads(Path(asset).read_text(encoding="utf-8"))
+            if payload.get("version") != 1 or "regions" not in payload:
+                return None
+            return cls.from_template(payload)
+        except (OSError, ValueError, KeyError, IndexError):
+            return None

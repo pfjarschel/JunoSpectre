@@ -14,7 +14,7 @@ def test_init_patch_creation():
     patch = PatchState.create_init_patch()
     assert patch.sound_mode == "PATCH"
     assert patch.common.name == "JUNO SPECTRE"
-    assert patch.common.level == 100
+    assert patch.common.level == 127
     assert patch.common.pan == 64
     assert patch.common.cutoff_offset == 64
     assert patch.common.resonance_offset == 64
@@ -160,3 +160,41 @@ def test_env_modifier_defaults_and_conversions():
     for t in init.tones:
         assert t.tvf_env_t1_vel_sens == 64
         assert t.tva_env_time_keyfollow == 64
+
+
+def test_golden_template_asset_decodes():
+    """The captured init_template.json asset must decode into a complete PatchState."""
+    from src.spectre.core.patch_state import TEMPLATE_ASSET_PATH
+
+    if not TEMPLATE_ASSET_PATH.exists():
+        pytest.skip("init_template.json not captured (run scripts/capture_init_template.py)")
+
+    patch = PatchState.from_template_file()
+    assert patch is not None
+    assert patch.sound_mode == "PATCH"
+    assert patch.common.name == "JUNO SPECTRE"
+
+    # Golden image carries the four canonical waves
+    assert [t.wave_num_l for t in patch.tones] == [579, 600, 622, 625]
+
+    # Enforced overlays present in the decoded state
+    assert patch.effects.routing_preset == "SERIAL_CHAIN"
+    assert patch.effects.manual_routing_unlocked is False
+    assert patch.effects.mfx_bypassed is True
+    assert patch.effects.chorus_type == 0
+    assert patch.effects.chorus_level == 0
+    assert patch.effects.reverb_type == 0
+    assert patch.effects.reverb_level == 0
+    assert patch.effects.chorus_to_reverb == 1
+
+    # Matrix routings are preserved verbatim from the template patch (not cleared)
+    assert patch.common.matrix_ctrls[0].source == 98
+
+    # Every tone decoded fully: SUSTAIN enforced, sane sends/assign
+    for t in patch.tones:
+        assert t.output_assign == 0  # MFX
+        assert t.output_level == 127
+        assert t.chorus_send == 0
+        assert t.reverb_send == 0
+        assert t.level == 127
+        assert 0 <= t.tvf_cutoff <= 127
