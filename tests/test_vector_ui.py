@@ -78,9 +78,14 @@ def test_ui_bridge_slots_and_properties():
     bridge.setMasterLevel(115)
     assert bridge.masterLevel == 115
 
-    # Test Macros
-    bridge.setMacro(1, 99)
-    assert bridge.macro1 == 99
+    # Test Macros (relative bipolar: value in [-1, 1], sounding = base + offset)
+    assert bridge.macroNames[0] == "CUTOFF"
+    bridge.setMacro(1, 0.5)
+    assert bridge.macroValues[0] == pytest.approx(0.5)
+    # default M1: common.cutoff_offset, base 64, span 63, depth 1.0 -> 64 + 31.5 = 96 (rounded)
+    assert bridge.patch_state.common.cutoff_offset == pytest.approx(96, abs=1)
+    bridge.setMacro(1, 0.0)
+    assert bridge.patch_state.common.cutoff_offset == 64
 
 
 def test_workstation_views_switching():
@@ -659,8 +664,10 @@ def test_init_patch_workflow():
     assert bridge.lfo1PitchDepth == 0
     assert bridge.lfo2TvfDepth == 0
     assert bridge.patch_state.effects.routing_preset == ""  # raw template patch, no preset
-    assert bridge.macro7 == bridge.patch_state.effects.chorus_level
-    assert bridge.macro8 == bridge.patch_state.effects.reverb_level
+    assert bridge.macroNames[6] == "CHORUS"
+    assert bridge.macroNames[7] == "REVERB"
+    assert bridge.macroValues[6] == pytest.approx(0.0)
+    assert bridge.macroValues[7] == pytest.approx(0.0)
 
     # Verify tone waves set to JUNO SPECTRE 4-osc defaults
     waves = bridge.toneWaveData
@@ -741,45 +748,159 @@ def test_pcm_sound_designer_enhancements():
     assert bridge.patch_state.common.mono_poly == 1  # POLY
     assert bridge.patch_state.common.portamento_mode == 0  # NORMAL
 
-    # 6. Test Macro dispatches
-    bridge.setMacro(1, 80)
-    assert bridge.macro1 == 80
-    assert bridge.masterCutoff == 80
-    bridge.setMacro(5, 40)
-    assert bridge.macro5 == 40
-    assert bridge.portamentoTime == 40
-    bridge.setMacro(6, 60)
-    assert bridge.macro6 == 60
-    assert bridge.analogFeel == 60
-    bridge.setMacro(7, 35)
-    assert bridge.macro7 == 35
-    assert bridge.patch_state.effects.chorus_level == 35
-    bridge.setMacro(8, 55)
-    assert bridge.macro8 == 55
-    assert bridge.patch_state.effects.reverb_level == 55
+    # 6. Test relative macro dispatches (sounding = base + pol*depth*span*value)
+    bridge.setMacro(1, 1.0)
+    assert bridge.macroValues[0] == pytest.approx(1.0)
+    assert bridge.patch_state.common.cutoff_offset == 127  # base 64 + 63
+    bridge.setMacro(1, -1.0)
+    assert bridge.patch_state.common.cutoff_offset == 1  # base 64 - 63
+    bridge.setMacro(1, 0.0)
+    assert bridge.patch_state.common.cutoff_offset == 64
+    bridge.setMacro(5, 1.0)
+    assert bridge.patch_state.common.portamento_time == pytest.approx(84, abs=1)  # base 20 + 63.5
+    bridge.setMacro(5, 0.0)
+    assert bridge.patch_state.common.portamento_time == 20
+    bridge.setMacro(7, 1.0)
+    assert bridge.patch_state.effects.chorus_level == 127  # base 80 + 63.5 -> clamp
+    bridge.setMacro(7, 0.0)
+    assert bridge.patch_state.effects.chorus_level == 80
+    bridge.setMacro(8, 1.0)
+    assert bridge.patch_state.effects.reverb_level == pytest.approx(124, abs=1)  # base 60 + 63.5
+    bridge.setMacro(8, 0.0)
+    assert bridge.patch_state.effects.reverb_level == 60
 
 
-def test_analog_feel_dedicated_control_syncs_macro6():
-    """setAnalogFeel updates analog_feel + Macro 6; setMacro(6) syncs analog_feel."""
+def test_analog_feel_dedicated_control_rebases_macro6():
+    """Direct edits rebase (semantics ii); macro-to-0 restores the new base exactly."""
     engine = VectorEngine()
     app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
 
-    # Dedicated control keeps macro 6 in sync
-    bridge.setAnalogFeel(90)
-    assert bridge.analogFeel == 90
-    assert bridge.macro6 == 90
-    assert bridge.patch_state.common.analog_feel == 90
+    # Fresh base is 0; engage macro halfway
+    bridge.setMacro(6, 0.5)
+    assert bridge.patch_state.common.analog_feel == pytest.approx(32, abs=1)  # 0 + 31.75
 
-    # Reverse direction: macro 6 drives analog_feel
-    bridge.setMacro(6, 42)
-    assert bridge.analogFeel == 42
-    assert bridge.patch_state.common.analog_feel == 42
+    # Direct edit rebases: new base 90, sounding jumps now (macro preserved on top)
+    bridge.setAnalogFeel(90)
+    assert bridge.analogFeel == pytest.approx(122, abs=1)  # 90 + 31.75
+    assert bridge.patch_state.common.analog_feel == pytest.approx(122, abs=1)
+
+    # Macro to 0 returns exactly the new base (unclamped store, no drift)
+    bridge.setMacro(6, 0.0)
+    assert bridge.analogFeel == 90
+    assert bridge.patch_state.common.analog_feel == 90
 
     # Clamping
     bridge.setAnalogFeel(200)
     assert bridge.analogFeel == 127
     bridge.setAnalogFeel(-5)
     assert bridge.analogFeel == 0
+
+
+def test_customizable_multitarget_macros():
+    """Rename, add/remove links, polarity/depth, stacking sum, clamp-restore."""
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+
+    # Rename (14-char cap, uppercased)
+    bridge.setMacroName(1, "space sweep 123456789")
+    assert bridge.macroNames[0] == "SPACE SWEEP 12"
+
+    # Catalog: full + categories + search
+    all_targets = bridge.getMacroTargets("ALL", "")
+    assert len(all_targets) >= 100
+    filt = bridge.getMacroTargets("FILTER", "cutoff")
+    keys = [t["key"] for t in filt]
+    assert "tone.1.tvf_cutoff" in keys and "tone.all.tvf_cutoff" in keys
+    assert bridge.getMacroTargets("ALL", "zzz-no-match") == []
+    morph = bridge.getMacroTargets("MORPH", "")
+    assert {t["key"] for t in morph} == {"vector.x", "vector.y", "vector.w",
+                                         "vector.speed", "vector.bpm"}
+    assert bridge.getMacroTargets("VECTOR", "") == []
+
+    # Start from a clean M1: remove default link, add two links (multi-param)
+    bridge.removeMacroTarget(1, 0)
+    assert bridge.getMacroLinks(1) == []
+    bridge.addMacroTarget(1, "common.cutoff_offset")  # depth default 0.5
+    bridge.addMacroTarget(1, "common.cutoff_offset")  # duplicate: no-op
+    assert len(bridge.getMacroLinks(1)) == 1
+    bridge.addMacroTarget(1, "effects.reverb_level")
+    assert len(bridge.getMacroLinks(1)) == 2
+
+    # Polarity/depth: cutoff +, full; reverb -, half
+    bridge.setMacroLink(1, 0, 1, 1.0)
+    bridge.setMacroLink(1, 1, -1, 0.5)
+    links = bridge.getMacroLinks(1)
+    assert links[0]["polarity"] == 1 and links[0]["depth"] == pytest.approx(1.0)
+    assert links[1]["polarity"] == -1 and links[1]["depth"] == pytest.approx(0.5)
+    assert links[0]["span"] == pytest.approx(63.0)  # offset full-scale
+    assert links[1]["span"] == pytest.approx(127.0)  # level full-scale
+    assert (links[0]["min"], links[0]["max"]) == (1.0, 127.0)
+    assert (links[1]["min"], links[1]["max"]) == (0.0, 127.0)
+
+    # Bright+spacious at +1 (cutoff base 64 +63 -> 127; reverb base 60 -63.5 -> clamp 0? 60-63.5<0)
+    bridge.setMacro(1, 1.0)
+    assert bridge.patch_state.common.cutoff_offset == 127
+    assert bridge.patch_state.effects.reverb_level == pytest.approx(0, abs=1)
+    # Muffled+contained at -1 (cutoff 64-63=1; reverb 60+63.5=123.5)
+    bridge.setMacro(1, -1.0)
+    assert bridge.patch_state.common.cutoff_offset == 1
+    assert bridge.patch_state.effects.reverb_level == pytest.approx(124, abs=1)
+    # Back to neutral restores both bases exactly (unclamped macro store)
+    bridge.setMacro(1, 0.0)
+    assert bridge.patch_state.common.cutoff_offset == 64
+    assert bridge.patch_state.effects.reverb_level == 60
+
+    # Stacking: second macro on same target sums with first
+    bridge.setMacro(2, 0.0)
+    bridge.removeMacroTarget(2, 0)
+    bridge.addMacroTarget(2, "common.cutoff_offset")
+    bridge.setMacroLink(2, 0, 1, 0.5)  # +31.5 at full
+    bridge.setMacro(1, 0.0)
+    bridge.setMacro(2, 1.0)
+    assert bridge.patch_state.common.cutoff_offset == pytest.approx(96, abs=1)  # 64 + 31.5
+    bridge.setMacro(1, 0.5)  # M1 full-depth +31.5 on top: 64 + 31.5 + 31.5
+    assert bridge.patch_state.common.cutoff_offset == 127  # 127 clamp (127.0)
+    bridge.setMacro(1, 0.0)
+    bridge.setMacro(2, 0.0)
+    assert bridge.patch_state.common.cutoff_offset == 64
+
+    # tone.all.* fans out to per-tone bases, preserving per-tone differences
+    bridge.setSelectedTone(1)
+    bridge.setLinkedMode(False)
+    bridge.setToneLevel(1, 100)
+    bridge.setToneLevel(2, 60)
+    bridge.removeMacroTarget(3, 0)
+    bridge.addMacroTarget(3, "tone.all.tva_level")
+    bridge.setMacroLink(3, 0, 1, 0.5)  # +/-63.5
+    bridge.setMacro(3, 1.0)
+    assert bridge.patch_state.tones[0].level == 127  # 100 + 63.5 -> clamp
+    assert bridge.patch_state.tones[1].level == pytest.approx(124, abs=1)  # 60 + 63.5
+    bridge.setMacro(3, 0.0)
+    assert bridge.patch_state.tones[0].level == 100
+    assert bridge.patch_state.tones[1].level == 60
+
+    # INIT resets names, values, links to defaults
+    bridge.initPatch()
+    assert bridge.macroNames[0] == "CUTOFF"
+    assert bridge.macroValues[0] == pytest.approx(0.0)
+    assert len(bridge.getMacroLinks(1)) == 1
+
+
+def test_macro_morph_wavetable_link():
+    """MORPH wavetable link fans out through the engine with exact restore."""
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+
+    bridge.removeMacroTarget(4, 0)
+    bridge.addMacroTarget(4, "vector.w")
+    bridge.setMacroLink(4, 0, 1, 0.5)  # +/-0.5
+    assert bridge.engine.w == pytest.approx(0.0)
+    bridge.setMacro(4, 1.0)
+    assert bridge.engine.w == pytest.approx(0.5)
+    bridge.setMacro(4, -1.0)
+    assert bridge.engine.w == pytest.approx(0.0)  # base 0 - 0.5 -> clamp
+    bridge.setMacro(4, 0.0)
+    assert bridge.engine.w == pytest.approx(0.0)
 
 
 def test_sculptor_mutates_all_four_tones():

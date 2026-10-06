@@ -31,6 +31,13 @@ from ..core.env_presets import env_preset_names, get_env_preset
 from ..core.updater import GitUpdater, UpdaterError
 from ..core.waves import WaveCatalogManager
 from ..core.mfx_catalog import get_mfx_catalog, get_mfx_algo, get_mfx_categories, get_mfx_light_catalog
+from ..core.macro_targets import (
+    filter_macro_targets,
+    get_macro_catalog,
+    get_macro_categories,
+    macro_delta,
+    resolve_sounding,
+)
 from ..vector.engine import MorphMode, VectorEngine, VectorState
 from ..vector.math import CrossfadeCurve
 from ..vector.motion import AutomatorType, LoopMode, RecorderState, WavetableSweepMode
@@ -71,6 +78,7 @@ class SpectreBridge(QObject):
     macrosChanged = pyqtSignal()
     curveChanged = pyqtSignal(str)
     requestOpenWaveBrowser = pyqtSignal(int)
+    requestOpenMacroAssign = pyqtSignal(int)
     requestOpenScreensOverlay = pyqtSignal()
     requestOpenInitPatchModal = pyqtSignal()
     requestOpenEnvOverlay = pyqtSignal(str)
@@ -274,6 +282,367 @@ class SpectreBridge(QObject):
         if self._linked_mode:
             return self.patch_state.tones
         return [self._active_tone()]
+
+    # -------------------------------------------------------------------------
+    # Relative macro engine: sounding = base + SUM(pol * depth * span * value)
+    # Bases are per concrete target key; tone.all.* expands to per-tone keys.
+    # _applyAbsolute writes sounding only (never bases); _rebaseDirect treats
+    # a direct edit as a new base (semantics ii: jump now, macro preserved).
+    # -------------------------------------------------------------------------
+
+    _macro_catalog_by_key: dict | None = None
+
+    @classmethod
+    def _macroEntry(cls, key: str) -> dict | None:
+        if cls._macro_catalog_by_key is None:
+            cls._macro_catalog_by_key = {e["key"]: e for e in get_macro_catalog()}
+        return cls._macro_catalog_by_key.get(key)
+
+    @staticmethod
+    def _expandKey(key: str) -> list[str]:
+        if key.startswith("tone.all."):
+            suffix = key[len("tone.all."):]
+            return [f"tone.{i}.{suffix}" for i in range(1, 5)]
+        return [key]
+
+    def _macroLinksFor(self, key: str) -> list[tuple[int, object]]:
+        """All (macro_idx, link) pairs addressing a concrete key (incl. via tone.all.*)."""
+        out = []
+        for mi, slot in enumerate(self.patch_state.macros):
+            for link in slot.links:
+                if key in self._expandKey(link.target_key):
+                    out.append((mi, link))
+        return out
+
+    def _readAbsolute(self, key: str) -> float:
+        ps = self.patch_state
+        try:
+            if key == "common.level":
+                return float(ps.common.level)
+            if key == "common.pan":
+                return float(ps.common.pan)
+            if key == "common.cutoff_offset":
+                return float(ps.common.cutoff_offset)
+            if key == "common.resonance_offset":
+                return float(ps.common.resonance_offset)
+            if key == "common.attack_offset":
+                return float(ps.common.attack_offset)
+            if key == "common.release_offset":
+                return float(ps.common.release_offset)
+            if key == "common.portamento_time":
+                return float(ps.common.portamento_time)
+            if key == "common.analog_feel":
+                return float(ps.common.analog_feel)
+            if key.startswith("effects."):
+                return float(getattr(ps.effects, key.split(".", 1)[1], 0.0))
+            if key.startswith("tone."):
+                _, idx, param = key.split(".", 2)
+                t = ps.get_tone(int(idx))
+                return float(self._toneParam(t, param))
+            if key == "vector.x":
+                return float(self.engine.x)
+            if key == "vector.y":
+                return float(self.engine.y)
+            if key == "vector.w":
+                return float(self.engine.w)
+            if key == "vector.speed":
+                return float(self.engine.motion.speed)
+            if key == "vector.bpm":
+                return float(self.engine.motion.bpm)
+        except (ValueError, AttributeError, IndexError):
+            pass
+        return 0.0
+
+    @staticmethod
+    def _toneParam(t: ToneState, param: str) -> float:
+        mapping = {
+            "tvf_cutoff": t.tvf_cutoff, "tvf_resonance": t.tvf_resonance,
+            "tvf_env_depth": t.tvf_env_depth, "tvf_attack": t.tvf_t1,
+            "tvf_decay": t.tvf_t2, "tvf_sustain": t.tvf_l3, "tvf_release": t.tvf_t4,
+            "tva_level": t.level, "tva_pan": t.pan,
+            "tva_attack": t.tva_t1, "tva_decay": t.tva_t2,
+            "tva_sustain": t.tva_l3, "tva_release": t.tva_t4,
+            "pitch_coarse": t.coarse_tune, "pitch_fine": t.fine_tune,
+            "lfo1_rate": t.lfo1_rate, "lfo1_pitch_depth": t.lfo1_pitch_depth,
+            "lfo1_tvf_depth": t.lfo1_tvf_depth, "lfo1_tva_depth": t.lfo1_tva_depth,
+            "lfo1_pan_depth": t.lfo1_pan_depth, "lfo2_rate": t.lfo2_rate,
+            "lfo2_pitch_depth": t.lfo2_pitch_depth, "lfo2_tvf_depth": t.lfo2_tvf_depth,
+            "lfo2_tva_depth": t.lfo2_tva_depth, "lfo2_pan_depth": t.lfo2_pan_depth,
+            "chorus_send": t.chorus_send, "reverb_send": t.reverb_send,
+            "output_level": t.output_level,
+        }
+        return float(mapping.get(param, 0.0))
+
+    def _ensureBase(self, key: str) -> float:
+        bases = self.patch_state.macro_bases
+        if key not in bases:
+            bases[key] = float(self._readAbsolute(key))
+        return float(bases[key])
+
+    def _contributions(self, key: str) -> list[float]:
+        entry = self._macroEntry(key)
+        span = float(entry["span"]) if entry else 127.0
+        out = []
+        for mi, link in self._macroLinksFor(key):
+            v = self.patch_state.macros[mi].value
+            out.append(macro_delta(span, link.polarity, link.depth, v))
+        return out
+
+    def _recomputeTarget(self, key: str) -> float:
+        entry = self._macroEntry(key)
+        lo = float(entry["min"]) if entry else 0.0
+        hi = float(entry["max"]) if entry else 127.0
+        base = self._ensureBase(key)
+        sounding = resolve_sounding(base, self._contributions(key), lo, hi)
+        self._applyAbsolute(key, sounding)
+        return sounding
+
+    def _applyAbsolute(self, key: str, sounding: float) -> None:
+        """Write sounding value to patch_state + synth. Never touches bases."""
+        ps = self.patch_state
+        juno = self.engine.juno
+        is_int = not key.startswith("vector.")
+        val = sounding
+        if key.startswith("vector."):
+            if key == "vector.x":
+                self.engine.set_coordinates(max(0.0, min(1.0, val)), self.engine.y)
+            elif key == "vector.y":
+                self.engine.set_coordinates(self.engine.x, max(0.0, min(1.0, val)))
+            elif key == "vector.w":
+                self.engine.set_wavetable_pos(max(0.0, min(1.0, val)))
+            elif key == "vector.speed":
+                self.engine.motion.speed = max(0.25, min(4.0, val))
+                self.speedChanged.emit(self.engine.motion.speed)
+            elif key == "vector.bpm":
+                self.engine.motion.bpm = max(20.0, min(300.0, val))
+                self.bpmChanged.emit(self.engine.motion.bpm)
+            return
+        iv = int(round(max(0, val))) if is_int else val
+        try:
+            if key == "common.level":
+                ps.common.level = max(0, min(127, iv))
+                if juno:
+                    juno.set_patch_param("level", ps.common.level)
+            elif key == "common.pan":
+                ps.common.pan = max(0, min(127, iv))
+            elif key == "common.cutoff_offset":
+                ps.common.cutoff_offset = max(1, min(127, iv))
+                for t in ps.tones:
+                    pass
+                if juno:
+                    juno.set_patch_offsets(cutoff=ps.common.cutoff_offset)
+            elif key == "common.resonance_offset":
+                ps.common.resonance_offset = max(1, min(127, iv))
+                if juno:
+                    juno.set_patch_offsets(resonance=ps.common.resonance_offset)
+            elif key == "common.attack_offset":
+                ps.common.attack_offset = max(1, min(127, iv))
+                if juno:
+                    juno.set_patch_offsets(attack=ps.common.attack_offset)
+            elif key == "common.release_offset":
+                ps.common.release_offset = max(1, min(127, iv))
+                if juno:
+                    juno.set_patch_offsets(release=ps.common.release_offset)
+            elif key == "common.portamento_time":
+                ps.common.portamento_time = max(0, min(127, iv))
+                if juno:
+                    juno.set_portamento(ps.common.portamento_switch, time=ps.common.portamento_time)
+            elif key == "common.analog_feel":
+                ps.common.analog_feel = max(0, min(127, iv))
+                if juno:
+                    juno.set_patch_analog_feel(ps.common.analog_feel)
+            elif key.startswith("effects."):
+                field = key.split(".", 1)[1]
+                if hasattr(ps.effects, field):
+                    setattr(ps.effects, field, max(0, min(127, iv)))
+                    self._pushEffect(key, iv)
+            elif key.startswith("tone."):
+                _, idx, param = key.split(".", 2)
+                self._applyToneParam(int(idx), param, iv)
+        except (ValueError, AttributeError, IndexError) as e:
+            logger.debug(f"macro apply failed for {key}: {e}")
+
+    def _pushEffect(self, key: str, iv: int) -> None:
+        juno = self.engine.juno
+        if not juno:
+            return
+        try:
+            eff = self.patch_state.effects
+            if key == "effects.chorus_level":
+                juno.set_chorus(eff.chorus_type, level=eff.chorus_level)
+            elif key == "effects.reverb_level":
+                juno.set_reverb(eff.reverb_type, level=eff.reverb_level)
+            elif key.startswith("effects.chorus_"):
+                juno.set_chorus_param(key.split("_", 1)[1], iv)
+            elif key.startswith("effects.reverb_"):
+                juno.set_reverb_param(key.split("_", 1)[1], iv)
+            elif key.startswith("effects.mfx_"):
+                send = {"effects.mfx_dry_send": "dry", "effects.mfx_chorus_send": "chorus",
+                        "effects.mfx_reverb_send": "reverb"}.get(key)
+                if send:
+                    juno.set_mfx_send(send, iv)
+        except Exception as e:
+            logger.debug(f"macro effect push failed for {key}: {e}")
+
+    def _applyToneParam(self, tone_idx: int, param: str, iv: int) -> None:
+        ps = self.patch_state
+        t = ps.get_tone(tone_idx)
+        juno = self.engine.juno
+        if param == "tvf_cutoff":
+            t.tvf_cutoff = max(0, min(127, iv))
+            if juno:
+                juno.set_tone_tvf(tone_idx, cutoff=t.tvf_cutoff)
+        elif param == "tvf_resonance":
+            t.tvf_resonance = max(0, min(127, iv))
+            if juno:
+                juno.set_tone_tvf(tone_idx, resonance=t.tvf_resonance)
+        elif param == "tvf_env_depth":
+            t.tvf_env_depth = max(1, min(127, iv))
+            if juno:
+                juno.set_tone_tvf(tone_idx, env_depth=t.tvf_env_depth)
+        elif param in ("tvf_attack", "tvf_decay", "tvf_sustain", "tvf_release"):
+            setattr(t, param, max(0, min(127, iv)))
+            self._push_tvf_env(t)
+        elif param == "tva_level":
+            t.level = max(0, min(127, iv))
+            if not t.muted:
+                self.engine.set_tone_level(tone_idx, t.level)
+                if juno:
+                    juno.set_tone_level(tone_idx, t.level)
+        elif param == "tva_pan":
+            t.pan = max(0, min(127, iv))
+            if juno:
+                juno.set_tone_tva(tone_idx, pan=t.pan)
+        elif param in ("tva_attack", "tva_decay", "tva_sustain", "tva_release"):
+            setattr(t, {"tva_attack": "tva_t1", "tva_decay": "tva_t2",
+                        "tva_sustain": "tva_l3", "tva_release": "tva_t4"}[param],
+                    max(0, min(127, iv)))
+            self._push_tva_env(t)
+        elif param == "pitch_coarse":
+            t.coarse_tune = max(16, min(112, iv))
+            if juno:
+                juno.set_tone_pitch(tone_idx, coarse=t.coarse_tune)
+        elif param == "pitch_fine":
+            t.fine_tune = max(14, min(114, iv))
+            if juno:
+                juno.set_tone_pitch(tone_idx, fine=t.fine_tune)
+        elif param.startswith("lfo1_") or param.startswith("lfo2_"):
+            self._applyLfoParam(t, param, iv)
+        elif param == "chorus_send":
+            t.chorus_send = max(0, min(127, iv))
+            if juno:
+                juno.set_tone_param(tone_idx, 0x000D, t.chorus_send)
+        elif param == "reverb_send":
+            t.reverb_send = max(0, min(127, iv))
+            if juno:
+                juno.set_tone_param(tone_idx, 0x000E, t.reverb_send)
+        elif param == "output_level":
+            t.output_level = max(0, min(127, iv))
+            if juno:
+                juno.set_tone_param(tone_idx, 0x000C, t.output_level)
+
+    def _applyLfoParam(self, t: ToneState, param: str, iv: int) -> None:
+        juno = self.engine.juno
+        lfo = 1 if param.startswith("lfo1_") else 2
+        kind = param.split("_", 1)[1]
+        if kind == "rate":
+            if lfo == 1:
+                t.lfo1_rate = max(0, min(127, iv))
+            else:
+                t.lfo2_rate = max(0, min(127, iv))
+            if juno:
+                juno.set_tone_lfo(t.tone_index, lfo_index=lfo,
+                                  rate=t.lfo1_rate if lfo == 1 else t.lfo2_rate)
+        else:
+            depth = max(1, min(127, iv))
+            attr = f"lfo{lfo}_{kind}"
+            if hasattr(t, attr):
+                setattr(t, attr, depth)
+            if juno:
+                juno.set_tone_lfo(t.tone_index, lfo_index=lfo, **{kind: depth})
+
+    def _rebaseDirect(self, keys_bases: list[tuple[str, float]]) -> None:
+        """Treat direct edits as new bases (semantics ii). No-op for unlinked keys."""
+        touched: set[str] = set()
+        for key, new_base in keys_bases:
+            if not self._macroLinksFor(key):
+                continue
+            entry = self._macroEntry(key)
+            lo = float(entry["min"]) if entry else 0.0
+            hi = float(entry["max"]) if entry else 127.0
+            self.patch_state.macro_bases[key] = max(lo, min(hi, float(new_base)))
+            self._recomputeTarget(key)
+            touched.add(key)
+        if touched:
+            self._emitForMacroKeys(touched)
+
+    def _rebaseLfoParam(self, lfo_idx: int, param: str, targets: list) -> None:
+        """Rebase helper for setLfoParam (depths raw=centered, rate absolute)."""
+        if param in ("wave", "delay_time", "fade_mode", "fade_time"):
+            return
+        pairs = []
+        for t in targets:
+            if param == "rate":
+                key = f"tone.{t.tone_index}.lfo{lfo_idx}_rate"
+                base = t.lfo1_rate if lfo_idx == 1 else t.lfo2_rate
+            else:
+                key = f"tone.{t.tone_index}.lfo{lfo_idx}_{param}"
+                attr = f"lfo{lfo_idx}_{param}"
+                base = float(getattr(t, attr, 64))
+            pairs.append((key, base))
+        if pairs:
+            self._rebaseDirect(pairs)
+
+    def _rebaseChorusParam(self, param: str) -> None:
+        mapping = {"level": ("effects.chorus_level", self.patch_state.effects.chorus_level),
+                   "rate": ("effects.chorus_rate", self.patch_state.effects.chorus_rate),
+                   "depth": ("effects.chorus_depth", self.patch_state.effects.chorus_depth),
+                   "preDelay": ("effects.chorus_predelay", self.patch_state.effects.chorus_predelay),
+                   "feedback": ("effects.chorus_feedback", self.patch_state.effects.chorus_feedback)}
+        if param in mapping:
+            key, base = mapping[param]
+            self._rebaseDirect([(key, base)])
+
+    def _rebaseReverbParam(self, param: str) -> None:
+        mapping = {"level": ("effects.reverb_level", self.patch_state.effects.reverb_level),
+                   "time": ("effects.reverb_time", self.patch_state.effects.reverb_time),
+                   "damp": ("effects.reverb_damp", self.patch_state.effects.reverb_damp),
+                   "preDelay": ("effects.reverb_predelay", self.patch_state.effects.reverb_predelay),
+                   "diffusion": ("effects.reverb_diffusion", self.patch_state.effects.reverb_diffusion),
+                   "tone": ("effects.reverb_tone", self.patch_state.effects.reverb_tone)}
+        if param in mapping:
+            key, base = mapping[param]
+            self._rebaseDirect([(key, base)])
+
+    def _emitForMacroKeys(self, keys: set[str]) -> None:
+        if any(k.startswith("tone.") and ".tvf_" in k or k.startswith("common.cutoff") or k.startswith("common.resonance") for k in keys):
+            try:
+                self.masterCutoffChanged.emit(self.masterCutoff)
+                self.masterResoChanged.emit(self.masterReso)
+            except Exception:
+                pass
+        if any("tva_" in k or "tva-level" in k or k.endswith("tva_level") or "attack" in k or "release" in k for k in keys):
+            try:
+                self.masterAttackChanged.emit(self.masterAttack)
+                self.masterReleaseChanged.emit(self.masterRelease)
+                self.tvaLevelChanged.emit(self.tvaLevel)
+            except Exception:
+                pass
+        if any(k.startswith("effects.chorus") for k in keys):
+            self.chorusParamsChanged.emit()
+        if any(k.startswith("effects.reverb") for k in keys):
+            self.reverbParamsChanged.emit()
+        if any(k.startswith("effects.mfx") for k in keys):
+            self.mfxParamsChanged.emit()
+        if any(k.startswith("tone.") for k in keys):
+            try:
+                self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])
+            except Exception:
+                pass
+            self.lfoParamsChanged.emit()
+            self.pitchCoarseChanged.emit(self.pitchCoarse)
+            self.pitchFineChanged.emit(self.pitchFine)
+        self.macrosChanged.emit()
 
     def _emit_all_state_signals(self) -> None:
         """Emit signals for all properties to trigger complete UI refresh."""
@@ -1184,39 +1553,119 @@ class SpectreBridge(QObject):
             for p in self.patch_state.perf_parts[:8]
         ]
 
-    # Macro deck values are READ-ONLY reflections of the underlying synth parameters.
-    # setMacro() writes the parameters themselves; these getters always mirror truth.
-    @pyqtProperty(int, notify=macrosChanged)
-    def macro1(self) -> int:
-        return self.patch_state.common.cutoff_offset
+    # Relative macros: knob owns value in [-1, 1]; sounding = base + SUM.
+    @pyqtProperty("QVariantList", notify=macrosChanged)
+    def macroNames(self) -> list:
+        return [s.name for s in self.patch_state.macros]
 
-    @pyqtProperty(int, notify=macrosChanged)
-    def macro2(self) -> int:
-        return self.patch_state.common.resonance_offset
+    @pyqtProperty("QVariantList", notify=macrosChanged)
+    def macroValues(self) -> list:
+        return [float(s.value) for s in self.patch_state.macros]
 
-    @pyqtProperty(int, notify=macrosChanged)
-    def macro3(self) -> int:
-        return self.patch_state.common.attack_offset
+    @pyqtProperty("QVariantList", notify=macrosChanged)
+    def macroLinkCounts(self) -> list:
+        return [len(s.links) for s in self.patch_state.macros]
 
-    @pyqtProperty(int, notify=macrosChanged)
-    def macro4(self) -> int:
-        return self.patch_state.common.release_offset
+    @pyqtSlot(int, result="QVariantList")
+    def getMacroLinks(self, index: int) -> list:
+        """Assigned targets for macro 1..8 with live sounding values."""
+        if not (1 <= index <= len(self.patch_state.macros)):
+            return []
+        out = []
+        for pos, link in enumerate(self.patch_state.macros[index - 1].links):
+            entry = self._macroEntry(link.target_key)
+            for concrete in self._expandKey(link.target_key):
+                out.append({
+                    "pos": pos,
+                    "key": link.target_key,
+                    "concrete": concrete,
+                    "title": entry["title"] if entry else link.target_key,
+                    "category": entry["category"] if entry else "",
+                    "polarity": link.polarity,
+                    "depth": link.depth,
+                    "span": float(entry["span"]) if entry else 127.0,
+                    "min": float(entry["min"]) if entry else 0.0,
+                    "max": float(entry["max"]) if entry else 127.0,
+                    "liveValue": self._readAbsolute(concrete),
+                })
+                break  # one row per link (all-variant shows first live value)
+        return out
 
-    @pyqtProperty(int, notify=macrosChanged)
-    def macro5(self) -> int:
-        return self.patch_state.common.portamento_time
+    @pyqtSlot(str, str, result="QVariantList")
+    def getMacroTargets(self, category: str = "ALL", query: str = "") -> list:
+        return filter_macro_targets(category, query)
 
-    @pyqtProperty(int, notify=macrosChanged)
-    def macro6(self) -> int:
-        return self.patch_state.common.analog_feel
+    @pyqtSlot(result="QVariantList")
+    def getMacroCategories(self) -> list:
+        return get_macro_categories()
 
-    @pyqtProperty(int, notify=macrosChanged)
-    def macro7(self) -> int:
-        return self.patch_state.effects.chorus_level
+    @pyqtSlot(int, str)
+    def setMacroName(self, index: int, name: str) -> None:
+        if 1 <= index <= len(self.patch_state.macros):
+            clean = (name or "").strip().upper()[:14] or f"M{index}"
+            self.patch_state.macros[index - 1].name = clean
+            self.macrosChanged.emit()
 
-    @pyqtProperty(int, notify=macrosChanged)
-    def macro8(self) -> int:
-        return self.patch_state.effects.reverb_level
+    @pyqtSlot(int, str)
+    def addMacroTarget(self, index: int, key: str) -> None:
+        """Add link with defaults (polarity +, depth 50%). No duplicates."""
+        if not (1 <= index <= len(self.patch_state.macros)):
+            return
+        if self._macroEntry(key) is None:
+            return
+        slot = self.patch_state.macros[index - 1]
+        if any(li.target_key == key for li in slot.links):
+            return
+        from ..core.patch_state import MacroLink
+
+        slot.links.append(MacroLink(key, 1, 0.5))
+        for concrete in self._expandKey(key):
+            self._ensureBase(concrete)
+        self._recomputeForMacro(index - 1)
+        self.macrosChanged.emit()
+
+    @pyqtSlot(int, int)
+    def removeMacroTarget(self, index: int, pos: int) -> None:
+        if 1 <= index <= len(self.patch_state.macros):
+            slot = self.patch_state.macros[index - 1]
+            if 0 <= pos < len(slot.links):
+                slot.links.pop(pos)
+                self.macrosChanged.emit()
+
+    @pyqtSlot(int, int, int, float)
+    def setMacroLink(self, index: int, pos: int, polarity: int, depth: float) -> None:
+        if 1 <= index <= len(self.patch_state.macros):
+            slot = self.patch_state.macros[index - 1]
+            if 0 <= pos < len(slot.links):
+                link = slot.links[pos]
+                link.polarity = 1 if polarity >= 0 else -1
+                link.depth = max(0.0, min(1.0, float(depth)))
+                self._recomputeForMacro(index - 1)
+                self.macrosChanged.emit()
+
+    @pyqtSlot(int, float)
+    def setMacro(self, index: int, value: float) -> None:
+        """Drive macro knob 1..8 (value in [-1, 1]) with summed fan-out."""
+        if not (1 <= index <= len(self.patch_state.macros)):
+            return
+        slot = self.patch_state.macros[index - 1]
+        slot.value = max(-1.0, min(1.0, float(value)))
+        self._recomputeForMacro(index - 1)
+        self.macrosChanged.emit()
+
+    def _recomputeForMacro(self, macro_idx: int) -> None:
+        touched: set[str] = set()
+        for link in self.patch_state.macros[macro_idx].links:
+            for concrete in self._expandKey(link.target_key):
+                self._ensureBase(concrete)
+                self._recomputeTarget(concrete)
+                touched.add(concrete)
+        if touched:
+            self._emitForMacroKeys(touched)
+
+    @pyqtSlot(int)
+    def openMacroAssign(self, index: int) -> None:
+        self.requestOpenMacroAssign.emit(max(1, min(8, int(index))))
 
     @pyqtProperty(int, notify=analogFeelChanged)
     def analogFeel(self) -> int:
@@ -1233,6 +1682,7 @@ class SpectreBridge(QObject):
             self.engine.motion.set_orbit_center(x, y)
             self.attractorChanged.emit(self.engine.motion.center_x, self.engine.motion.center_y)
         self.engine.set_coordinates(x, y, record_gesture=True)
+        self._rebaseDirect([("vector.x", self.engine.x), ("vector.y", self.engine.y)])
 
     @pyqtSlot(float, float)
     def setOrbitAttractor(self, x: float, y: float) -> None:
@@ -1250,6 +1700,7 @@ class SpectreBridge(QObject):
     def setWavetablePos(self, w: float) -> None:
         """Update 1D wavetable morph position from slider."""
         self.engine.set_wavetable_pos(w)
+        self._rebaseDirect([("vector.w", self.engine.w)])
 
     @pyqtSlot(str)
     def setWavetableSweepMode(self, mode_str: str) -> None:
@@ -1335,6 +1786,7 @@ class SpectreBridge(QObject):
     def setSpeed(self, speed_val: float) -> None:
         """Set motion speed multiplier."""
         self.engine.motion.speed = max(0.1, min(4.0, speed_val))
+        self._rebaseDirect([("vector.speed", self.engine.motion.speed)])
         self.speedChanged.emit(self.engine.motion.speed)
 
     @pyqtSlot(str)
@@ -1372,6 +1824,7 @@ class SpectreBridge(QObject):
     def setBpm(self, bpm_val: float) -> None:
         """Update tempo BPM."""
         self.engine.motion.bpm = max(20.0, min(300.0, bpm_val))
+        self._rebaseDirect([("vector.bpm", self.engine.motion.bpm)])
         self.bpmChanged.emit(self.engine.motion.bpm)
 
     @pyqtSlot()
@@ -1504,6 +1957,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_level(tone_number, clamped)
                 except Exception as e:
                     logger.error(f"Error setting tone level on synth: {e}")
+        self._rebaseDirect([(f"tone.{max(1, min(4, tone_number))}.tva_level", clamped)])
         self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])
         if tone_number == self._selected_tone:
             self.tvaLevelChanged.emit(clamped)
@@ -1522,6 +1976,7 @@ class SpectreBridge(QObject):
                         self.engine.juno.set_tone_level(t.tone_index, clamped)
                     except Exception as e:
                         logger.error(f"Error setting tone level on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.tva_level", clamped) for t in targets])
         self.tvaLevelChanged.emit(self._active_tone().level)
         self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])
 
@@ -1534,74 +1989,6 @@ class SpectreBridge(QObject):
             self.curveChanged.emit(curve.value)
         except ValueError:
             logger.warning(f"Invalid curve: {curve_str}")
-
-    @pyqtSlot(int, int)
-    def setMacro(self, index: int, value: int) -> None:
-        """Drive the underlying synth parameter for macro knob 1..8 (0..127).
-
-        Macro values are never stored: the macro1..8 properties read the parameters
-        back, keeping the deck honest as the single reflection layer.
-        """
-        if not (1 <= index <= 8):
-            return
-        clamped = max(0, min(127, int(value)))
-
-        juno = self.engine.juno
-        try:
-            if index == 1:
-                offset_val = max(1, min(127, clamped))
-                self.patch_state.common.cutoff_offset = offset_val
-                self._active_tone().tvf_cutoff = offset_val
-                self.masterCutoffChanged.emit(offset_val)
-                if juno:
-                    juno.set_patch_offsets(cutoff=offset_val)
-            elif index == 2:
-                offset_val = max(1, min(127, clamped))
-                self.patch_state.common.resonance_offset = offset_val
-                self._active_tone().tvf_resonance = offset_val
-                self.masterResoChanged.emit(offset_val)
-                if juno:
-                    juno.set_patch_offsets(resonance=offset_val)
-            elif index == 3:
-                offset_val = max(1, min(127, clamped))
-                self.patch_state.common.attack_offset = offset_val
-                self._active_tone().tva_attack = offset_val
-                self.masterAttackChanged.emit(offset_val)
-                self.envShapeChanged.emit("TVA")
-                if juno:
-                    juno.set_patch_offsets(attack=offset_val)
-            elif index == 4:
-                offset_val = max(1, min(127, clamped))
-                self.patch_state.common.release_offset = offset_val
-                self._active_tone().tva_release = offset_val
-                self.masterReleaseChanged.emit(offset_val)
-                self.envShapeChanged.emit("TVA")
-                if juno:
-                    juno.set_patch_offsets(release=offset_val)
-            elif index == 5:
-                self.patch_state.common.portamento_time = clamped
-                self.portamentoTimeChanged.emit(clamped)
-                if juno:
-                    juno.set_portamento(self.patch_state.common.portamento_switch, time=clamped)
-            elif index == 6:
-                self.patch_state.common.analog_feel = clamped
-                self.analogFeelChanged.emit(clamped)
-                if juno:
-                    juno.set_patch_analog_feel(clamped)
-            elif index == 7:
-                self.patch_state.effects.chorus_level = clamped
-                self.chorusParamsChanged.emit()
-                if juno:
-                    juno.set_chorus(self.patch_state.effects.chorus_type, level=clamped)
-            elif index == 8:
-                self.patch_state.effects.reverb_level = clamped
-                self.reverbParamsChanged.emit()
-                if juno:
-                    juno.set_reverb(self.patch_state.effects.reverb_type, level=clamped)
-        except Exception as e:
-            logger.error(f"Error dispatching macro {index} to synth: {e}")
-        finally:
-            self.macrosChanged.emit()
 
     # -------------------------------------------------------------------------
     # Invokable Slots from QML: Tone TVF, TVA, Pitch, Portamento
@@ -1619,6 +2006,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_tvf(t.tone_index, cutoff=clamped)
                 except Exception as e:
                     logger.error(f"Error setting cutoff on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_cutoff", clamped) for t in targets])
         self.masterCutoffChanged.emit(clamped)
 
     @pyqtSlot(int)
@@ -1633,6 +2021,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_tvf(t.tone_index, resonance=clamped)
                 except Exception as e:
                     logger.error(f"Error setting resonance on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_resonance", clamped) for t in targets])
         self.masterResoChanged.emit(clamped)
 
     @pyqtSlot(int)
@@ -1641,6 +2030,7 @@ class SpectreBridge(QObject):
         clamped = max(0, min(127, int(val)))
         if self.patch_state.common.level != clamped:
             self.patch_state.common.level = clamped
+            self._rebaseDirect([("common.level", clamped)])
             self.masterLevelChanged.emit(clamped)
             if self.engine.juno:
                 try:
@@ -1692,6 +2082,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_tvf(t.tone_index, env_depth=raw_val)
                 except Exception as e:
                     logger.error(f"Error setting TVF env depth on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_env_depth", raw_val) for t in targets])
         self.tvfEnvDepthChanged.emit(clamped)
         self.envShapeChanged.emit("TVF")
 
@@ -1717,6 +2108,7 @@ class SpectreBridge(QObject):
         for t in targets:
             t.tvf_attack = clamped
             self._push_tvf_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_attack", clamped) for t in targets])
         self.tvfAttackChanged.emit(clamped)
         self.envShapeChanged.emit("TVF")
 
@@ -1727,6 +2119,7 @@ class SpectreBridge(QObject):
         for t in targets:
             t.tvf_decay = clamped
             self._push_tvf_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_decay", clamped) for t in targets])
         self.tvfDecayChanged.emit(clamped)
         self.envShapeChanged.emit("TVF")
 
@@ -1737,6 +2130,7 @@ class SpectreBridge(QObject):
         for t in targets:
             t.tvf_sustain = clamped
             self._push_tvf_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_sustain", clamped) for t in targets])
         self.tvfSustainChanged.emit(clamped)
         self.envShapeChanged.emit("TVF")
 
@@ -1747,6 +2141,7 @@ class SpectreBridge(QObject):
         for t in targets:
             t.tvf_release = clamped
             self._push_tvf_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_release", clamped) for t in targets])
         self.tvfReleaseChanged.emit(clamped)
         self.envShapeChanged.emit("TVF")
 
@@ -1758,6 +2153,7 @@ class SpectreBridge(QObject):
         for t in targets:
             t.tva_attack = clamped
             self._push_tva_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tva_attack", clamped) for t in targets])
         self.tvaAttackChanged.emit(clamped)
         self.masterAttackChanged.emit(clamped)
         self.envShapeChanged.emit("TVA")
@@ -1773,6 +2169,7 @@ class SpectreBridge(QObject):
         for t in targets:
             t.tva_decay = clamped
             self._push_tva_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tva_decay", clamped) for t in targets])
         self.tvaDecayChanged.emit(clamped)
         self.envShapeChanged.emit("TVA")
 
@@ -1783,6 +2180,7 @@ class SpectreBridge(QObject):
         for t in targets:
             t.tva_sustain = clamped
             self._push_tva_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tva_sustain", clamped) for t in targets])
         self.tvaSustainChanged.emit(clamped)
         self.envShapeChanged.emit("TVA")
 
@@ -1794,6 +2192,7 @@ class SpectreBridge(QObject):
         for t in targets:
             t.tva_release = clamped
             self._push_tva_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tva_release", clamped) for t in targets])
         self.tvaReleaseChanged.emit(clamped)
         self.masterReleaseChanged.emit(clamped)
         self.envShapeChanged.emit("TVA")
@@ -1815,6 +2214,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_tva(t.tone_index, pan=raw_val)
                 except Exception as e:
                     logger.error(f"Error setting TVA pan on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.tva_pan", raw_val) for t in targets])
         self.tvaPanChanged.emit(clamped)
 
     @pyqtSlot(int)
@@ -1845,6 +2245,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_pitch(t.tone_index, coarse=raw_val)
                 except Exception as e:
                     logger.error(f"Error setting coarse tune on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.pitch_coarse", raw_val) for t in targets])
         self.pitchCoarseChanged.emit(clamped)
 
     @pyqtSlot(int)
@@ -1862,6 +2263,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_pitch(t.tone_index, fine=raw_val)
                 except Exception as e:
                     logger.error(f"Error setting fine tune on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.pitch_fine", raw_val) for t in targets])
         self.pitchFineChanged.emit(clamped)
         self.vaParamsChanged.emit()
 
@@ -1871,6 +2273,7 @@ class SpectreBridge(QObject):
         clamped = max(0, min(127, int(val)))
         if self.patch_state.common.portamento_time != clamped:
             self.patch_state.common.portamento_time = clamped
+            self._rebaseDirect([("common.portamento_time", clamped)])
             self.portamentoTimeChanged.emit(clamped)
             self.macrosChanged.emit()
             if self.engine.juno:
@@ -1907,12 +2310,12 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(int)
     def setAnalogFeel(self, val: int) -> None:
-        """Set Patch Analog Feel / 1/f drift depth (0..127), keeping Macro 6 in sync."""
+        """Set Patch Analog Feel / 1/f drift depth (0..127)."""
         clamped = max(0, min(127, int(val)))
         if self.patch_state.common.analog_feel != clamped:
             self.patch_state.common.analog_feel = clamped
+            self._rebaseDirect([("common.analog_feel", clamped)])
             self.analogFeelChanged.emit(clamped)
-            self.macrosChanged.emit()
             if self.engine.juno:
                 try:
                     self.engine.juno.set_patch_analog_feel(clamped)
@@ -2001,6 +2404,7 @@ class SpectreBridge(QObject):
                     if self.engine.juno:
                         self.engine.juno.set_tone_param(t.tone_index, 0x0103, t.lfo2_fade_time)
 
+        self._rebaseLfoParam(lfo_idx, param, targets)
         self.lfoParamsChanged.emit()
 
     # -------------------------------------------------------------------------
@@ -2018,6 +2422,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_tvf(t.tone_index, cutoff=clamped)
                 except Exception as e:
                     logger.error(f"Error sculpting cutoff on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_cutoff", clamped) for t in self.patch_state.tones])
         self.masterCutoffChanged.emit(clamped)
 
     @pyqtSlot(int)
@@ -2031,6 +2436,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_tvf(t.tone_index, resonance=clamped)
                 except Exception as e:
                     logger.error(f"Error sculpting resonance on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_resonance", clamped) for t in self.patch_state.tones])
         self.masterResoChanged.emit(clamped)
 
     @pyqtSlot(str)
@@ -2074,6 +2480,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_tvf(t.tone_index, env_depth=raw_val)
                 except Exception as e:
                     logger.error(f"Error sculpting TVF env depth on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_env_depth", raw_val) for t in self.patch_state.tones])
         self.tvfEnvDepthChanged.emit(clamped)
         self.envShapeChanged.emit("TVF")
 
@@ -2098,6 +2505,7 @@ class SpectreBridge(QObject):
         for t in self.patch_state.tones:
             t.tvf_attack = clamped
             self._push_tvf_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_attack", clamped) for t in self.patch_state.tones])
         self.tvfAttackChanged.emit(clamped)
         self.envShapeChanged.emit("TVF")
 
@@ -2108,6 +2516,7 @@ class SpectreBridge(QObject):
         for t in self.patch_state.tones:
             t.tvf_decay = clamped
             self._push_tvf_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_decay", clamped) for t in self.patch_state.tones])
         self.tvfDecayChanged.emit(clamped)
         self.envShapeChanged.emit("TVF")
 
@@ -2118,6 +2527,7 @@ class SpectreBridge(QObject):
         for t in self.patch_state.tones:
             t.tvf_sustain = clamped
             self._push_tvf_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_sustain", clamped) for t in self.patch_state.tones])
         self.tvfSustainChanged.emit(clamped)
         self.envShapeChanged.emit("TVF")
 
@@ -2128,6 +2538,7 @@ class SpectreBridge(QObject):
         for t in self.patch_state.tones:
             t.tvf_release = clamped
             self._push_tvf_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_release", clamped) for t in self.patch_state.tones])
         self.tvfReleaseChanged.emit(clamped)
         self.envShapeChanged.emit("TVF")
 
@@ -2143,6 +2554,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_tva(t.tone_index, pan=raw_val)
                 except Exception as e:
                     logger.error(f"Error sculpting TVA pan on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.tva_pan", raw_val) for t in self.patch_state.tones])
         self.tvaPanChanged.emit(clamped)
 
     @pyqtSlot(int)
@@ -2166,6 +2578,7 @@ class SpectreBridge(QObject):
         for t in self.patch_state.tones:
             t.tva_attack = clamped
             self._push_tva_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tva_attack", clamped) for t in self.patch_state.tones])
         self.tvaAttackChanged.emit(clamped)
         self.masterAttackChanged.emit(clamped)
         self.envShapeChanged.emit("TVA")
@@ -2177,6 +2590,7 @@ class SpectreBridge(QObject):
         for t in self.patch_state.tones:
             t.tva_decay = clamped
             self._push_tva_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tva_decay", clamped) for t in self.patch_state.tones])
         self.tvaDecayChanged.emit(clamped)
         self.envShapeChanged.emit("TVA")
 
@@ -2187,6 +2601,7 @@ class SpectreBridge(QObject):
         for t in self.patch_state.tones:
             t.tva_sustain = clamped
             self._push_tva_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tva_sustain", clamped) for t in self.patch_state.tones])
         self.tvaSustainChanged.emit(clamped)
         self.envShapeChanged.emit("TVA")
 
@@ -2197,6 +2612,7 @@ class SpectreBridge(QObject):
         for t in self.patch_state.tones:
             t.tva_release = clamped
             self._push_tva_env(t)
+        self._rebaseDirect([(f"tone.{t.tone_index}.tva_release", clamped) for t in self.patch_state.tones])
         self.tvaReleaseChanged.emit(clamped)
         self.masterReleaseChanged.emit(clamped)
         self.envShapeChanged.emit("TVA")
@@ -2282,6 +2698,7 @@ class SpectreBridge(QObject):
                     if self.engine.juno:
                         self.engine.juno.set_tone_param(t.tone_index, 0x0103, t.lfo2_fade_time)
 
+        self._rebaseLfoParam(lfo_idx, param, list(self.patch_state.tones))
         self.lfoParamsChanged.emit()
 
     @pyqtSlot(int)
@@ -2296,6 +2713,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_pitch(t.tone_index, coarse=raw_val)
                 except Exception as e:
                     logger.error(f"Error sculpting coarse tune on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.pitch_coarse", raw_val) for t in self.patch_state.tones])
         self.pitchCoarseChanged.emit(clamped)
 
     @pyqtSlot(int)
@@ -2312,6 +2730,7 @@ class SpectreBridge(QObject):
                     self.engine.juno.set_tone_pitch(t.tone_index, fine=raw_val)
                 except Exception as e:
                     logger.error(f"Error sculpting fine tune on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.pitch_fine", raw_val) for t in self.patch_state.tones])
         self.pitchFineChanged.emit(clamped)
         self.vaParamsChanged.emit()
 
@@ -2670,6 +3089,7 @@ class SpectreBridge(QObject):
             except Exception as e:
                 logger.error(f"Error setting chorus on synth: {e}")
 
+        self._rebaseChorusParam(param)
         self.chorusParamsChanged.emit()
         self.routingChanged.emit()
         self.macrosChanged.emit()
@@ -2702,6 +3122,7 @@ class SpectreBridge(QObject):
             except Exception as e:
                 logger.error(f"Error setting reverb on synth: {e}")
 
+        self._rebaseReverbParam(param)
         self.reverbParamsChanged.emit()
         self.routingChanged.emit()
         self.macrosChanged.emit()
@@ -2831,6 +3252,10 @@ class SpectreBridge(QObject):
             except Exception as e:
                 logger.error(f"Error setting MFX sends on synth: {e}")
 
+        key = {"dry": "effects.mfx_dry_send", "chorus": "effects.mfx_chorus_send",
+               "reverb": "effects.mfx_reverb_send"}.get(send_type)
+        if key:
+            self._rebaseDirect([(key, clamped)])
         self.mfxParamsChanged.emit()
         self.routingChanged.emit()
 
@@ -3070,6 +3495,7 @@ class SpectreBridge(QObject):
                         juno.set_tone_output(t.tone_index, output_level=t.output_level)
                     except Exception as e:
                         logger.error(f"Error setting tone output level: {e}")
+                self._rebaseDirect([(f"tone.{t.tone_index}.output_level", t.output_level)])
             elif param == "chorusSend":
                 t.chorus_send = max(0, min(127, int(val)))
                 if juno:
@@ -3077,6 +3503,7 @@ class SpectreBridge(QObject):
                         juno.set_tone_output(t.tone_index, chorus_send=t.chorus_send)
                     except Exception as e:
                         logger.error(f"Error setting tone chorus send: {e}")
+                self._rebaseDirect([(f"tone.{t.tone_index}.chorus_send", t.chorus_send)])
             elif param == "reverbSend":
                 t.reverb_send = max(0, min(127, int(val)))
                 if juno:
@@ -3084,6 +3511,7 @@ class SpectreBridge(QObject):
                         juno.set_tone_output(t.tone_index, reverb_send=t.reverb_send)
                     except Exception as e:
                         logger.error(f"Error setting tone reverb send: {e}")
+                self._rebaseDirect([(f"tone.{t.tone_index}.reverb_send", t.reverb_send)])
 
         self.routingChanged.emit()
 
@@ -3446,7 +3874,12 @@ class SpectreBridge(QObject):
                 try:
                     state = self.engine.juno.read_full_patch(timeout=1.0)
                     if isinstance(state, PatchState):
+                        # Preserve customizable macro assignments (names/links/values);
+                        # bases re-capture lazily from the fresh hardware truth.
+                        kept_macros = self.patch_state.macros
                         self.patch_state = state
+                        self.patch_state.macros = kept_macros
+                        self.patch_state.macro_bases = {}
                         self.patch_state.effects.routing_preset = ""  # No algorithm preset selected on hardware sync
                         self._patch_name = state.common.name
                         self._sound_mode = state.sound_mode

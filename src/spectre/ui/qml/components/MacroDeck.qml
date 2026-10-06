@@ -10,6 +10,9 @@ Rectangle {
     border.color: Theme.borderCard
     border.width: 1
 
+    readonly property var knobColors: [Theme.tone1, Theme.tone2, Theme.tone3, Theme.tone4,
+        "#f59e0b", "#38bdf8", "#a855f7", "#ec4899"]
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: ScaleMetrics.dp(12)
@@ -27,14 +30,14 @@ Rectangle {
             }
             Item { Layout.fillWidth: true }
             Text {
-                text: "ASSIGNED TO PHYSICAL ENCODERS 1 - 8"
+                text: "RELATIVE • EDIT TO CUSTOMIZE • DOUBLE-TAP KNOB TO CENTER"
                 font.bold: true
-                font.pixelSize: ScaleMetrics.sp(10)
+                font.pixelSize: ScaleMetrics.sp(9)
                 color: Theme.textDim
             }
         }
 
-        // 4x2 Grid of 8 Large Touch Macro Dials
+        // 4x2 Grid of 8 Bipolar Touch Macro Dials
         GridLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -42,99 +45,69 @@ Rectangle {
             rowSpacing: ScaleMetrics.dp(10)
             columnSpacing: ScaleMetrics.dp(10)
 
-            MacroKnob {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                macroIndex: 1
-                macroTitle: "CUTOFF"
-                macroColor: Theme.tone1
-                macroValue: Bridge.macro1
-            }
-
-            MacroKnob {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                macroIndex: 2
-                macroTitle: "RESO"
-                macroColor: Theme.tone2
-                macroValue: Bridge.macro2
-            }
-
-            MacroKnob {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                macroIndex: 3
-                macroTitle: "ATTACK"
-                macroColor: Theme.tone3
-                macroValue: Bridge.macro3
-            }
-
-            MacroKnob {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                macroIndex: 4
-                macroTitle: "RELEASE"
-                macroColor: Theme.tone4
-                macroValue: Bridge.macro4
-            }
-
-            MacroKnob {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                macroIndex: 5
-                macroTitle: "PORTA TIME"
-                macroColor: "#f59e0b"
-                macroValue: Bridge.macro5
-            }
-
-            MacroKnob {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                macroIndex: 6
-                macroTitle: "ANALOG FEEL"
-                macroColor: "#38bdf8"
-                macroValue: Bridge.macro6
-            }
-
-            MacroKnob {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                macroIndex: 7
-                macroTitle: "CHORUS"
-                macroColor: "#a855f7"
-                macroValue: Bridge.macro7
-            }
-
-            MacroKnob {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                macroIndex: 8
-                macroTitle: "REVERB"
-                macroColor: "#ec4899"
-                macroValue: Bridge.macro8
+            Repeater {
+                model: 8
+                delegate: MacroKnob {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    macroIndex: modelData + 1
+                    macroTitle: (Bridge.macroNames && Bridge.macroNames.length > modelData)
+                                ? Bridge.macroNames[modelData] : ("M" + (modelData + 1))
+                    macroColor: root.knobColors[modelData]
+                    macroValue01: (Bridge.macroValues && Bridge.macroValues.length > modelData)
+                                  ? Bridge.macroValues[modelData] : 0.0
+                    linkCount: (Bridge.macroLinkCounts && Bridge.macroLinkCounts.length > modelData)
+                               ? Bridge.macroLinkCounts[modelData] : 0
+                }
             }
         }
     }
 
-    // Touch Macro Knob Component
+    // Bipolar Relative Macro Knob Component (value in [-1, 1], 0 = neutral)
     component MacroKnob: Rectangle {
         id: knobRoot
         property int macroIndex: 1
         property string macroTitle: "MACRO"
         property color macroColor: Theme.primary
-        property int macroValue: 64
+        property real macroValue01: 0.0
+        property int linkCount: 0
 
         radius: ScaleMetrics.dp(8)
         color: Theme.bgApp
         border.color: knobMouse.containsPress ? knobRoot.macroColor : Theme.borderCard
         border.width: 1
 
+        // Drag / double-tap layer (declared first so the title edit tap sits above it)
+        MouseArea {
+            id: knobMouse
+            anchors.fill: parent
+            property real startY: 0
+            property real startVal: 0
+
+            onPressed: (mouse) => {
+                startY = mouse.y;
+                startVal = knobRoot.macroValue01;
+            }
+
+            onPositionChanged: (mouse) => {
+                if (pressed) {
+                    const dy = startY - mouse.y;
+                    const newVal = Math.max(-1.0, Math.min(1.0, startVal + dy / ScaleMetrics.dp(70)));
+                    Bridge.setMacro(knobRoot.macroIndex, newVal);
+                }
+            }
+
+            onDoubleClicked: {
+                Bridge.setMacro(knobRoot.macroIndex, 0.0);
+            }
+        }
+
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: ScaleMetrics.dp(8)
             spacing: ScaleMetrics.dp(4)
 
-            // Title
+            // Title (tap to edit assignments + rename)
             RowLayout {
                 Layout.fillWidth: true
                 Text {
@@ -151,9 +124,43 @@ Rectangle {
                     color: Theme.textSecondary
                     elide: Text.ElideRight
                 }
+                Rectangle {
+                    visible: knobRoot.linkCount > 1
+                    width: ScaleMetrics.dp(30)
+                    height: ScaleMetrics.dp(16)
+                    radius: ScaleMetrics.dp(8)
+                    color: Theme.bgCardActive
+                    Text {
+                        anchors.centerIn: parent
+                        text: knobRoot.linkCount + "×"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(9)
+                        color: knobRoot.macroColor
+                    }
+                }
+                Rectangle {
+                    width: ScaleMetrics.dp(38)
+                    height: ScaleMetrics.dp(18)
+                    radius: ScaleMetrics.dp(4)
+                    color: editArea.pressed ? Theme.bgCardActive : Theme.bgSurface
+                    border.color: knobRoot.macroColor
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "EDIT"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: knobRoot.macroColor
+                    }
+                    MouseArea {
+                        id: editArea
+                        anchors.fill: parent
+                        onClicked: Bridge.openMacroAssign(knobRoot.macroIndex)
+                    }
+                }
             }
 
-            // Dial Visualizer (Canvas arc)
+            // Dial Visualizer (center-out bipolar arc)
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -176,8 +183,9 @@ Rectangle {
                         const startAngle = 0.75 * Math.PI;
                         const endAngle = 2.25 * Math.PI;
                         const totalAngle = endAngle - startAngle;
-                        const norm = knobRoot.macroValue / 127.0;
-                        const currentAngle = startAngle + norm * totalAngle;
+                        const centerAngle = startAngle + totalAngle / 2;
+                        const v = Math.max(-1.0, Math.min(1.0, knobRoot.macroValue01));
+                        const currentAngle = centerAngle + v * (totalAngle / 2);
 
                         // Background arc track
                         ctx.beginPath();
@@ -187,56 +195,47 @@ Rectangle {
                         ctx.lineCap = "round";
                         ctx.stroke();
 
-                        // Active arc value
+                        // Center tick
                         ctx.beginPath();
-                        ctx.arc(cx, cy, radius, startAngle, currentAngle);
-                        ctx.lineWidth = 6;
-                        ctx.strokeStyle = knobRoot.macroColor;
+                        ctx.arc(cx, cy, radius, centerAngle - 0.02, centerAngle + 0.02);
+                        ctx.lineWidth = 8;
+                        ctx.strokeStyle = "#475569";
                         ctx.lineCap = "round";
                         ctx.stroke();
+
+                        // Active center-out arc
+                        if (Math.abs(v) > 0.005) {
+                            ctx.beginPath();
+                            if (v >= 0) {
+                                ctx.arc(cx, cy, radius, centerAngle, currentAngle);
+                            } else {
+                                ctx.arc(cx, cy, radius, currentAngle, centerAngle);
+                            }
+                            ctx.lineWidth = 6;
+                            ctx.strokeStyle = knobRoot.macroColor;
+                            ctx.lineCap = "round";
+                            ctx.stroke();
+                        }
                     }
 
                     Connections {
                         target: knobRoot
-                        function onMacroValueChanged() { arcCanvas.requestPaint(); }
+                        function onMacroValue01Changed() { arcCanvas.requestPaint(); }
                     }
+                    Component.onCompleted: arcCanvas.requestPaint()
                 }
 
-                // Numeric Readout in center of arc
+                // Percent readout in center of arc
                 Text {
                     anchors.centerIn: parent
                     text: {
-                        if (knobRoot.macroIndex <= 4) {
-                            const off = knobRoot.macroValue - 64;
-                            return (off >= 0 ? "+" : "") + off;
-                        }
-                        return knobRoot.macroValue.toString();
+                        const pct = Math.round(knobRoot.macroValue01 * 100);
+                        return (pct > 0 ? "+" : "") + pct;
                     }
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(14)
                     font.family: Theme.fontMono
-                    color: Theme.textPrimary
-                }
-            }
-        }
-
-        MouseArea {
-            id: knobMouse
-            anchors.fill: parent
-            property real startY: 0
-            property int startVal: 0
-
-            onPressed: (mouse) => {
-                startY = mouse.y;
-                startVal = knobRoot.macroValue;
-            }
-
-            onPositionChanged: (mouse) => {
-                if (pressed) {
-                    const dy = startY - mouse.y;
-                    const deltaVal = Math.round(dy * 0.8);
-                    const newVal = Math.max(0, Math.min(127, startVal + deltaVal));
-                    Bridge.setMacro(knobRoot.macroIndex, newVal);
+                    color: Math.abs(knobRoot.macroValue01) < 0.005 ? Theme.textDim : Theme.textPrimary
                 }
             }
         }

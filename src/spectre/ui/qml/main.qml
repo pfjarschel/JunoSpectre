@@ -211,6 +211,12 @@ Window {
         objectName: "initPatchModal"
     }
 
+    // Global Modal: Macro Assign / Edit (customizable relative macros)
+    MacroEditModal {
+        id: macroEditModal
+        objectName: "macroEditModal"
+    }
+
     // Global Modal: Quick-Edit Envelope Overlay (TVF / TVA / PITCH)
     EnvEditOverlay {
         id: envEditOverlay
@@ -228,6 +234,9 @@ Window {
         }
         function onRequestOpenInitPatchModal() {
             initPatchModal.open();
+        }
+        function onRequestOpenMacroAssign(macroIndex) {
+            macroEditModal.open(macroIndex);
         }
         function onRequestOpenEnvOverlay(env) {
             envEditOverlay.open(env);

@@ -49,8 +49,9 @@ Rectangle {
                 const names = ["MORPH", "SPEED", "SWEEP", "CURVE", "T1 LVL", "T2 LVL", "T3 LVL", "T4 LVL"];
                 return names[knobIndex - 1] || "PARAM";
             } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
-                const names = ["CUTOFF", "RESO", "ATTACK", "RELEASE", "PORTA", "WARMTH", "CHORUS", "REVERB"];
-                return names[knobIndex - 1] || "MACRO";
+                if (Bridge.macroNames && Bridge.macroNames.length >= knobIndex)
+                    return Bridge.macroNames[knobIndex - 1];
+                return "M" + knobIndex;
             } else if (currentView === "PERF MIXER") {
                 return "P" + knobIndex + " VOL";
             } else if (currentView === "EFFECTS") {
@@ -91,14 +92,9 @@ Rectangle {
                     case 8: return Bridge.tone4Level / 127.0;
                 }
             } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
-                const val = knobIndex === 1 ? Bridge.macro1 :
-                            knobIndex === 2 ? Bridge.macro2 :
-                            knobIndex === 3 ? Bridge.macro3 :
-                            knobIndex === 4 ? Bridge.macro4 :
-                            knobIndex === 5 ? Bridge.macro5 :
-                            knobIndex === 6 ? Bridge.macro6 :
-                            knobIndex === 7 ? Bridge.macro7 : Bridge.macro8;
-                return val / 127.0;
+                if (Bridge.macroValues && Bridge.macroValues.length >= knobIndex)
+                    return (Bridge.macroValues[knobIndex - 1] + 1.0) / 2.0;
+                return 0.5;
             }
             return card.internalVal;
         }
@@ -128,16 +124,11 @@ Rectangle {
                     case 8: return Bridge.tone4Level.toString();
                 }
             } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
-                switch (knobIndex) {
-                    case 1: { const off = Bridge.macro1 - 64; return (off >= 0 ? "+" : "") + off; }
-                    case 2: { const off = Bridge.macro2 - 64; return (off >= 0 ? "+" : "") + off; }
-                    case 3: { const off = Bridge.macro3 - 64; return (off >= 0 ? "+" : "") + off; }
-                    case 4: { const off = Bridge.macro4 - 64; return (off >= 0 ? "+" : "") + off; }
-                    case 5: return Bridge.macro5.toString();
-                    case 6: return Bridge.macro6.toString();
-                    case 7: return Bridge.macro7.toString();
-                    case 8: return Bridge.macro8.toString();
+                if (Bridge.macroValues && Bridge.macroValues.length >= knobIndex) {
+                    const pct = Math.round(Bridge.macroValues[knobIndex - 1] * 100);
+                    return (pct > 0 ? "+" : "") + pct;
                 }
+                return "+0";
             } else if (currentView === "PERF MIXER") {
                 return Math.round(card.internalVal * 127).toString();
             } else if (currentView === "EFFECTS") {
@@ -178,7 +169,7 @@ Rectangle {
                     Bridge.setToneLevel(knobIndex - 4, Math.round(clamped * 127));
                 }
             } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
-                Bridge.setMacro(knobIndex, Math.round(clamped * 127));
+                Bridge.setMacro(knobIndex, clamped * 2.0 - 1.0);
             }
         }
 
