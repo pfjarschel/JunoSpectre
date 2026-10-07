@@ -968,11 +968,11 @@ class SpectreBridge(QObject):
             midi = getattr(juno, "midi", None) if juno is not None else None
             out = getattr(midi, "juno_out", None) if midi is not None else None
             if out is None or getattr(out, "closed", True):
-                return "MOCK / OFFLINE"
+                return "OFFLINE"
             name = str(getattr(out, "name", "") or "").strip()
             return f"USB-MIDI CONNECTED ({name})" if name else "USB-MIDI CONNECTED"
         except Exception:
-            return "MOCK / OFFLINE"
+            return "OFFLINE"
 
     # -------------------------------------------------------------------------
     # Properties for QML: Wi-Fi (System page, NetworkManager backend)

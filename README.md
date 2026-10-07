@@ -123,21 +123,27 @@ pip install -r requirements.txt
 pip install PyQt6   # needed by the UI launcher
 ```
 
-### Run on a desktop (mock mode)
+### Run (desktop PC and Raspberry Pi)
 
-No touchscreen or synth needed:
-
-```bash
-./scripts/dev_run.sh
-# equivalent to: python scripts/spectre_vector.py --mock
-```
-
-### Run as an appliance (Raspberry Pi)
-
-Launches fullscreen directly on the display via `eglfs`:
+One unified launcher, with automatic hardware detection. No touchscreen or
+synth needed — when nothing is connected the full UI still works offline
+(patch editing, saving, librarian), it just doesn't send/receive MIDI:
 
 ```bash
 ./scripts/start_spectre.sh
+# equivalent to: python scripts/spectre_vector.py
+```
+
+Behavior: on a desktop (X11/Wayland) it opens windowed and lets Qt pick the
+platform; on a Pi console (no display server, DRM/KMS present) it uses `eglfs`
+fullscreen. Useful flags:
+
+```bash
+./scripts/start_spectre.sh --list-ports          # show MIDI ports and exit
+./scripts/start_spectre.sh --fullscreen          # force fullscreen on desktop
+./scripts/start_spectre.sh --windowed            # force windowed on Pi
+./scripts/start_spectre.sh --platform xcb        # override Qt platform
+./scripts/start_spectre.sh --juno-port NAME --controller-port NAME --profile novation_lc_xl
 ```
 
 You can also add this to a `systemd` service to boot straight into Spectre.
