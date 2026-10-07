@@ -810,33 +810,7 @@ Rectangle {
                         onMoved: (v) => Bridge.setReverbParam("level", v)
                     }
 
-                    // Master EQ Status
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: ScaleMetrics.dp(22)
-                        radius: 3
-                        color: "#0a0e17"
-                        border.color: Theme.borderCard
-                        border.width: 1
-
-                        RowLayout {
-                            anchors.centerIn: parent
-                            spacing: ScaleMetrics.dp(4)
-                            Rectangle {
-                                width: 6; height: 6; radius: 3
-                                color: Bridge.eqSwitch ? "#10b981" : Theme.textDim
-                            }
-                            Text {
-                                text: "MASTER EQ: " + (Bridge.eqSwitch ? "ACTIVE" : "BYPASS")
-                                font.family: Theme.fontMono
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(7)
-                                color: Bridge.eqSwitch ? "#10b981" : Theme.textDim
-                            }
-                        }
-                    }
-
-                    // Master Output Readout
+                    // Master Output Readout (patch level, real SysEx param)
                     Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(22)

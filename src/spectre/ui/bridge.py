@@ -129,7 +129,6 @@ class SpectreBridge(QObject):
     envShapeChanged = pyqtSignal(str)
     chorusParamsChanged = pyqtSignal()
     reverbParamsChanged = pyqtSignal()
-    masterEqChanged = pyqtSignal()
     mfxParamsChanged = pyqtSignal()
     mfxValuesChanged = pyqtSignal()
     matrixCtrlChanged = pyqtSignal()
@@ -769,7 +768,6 @@ class SpectreBridge(QObject):
         self.envShapeChanged.emit("PITCH")
         self.chorusParamsChanged.emit()
         self.reverbParamsChanged.emit()
-        self.masterEqChanged.emit()
         self.mfxParamsChanged.emit()
         self.mfxValuesChanged.emit()
         self.matrixCtrlChanged.emit()
@@ -1398,42 +1396,6 @@ class SpectreBridge(QObject):
     @pyqtProperty(int, notify=reverbParamsChanged)
     def reverbTone(self) -> int:
         return self._rev_view()[6]
-
-    @pyqtProperty(bool, notify=masterEqChanged)
-    def eqSwitch(self) -> bool:
-        return getattr(self.patch_state.effects, "eq_switch", True)
-
-    @pyqtProperty(int, notify=masterEqChanged)
-    def eqLowGain(self) -> int:
-        return self.patch_state.effects.eq_low_gain
-
-    @pyqtProperty(int, notify=masterEqChanged)
-    def eqLowFreq(self) -> int:
-        return self.patch_state.effects.eq_low_freq
-
-    @pyqtProperty(int, notify=masterEqChanged)
-    def eqMidGain(self) -> int:
-        return self.patch_state.effects.eq_mid_gain
-
-    @pyqtProperty(int, notify=masterEqChanged)
-    def eqMidFreq(self) -> int:
-        return self.patch_state.effects.eq_mid_freq
-
-    @pyqtProperty(float, notify=masterEqChanged)
-    def eqMidQ(self) -> float:
-        return self.patch_state.effects.eq_mid_q
-
-    @pyqtProperty(int, notify=masterEqChanged)
-    def eqHighGain(self) -> int:
-        return self.patch_state.effects.eq_high_gain
-
-    @pyqtProperty(int, notify=masterEqChanged)
-    def eqHighFreq(self) -> int:
-        return self.patch_state.effects.eq_high_freq
-
-    @pyqtProperty(int, notify=masterEqChanged)
-    def eqMasterLevel(self) -> int:
-        return self.patch_state.effects.eq_master_level
 
     # -------------------------------------------------------------------------
     # Properties for QML: MFX Studio
@@ -3859,37 +3821,6 @@ class SpectreBridge(QObject):
         self.reverbParamsChanged.emit()
         self.routingChanged.emit()
         self.macrosChanged.emit()
-
-    @pyqtSlot(str, "QVariant")
-    def setMasterEqParam(self, param: str, val) -> None:
-        """Set Master 3-Band Parametric EQ parameter."""
-        eff = self.patch_state.effects
-        if param == "switch":
-            eff.eq_switch = bool(val)
-        elif param == "lowGain":
-            eff.eq_low_gain = int(val)
-        elif param == "lowFreq":
-            eff.eq_low_freq = int(val)
-        elif param == "midGain":
-            eff.eq_mid_gain = int(val)
-        elif param == "midFreq":
-            eff.eq_mid_freq = int(val)
-        elif param == "midQ":
-            eff.eq_mid_q = float(val)
-        elif param == "highGain":
-            eff.eq_high_gain = int(val)
-        elif param == "highFreq":
-            eff.eq_high_freq = int(val)
-        elif param == "masterLevel":
-            eff.eq_master_level = int(val)
-
-        if self.engine.juno:
-            try:
-                self.engine.juno.set_master_eq_param(param, val)
-            except Exception as e:
-                logger.error(f"Error setting master EQ on synth: {e}")
-
-        self.masterEqChanged.emit()
 
     # -------------------------------------------------------------------------
     # Invokable Slots from QML: MFX Studio View

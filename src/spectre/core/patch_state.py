@@ -473,16 +473,6 @@ class EffectsState:
     reverb_diffusion: int = 60   # 0..127
     reverb_tone: int = 64        # 0..127
 
-    # Master / System 3-Band Parametric EQ
-    eq_switch: bool = True       # Master EQ Switch (ON / OFF)
-    eq_low_gain: int = 2         # -15 .. +15 dB
-    eq_low_freq: int = 400       # 200 or 400 Hz
-    eq_mid_gain: int = -3        # -15 .. +15 dB
-    eq_mid_freq: int = 1200      # 200 .. 8000 Hz
-    eq_mid_q: float = 1.0        # 0.5, 1.0, 2.0, 4.0, 8.0
-    eq_high_gain: int = 4        # -15 .. +15 dB
-    eq_high_freq: int = 4000     # 2000, 4000, 8000 Hz
-    eq_master_level: int = 100   # 0..127
 
 
 @dataclass
@@ -797,15 +787,6 @@ class PatchState:
             reverb_damp=19,
             reverb_diffusion=127,
             reverb_tone=19,
-            eq_switch=True,
-            eq_low_gain=0,
-            eq_low_freq=400,
-            eq_mid_gain=0,
-            eq_mid_freq=1200,
-            eq_mid_q=1.0,
-            eq_high_gain=0,
-            eq_high_freq=4000,
-            eq_master_level=100,
         )
 
         state.step_lfo = StepLfoState(
@@ -977,18 +958,6 @@ class PatchState:
         eff.reverb_damp = cls._param4v(rev, 0x0F)
         eff.reverb_diffusion = cls._param4v(rev, 0x17)
         eff.reverb_tone = cls._param4v(rev, 0x1B)
-        # Master EQ lives in system memory (not the patch image) and does not respond
-        # to SysEx writes on this unit; reset the app-side representation to flat,
-        # identical to the hand-built fallback template.
-        eff.eq_switch = True
-        eff.eq_low_gain = 0
-        eff.eq_low_freq = 400
-        eff.eq_mid_gain = 0
-        eff.eq_mid_freq = 1200
-        eff.eq_mid_q = 1.0
-        eff.eq_high_gain = 0
-        eff.eq_high_freq = 4000
-        eff.eq_master_level = 100
         return eff
 
     @classmethod

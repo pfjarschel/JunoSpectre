@@ -31,12 +31,10 @@ from .patch_state import (
     ToneState,
 )
 from .sysex import (
-    ADDR_MASTER_EQ_BASE,
     ADDR_SETUP,
     ADDR_SETUP_CHORUS_SWITCH,
     ADDR_SETUP_REVERB_SWITCH,
     ADDR_SYSTEM_MASTER_LEVEL,
-    ADDR_SYSTEM_PROCESSING_SWITCH,
     ADDR_TEMP_PATCH_PART_1,
     ADDR_TEMP_PERFORMANCE,
     ADDR_TEMP_PERF_PART_1,
@@ -98,14 +96,6 @@ from .sysex import (
     CHORUS_PARAM_TYPE,
     DEFAULT_DEVICE_ID,
     JUNO_DS_MODEL_ID,
-    MASTER_EQ_PARAM_HIGH_FREQ,
-    MASTER_EQ_PARAM_HIGH_GAIN,
-    MASTER_EQ_PARAM_LOW_FREQ,
-    MASTER_EQ_PARAM_LOW_GAIN,
-    MASTER_EQ_PARAM_MID_FREQ,
-    MASTER_EQ_PARAM_MID_GAIN,
-    MASTER_EQ_PARAM_MID_Q,
-    MASTER_EQ_PARAM_SWITCH,
     MFX_PARAM_CHORUS_SEND,
     MFX_PARAM_DATA_START,
     MFX_PARAM_DRY_SEND,
@@ -1735,51 +1725,6 @@ class JunoClient:
         if add_address(rev_base, offset) != perf_param_addr:
             self.send_data(perf_param_addr, nibbles)
 
-    def set_master_eq_param(self, param: str, val: Any) -> None:
-        """Set Master 3-Band Parametric EQ parameter via Roland SysEx."""
-        MID_FREQS = [200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000]
-        MID_QS = [0.5, 0.7, 1.0, 1.4, 2.0, 4.0, 8.0, 16.0]
-
-        if param == "switch":
-            sw = 1 if val else 0
-            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_SWITCH), [sw])
-            self.send_data(ADDR_SYSTEM_PROCESSING_SWITCH, [sw])
-        elif param == "lowFreq":
-            freq_idx = int(val) if int(val) in (0, 1) else (1 if int(val) >= 300 else 0)
-            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_LOW_FREQ), [freq_idx])
-        elif param == "lowGain":
-            gain_val = max(49, min(79, int(val) + 64))
-            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_LOW_GAIN), [gain_val])
-        elif param == "midFreq":
-            target_f = int(val)
-            closest_idx = min(range(len(MID_FREQS)), key=lambda i: abs(MID_FREQS[i] - target_f))
-            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_MID_FREQ), [closest_idx])
-        elif param == "midQ":
-            target_q = float(val)
-            closest_idx = min(range(len(MID_QS)), key=lambda i: abs(MID_QS[i] - target_q))
-            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_MID_Q), [closest_idx])
-        elif param == "midGain":
-            gain_val = max(49, min(79, int(val) + 64))
-            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_MID_GAIN), [gain_val])
-        elif param == "highFreq":
-            if int(val) in (0, 1, 2):
-                h_idx = int(val)
-            else:
-                f = int(val)
-                if f <= 3000:
-                    h_idx = 0
-                elif f <= 6000:
-                    h_idx = 1
-                else:
-                    h_idx = 2
-            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_HIGH_FREQ), [h_idx])
-        elif param == "highGain":
-            gain_val = max(49, min(79, int(val) + 64))
-            self.send_data(add_address(ADDR_MASTER_EQ_BASE, MASTER_EQ_PARAM_HIGH_GAIN), [gain_val])
-        elif param == "masterLevel":
-            lvl = max(0, min(127, int(val)))
-            self.send_data(ADDR_SYSTEM_MASTER_LEVEL, [lvl])
-
     def set_tone_pitch_env(
         self,
         tone_index: int,
@@ -2369,17 +2314,6 @@ class JunoClient:
             reverb_damp=r_damp,
             reverb_diffusion=r_diff,
             reverb_tone=r_tone,
-            # Master EQ lives in system memory, not the patch image: keep the
-            # app-side representation flat, identical to the init template.
-            eq_switch=True,
-            eq_low_gain=0,
-            eq_low_freq=400,
-            eq_mid_gain=0,
-            eq_mid_freq=1200,
-            eq_mid_q=1.0,
-            eq_high_gain=0,
-            eq_high_freq=4000,
-            eq_master_level=100,
         )
 
         mode = self.get_sound_mode(timeout=timeout)
@@ -2483,17 +2417,6 @@ class JunoClient:
             reverb_damp=r_damp,
             reverb_diffusion=r_diff,
             reverb_tone=r_tone,
-            # Master EQ lives in system memory, not the patch image: keep the
-            # app-side representation flat, identical to the init template.
-            eq_switch=True,
-            eq_low_gain=0,
-            eq_low_freq=400,
-            eq_mid_gain=0,
-            eq_mid_freq=1200,
-            eq_mid_q=1.0,
-            eq_high_gain=0,
-            eq_high_freq=4000,
-            eq_master_level=100,
         )
         patch_state = PatchState(
             sound_mode=mode_name,

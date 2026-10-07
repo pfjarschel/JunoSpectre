@@ -447,6 +447,46 @@ def test_mseg_env_editor_view():
     assert env_view.property("draggedPoint") == -1
 
 
+def test_eq_curve_panel_for_equalizer_algo():
+    """EqCurvePanel shows for MFX 01 EQUALIZER / 02 SPECTRUM; its APIs round-trip."""
+    from PyQt6.QtCore import QObject
+
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    root = qml_engine.rootObjects()[0]
+    bridge.setActiveView("MFX")
+    app.processEvents()
+
+    panel = root.findChild(QObject, "eqCurvePanel")
+    assert panel is not None
+    assert panel.property("visible") is False  # default algo 15
+
+    bridge.setMfxAlgoId(1)
+    app.processEvents()
+    assert panel.property("visible") is True
+    assert bridge.mfxAlgoId == 1
+
+    # Curve write path: catalog-scale gain 0..30 (dB = v - 15)
+    bridge.setMfxParam(1, 20)  # LOW GAIN +5 dB
+    assert bridge.mfxParamValues[1] == 20
+    bridge.setMfxParam(0, 1)   # LOW FREQ 400 Hz
+    assert bridge.mfxParamValues[0] == 1
+
+    bridge.setMfxAlgoId(2)
+    app.processEvents()
+    assert panel.property("visible") is True
+    assert panel.property("graphic") is True
+    assert panel.property("bandCount") == 8
+
+    # Graphic write path: fixed bands 0..7, gain-only
+    bridge.setMfxParam(4, 22)  # BAND 5 (2000Hz) +7 dB
+    assert bridge.mfxParamValues[4] == 22
+
+    bridge.setMfxAlgoId(15)
+    app.processEvents()
+    assert panel.property("visible") is False
+
+
 def test_mfx_view_features():
     """Verify MfxView category filtering, search, 4-8 param grid, and bypass state."""
     from PyQt6.QtCore import QObject
@@ -524,7 +564,7 @@ def test_mfx_view_features():
 
 
 def test_master_fx_view_controls():
-    """Verify MasterFxView scaled sliders, chorus/reverb controls, and parametric EQ."""
+    """Verify MasterFxView scaled sliders and chorus/reverb controls."""
     from PyQt6.QtCore import QObject
 
     engine = VectorEngine()
@@ -552,16 +592,6 @@ def test_master_fx_view_controls():
     assert master_fx_view.property("reverbTone") == 64
     assert master_fx_view.property("reverbLevel") == 60
 
-    # Check EQ properties
-    assert master_fx_view.property("eqLowGain") == 2
-    assert master_fx_view.property("eqLowFreq") == 400
-    assert master_fx_view.property("eqMidGain") == -3
-    assert master_fx_view.property("eqMidFreq") == 1200
-    assert master_fx_view.property("eqMidQ") == 1.0
-    assert master_fx_view.property("eqHighGain") == 4
-    assert master_fx_view.property("eqHighFreq") == 4000
-    assert master_fx_view.property("eqMasterLevel") == 100
-
     # Test modifying chorus parameters
     master_fx_view.setProperty("chorusRate", 85)
     master_fx_view.setProperty("chorusToReverb", 40)
@@ -573,23 +603,6 @@ def test_master_fx_view_controls():
     master_fx_view.setProperty("reverbDiffusion", 80)
     assert master_fx_view.property("reverbTime") == 95
     assert master_fx_view.property("reverbDiffusion") == 80
-
-    # Test modifying EQ parameters
-    master_fx_view.setProperty("eqLowGain", 6)
-    master_fx_view.setProperty("eqMidGain", 0)
-    master_fx_view.setProperty("eqMidQ", 2.0)
-    master_fx_view.setProperty("eqHighGain", -5)
-    assert master_fx_view.property("eqLowGain") == 6
-    assert master_fx_view.property("eqMidGain") == 0
-    assert master_fx_view.property("eqMidQ") == 2.0
-    assert master_fx_view.property("eqHighGain") == -5
-
-    # Test drag interaction state
-    assert master_fx_view.property("draggedEqBand") == -1
-    master_fx_view.setProperty("draggedEqBand", 1)
-    assert master_fx_view.property("draggedEqBand") == 1
-    master_fx_view.setProperty("draggedEqBand", -1)
-    assert master_fx_view.property("draggedEqBand") == -1
 
 
 def test_init_patch_workflow():
@@ -636,7 +649,6 @@ def test_init_patch_workflow():
     master_fx_view = root.findChild(QObject, "masterFxView")
     master_fx_view.setProperty("chorusLevel", 90)
     master_fx_view.setProperty("reverbLevel", 75)
-    master_fx_view.setProperty("eqLowGain", 8)
 
     env_view = root.findChild(QObject, "envEditorView")
     env_view.setProperty("envDepth", 12)
@@ -683,7 +695,6 @@ def test_init_patch_workflow():
     assert mfx_view.property("isBypassed") is True
     assert master_fx_view.property("chorusLevel") == bridge.patch_state.effects.chorus_level
     assert master_fx_view.property("reverbLevel") == bridge.patch_state.effects.reverb_level
-    assert master_fx_view.property("eqLowGain") == 0
     assert env_view.property("envDepth") == 0
 
 

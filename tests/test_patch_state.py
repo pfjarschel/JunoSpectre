@@ -63,9 +63,6 @@ def test_init_patch_creation():
     for t in patch.tones:
         assert t.chorus_send == 0
         assert t.reverb_send == 0
-    assert patch.effects.eq_low_gain == 0
-    assert patch.effects.eq_mid_gain == 0
-    assert patch.effects.eq_high_gain == 0
 
 
 def test_tone_state_bipolar_conversions():

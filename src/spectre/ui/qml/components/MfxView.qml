@@ -405,6 +405,15 @@ Rectangle {
                     color: Theme.borderCard
                 }
 
+                // Curve editor (MFX 01 EQUALIZER / 02 SPECTRUM only, above sliders)
+                EqCurvePanel {
+                    visible: root.activeAlgoId === 1 || root.activeAlgoId === 2
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: visible ? ScaleMetrics.dp(196) : 0
+                    algo: root.currentAlgo
+                    isDimmed: root.isBypassed
+                }
+
                 // Flexible Parameter Grid (Scrollable if needed)
                 Item {
                     Layout.fillWidth: true

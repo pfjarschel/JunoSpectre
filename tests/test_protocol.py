@@ -529,62 +529,6 @@ def test_juno_client_reverb_sysex(mock_midi_mgr):
     assert call1[10:14] == pack_4nibbles(65 + 32768)
 
 
-def test_juno_client_master_eq_sysex(mock_midi_mgr):
-    client = JunoClient(mock_midi_mgr)
-
-    # Switch
-    mock_midi_mgr.send_juno_sysex.reset_mock()
-    client.set_master_eq_param("switch", True)
-    call1 = mock_midi_mgr.send_juno_sysex.call_args_list[-2][0][0]
-    call2 = mock_midi_mgr.send_juno_sysex.call_args_list[-1][0][0]
-    assert call1[6:10] == [0x00, 0x00, 0x04, 0x00]
-    assert call1[10] == 1
-    assert call2[6:10] == [0x02, 0x00, 0x02, 0x00]
-    assert call2[10] == 1
-
-    # Low Freq
-    mock_midi_mgr.send_juno_sysex.reset_mock()
-    client.set_master_eq_param("lowFreq", 200)
-    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x01, 0]
-    client.set_master_eq_param("lowFreq", 400)
-    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x01, 1]
-
-    # Low Gain (offset 64: +3 -> 67)
-    mock_midi_mgr.send_juno_sysex.reset_mock()
-    client.set_master_eq_param("lowGain", 3)
-    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x02, 67]
-
-    # Mid Freq (1000 Hz is index 7)
-    mock_midi_mgr.send_juno_sysex.reset_mock()
-    client.set_master_eq_param("midFreq", 1000)
-    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x03, 7]
-
-    # Mid Q (2.0 is index 4)
-    mock_midi_mgr.send_juno_sysex.reset_mock()
-    client.set_master_eq_param("midQ", 2.0)
-    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x04, 4]
-
-    # Mid Gain (-5 -> 59)
-    mock_midi_mgr.send_juno_sysex.reset_mock()
-    client.set_master_eq_param("midGain", -5)
-    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x05, 59]
-
-    # High Freq (4000 Hz is index 1)
-    mock_midi_mgr.send_juno_sysex.reset_mock()
-    client.set_master_eq_param("highFreq", 4000)
-    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x06, 1]
-
-    # High Gain (+4 -> 68)
-    mock_midi_mgr.send_juno_sysex.reset_mock()
-    client.set_master_eq_param("highGain", 4)
-    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x00, 0x00, 0x04, 0x07, 68]
-
-    # System Master Level
-    mock_midi_mgr.send_juno_sysex.reset_mock()
-    client.set_master_eq_param("masterLevel", 112)
-    assert mock_midi_mgr.send_juno_sysex.call_args[0][0][6:11] == [0x02, 0x00, 0x00, 0x05, 112]
-
-
 def test_juno_client_read_chorus_and_reverb(mock_midi_mgr):
     from src.spectre.core.sysex import pack_4nibbles
 
