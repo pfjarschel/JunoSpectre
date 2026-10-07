@@ -36,7 +36,30 @@ from .sysex import (
     ADDR_SYSTEM_MASTER_LEVEL,
     ADDR_SYSTEM_PROCESSING_SWITCH,
     ADDR_TEMP_PATCH_PART_1,
+    ADDR_TEMP_PERFORMANCE,
     ADDR_TEMP_PERF_PART_1,
+    PERF_COMMON_NAME,
+    PERF_COMMON_NAME_SIZE,
+    PERF_COMMON_SOLO_PART,
+    PERF_PART_BLOCK_SIZE,
+    PERF_PART_CHORUS_SEND,
+    PERF_PART_COARSE_TUNE,
+    PERF_PART_DRY_SEND,
+    PERF_PART_FINE_TUNE,
+    PERF_PART_LEVEL,
+    PERF_PART_MUTE,
+    PERF_PART_OCTAVE_SHIFT,
+    PERF_PART_OUTPUT_ASSIGN,
+    PERF_PART_PAN,
+    PERF_PART_PATCH_LSB,
+    PERF_PART_PATCH_MSB,
+    PERF_PART_PATCH_PC,
+    PERF_PART_REVERB_SEND,
+    PERF_PART_RX_CHANNEL,
+    PERF_PART_RX_SWITCH,
+    perf_part_base,
+    perf_zone_base,
+    temp_perf_patch_base,
     CHORUS_PARAM_DATA_START,
     CHORUS_PARAM_DEPTH,
     CHORUS_PARAM_FEEDBACK,
@@ -259,14 +282,28 @@ class JunoClient:
         self.model_id = tuple(model_id)
         self.sysex = RolandSysEx(device_id=self.device_id, model_id=self.model_id)
         self._cached_patch_base: Optional[Tuple[int, int, int, int]] = None
+        self._cached_patch_part: Optional[int] = None
         self._cached_sound_mode: Optional[SoundMode] = None
+        self._active_perf_part: int = 1
         self._min_send_interval_s: float = 0.0
         self._last_send_time: float = 0.0
 
     def invalidate_cache(self) -> None:
         """Clear cached state (call when changing synth patches or modes)."""
         self._cached_patch_base = None
+        self._cached_patch_part = None
         self._cached_sound_mode = None
+
+    @property
+    def active_perf_part(self) -> int:
+        return self._active_perf_part
+
+    def set_active_perf_part(self, part: int) -> None:
+        """Select which performance part patch editors target (1..16)."""
+        self._active_perf_part = max(1, min(16, int(part)))
+        if self._cached_patch_part != self._active_perf_part:
+            self._cached_patch_base = None
+            self._cached_patch_part = self._active_perf_part
 
     @contextmanager
     def paced_init_writes(self, gap: float = INIT_WRITE_GAP_S):
@@ -363,17 +400,153 @@ class JunoClient:
         force_refresh: bool = False,
     ) -> Tuple[int, int, int, int]:
         """Determine base address for the current temporary patch buffer.
-        
-        Returns ADDR_TEMP_PATCH_PART_1 in Patch Mode, or ADDR_TEMP_PERF_PART_1 in Performance Mode.
+
+        PATCH mode -> 1F 00 00 00. PERFORM mode -> 11 00 00 00 +
+        (active_perf_part - 1) * 0x20, so deep edits target the selected part.
         """
-        if not force_refresh and self._cached_patch_base is not None:
+        if (not force_refresh and self._cached_patch_base is not None
+                and self._cached_patch_part == self._active_perf_part):
             return self._cached_patch_base
         mode = self.get_sound_mode(timeout=timeout, force_refresh=force_refresh)
         if mode == SoundMode.PATCH:
             self._cached_patch_base = ADDR_TEMP_PATCH_PART_1
         else:
-            self._cached_patch_base = ADDR_TEMP_PERF_PART_1
+            self._cached_patch_base = temp_perf_patch_base(self._active_perf_part)
+        self._cached_patch_part = self._active_perf_part
         return self._cached_patch_base
+
+    def set_sound_mode(self, mode: SoundMode | int | str) -> None:
+        """Switch the synth sound mode (Setup 01 00 00 00 = PATCH/PERFORM/GM1/GM2/GS)."""
+        if isinstance(mode, str):
+            mode = SoundMode[mode.upper()]
+        else:
+            mode = SoundMode(int(mode))
+        self.send_data(ADDR_SETUP, [int(mode)])
+        self._cached_sound_mode = mode
+        self._cached_patch_base = None
+
+    # ------------------------------------------------------------------
+    # Performance mixer (Temporary Performance at 10 00 00 00).
+    # Part N mixer block = 10 00 (0x20 + N - 1) 00, 0x31 bytes.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_part(part_index: int) -> int:
+        part = int(part_index)
+        if not 1 <= part <= 16:
+            raise ValueError(f"Performance part must be 1..16, got {part_index}")
+        return part
+
+    def set_perf_part_level(self, part_index: int, level: int) -> None:
+        part = self._check_part(part_index)
+        addr = add_address(perf_part_base(part), PERF_PART_LEVEL)
+        self.send_data(addr, [max(0, min(127, int(level)))])
+
+    def set_perf_part_pan(self, part_index: int, pan: int) -> None:
+        part = self._check_part(part_index)
+        addr = add_address(perf_part_base(part), PERF_PART_PAN)
+        self.send_data(addr, [max(0, min(127, int(pan)))])
+
+    def set_perf_part_rx(self, part_index: int, channel: int | None = None,
+                         enabled: bool | None = None) -> None:
+        part = self._check_part(part_index)
+        base = perf_part_base(part)
+        if channel is not None:
+            self.send_data(add_address(base, PERF_PART_RX_CHANNEL),
+                            [max(0, min(15, int(channel)))])
+        if enabled is not None:
+            self.send_data(add_address(base, PERF_PART_RX_SWITCH),
+                            [1 if enabled else 0])
+
+    def set_perf_part_mute(self, part_index: int, muted: bool) -> None:
+        """Mute Switch: 0 = sounding (OFF), 1 = MUTE."""
+        part = self._check_part(part_index)
+        addr = add_address(perf_part_base(part), PERF_PART_MUTE)
+        self.send_data(addr, [1 if muted else 0])
+
+    def set_perf_solo(self, part_index: int) -> None:
+        """Solo Part Select in Performance Common: 0 = OFF, 1..16 = soloed part."""
+        part = int(part_index)
+        if not 0 <= part <= 16:
+            raise ValueError(f"Solo part must be 0..16, got {part_index}")
+        addr = add_address(ADDR_TEMP_PERFORMANCE, PERF_COMMON_SOLO_PART)
+        self.send_data(addr, [part])
+
+    def set_perf_part_patch(self, part_index: int, msb: int, lsb: int, pc: int) -> None:
+        part = self._check_part(part_index)
+        base = perf_part_base(part)
+        self.send_data(add_address(base, PERF_PART_PATCH_MSB),
+                       [max(0, min(127, int(msb))), max(0, min(127, int(lsb))),
+                        max(0, min(127, int(pc)))])
+
+    def set_perf_part_coarse_fine(self, part_index: int,
+                                  coarse: int | None = None,
+                                  fine: int | None = None) -> None:
+        part = self._check_part(part_index)
+        base = perf_part_base(part)
+        if coarse is not None:
+            self.send_data(add_address(base, PERF_PART_COARSE_TUNE),
+                           [max(16, min(112, int(coarse)))])
+        if fine is not None:
+            self.send_data(add_address(base, PERF_PART_FINE_TUNE),
+                           [max(14, min(114, int(fine)))])
+
+    def get_perf_name(self, timeout: float = 1.0) -> str:
+        res = self.request_data(add_address(ADDR_TEMP_PERFORMANCE, PERF_COMMON_NAME),
+                                (0x00, 0x00, 0x00, PERF_COMMON_NAME_SIZE), timeout=timeout)
+        if res is None:
+            raise TimeoutError("Timed out reading performance name.")
+        return bytes(res[:PERF_COMMON_NAME_SIZE]).decode("latin1", errors="replace").strip()
+
+    def get_perf_part_block(self, part_index: int, timeout: float = 1.0) -> bytes:
+        part = self._check_part(part_index)
+        res = self.request_data(perf_part_base(part), self._rq_size(PERF_PART_BLOCK_SIZE),
+                                timeout=timeout)
+        if res is None or len(res) < PERF_PART_BLOCK_SIZE:
+            raise TimeoutError(f"Timed out reading performance part {part}.")
+        return bytes(res[:PERF_PART_BLOCK_SIZE])
+
+    def get_perf_parts(self, timeout: float = 1.0) -> list[PerfPartState]:
+        """Read all 16 performance part mixer blocks into PerfPartState list."""
+        solo_raw = self.request_data(add_address(ADDR_TEMP_PERFORMANCE, PERF_COMMON_SOLO_PART),
+                                     (0x00, 0x00, 0x00, 0x01), timeout=timeout)
+        solo_sel = int(solo_raw[0]) if solo_raw else 0
+        parts: list[PerfPartState] = []
+        for part in range(1, 17):
+            try:
+                blk = self.get_perf_part_block(part, timeout=timeout)
+                state = PerfPartState(
+                    part_index=part,
+                    name=f"Part {part}",
+                    volume=int(blk[PERF_PART_LEVEL]),
+                    pan=int(blk[PERF_PART_PAN]),
+                    muted=bool(blk[PERF_PART_MUTE]),
+                    solo=(solo_sel == part),
+                    patch_msb=int(blk[PERF_PART_PATCH_MSB]),
+                    patch_lsb=int(blk[PERF_PART_PATCH_LSB]),
+                    patch_pc=int(blk[PERF_PART_PATCH_PC]),
+                    rx_channel=int(blk[PERF_PART_RX_CHANNEL]) & 0x0F,
+                    rx_switch=bool(blk[PERF_PART_RX_SWITCH]),
+                    coarse_tune=int(blk[PERF_PART_COARSE_TUNE]),
+                    fine_tune=int(blk[PERF_PART_FINE_TUNE]),
+                    octave_shift=int(blk[PERF_PART_OCTAVE_SHIFT]),
+                )
+            except Exception:
+                state = PerfPartState(part_index=part, name=f"Part {part}")
+            parts.append(state)
+        return parts
+
+    def push_patch_to_perf_part(self, state: "PatchState", part_index: int,
+                                write_gap: float = 0.02) -> int:
+        """DT1-push a Pi-only patch image into a Performance Part temp buffer.
+
+        Accepts the large transfer (~10 DT1 messages per part) so performances
+        can sound Pi-only files without requiring hardware slots. Returns
+        DT1 send failures (0 = ok). No flash writes, no verification reads.
+        """
+        part = self._check_part(part_index)
+        return self._write_patch_regions(state, temp_perf_patch_base(part),
+                                         write_gap=write_gap)
 
     def get_patch_name(self, timeout: float = 1.0) -> str:
         """Read active patch name (12 ASCII characters) from the temporary buffer."""

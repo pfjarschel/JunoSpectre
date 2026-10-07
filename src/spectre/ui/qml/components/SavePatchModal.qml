@@ -29,11 +29,13 @@ Rectangle {
     property var catCodes: ["PNO","EP","KEY","BEL","MLT","ORG","ACD","HRM","AGT","EGT","DGT","BS","SBS","STR","ORC","HIT","WND","FLT","BRS","SBR","SAX","HLD","SLD","TEK","PLS","FX","SYN","BPD","SPD","VOX","PLK","ETH","FRT","PRC","SFX","BTS","DRM","CMB"]
 
     function open() {
-        patchName = Bridge.patchName
+        patchName = Bridge.soundMode === "PERFORM" ? Bridge.perfName : Bridge.patchName
         category = Bridge.currentCategoryCode()
         tagsText = ""
         favorite = false
-        saveToDevice = Bridge.currentIsUserSlot
+        // No hardware saves for performances: Pi files only (touch has no tooltips,
+        // so the device option is hidden outright, not explained).
+        saveToDevice = Bridge.soundMode === "PERFORM" ? false : Bridge.currentIsUserSlot
         slotList = []
         slotIndex = -1
         confirmArmed = false
@@ -294,9 +296,11 @@ Rectangle {
                 elide: Text.ElideRight
             }
 
-            // Device checkbox
+            // Device checkbox (hidden for performances: Pi-only saves)
             Rectangle {
+                visible: Bridge.soundMode !== "PERFORM"
                 Layout.fillWidth: true
+                Layout.preferredHeight: Bridge.soundMode !== "PERFORM" ? ScaleMetrics.dp(30) : 0
                 height: ScaleMetrics.dp(30)
                 radius: ScaleMetrics.dp(4)
                 color: devArea.pressed ? Theme.bgCardActive : "#10141d"

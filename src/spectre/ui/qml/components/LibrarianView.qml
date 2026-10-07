@@ -525,7 +525,10 @@ Rectangle {
                                     root.selectedRow = root.patchModel.get(index)
                                     root.pendingAction = ""
                                     var ok = true
-                                    if (kind !== undefined && kind === "performance") {
+                                    if (kind !== undefined && kind === "playlist") {
+                                        ok = Bridge.loadPlaylist(path)
+                                        root.statusText = ok ? "Playlist loaded — see PERF MIXER setlist." : "Playlist load failed."
+                                    } else if (kind !== undefined && kind === "performance") {
                                         ok = Bridge.selectLibraryPerformance(msb, lsb, pc)
                                     } else if (msb !== undefined && msb >= 0) {
                                         ok = Bridge.selectLibraryPatch(msb, lsb, pc)

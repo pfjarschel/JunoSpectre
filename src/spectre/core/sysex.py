@@ -32,10 +32,82 @@ ADDR_SETUP = (0x01, 0x00, 0x00, 0x00)
 ADDR_SYSTEM = (0x02, 0x00, 0x00, 0x00)
 
 # Temporary Buffers (Safe for real-time live editing, zero flash wear)
+# Map verified against JUNO-DS MIDI Implementation (ModelID 00 00 3A),
+# section 5.1 + Performance address tables:
+# - 10 00 00 00 Temporary Performance (mixer/common/parts/zones)
+# - 11 00 00 00 + (part-1)*0x20 Temporary Patch/Drum for Performance Part N
+# - 1F 00 00 00 Temporary Patch/Drum in Patch mode
 ADDR_TEMP_PERFORMANCE = (0x10, 0x00, 0x00, 0x00)
-ADDR_TEMP_PERF_PART_1 = (0x11, 0x00, 0x00, 0x00)
+ADDR_TEMP_PERF_PATCH_1 = (0x11, 0x00, 0x00, 0x00)
+# Legacy alias: this was misnamed "PERF_PART" but is actually the Part-1
+# *patch edit buffer* in Performance mode (11 00 ...), NOT the mixer entry.
+ADDR_TEMP_PERF_PART_1 = ADDR_TEMP_PERF_PATCH_1
 ADDR_TEMP_PATCH_PART_1 = (0x1F, 0x00, 0x00, 0x00)
 ADDR_TEMP_PATCH_PART_2 = (0x1F, 0x20, 0x00, 0x00)
+
+# Performance mixer entries live under the Temporary Performance base:
+# Performance Part N = 10 00 (0x20 + N - 1) 00 (each 0x31 bytes).
+ADDR_PERF_PART_1 = (0x10, 0x00, 0x20, 0x00)
+# Performance Zones: Channel N = 10 00 (0x50 + N - 1) 00.
+ADDR_PERF_ZONE_1 = (0x10, 0x00, 0x50, 0x00)
+# Setup block: Sound Mode lives at 01 00 00 00.
+ADDR_SETUP_SOUND_MODE = (0x01, 0x00, 0x00, 0x00)
+
+# Offsets inside one Performance Part block (0x31 bytes, see MIDI impl p.31)
+PERF_PART_RX_CHANNEL = 0x00      # 0..15 (ch 1..16)
+PERF_PART_RX_SWITCH = 0x01       # 0..1 (OFF, ON)
+PERF_PART_PATCH_MSB = 0x04       # Bank Select MSB 0..127
+PERF_PART_PATCH_LSB = 0x05       # Bank Select LSB 0..127
+PERF_PART_PATCH_PC = 0x06        # Program Number 0..127
+PERF_PART_LEVEL = 0x07           # 0..127 (CC#7)
+PERF_PART_PAN = 0x08             # 0..127 (L64..63R)
+PERF_PART_COARSE_TUNE = 0x09     # 16..112 (-48..+48)
+PERF_PART_FINE_TUNE = 0x0A       # 14..114 (-50..+50)
+PERF_PART_OCTAVE_SHIFT = 0x15    # 61..67 (-3..+3, 64=center)
+PERF_PART_MUTE = 0x1B            # 0..1 (OFF, MUTE)
+PERF_PART_DRY_SEND = 0x1C        # 0..127
+PERF_PART_CHORUS_SEND = 0x1D     # 0..127 (CC#93)
+PERF_PART_REVERB_SEND = 0x1E     # 0..127 (CC#91)
+PERF_PART_OUTPUT_ASSIGN = 0x1F   # 0..13 (PATCH=13)
+PERF_PART_BLOCK_SIZE = 0x31
+
+# Offsets inside Performance Common (base 10 00 00 00)
+PERF_COMMON_NAME = 0x00          # 12 ASCII bytes
+PERF_COMMON_NAME_SIZE = 12
+PERF_COMMON_SOLO_PART = 0x0C     # 0..16 (OFF, 1..16)
+
+# Offsets inside one Performance Zone block (0x1B bytes)
+PERF_ZONE_OCTAVE_SHIFT = 0x00    # 61..67 (-3..+3)
+PERF_ZONE_SWITCH = 0x01          # 0..1 (OFF, ON)
+PERF_ZONE_KEY_LOW = 0x0C         # 0..127 (C-1..UPPER)
+PERF_ZONE_KEY_HIGH = 0x0D        # 0..127 (LOWER..G9)
+
+
+def perf_part_base(part_index: int) -> tuple[int, int, int, int]:
+    """Absolute base address of Performance Part mixer block 1..16."""
+    if not 1 <= int(part_index) <= 16:
+        raise ValueError(f"Performance part must be 1..16, got {part_index}")
+    return (0x10, 0x00, 0x20 + int(part_index) - 1, 0x00)
+
+
+def perf_zone_base(channel: int) -> tuple[int, int, int, int]:
+    """Absolute base address of Performance Zone block for channel 1..16."""
+    if not 1 <= int(channel) <= 16:
+        raise ValueError(f"Performance zone channel must be 1..16, got {channel}")
+    return (0x10, 0x00, 0x50 + int(channel) - 1, 0x00)
+
+
+def temp_perf_patch_base(part_index: int) -> tuple[int, int, int, int]:
+    """Temporary Patch/Drum edit buffer for Performance Part 1..16.
+
+    11 00 00 00, 11 20 00 00, ... 14 60 00 00: byte-1 steps by 0x20 per part
+    with 7-bit carry into byte-0 (see MIDI Implementation 5.1).
+    """
+    part = int(part_index)
+    if not 1 <= part <= 16:
+        raise ValueError(f"Performance part must be 1..16, got {part_index}")
+    step = (part - 1) * 0x20
+    return (0x11 + (step >> 7), step & 0x7F, 0x00, 0x00)
 
 # Patch Offset Addresses (Offsets from Patch Base)
 OFFSET_PATCH_COMMON = (0x00, 0x00, 0x00, 0x00)

@@ -543,13 +543,41 @@ def default_macro_slots() -> list["MacroSlot"]:
 
 @dataclass
 class PerfPartState:
-    """State for a single Performance Mode Part (Part 1..16)."""
+    """State for a single Performance Mode Part (Part 1..16).
+
+    Mixer fields map to the Performance Part block at 10 00 (0x20+N-1) 00
+    (see JUNO-DS MIDI Implementation p.31). Patch refs select the sounding
+    patch; rx_* control MIDI reception; key_low/high mirror the Performance
+    Zone block for display (zones live per-channel at 10 00 (0x50+N-1) 00).
+    """
     part_index: int = 1
     name: str = "Part 1"
-    volume: int = 100            # 0..127
-    pan: int = 64                # 0..127
-    muted: bool = False
-    solo: bool = False
+    volume: int = 100            # 0..127 (Part Level, CC#7)
+    pan: int = 64                # 0..127 (L64..63R)
+    muted: bool = False          # Mute Switch (0=OFF sounding, 1=MUTE)
+    solo: bool = False           # App-side; hardware solo is a single common select
+    # Sounding patch selection (Bank Select + PC)
+    patch_msb: int = 87          # 0..127 (87 = user bank default)
+    patch_lsb: int = 64          # 0..127
+    patch_pc: int = 0            # 0..127
+    patch_name: str = ""         # Display cache (not on hardware part block)
+    # MIDI reception
+    rx_channel: int = -1         # 0..15 (ch = rx_channel + 1); -1 = default to part
+    rx_switch: bool = True       # Receive Switch OFF/ON
+    # Tuning
+    coarse_tune: int = 64        # 16..112 (-48..+48, 64=0)
+    fine_tune: int = 64          # 14..114 (-50..+50, 64=0)
+    octave_shift: int = 64       # 61..67 (-3..+3, 64=0)
+    # Keyboard zone display mirror (actual zone block is per-channel)
+    key_low: int = 0             # 0..127 (C-1..UPPER)
+    key_high: int = 127          # 0..127 (LOWER..G9)
+
+    def __post_init__(self) -> None:
+        if not 1 <= int(self.part_index) <= 16:
+            self.part_index = max(1, min(16, int(self.part_index)))
+        if int(self.rx_channel) < 0 or int(self.rx_channel) > 15:
+            # Unset (-1) or out of range -> default musical mapping part N -> ch N.
+            self.rx_channel = (int(self.part_index) - 1) % 16
 
 
 @dataclass
@@ -564,9 +592,15 @@ class PatchState:
     effects: EffectsState = field(default_factory=EffectsState)
     step_lfo: StepLfoState = field(default_factory=StepLfoState)
     perf_parts: list[PerfPartState] = field(default_factory=lambda: [
-        PerfPartState(part_index=i, name=f"Part {i}", volume=110 if i == 1 else (85 if i == 2 else 0))
+        PerfPartState(part_index=i, name=f"Part {i}",
+                      volume=110 if i == 1 else (85 if i == 2 else 0),
+                      rx_channel=i - 1)
         for i in range(1, 17)
     ])
+    # Display name of the temporary performance (Performance Common 12 chars).
+    perf_name: str = "SPECTRE PERF"
+    # Which performance part the patch editors target in PERFORM mode (1..16).
+    active_perf_part: int = 1
 
     # Workstation / VA state (software-side only, never sent as a dedicated SysEx message)
     auto_detune: bool = False           # Auto Detune disabled by default

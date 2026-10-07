@@ -16,7 +16,7 @@ Rectangle {
         anchors.rightMargin: ScaleMetrics.dp(12)
         spacing: ScaleMetrics.dp(10)
 
-        // Logo / Title
+        // Logo / Title (text hidden in PERFORM to make room for Perf/Part context)
         RowLayout {
             spacing: ScaleMetrics.dp(6)
             Text {
@@ -24,6 +24,7 @@ Rectangle {
                 font.pixelSize: ScaleMetrics.sp(16)
             }
             Text {
+                visible: Bridge.soundMode !== "PERFORM"
                 text: "JUNO SPECTRE"
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(12)
@@ -32,12 +33,12 @@ Rectangle {
             }
         }
 
-        // Screens Launcher Trigger Button
+        // Screens Launcher Trigger Button (narrower in PERFORM for context room)
         Rectangle {
             id: screensBtn
             Layout.fillWidth: true
-            Layout.preferredWidth: ScaleMetrics.dp(240)
-            Layout.maximumWidth: ScaleMetrics.dp(320)
+            Layout.preferredWidth: Bridge.soundMode === "PERFORM" ? ScaleMetrics.dp(150) : ScaleMetrics.dp(240)
+            Layout.maximumWidth: Bridge.soundMode === "PERFORM" ? ScaleMetrics.dp(190) : ScaleMetrics.dp(320)
             height: ScaleMetrics.dp(40)
             radius: ScaleMetrics.dp(6)
             color: screensArea.pressed ? Theme.bgCardActive : Theme.bgApp
@@ -144,7 +145,7 @@ Rectangle {
 
                 Text {
                     Layout.fillWidth: true
-                    text: Bridge.patchName
+                    text: (Bridge.soundMode === "PERFORM" && Bridge.perfContext !== "") ? Bridge.perfContext : Bridge.patchName
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(11)
                     color: Theme.textPrimary
@@ -155,7 +156,7 @@ Rectangle {
                     }
                 }
 
-                // Sync button
+                // Sync button (patch only — disabled in PERFORM, perf has its own sync)
                 Rectangle {
                     id: syncBtn
                     width: ScaleMetrics.dp(46)
@@ -164,6 +165,8 @@ Rectangle {
                     color: syncArea.pressed ? Theme.bgCardActive : Theme.bgSurface
                     border.color: syncArea.pressed ? Theme.tone1 : Theme.borderCard
                     border.width: 1
+                    enabled: Bridge.soundMode !== "PERFORM"
+                    opacity: enabled ? 1.0 : 0.35
 
                     RowLayout {
                         anchors.centerIn: parent
@@ -185,13 +188,14 @@ Rectangle {
                     MouseArea {
                         id: syncArea
                         anchors.fill: parent
+                        enabled: syncBtn.enabled
                         onClicked: {
                             Bridge.syncPatchFromSynth();
                         }
                     }
                 }
 
-                // Init button
+                // Init button (patch only — disabled in PERFORM)
                 Rectangle {
                     id: initBtn
                     width: ScaleMetrics.dp(44)
@@ -200,6 +204,8 @@ Rectangle {
                     color: initArea.pressed ? Theme.bgCardActive : Theme.bgSurface
                     border.color: initArea.pressed ? "#fbbf24" : Theme.borderCard
                     border.width: 1
+                    enabled: Bridge.soundMode !== "PERFORM"
+                    opacity: enabled ? 1.0 : 0.35
 
                     RowLayout {
                         anchors.centerIn: parent
@@ -221,6 +227,7 @@ Rectangle {
                     MouseArea {
                         id: initArea
                         anchors.fill: parent
+                        enabled: initBtn.enabled
                         onClicked: {
                             Bridge.openInitPatchModal();
                         }

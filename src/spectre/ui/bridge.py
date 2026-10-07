@@ -135,6 +135,7 @@ class SpectreBridge(QObject):
     matrixCtrlChanged = pyqtSignal()
     stepLfoChanged = pyqtSignal()
     perfPartsChanged = pyqtSignal()
+    playlistChanged = pyqtSignal()
     vaParamsChanged = pyqtSignal()
     routingChanged = pyqtSignal()
 
@@ -180,6 +181,11 @@ class SpectreBridge(QObject):
         # {source, kind, msb, lsb, pc} for slots, or {source: "file", path}
         # for Pi files. Drives the save dialog defaults.
         self._current_ref: Optional[dict] = None
+        # Playlist / live setlist: ordered song entries (see spectre_format
+        # make_playlist_entry). Pure data; persisted as kind="playlist" files.
+        self._playlist: list = []
+        self._playlist_index: int = -1
+        self._playlist_path: str = ""
         # Set by app.py (non-fatal when absent, e.g. unit tests).
         self._librarian_repo = None
         self._librarian_model = None
@@ -747,6 +753,10 @@ class SpectreBridge(QObject):
         self.stepLfoChanged.emit()
         self.perfPartsChanged.emit()
         self.vaParamsChanged.emit()
+        try:
+            self.playlistChanged.emit()
+        except Exception:
+            pass
         self.macrosChanged.emit()
         self.routingChanged.emit()
 
@@ -1663,14 +1673,43 @@ class SpectreBridge(QObject):
         return [
             {
                 "index": p.part_index,
-                "name": p.name,
+                "name": p.patch_name or p.name,
                 "volume": p.volume,
                 "pan": p.pan,
                 "muted": p.muted,
                 "solo": p.solo,
+                "msb": p.patch_msb,
+                "lsb": p.patch_lsb,
+                "pc": p.patch_pc,
+                "rxChannel": p.rx_channel,
+                "rxOn": p.rx_switch,
             }
-            for p in self.patch_state.perf_parts[:8]
+            for p in self.patch_state.perf_parts[:16]
         ]
+
+    @pyqtProperty(str, notify=perfPartsChanged)
+    def perfName(self) -> str:
+        return getattr(self.patch_state, "perf_name", "SPECTRE PERF")
+
+    @pyqtProperty(int, notify=perfPartsChanged)
+    def activePerfPart(self) -> int:
+        return max(1, min(16, int(getattr(self.patch_state, "active_perf_part", 1))))
+
+    @pyqtProperty(str, notify=perfPartsChanged)
+    def perfContext(self) -> str:
+        """Header context in PERFORM: 'PERFNAME / N-PATCHNAME', else ''."""
+        if str(self._sound_mode).upper() != "PERFORM":
+            return ""
+        perf = str(getattr(self.patch_state, "perf_name", "") or self._patch_name or "")
+        idx = max(1, min(16, int(getattr(self.patch_state, "active_perf_part", 1))))
+        try:
+            part = self.patch_state.perf_parts[idx - 1]
+            pname = str(part.patch_name or part.name or f"Part {idx}")
+        except Exception:
+            pname = f"Part {idx}"
+        if perf:
+            return f"{perf} / {idx}-{pname}"
+        return f"{idx}-{pname}"
 
     # Relative macros: knob owns value in [-1, 1]; sounding = base + SUM.
     @pyqtProperty("QVariantList", notify=macrosChanged)
@@ -3921,31 +3960,323 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(int, int)
     def setPartVolume(self, part_index: int, vol: int) -> None:
-        """Set volume level for Performance Part 1..16."""
+        """Set mixer level for Performance Part 1..16 (state + SysEx DT1)."""
         if 1 <= part_index <= 16:
             self.patch_state.perf_parts[part_index - 1].volume = max(0, min(127, int(vol)))
+            juno = getattr(getattr(self, "engine", None), "juno", None)
+            if juno is not None:
+                try:
+                    juno.set_perf_part_level(part_index, int(vol))
+                except Exception as e:
+                    logger.debug(f"setPartVolume: synth write failed: {e}")
             self.perfPartsChanged.emit()
 
     @pyqtSlot(int, int)
     def setPartPan(self, part_index: int, pan: int) -> None:
-        """Set pan for Performance Part 1..16."""
+        """Set pan for Performance Part 1..16 (state + SysEx DT1)."""
         if 1 <= part_index <= 16:
             self.patch_state.perf_parts[part_index - 1].pan = max(0, min(127, int(pan)))
+            juno = getattr(getattr(self, "engine", None), "juno", None)
+            if juno is not None:
+                try:
+                    juno.set_perf_part_pan(part_index, int(pan))
+                except Exception as e:
+                    logger.debug(f"setPartPan: synth write failed: {e}")
             self.perfPartsChanged.emit()
 
     @pyqtSlot(int, bool)
     def setPartMute(self, part_index: int, mute: bool) -> None:
-        """Set mute switch for Performance Part 1..16."""
+        """Set mute switch for Performance Part 1..16 (Mute Switch 0/1)."""
         if 1 <= part_index <= 16:
-            self.patch_state.perf_parts[part_index - 1].muted = mute
+            self.patch_state.perf_parts[part_index - 1].muted = bool(mute)
+            juno = getattr(getattr(self, "engine", None), "juno", None)
+            if juno is not None:
+                try:
+                    juno.set_perf_part_mute(part_index, bool(mute))
+                except Exception as e:
+                    logger.debug(f"setPartMute: synth write failed: {e}")
             self.perfPartsChanged.emit()
 
     @pyqtSlot(int, bool)
     def setPartSolo(self, part_index: int, solo: bool) -> None:
-        """Set solo switch for Performance Part 1..16."""
+        """Set solo for Performance Part 1..16.
+
+        Hardware Solo Part Select is a single common value: soloing sets it to
+        that part, unsoloing clears to OFF when no other part stays soloed.
+        """
         if 1 <= part_index <= 16:
-            self.patch_state.perf_parts[part_index - 1].solo = solo
+            self.patch_state.perf_parts[part_index - 1].solo = bool(solo)
+            juno = getattr(getattr(self, "engine", None), "juno", None)
+            if juno is not None:
+                try:
+                    if solo:
+                        juno.set_perf_solo(part_index)
+                    elif not any(p.solo for p in self.patch_state.perf_parts):
+                        juno.set_perf_solo(0)
+                except Exception as e:
+                    logger.debug(f"setPartSolo: synth write failed: {e}")
             self.perfPartsChanged.emit()
+
+    @pyqtSlot(int)
+    def editPerfPart(self, part_index: int) -> None:
+        """Select which performance part patch editors target (deep edit)."""
+        if 1 <= part_index <= 16:
+            self.patch_state.active_perf_part = part_index
+            juno = getattr(getattr(self, "engine", None), "juno", None)
+            if juno is not None:
+                try:
+                    juno.set_active_perf_part(part_index)
+                except Exception as e:
+                    logger.debug(f"editPerfPart: {e}")
+            self.perfPartsChanged.emit()
+
+    @pyqtSlot(str)
+    def setSoundMode(self, mode: str) -> None:
+        """Switch synth sound mode PATCH/PERFORM (Setup 01 00 00 00)."""
+        m = str(mode or "").upper()
+        if m not in ("PATCH", "PERFORM"):
+            return
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is not None:
+            try:
+                from ..core.protocol import SoundMode
+                juno.set_sound_mode(SoundMode[m])
+            except Exception as e:
+                logger.debug(f"setSoundMode: synth write failed: {e}")
+        self._sound_mode = m
+        self.patch_state.sound_mode = m
+        self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
+        self.perfPartsChanged.emit()
+
+    @pyqtSlot()
+    def syncPerformanceFromSynth(self) -> None:
+        """Read performance name + 16 part mixer blocks from hardware.
+
+        Disabled-safe offline (logs only). Never touches patch editors.
+        """
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is None:
+            logger.info("Cannot sync performance: no synthesizer connected.")
+            return
+        try:
+            try:
+                name = juno.get_perf_name(timeout=1.0)
+                if isinstance(name, str) and name:
+                    self.patch_state.perf_name = name[:12]
+                    self._patch_name = name
+            except Exception as e:
+                logger.debug(f"syncPerformance: name read failed: {e}")
+            try:
+                parts = juno.get_perf_parts(timeout=1.0)
+                if parts and len(parts) == 16:
+                    kept_names = [p.patch_name or p.name for p in self.patch_state.perf_parts]
+                    self.patch_state.perf_parts = parts
+                    for i, p in enumerate(self.patch_state.perf_parts):
+                        if not p.patch_name and i < len(kept_names):
+                            p.patch_name = kept_names[i]
+            except Exception as e:
+                logger.debug(f"syncPerformance: parts read failed: {e}")
+            self._sound_mode = "PERFORM"
+            self.patch_state.sound_mode = "PERFORM"
+            self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
+            self.perfPartsChanged.emit()
+        except Exception as e:
+            logger.warning(f"syncPerformanceFromSynth failed: {e}")
+
+    # -------------------------------------------------------------------------
+    # Playlist / live setlist (hybrid link + embedded snapshot, Pi files only)
+    # -------------------------------------------------------------------------
+
+    @pyqtProperty("QVariantList", notify=playlistChanged)
+    def playlistEntries(self) -> list:
+        from ..core.spectre_format import playlist_entry_status
+
+        out = []
+        for i, e in enumerate(self._playlist):
+            if not isinstance(e, dict):
+                continue
+            try:
+                status = playlist_entry_status(e)
+            except Exception:
+                status = "unsaved"
+            out.append({
+                "index": i,
+                "name": str(e.get("name") or "Untitled"),
+                "status": status,
+                "current": (i == self._playlist_index),
+            })
+        return out
+
+    @pyqtProperty(int, notify=playlistChanged)
+    def playlistIndex(self) -> int:
+        return self._playlist_index
+
+    @pyqtProperty(int, notify=playlistChanged)
+    def playlistCount(self) -> int:
+        return len(self._playlist)
+
+    def _apply_playlist_state(self, patch_dict: dict, entry_name: str = "") -> bool:
+        """Swap in a cached/loaded performance image and push the mixer live."""
+        from ..core.spectre_format import patch_state_from_dict
+
+        try:
+            state = patch_state_from_dict(patch_dict)
+        except Exception as e:
+            logger.warning(f"playlist load: bad snapshot: {e}")
+            return False
+        kept_macros = self.patch_state.macros
+        state.macros = kept_macros if kept_macros else state.macros
+        self.patch_state = state
+        self.patch_state.sound_mode = "PERFORM"
+        self._sound_mode = "PERFORM"
+        self._patch_name = getattr(state, "perf_name", "") or entry_name or self._patch_name
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is not None:
+            try:
+                from ..core.protocol import SoundMode
+                juno.set_sound_mode(SoundMode.PERFORM)
+            except Exception as e:
+                logger.debug(f"playlist load: mode switch failed: {e}")
+            for p in self.patch_state.perf_parts:
+                try:
+                    juno.set_perf_part_level(p.part_index, p.volume)
+                    juno.set_perf_part_pan(p.part_index, p.pan)
+                    juno.set_perf_part_mute(p.part_index, p.muted)
+                except Exception as e:
+                    logger.debug(f"playlist load: part {p.part_index} push failed: {e}")
+                    break
+            try:
+                solos = [p.part_index for p in self.patch_state.perf_parts if p.solo]
+                juno.set_perf_solo(solos[-1] if solos else 0)
+            except Exception as e:
+                logger.debug(f"playlist load: solo push failed: {e}")
+        self._emit_all_state_signals()
+        self.playlistChanged.emit()
+        return True
+
+    @pyqtSlot(result=bool)
+    def addCurrentToPlaylist(self) -> bool:
+        """Snapshot the current performance to the end of the playlist."""
+        from ..core.spectre_format import make_playlist_entry, patch_state_to_dict
+
+        try:
+            origin = self._current_ref or {}
+            perf_path = str(origin.get("path") or "") if origin.get("source") == "file" else ""
+            name = (getattr(self.patch_state, "perf_name", "") or self._patch_name
+                    or f"Song {len(self._playlist) + 1}")
+            entry = make_playlist_entry(
+                name, patch_state_to_dict(self.patch_state), perf_path=perf_path,
+                macros=[float(s.value) for s in self.patch_state.macros],
+                seq_pattern=list(getattr(self.patch_state.step_lfo, "steps", []) or []),
+            )
+            self._playlist.append(entry)
+            if self._playlist_index < 0:
+                self._playlist_index = 0
+            self.playlistChanged.emit()
+            return True
+        except Exception as e:
+            logger.warning(f"addCurrentToPlaylist failed: {e}")
+            return False
+
+    @pyqtSlot(int, result=bool)
+    def loadPlaylistEntry(self, index: int) -> bool:
+        """Load song by index: linked file when healthy, else embedded snapshot."""
+        if not 0 <= int(index) < len(self._playlist):
+            return False
+        entry = self._playlist[int(index)]
+        patch_dict = None
+        path = str(entry.get("perf_path") or "")
+        if path:
+            try:
+                from ..core.spectre_format import load_spectre, patch_state_to_dict
+                loaded = load_spectre(path)
+                patch_dict = patch_state_to_dict(loaded["patch_state"])
+            except Exception as e:
+                logger.info(f"playlist: linked file unreadable, using snapshot: {e}")
+        if patch_dict is None:
+            patch_dict = entry.get("cached")
+        if not isinstance(patch_dict, dict):
+            return False
+        ok = self._apply_playlist_state(patch_dict, str(entry.get("name") or ""))
+        if ok:
+            self._playlist_index = int(index)
+            self.playlistChanged.emit()
+        return ok
+
+    @pyqtSlot(result=bool)
+    def nextPlaylistEntry(self) -> bool:
+        """Named live action (touch arrows now, MIDI-mappable later)."""
+        if not self._playlist:
+            return False
+        nxt = (self._playlist_index + 1) % len(self._playlist) if self._playlist_index >= 0 else 0
+        return self.loadPlaylistEntry(nxt)
+
+    @pyqtSlot(result=bool)
+    def prevPlaylistEntry(self) -> bool:
+        """Named live action (touch arrows now, MIDI-mappable later)."""
+        if not self._playlist:
+            return False
+        prv = ((self._playlist_index - 1) % len(self._playlist)
+               if self._playlist_index >= 0 else len(self._playlist) - 1)
+        return self.loadPlaylistEntry(prv)
+
+    @pyqtSlot(int, result=bool)
+    def refreshPlaylistEntry(self, index: int) -> bool:
+        """Re-read the linked file into the entry snapshot (amber badge action)."""
+        if not 0 <= int(index) < len(self._playlist):
+            return False
+        try:
+            from ..core.spectre_format import refresh_entry_snapshot
+            refresh_entry_snapshot(self._playlist[int(index)])
+            self.playlistChanged.emit()
+            return True
+        except Exception as e:
+            logger.warning(f"refreshPlaylistEntry failed: {e}")
+            return False
+
+    @pyqtSlot(int, result=bool)
+    def removePlaylistEntry(self, index: int) -> bool:
+        if not 0 <= int(index) < len(self._playlist):
+            return False
+        self._playlist.pop(int(index))
+        if self._playlist_index >= len(self._playlist):
+            self._playlist_index = len(self._playlist) - 1
+        self.playlistChanged.emit()
+        return True
+
+    @pyqtSlot(str, result=bool)
+    def savePlaylist(self, path: str) -> bool:
+        """Persist the playlist as a kind='playlist' .spectre file (Pi only)."""
+        try:
+            from ..core.spectre_format import default_meta, save_spectre
+            name = Path(path).stem or "Setlist"
+            self._playlist_path = str(path)
+            save_spectre(path, self.patch_state,
+                         meta=default_meta(name, "playlist"),
+                         spectre={"playlist": {"entries": self._playlist,
+                                               "index": self._playlist_index}},
+                         kind="playlist")
+            return True
+        except Exception as e:
+            logger.warning(f"savePlaylist failed: {e}")
+            return False
+
+    @pyqtSlot(str, result=bool)
+    def loadPlaylist(self, path: str) -> bool:
+        """Load a kind='playlist' .spectre file into the setlist (no auto-play)."""
+        try:
+            from ..core.spectre_format import load_spectre
+            loaded = load_spectre(path)
+            entries = (loaded.get("spectre") or {}).get("playlist", {}).get("entries", [])
+            self._playlist = [e for e in entries if isinstance(e, dict)]
+            idx = (loaded.get("spectre") or {}).get("playlist", {}).get("index", -1)
+            self._playlist_index = int(idx) if isinstance(idx, int) else -1
+            self._playlist_path = str(path)
+            self.playlistChanged.emit()
+            return True
+        except Exception as e:
+            logger.warning(f"loadPlaylist failed: {e}")
+            return False
 
     # -------------------------------------------------------------------------
     # Wave, Patch Name & Navigation Slots
