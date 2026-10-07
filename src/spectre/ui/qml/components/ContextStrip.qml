@@ -5,7 +5,7 @@ import ".."
 
 Rectangle {
     id: root
-    height: ScaleMetrics.dp(50)
+    height: ScaleMetrics.dp(40)
     color: Theme.bgCard
     border.color: Theme.borderCard
     border.width: 1
@@ -179,15 +179,15 @@ Rectangle {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.margins: ScaleMetrics.dp(4)
-            height: ScaleMetrics.dp(14)
+            anchors.margins: ScaleMetrics.dp(3)
+            height: ScaleMetrics.dp(12)
 
             Rectangle {
                 id: tagBadge
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 width: ScaleMetrics.dp(18)
-                height: ScaleMetrics.dp(14)
+                height: ScaleMetrics.dp(12)
                 radius: ScaleMetrics.dp(3)
                 color: Theme.bgCardActive
 
@@ -221,7 +221,7 @@ Rectangle {
             anchors.right: parent.right
             text: card.displayString
             font.bold: true
-            font.pixelSize: ScaleMetrics.sp(11)
+            font.pixelSize: ScaleMetrics.sp(10)
             font.family: Theme.fontMono
             color: Theme.textPrimary
             horizontalAlignment: Text.AlignHCenter
@@ -234,8 +234,8 @@ Rectangle {
             anchors.bottom: parent.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.margins: ScaleMetrics.dp(4)
-            height: ScaleMetrics.dp(4)
+            anchors.margins: ScaleMetrics.dp(3)
+            height: ScaleMetrics.dp(3)
             radius: ScaleMetrics.dp(2)
             color: "#1e293b"
             clip: true

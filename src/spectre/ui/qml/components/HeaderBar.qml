@@ -5,7 +5,7 @@ import ".."
 
 Rectangle {
     id: root
-    height: ScaleMetrics.dp(44)
+    height: ScaleMetrics.dp(54)
     color: Theme.bgCard
     border.color: Theme.borderCard
     border.width: 1
@@ -21,7 +21,7 @@ Rectangle {
             spacing: ScaleMetrics.dp(6)
             Text {
                 text: "🌑"
-                font.pixelSize: ScaleMetrics.sp(14)
+                font.pixelSize: ScaleMetrics.sp(16)
             }
             Text {
                 text: "JUNO SPECTRE"
@@ -38,7 +38,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredWidth: ScaleMetrics.dp(240)
             Layout.maximumWidth: ScaleMetrics.dp(320)
-            height: ScaleMetrics.dp(32)
+            height: ScaleMetrics.dp(40)
             radius: ScaleMetrics.dp(6)
             color: screensArea.pressed ? Theme.bgCardActive : Theme.bgApp
             border.color: screensArea.pressed ? Theme.primary : Theme.borderCard
@@ -110,8 +110,8 @@ Rectangle {
 
         // Synth Mode Badge
         Rectangle {
-            height: ScaleMetrics.dp(24)
-            width: ScaleMetrics.dp(56)
+            height: ScaleMetrics.dp(32)
+            width: ScaleMetrics.dp(60)
             radius: ScaleMetrics.dp(4)
             color: Bridge.soundMode === "PATCH" ? "#1e293b" : "#2d1b4e"
             border.color: Bridge.soundMode === "PATCH" ? Theme.primary : Theme.tone2
@@ -130,7 +130,7 @@ Rectangle {
         Rectangle {
             Layout.preferredWidth: ScaleMetrics.dp(279)
             Layout.fillWidth: false
-            height: ScaleMetrics.dp(28)
+            height: ScaleMetrics.dp(38)
             radius: ScaleMetrics.dp(4)
             color: Theme.bgApp
             border.color: Theme.borderCard
@@ -158,8 +158,8 @@ Rectangle {
                 // Sync button
                 Rectangle {
                     id: syncBtn
-                    width: ScaleMetrics.dp(42)
-                    height: ScaleMetrics.dp(22)
+                    width: ScaleMetrics.dp(46)
+                    height: ScaleMetrics.dp(30)
                     radius: ScaleMetrics.dp(3)
                     color: syncArea.pressed ? Theme.bgCardActive : Theme.bgSurface
                     border.color: syncArea.pressed ? Theme.tone1 : Theme.borderCard
@@ -194,8 +194,8 @@ Rectangle {
                 // Init button
                 Rectangle {
                     id: initBtn
-                    width: ScaleMetrics.dp(40)
-                    height: ScaleMetrics.dp(22)
+                    width: ScaleMetrics.dp(44)
+                    height: ScaleMetrics.dp(30)
                     radius: ScaleMetrics.dp(3)
                     color: initArea.pressed ? Theme.bgCardActive : Theme.bgSurface
                     border.color: initArea.pressed ? "#fbbf24" : Theme.borderCard
@@ -230,8 +230,8 @@ Rectangle {
                 // Save button (Pi-always + optional keyboard slot)
                 Rectangle {
                     id: saveBtn
-                    width: ScaleMetrics.dp(44)
-                    height: ScaleMetrics.dp(22)
+                    width: ScaleMetrics.dp(48)
+                    height: ScaleMetrics.dp(30)
                     radius: ScaleMetrics.dp(3)
                     color: saveArea.pressed ? Theme.bgCardActive : Theme.bgSurface
                     border.color: saveArea.pressed ? "#38bdf8" : Theme.borderCard
@@ -266,8 +266,8 @@ Rectangle {
 
         // BPM Display
         Rectangle {
-            height: ScaleMetrics.dp(28)
-            width: ScaleMetrics.dp(68)
+            height: ScaleMetrics.dp(38)
+            width: ScaleMetrics.dp(70)
             radius: ScaleMetrics.dp(4)
             color: Theme.bgApp
             border.color: Theme.borderCard
@@ -294,8 +294,8 @@ Rectangle {
 
         // Panic Button (All Notes Off)
         Rectangle {
-            height: ScaleMetrics.dp(28)
-            width: ScaleMetrics.dp(54)
+            height: ScaleMetrics.dp(38)
+            width: ScaleMetrics.dp(60)
             radius: ScaleMetrics.dp(4)
             color: panicArea.pressed ? "#591c1c" : "#3f1a1a"
             border.color: Theme.recording
