@@ -136,6 +136,29 @@ def test_legacy_db_migrates_kind(tmp_path):
     repo.close()
 
 
+def test_auto_backups_hidden_from_index(tmp_path):
+    from src.spectre.core.patch_state import PatchState
+    from src.spectre.core.spectre_format import save_spectre
+
+    repo = _make_repo(tmp_path)
+    ps = PatchState.create_init_patch()
+    save_spectre(repo.user_dir / "real.spectre", ps, meta={"name": "REAL"})
+    save_spectre(repo.user_dir / "BACKUP_87-0-11_x.spectre", ps, meta={"name": "BACKUP"})
+    save_spectre(repo.user_dir / "BEFORE-REINIT_y.spectre", ps, meta={"name": "BEFORE"})
+    try:
+        stats = repo.rescan_files()
+        assert stats["added"] == 1
+        assert [r["name"] for r in repo.search("")] == ["REAL"]
+        # Stale rows for backup files are purged on rescan.
+        repo._conn.execute(
+            "INSERT INTO patches(path, source, name) VALUES(?,?,?)",
+            (str(repo.user_dir / "BACKUP_87-0-11_x.spectre"), "file", "STALE"))
+        repo._conn.commit()
+        repo.rescan_files()
+        assert repo.search("STALE") == []
+        assert [r["name"] for r in repo.search("")] == ["REAL"]
+    finally:
+        repo.close()
 def test_syx_indexed_by_filename(tmp_path):
     repo = _make_repo(tmp_path)
     (repo.user_dir / "raw.syx").write_bytes(bytes([0xF0, 0x41, 0xF7]))

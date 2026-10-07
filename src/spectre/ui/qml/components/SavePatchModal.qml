@@ -370,11 +370,12 @@ Rectangle {
                 }
             }
 
-            // Slot list (scrollable, tap to select)
+            // Slot list (scrollable, tap to select). Yields height while the
+            // keyboard is open so the footer stays inside the fixed card.
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.minimumHeight: ScaleMetrics.dp(110)
+                Layout.minimumHeight: root.keyboardVisible ? ScaleMetrics.dp(64) : ScaleMetrics.dp(110)
                 radius: ScaleMetrics.dp(6)
                 color: Theme.bgApp
                 border.color: Theme.borderCard

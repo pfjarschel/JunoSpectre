@@ -75,6 +75,10 @@ Rectangle {
                     font.pixelSize: ScaleMetrics.sp(11)
                     color: Theme.textPrimary
                     elide: Text.ElideRight
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Bridge.setActiveView("LIBRARIAN")
+                    }
                 }
 
                 // Sync button

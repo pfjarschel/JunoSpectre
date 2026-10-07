@@ -4153,6 +4153,15 @@ class SpectreBridge(QObject):
             pass
         return state
 
+    @staticmethod
+    def _drop_backup(path) -> None:
+        """Delete an auto-backup file (verified writes need no residue)."""
+        try:
+            if path:
+                Path(path).unlink(missing_ok=True)
+        except OSError as e:
+            logger.debug(f"backup cleanup failed for {path}: {e}")
+
     def _live_spectre_extras(self) -> dict:
         extras: dict = {"engine_mode": getattr(self, "_active_view", "JUNO PCM")}
         try:
@@ -4329,8 +4338,9 @@ class SpectreBridge(QObject):
     def saveCurrentToDevice(self, msb: int, lsb: int, pc: int, name: str) -> str:
         """Save the live sound to a user flash slot. Returns '' on success.
 
-        Auto-backs the slot's previous content to a Pi .spectre file first,
-        then writes + verifies. Error text otherwise.
+        Occupied slots are auto-backed to a Pi .spectre file first; the
+        backup is deleted once the write verifies (no disk orphans).
+        A failed verify keeps the backup and names it in the error.
         """
         repo = self._librarian()
         juno = getattr(getattr(self, "engine", None), "juno", None)
@@ -4344,24 +4354,29 @@ class SpectreBridge(QObject):
             JunoClient.user_slot_base(msb, lsb, pc)  # validates
         except ValueError as e:
             return str(e)
+        backup_path = None
         try:
             try:
                 previous = juno.read_user_patch(msb, lsb, pc, timeout=1.5)
-                repo.save_current_as(
-                    previous, f"BACKUP_{msb}-{lsb}-{pc}_{previous.common.name}",
-                    category=code_from_index(previous.common.category),
-                    tags=["backup", "auto"],
-                    synth_ref={"source": "synth-user", "msb": msb, "lsb": lsb, "pc": pc},
-                )
+                if (previous.common.name or "").strip() not in ("INIT PATCH", ""):
+                    backup_path = repo.save_current_as(
+                        previous, f"BACKUP_{msb}-{lsb}-{pc}_{previous.common.name}",
+                        category=code_from_index(previous.common.category),
+                        tags=["backup", "auto"],
+                        synth_ref={"source": "synth-user", "msb": msb, "lsb": lsb, "pc": pc},
+                    )
             except Exception as e:
                 return f"backup failed, aborting: {e}"
             try:
                 live = self._fresh_live_state(name or self._patch_name)
             except Exception as e:
+                self._drop_backup(backup_path)
                 return f"could not read live sound: {e}"
             mismatches = juno.write_user_patch(live, msb, lsb, pc, timeout=1.5)
             if mismatches:
-                return "verify failed: " + ", ".join(mismatches)
+                kept = f" (slot backup kept at {Path(backup_path).name})" if backup_path else ""
+                return "verify failed: " + ", ".join(mismatches) + kept
+            self._drop_backup(backup_path)
             try:
                 repo.upsert_synth_user(msb, lsb, pc, live.common.name,
                                        code_from_index(live.common.category))
@@ -4437,7 +4452,9 @@ class SpectreBridge(QObject):
         """Restore a user flash slot to INIT (backup + temp-swap dance).
 
         The live temp buffer is captured, restored afterwards and verified,
-        so the user's current edit survives. Returns '' on success.
+        so the user's current edit survives. Backups are deleted once every
+        step verifies; failures keep theirs and name them. Returns '' on
+        success.
         """
         repo = self._librarian()
         juno = getattr(getattr(self, "engine", None), "juno", None)
@@ -4445,18 +4462,20 @@ class SpectreBridge(QObject):
             return "librarian unavailable"
         if juno is None or not hasattr(juno, "write_user_patch"):
             return "no synthesizer connected"
+        slot_backup = temp_backup = None
         try:
             msb, lsb, pc = int(msb), int(lsb), int(pc)
             juno.__class__.user_slot_base(msb, lsb, pc)
             try:
                 previous = juno.read_user_patch(msb, lsb, pc, timeout=1.5)
-                repo.save_current_as(
-                    previous, f"BACKUP_{msb}-{lsb}-{pc}_{previous.common.name}",
-                    category=code_from_index(previous.common.category),
-                    tags=["backup", "auto"],
-                    synth_ref={"source": "synth-user", "msb": msb, "lsb": lsb, "pc": pc},
-                )
-                repo.save_current_as(
+                if (previous.common.name or "").strip() not in ("INIT PATCH", ""):
+                    slot_backup = repo.save_current_as(
+                        previous, f"BACKUP_{msb}-{lsb}-{pc}_{previous.common.name}",
+                        category=code_from_index(previous.common.category),
+                        tags=["backup", "auto"],
+                        synth_ref={"source": "synth-user", "msb": msb, "lsb": lsb, "pc": pc},
+                    )
+                temp_backup = repo.save_current_as(
                     self._fresh_live_state(self._patch_name),
                     f"BEFORE-REINIT_{previous.common.name}",
                     tags=["backup", "auto"],
@@ -4466,8 +4485,12 @@ class SpectreBridge(QObject):
             try:
                 temp_image = juno.read_full_patch(timeout=1.5)
             except Exception as e:
+                self._drop_backup(slot_backup)
+                self._drop_backup(temp_backup)
                 return f"could not capture live sound: {e}"
             if not juno.init_patch():
+                self._drop_backup(slot_backup)
+                self._drop_backup(temp_backup)
                 return "could not initialize temp buffer"
             try:
                 fresh = juno.read_full_patch(timeout=1.5)
@@ -4481,9 +4504,18 @@ class SpectreBridge(QObject):
             time.sleep(juno.FLASH_SETTLE_S)
             restore_mm = juno._verify_patch_regions(temp_image, temp_base, timeout=1.5)
             if mismatches:
-                return "slot verify failed: " + ", ".join(mismatches)
+                kept = f" (slot backup kept at {Path(slot_backup).name})" if slot_backup else ""
+                self._drop_backup(temp_backup)  # temp untouched, its backup redundant
+                return "slot verify failed: " + ", ".join(mismatches) + kept
             if restore_fail or restore_mm:
-                return "slot written BUT temp restore needs re-sync"
+                kept = ""
+                if temp_backup:
+                    kept = f" (live edit backup kept at {Path(temp_backup).name})"
+                return "slot written BUT temp restore needs re-sync" + kept
+            self._drop_backup(slot_backup)
+            self._drop_backup(temp_backup)
+            self._drop_backup(slot_backup)
+            self._drop_backup(temp_backup)
             try:
                 repo.upsert_synth_user(msb, lsb, pc, "INIT PATCH", "")
             except Exception as e:

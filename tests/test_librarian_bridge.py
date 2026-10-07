@@ -129,11 +129,9 @@ def test_save_to_device_backs_up_writes_verifies(rig):
     assert err == "", err
     # Slot holds the new sound (audition path would find it).
     assert rig.juno._store[(0x30, 11, 0, 0)][:12] == b"STAGE LD    "
-    # Auto-backup of the previous INIT content landed on the Pi.
-    # (Meta names obey the 12-char Roland limit; the slot id is the prefix.)
-    backups = rig.repo.search("BACKUP_87-0-")
-    assert len(backups) == 1
-    assert "BACKUP_87-0-11" in backups[0]["name"] or "BACKUP" in backups[0]["path"]
+    # Verified write: no backup residue left on disk.
+    assert list(rig.repo.user_dir.glob("BACKUP_*")) == []
+    assert rig.repo.search("BACKUP") == []
     # DB row refreshed.
     row = rig.repo.search("STAGE LD", source="synth-user")
     assert row and row[0]["category"] == "PNO" or True  # category from template
@@ -167,7 +165,10 @@ def test_reinit_user_slot_restores_init_and_temp(rig):
     assert rig.juno._store[(0x30, 11, 0, 0)][:12] == b"INIT PATCH  "
     # Live temp buffer survived the temp-swap dance.
     assert bytes(rig.juno._store[(0x1F, 0, 0, 0)][:12]) == temp_before
-    assert rig.repo.search("BACKUP_87-0-")
+    # Verified end-to-end: no backup residue left on disk or in the index.
+    assert list(rig.repo.user_dir.glob("BACKUP_*")) == []
+    assert list(rig.repo.user_dir.glob("BEFORE-REINIT_*")) == []
+    assert rig.repo.search("BACKUP") == []
 
 
 def test_delete_and_rescan(rig):
@@ -192,6 +193,37 @@ def test_refresh_user_slot_names(rig):
     index = rig.bridge.getUserSlotIndex()
     assert len(index) == 2
     assert index[0]["number"] == 501 and index[1]["number"] == 502
+
+
+def test_save_to_free_slot_skips_backup(rig):
+    _template_state_at(rig.juno, (0x30, 11, 0, 0))
+    assert rig.juno.rename_user_slot(87, 0, 11, "INIT PATCH", timeout=0.1) is True
+    assert rig.bridge.saveCurrentToDevice(87, 0, 11, "FRESH") == ""
+    assert list(rig.repo.user_dir.glob("BACKUP_*")) == []
+    assert rig.repo.search("FRESH", source="synth-user")
+
+
+def test_save_verify_failure_keeps_named_backup(rig, monkeypatch):
+    _template_state_at(rig.juno, (0x30, 11, 0, 0))
+    monkeypatch.setattr(rig.juno, "write_user_patch", lambda *a, **k: ["common"])
+    err = rig.bridge.saveCurrentToDevice(87, 0, 11, "STAGE LD")
+    assert "verify failed" in err and "BACKUP_87-0-11" in err
+    backups = list(rig.repo.user_dir.glob("BACKUP_*"))
+    assert len(backups) == 1
+    import json as _json
+    raw = _json.loads(backups[0].read_text(encoding="utf-8"))
+    assert raw["hw_patch"]["common"]["name"] == "JUNO SPECTRE"
+    assert raw["synth_ref"] == {"source": "synth-user", "msb": 87, "lsb": 0, "pc": 11}
+
+
+def test_reinit_verify_failure_keeps_slot_backup(rig, monkeypatch):
+    _template_state_at(rig.juno, (0x30, 11, 0, 0))
+    monkeypatch.setattr(rig.juno, "write_user_patch", lambda *a, **k: ["common"])
+    err = rig.bridge.reinitUserSlot(87, 0, 11)
+    assert "slot verify failed" in err and "BACKUP_87-0-11" in err
+    assert len(list(rig.repo.user_dir.glob("BACKUP_*"))) == 1
+    # Temp was never touched, so its backup is redundant.
+    assert list(rig.repo.user_dir.glob("BEFORE-REINIT_*")) == []
 
 
 def test_refresh_without_synth_returns_minus_one(rig):

@@ -27,6 +27,17 @@ logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 
+#: Auto-backup files are kept on disk (restorable by hand) but hidden from
+#: the browser index so device saves don't clutter the user library.
+AUTO_BACKUP_PREFIXES = ("BACKUP_", "BEFORE-REINIT_")
+
+
+def is_auto_backup(path: str | Path) -> bool:
+    """True for automatic slot-backup files (never indexed)."""
+    from pathlib import Path as _P
+
+    return _P(path).stem.startswith(AUTO_BACKUP_PREFIXES)
+
 
 def data_root() -> Path:
     """Base dir for the librarian DB + user patch files.
@@ -434,12 +445,16 @@ class PatchRepository:
         )
 
     def rescan_files(self) -> dict[str, int]:
-        """Rescan user_dir for *.spectre/*.syx. Returns {added, updated, removed}."""
+        """Rescan user_dir for *.spectre/*.syx. Returns {added, updated, removed}.
+
+        Automatic slot backups (BACKUP_*, BEFORE-REINIT_*) live on disk but
+        are never indexed, and stale rows for them are purged.
+        """
         seen: set[str] = set()
         added = updated = 0
         for pattern in ("*.spectre", "*.syx"):
             for f in sorted(self.user_dir.rglob(pattern)):
-                if not f.is_file():
+                if not f.is_file() or is_auto_backup(f):
                     continue
                 seen.add(str(f))
                 try:
@@ -679,6 +694,8 @@ class PatchRepository:
     def _touch_file_row(self, path: str) -> None:
         """Refresh DB row from file after an in-file meta edit."""
         f = Path(path)
+        if is_auto_backup(f):
+            return
         if f.suffix == ".spectre" and f.exists():
             try:
                 st_mtime = int(f.stat().st_mtime)

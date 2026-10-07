@@ -14,6 +14,7 @@ Rectangle {
     property int activeKindIdx: 0
     property bool favOnly: false
     property bool userFilesOnly: false
+    property bool userSlotsOnly: false
     property string selectedPath: ""
     property int selectedIndex: -1
     property var selectedRow: null
@@ -21,6 +22,7 @@ Rectangle {
     property string statusText: ""
     property string activeCode: ""
     property bool searchKbVisible: false
+    property bool refreshingSlots: false
     property var kinds: ["", "patch", "drum", "performance"]
     property var kindLabels: ["ALL", "PATCH", "DRUM", "PERF"]
     // Live library model. Bound declaratively (onCompleted proved unreliable
@@ -49,9 +51,21 @@ Rectangle {
     function applyFilter() {
         if (!root.patchModel) return
         var kind = root.kinds[root.activeKindIdx]
-        var source = root.userFilesOnly ? "file" : ""
+        var source = root.userSlotsOnly ? "synth-user" : (root.userFilesOnly ? "file" : "")
         var codes = root.activeCode !== "" ? [root.activeCode] : []
         root.patchModel.refresh(root.searchText, "ALL", root.favOnly, source, 2500, codes.join(","), kind)
+    }
+
+    function setSourceFilter(which) {
+        // Radio behavior: only one source filter at a time ("" = all).
+        if (which === "slots") {
+            root.userSlotsOnly = !root.userSlotsOnly
+            if (root.userSlotsOnly) root.userFilesOnly = false
+        } else if (which === "files") {
+            root.userFilesOnly = !root.userFilesOnly
+            if (root.userFilesOnly) root.userSlotsOnly = false
+        }
+        root.applyFilter()
     }
 
     function toggleCode(code) {
@@ -180,6 +194,22 @@ Rectangle {
                 width: ScaleMetrics.dp(76)
                 height: ScaleMetrics.dp(24)
                 radius: 3
+                color: root.userSlotsOnly ? Theme.bgCardActive : "#10141d"
+                border.color: root.userSlotsOnly ? "#60a5fa" : Theme.borderCard
+                border.width: 1
+                Text {
+                    anchors.centerIn: parent
+                    text: "USER SLOTS"
+                    font.bold: root.userSlotsOnly
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: root.userSlotsOnly ? "#60a5fa" : Theme.textDim
+                }
+                MouseArea { anchors.fill: parent; onClicked: root.setSourceFilter("slots") }
+            }
+            Rectangle {
+                width: ScaleMetrics.dp(76)
+                height: ScaleMetrics.dp(24)
+                radius: 3
                 color: root.userFilesOnly ? Theme.bgCardActive : "#10141d"
                 border.color: root.userFilesOnly ? "#60a5fa" : Theme.borderCard
                 border.width: 1
@@ -190,7 +220,7 @@ Rectangle {
                     font.pixelSize: ScaleMetrics.sp(8)
                     color: root.userFilesOnly ? "#60a5fa" : Theme.textDim
                 }
-                MouseArea { anchors.fill: parent; onClicked: { root.userFilesOnly = !root.userFilesOnly; root.applyFilter() } }
+                MouseArea { anchors.fill: parent; onClicked: root.setSourceFilter("files") }
             }
             Item { Layout.fillWidth: true }
             Text {
@@ -602,6 +632,17 @@ Rectangle {
                             root.applyFilter()
                         }
                     }
+                    LibBtn {
+                        text: root.refreshingSlots ? "READING SLOTS…" : "REFRESH USER SLOTS"
+                        accent: Theme.tone1
+                        onClicked: {
+                            if (root.refreshingSlots) return
+                            root.pendingAction = ""
+                            root.refreshingSlots = true
+                            root.statusText = "Reading 256 user slots from keyboard…"
+                            slotRefreshTimer.start()
+                        }
+                    }
 
                     Text {
                         Layout.fillWidth: true
@@ -632,6 +673,25 @@ Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    // Deferred slot refresh (blocking ~256 reads; lets the status paint first).
+    Timer {
+        id: slotRefreshTimer
+        interval: 80
+        repeat: false
+        running: false
+        onTriggered: {
+            var n = -1
+            try { n = Bridge.refreshUserSlotNames() } catch (e) { n = -1 }
+            root.refreshingSlots = false
+            if (n < 0) {
+                root.statusText = "No synthesizer connected."
+            } else {
+                root.statusText = n === 0 ? "User slots already up to date." : ("Updated " + n + " slot(s).")
+            }
+            root.applyFilter()
         }
     }
 
