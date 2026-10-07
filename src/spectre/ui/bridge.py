@@ -31,6 +31,7 @@ from ..core.patch_state import (
 from ..core.env_presets import env_preset_names, get_env_preset
 from ..core.categories import code_from_index
 from ..core.updater import GitUpdater, UpdaterError
+from ..core.wifi import WifiManager, WifiStatus
 from ..core.waves import WaveCatalogManager
 from ..core.mfx_catalog import get_mfx_catalog, get_mfx_algo, get_mfx_categories, get_mfx_light_catalog
 from ..core.macro_targets import (
@@ -145,6 +146,11 @@ class SpectreBridge(QObject):
     latestVersionChanged = pyqtSignal(str)
     updateAppliedChanged = pyqtSignal(bool)
 
+    # Wi-Fi manager signals (NetworkManager / nmcli backend)
+    wifiChanged = pyqtSignal()
+    wifiNetworksChanged = pyqtSignal()
+    wifiBusyChanged = pyqtSignal(bool)
+
     def __init__(self, engine: VectorEngine, parent: Optional[QObject] = None):
         super().__init__(parent)
         self.engine = engine
@@ -204,6 +210,15 @@ class SpectreBridge(QObject):
             self._version = "DEV"
             logger.warning(f"Updater unavailable: {e}")
 
+        # Wi-Fi manager (NetworkManager / nmcli; graceful offline on dev PCs)
+        self._wifi = WifiManager()
+        self._wifi_status: WifiStatus = WifiStatus()
+        self._wifi_networks: list[dict] = []
+        self._wifi_busy: bool = False
+        self._wifi_error: str = ""
+        self._wifi_last_scan: str = "NEVER"
+        self._wifi_last_status_poll: float = 0.0
+
         # Engine state tracking for dirty checks
         self._last_x: float = self.engine.x
         self._last_y: float = self.engine.y
@@ -250,6 +265,15 @@ class SpectreBridge(QObject):
             self.telemetryChanged.emit()
         except Exception as e:
             logger.debug(f"Telemetry poll failed: {e}")
+        # Wi-Fi status is cheap to query but involves subprocesses, so refresh
+        # it on a slower cadence (~6 s) and only when no wifi task is running.
+        try:
+            now = time.monotonic()
+            if not self._wifi_busy and now - self._wifi_last_status_poll > 6.0:
+                self._wifi_last_status_poll = now
+                self.refreshWifiStatus()
+        except Exception as e:
+            logger.debug(f"Wi-Fi background poll failed: {e}")
 
     def _update_telemetry_polling(self) -> None:
         """Start/stop the 1.5 s telemetry timer based on active view."""
@@ -258,6 +282,14 @@ class SpectreBridge(QObject):
                 self._poll_telemetry()  # immediate refresh, no stale mock
                 if not self._telemetry_timer.isActive():
                     self._telemetry_timer.start()
+                # Entering SYSTEM: make sure wifi state is fresh; auto-scan
+                # once so the network list is not empty on first open.
+                try:
+                    self.refreshWifiStatus()
+                    if not self._wifi_networks:
+                        self.scanWifi(rescan=False)
+                except Exception as e:
+                    logger.debug(f"Wi-Fi enter-view refresh failed: {e}")
             else:
                 if self._telemetry_timer.isActive():
                     self._telemetry_timer.stop()
@@ -941,6 +973,74 @@ class SpectreBridge(QObject):
             return f"USB-MIDI CONNECTED ({name})" if name else "USB-MIDI CONNECTED"
         except Exception:
             return "MOCK / OFFLINE"
+
+    # -------------------------------------------------------------------------
+    # Properties for QML: Wi-Fi (System page, NetworkManager backend)
+    # -------------------------------------------------------------------------
+
+    @pyqtProperty(bool, notify=wifiChanged)
+    def wifiAvailable(self) -> bool:
+        return bool(self._wifi_status.available)
+
+    @pyqtProperty(bool, notify=wifiChanged)
+    def wifiEnabled(self) -> bool:
+        return bool(self._wifi_status.enabled)
+
+    @pyqtProperty(bool, notify=wifiChanged)
+    def wifiConnected(self) -> bool:
+        return bool(self._wifi_status.connected)
+
+    @pyqtProperty(str, notify=wifiChanged)
+    def wifiSsid(self) -> str:
+        return str(self._wifi_status.ssid or "")
+
+    @pyqtProperty(str, notify=wifiChanged)
+    def wifiIp(self) -> str:
+        return str(self._wifi_status.ip or "")
+
+    @pyqtProperty(int, notify=wifiChanged)
+    def wifiSignal(self) -> int:
+        s = self._wifi_status.signal
+        return int(s) if s is not None else -1
+
+    @pyqtProperty(str, notify=wifiChanged)
+    def wifiSignalText(self) -> str:
+        return str(self._wifi_status.signal_text)
+
+    @pyqtProperty(str, notify=wifiChanged)
+    def wifiQuality(self) -> str:
+        return str(self._wifi_status.quality)
+
+    @pyqtProperty(str, notify=wifiChanged)
+    def wifiStatusText(self) -> str:
+        return str(self._wifi_status.status_text)
+
+    @pyqtProperty(str, notify=wifiChanged)
+    def wifiDetailText(self) -> str:
+        return str(self._wifi_status.detail_text)
+
+    @pyqtProperty(str, notify=wifiChanged)
+    def wifiIface(self) -> str:
+        return str(self._wifi_status.iface or "")
+
+    @pyqtProperty(str, notify=wifiChanged)
+    def wifiError(self) -> str:
+        # Explicit action errors take precedence over the status snapshot.
+        if self._wifi_error:
+            return str(self._wifi_error)
+        return str(self._wifi_status.error or "")
+
+    @pyqtProperty(str, notify=wifiNetworksChanged)
+    def wifiLastScan(self) -> str:
+        return str(self._wifi_last_scan or "")
+
+    @pyqtProperty("QVariantList", notify=wifiNetworksChanged)
+    def wifiNetworks(self) -> list:
+        return list(self._wifi_networks)
+
+    @pyqtProperty(bool, notify=wifiBusyChanged)
+    def wifiBusy(self) -> bool:
+        return bool(self._wifi_busy)
 
     # -------------------------------------------------------------------------
     # Properties for QML: Tone Selection & Linked Mode
@@ -5054,3 +5154,203 @@ class SpectreBridge(QObject):
             self._set_updater_busy(False)
 
         self._start_updater_task("git rollback", self._updater.rollback, on_ok)
+
+    # -------------------------------------------------------------------------
+    # Wi-Fi slots (NetworkManager / nmcli, threaded like the updater)
+    # -------------------------------------------------------------------------
+
+    def _set_wifi_busy(self, val: bool) -> None:
+        if self._wifi_busy != val:
+            self._wifi_busy = val
+            try:
+                self.wifiBusyChanged.emit(val)
+            except RuntimeError:
+                pass  # bridge already torn down (tests / shutdown)
+
+    def _set_wifi_error(self, msg: str) -> None:
+        if self._wifi_error != msg:
+            self._wifi_error = msg
+            try:
+                self.wifiChanged.emit()
+            except RuntimeError:
+                pass  # bridge already torn down (tests / shutdown)
+
+    def _apply_wifi_status(self, status: WifiStatus) -> None:
+        self._wifi_status = status
+        # A fresh snapshot clears stale action errors unless the snapshot
+        # itself carries one.
+        if not status.error:
+            self._wifi_error = ""
+        try:
+            self.wifiChanged.emit()
+        except RuntimeError:
+            pass  # bridge already torn down (tests / shutdown)
+
+    def _emit_wifi_networks(self) -> None:
+        try:
+            self.wifiNetworksChanged.emit()
+        except RuntimeError:
+            pass  # bridge already torn down (tests / shutdown)
+
+    def _start_wifi_task(self, work, on_success) -> bool:
+        """Run blocking nmcli work on a worker thread. False when busy."""
+        if self._wifi_busy:
+            logger.debug("Wi-Fi task already running, ignoring request")
+            return False
+        self._set_wifi_busy(True)
+        self._set_wifi_error("")
+
+        def runner() -> None:
+            try:
+                result = work()
+            except Exception as e:
+                # Includes RuntimeError when the bridge was torn down
+                # mid-flight (tests / shutdown): helpers swallow emit errors.
+                logger.warning(f"Wi-Fi task failed: {e}")
+                self._set_wifi_error(str(e))
+                self._set_wifi_busy(False)
+                return
+            try:
+                on_success(result)
+            except RuntimeError:
+                pass  # bridge torn down mid-flight; nothing to update
+            except Exception as e:
+                logger.exception("Wi-Fi task follow-up crashed")
+                self._set_wifi_error(str(e))
+            finally:
+                try:
+                    self._set_wifi_busy(False)
+                except RuntimeError:
+                    pass
+
+        threading.Thread(target=runner, daemon=True).start()
+        return True
+
+    @pyqtSlot()
+    def refreshWifiStatus(self) -> None:
+        """Refresh connection status snapshot (SSID, IP, signal)."""
+
+        def on_ok(status: WifiStatus) -> None:
+            self._apply_wifi_status(status)
+            if status.error and not status.available:
+                self._set_wifi_error(status.error)
+
+        self._start_wifi_task(lambda: self._wifi.status(), on_ok)
+
+    @pyqtSlot()
+    @pyqtSlot(bool)
+    def scanWifi(self, rescan: bool = True) -> None:
+        """Scan nearby networks into wifiNetworks (strongest first)."""
+        import datetime
+
+        do_rescan = bool(rescan)
+
+        def on_ok(nets) -> None:
+            self._wifi_networks = [n.to_dict() for n in nets]
+            self._emit_wifi_networks()
+            try:
+                self._wifi_last_scan = datetime.datetime.now().strftime("%H:%M:%S")
+            except Exception:
+                self._wifi_last_scan = "JUST NOW"
+            self._emit_wifi_networks()
+            # A scan also tells us which network is in use — fold that into
+            # the status snapshot without a full re-poll when possible.
+            try:
+                for n in nets:
+                    if n.in_use:
+                        st = self._wifi_status
+                        if st.ssid != n.ssid or st.signal != n.signal:
+                            st.ssid = n.ssid
+                            st.signal = n.signal
+                            st.connected = True
+                            self._apply_wifi_status(st)
+                        break
+            except Exception as e:
+                logger.debug(f"Wi-Fi scan status fold-in failed: {e}")
+
+        def work():
+            from ..core.wifi import WifiError as _WE
+
+            try:
+                return self._wifi.scan(rescan=do_rescan)
+            except _WE:
+                if do_rescan:
+                    # A forced rescan can fail on busy drivers; fall back to
+                    # the cached scan so the list is still useful.
+                    logger.debug("Wi-Fi rescan failed, retrying from cache")
+                    return self._wifi.scan(rescan=False)
+                raise
+
+        self._start_wifi_task(work, on_ok)
+
+    @pyqtSlot(str, str)
+    def connectWifi(self, ssid: str, password: str = "") -> None:
+        """Join a network, then refresh status + network list."""
+        ssid = (ssid or "").strip()
+
+        def on_ok(_result: dict) -> None:
+            self._set_wifi_error("")
+            # Re-poll status synchronously in this worker so the UI flips
+            # to CONNECTED without waiting for the 6 s background poll.
+            try:
+                self._apply_wifi_status(self._wifi.status())
+            except Exception as e:
+                logger.debug(f"Wi-Fi post-connect status failed: {e}")
+            try:
+                nets = self._wifi.scan(rescan=False)
+                self._wifi_networks = [n.to_dict() for n in nets]
+                self._emit_wifi_networks()
+            except Exception as e:
+                logger.debug(f"Wi-Fi post-connect scan failed: {e}")
+
+        self._start_wifi_task(lambda: self._wifi.connect(ssid, password or ""), on_ok)
+
+    @pyqtSlot()
+    def disconnectWifi(self) -> None:
+        """Drop the current Wi-Fi connection (profiles are kept)."""
+
+        def on_ok(_result: dict) -> None:
+            try:
+                self._apply_wifi_status(self._wifi.status())
+            except Exception as e:
+                logger.debug(f"Wi-Fi post-disconnect status failed: {e}")
+
+        self._start_wifi_task(lambda: self._wifi.disconnect(), on_ok)
+
+    @pyqtSlot(str)
+    def forgetWifi(self, ssid: str) -> None:
+        """Delete the saved profile for an SSID, then refresh the list."""
+        ssid = (ssid or "").strip()
+
+        def on_ok(_result: dict) -> None:
+            try:
+                nets = self._wifi.scan(rescan=False)
+                self._wifi_networks = [n.to_dict() for n in nets]
+                self._emit_wifi_networks()
+            except Exception as e:
+                logger.debug(f"Wi-Fi post-forget scan failed: {e}")
+            try:
+                self._apply_wifi_status(self._wifi.status())
+            except Exception as e:
+                logger.debug(f"Wi-Fi post-forget status failed: {e}")
+
+        self._start_wifi_task(lambda: self._wifi.forget(ssid), on_ok)
+
+    @pyqtSlot(bool)
+    def setWifiEnabled(self, enabled: bool) -> None:
+        """Turn the Wi-Fi radio on/off, then refresh status."""
+
+        def on_ok(_result: dict) -> None:
+            try:
+                self._apply_wifi_status(self._wifi.status())
+            except Exception as e:
+                logger.debug(f"Wi-Fi post-radio status failed: {e}")
+            if enabled:
+                try:
+                    nets = self._wifi.scan(rescan=False)
+                    self._wifi_networks = [n.to_dict() for n in nets]
+                    self._emit_wifi_networks()
+                except Exception as e:
+                    logger.debug(f"Wi-Fi post-radio scan failed: {e}")
+
+        self._start_wifi_task(lambda: self._wifi.set_enabled(bool(enabled)), on_ok)

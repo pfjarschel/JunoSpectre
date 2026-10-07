@@ -11,8 +11,23 @@ Rectangle {
     border.width: 1
 
     property bool showWifiModal: false
-    property string selectedSsid: "Studio-5GHz"
+    property string selectedSsid: ""
     property string wifiPassword: ""
+    property string wifiActiveField: "password" // "ssid" | "password"
+    property bool wifiShowPassword: false
+
+    function wifiSecurityFor(ssid) {
+        var nets = Bridge.wifiNetworks;
+        for (var i = 0; i < nets.length; i++) {
+            if (nets[i].ssid === ssid)
+                return nets[i].security || "";
+        }
+        return "";
+    }
+    function wifiIsOpen(ssid) {
+        var sec = root.wifiSecurityFor(ssid);
+        return sec === "" || sec === "OPEN" || sec === "--";
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -248,25 +263,59 @@ Rectangle {
 
                     Text { text: "NETWORK & SYSTEM UPDATES"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: "#60a5fa" }
 
-                    // Wi-Fi Status Bar
+                    // Wi-Fi Status Bar (live: Bridge.wifi* via NetworkManager)
                     Rectangle {
                         Layout.fillWidth: true
-                        height: ScaleMetrics.dp(40)
+                        height: ScaleMetrics.dp(44)
                         radius: 4
                         color: "#10141d"
-                        border.color: Theme.borderCard
+                        border.color: Bridge.wifiConnected ? "#10b981" : Theme.borderCard
                         border.width: 1
 
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: ScaleMetrics.dp(8)
-                            Text { text: "📶"; font.pixelSize: ScaleMetrics.sp(14) }
+                            spacing: ScaleMetrics.dp(6)
+                            Text {
+                                text: "📶"
+                                font.pixelSize: ScaleMetrics.sp(14)
+                                opacity: Bridge.wifiConnected ? 1.0 : 0.45
+                            }
                             ColumnLayout {
                                 spacing: 1
-                                Text { text: "WI-FI: " + root.selectedSsid; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textPrimary }
-                                Text { text: "IP: 192.168.1.140 • SIGNAL: -48 dBm (EXCELLENT)"; font.pixelSize: ScaleMetrics.sp(7); color: "#10b981" }
+                                Layout.fillWidth: true
+                                Text {
+                                    text: Bridge.wifiConnected
+                                        ? ("WI-FI: " + Bridge.wifiSsid)
+                                        : ("WI-FI: " + Bridge.wifiStatusText)
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(9)
+                                    color: Theme.textPrimary
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: Bridge.wifiDetailText
+                                    font.pixelSize: ScaleMetrics.sp(7)
+                                    color: Bridge.wifiConnected ? "#10b981" : Theme.textDim
+                                    elide: Text.ElideRight
+                                }
                             }
-                            Item { Layout.fillWidth: true }
+                            Rectangle {
+                                width: ScaleMetrics.dp(26)
+                                height: ScaleMetrics.dp(24)
+                                radius: 3
+                                color: refMouse.pressed ? Theme.bgCardActive : "#10141d"
+                                border.color: Theme.borderCard
+                                border.width: 1
+                                opacity: Bridge.wifiBusy ? 0.4 : 1.0
+                                Text { anchors.centerIn: parent; text: "↻"; font.bold: true; font.pixelSize: ScaleMetrics.sp(11); color: Theme.textSecondary }
+                                MouseArea {
+                                    id: refMouse
+                                    anchors.fill: parent
+                                    enabled: !Bridge.wifiBusy
+                                    onClicked: Bridge.refreshWifiStatus()
+                                }
+                            }
                             Rectangle {
                                 width: ScaleMetrics.dp(60)
                                 height: ScaleMetrics.dp(24)
@@ -275,8 +324,79 @@ Rectangle {
                                 border.color: "#60a5fa"
                                 border.width: 1
                                 Text { anchors.centerIn: parent; text: "MANAGE"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: "#60a5fa" }
-                                MouseArea { anchors.fill: parent; onClicked: root.showWifiModal = true }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (root.selectedSsid === "" && Bridge.wifiSsid !== "")
+                                            root.selectedSsid = Bridge.wifiSsid;
+                                        root.showWifiModal = true;
+                                    }
+                                }
                             }
+                        }
+                    }
+
+                    // Wi-Fi quick actions: radio toggle / rescan / disconnect
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(6)
+                        opacity: Bridge.wifiBusy ? 0.55 : 1.0
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: ScaleMetrics.dp(24)
+                            radius: 3
+                            color: "#10141d"
+                            border.color: Bridge.wifiEnabled ? "#10b981" : Theme.borderCard
+                            border.width: 1
+                            Text {
+                                anchors.centerIn: parent
+                                text: Bridge.wifiEnabled ? "RADIO: ON" : "RADIO: OFF"
+                                font.bold: true
+                                font.pixelSize: ScaleMetrics.sp(7)
+                                color: Bridge.wifiEnabled ? "#10b981" : Theme.textDim
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !Bridge.wifiBusy && Bridge.wifiAvailable
+                                onClicked: Bridge.setWifiEnabled(!Bridge.wifiEnabled)
+                            }
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: ScaleMetrics.dp(24)
+                            radius: 3
+                            color: "#10141d"
+                            border.color: Theme.borderCard
+                            border.width: 1
+                            Text { anchors.centerIn: parent; text: "RESCAN"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textSecondary }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !Bridge.wifiBusy && Bridge.wifiEnabled
+                                onClicked: Bridge.scanWifi(true)
+                            }
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: ScaleMetrics.dp(24)
+                            radius: 3
+                            visible: Bridge.wifiConnected
+                            color: "#10141d"
+                            border.color: Theme.recording
+                            border.width: 1
+                            Text { anchors.centerIn: parent; text: "DISCONNECT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.recording }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !Bridge.wifiBusy
+                                onClicked: Bridge.disconnectWifi()
+                            }
+                        }
+                        Text {
+                            visible: Bridge.wifiBusy
+                            text: "WORKING…"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(7)
+                            color: "#60a5fa"
                         }
                     }
 
@@ -402,16 +522,26 @@ Rectangle {
         }
     }
 
-    // Wi-Fi Connect Modal Overlay with Virtual Keyboard
+    // Wi-Fi Manager Modal: live scan list + connect / disconnect / forget + radio
     Rectangle {
         visible: root.showWifiModal
         anchors.fill: parent
         color: "#e6080b11"
         z: 99
+        onVisibleChanged: {
+            if (visible) {
+                root.wifiPassword = "";
+                root.wifiShowPassword = false;
+                root.wifiActiveField = "password";
+                if (root.selectedSsid === "" && Bridge.wifiSsid !== "")
+                    root.selectedSsid = Bridge.wifiSsid;
+                Bridge.scanWifi(true);
+            }
+        }
 
         Rectangle {
-            width: Math.min(parent.width - 40, ScaleMetrics.dp(700))
-            height: Math.min(parent.height - 40, ScaleMetrics.dp(440))
+            width: Math.min(parent.width - 24, ScaleMetrics.dp(840))
+            height: Math.min(parent.height - 24, ScaleMetrics.dp(500))
             anchors.centerIn: parent
             radius: 8
             color: Theme.bgCard
@@ -420,51 +550,362 @@ Rectangle {
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 10
-                spacing: 6
+                anchors.margins: ScaleMetrics.dp(10)
+                spacing: ScaleMetrics.dp(6)
 
+                // Header
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "CONNECT TO WI-FI NETWORK: " + root.selectedSsid; font.bold: true; font.pixelSize: ScaleMetrics.sp(11); color: "#60a5fa" }
+                    spacing: ScaleMetrics.dp(6)
+                    Text { text: "WI-FI NETWORKS"; font.bold: true; font.pixelSize: ScaleMetrics.sp(11); color: "#60a5fa" }
+                    Text {
+                        text: Bridge.wifiBusy ? "WORKING…" : ("SCAN: " + Bridge.wifiLastScan)
+                        font.pixelSize: ScaleMetrics.sp(7)
+                        color: Bridge.wifiBusy ? "#60a5fa" : Theme.textDim
+                    }
                     Item { Layout.fillWidth: true }
+                    Text {
+                        text: Bridge.wifiStatusText
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Bridge.wifiConnected ? "#10b981" : Theme.textDim
+                    }
                     Rectangle {
-                        width: 24; height: 24; radius: 3; color: "#10141d"
+                        width: ScaleMetrics.dp(24); height: ScaleMetrics.dp(24); radius: 3; color: "#10141d"
+                        border.color: Theme.borderCard; border.width: 1
                         Text { anchors.centerIn: parent; text: "✕"; color: Theme.textDim }
                         MouseArea { anchors.fill: parent; onClicked: root.showWifiModal = false }
                     }
                 }
 
-                // Password Display
-                Rectangle {
+                // Live status + error lines
+                Text {
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(32)
-                    radius: 4
-                    color: "#080b11"
-                    border.color: Theme.borderCard
-                    border.width: 1
+                    text: Bridge.wifiDetailText
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Bridge.wifiConnected ? "#10b981" : Theme.textSecondary
+                    elide: Text.ElideRight
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: Bridge.wifiError !== ""
+                    text: "⚠ " + Bridge.wifiError
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Theme.recording
+                    wrapMode: Text.Wrap
+                }
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 6
-                        Text { text: "PASSWORD: "; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
+                // Radio + rescan controls
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: ScaleMetrics.dp(6)
+                    opacity: Bridge.wifiBusy ? 0.55 : 1.0
+
+                    Rectangle {
+                        Layout.preferredWidth: ScaleMetrics.dp(130)
+                        height: ScaleMetrics.dp(26)
+                        radius: 3
+                        color: "#10141d"
+                        border.color: Bridge.wifiEnabled ? "#10b981" : Theme.borderCard
+                        border.width: 1
                         Text {
-                            text: root.wifiPassword.length > 0 ? "••••••••••••" : "(Type with on-screen keyboard)"
+                            anchors.centerIn: parent
+                            text: Bridge.wifiEnabled ? "RADIO: ON" : "RADIO: OFF"
                             font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(9)
-                            color: root.wifiPassword.length > 0 ? Theme.textPrimary : Theme.textDim
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Bridge.wifiEnabled ? "#10b981" : Theme.textDim
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: !Bridge.wifiBusy && Bridge.wifiAvailable
+                            onClicked: Bridge.setWifiEnabled(!Bridge.wifiEnabled)
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: ScaleMetrics.dp(26)
+                        radius: 3
+                        color: rsMouse.pressed ? Theme.bgCardActive : "#10141d"
+                        border.color: "#60a5fa"
+                        border.width: 1
+                        Text { anchors.centerIn: parent; text: Bridge.wifiBusy ? "SCANNING…" : "RESCAN NETWORKS"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: "#60a5fa" }
+                        MouseArea {
+                            id: rsMouse
+                            anchors.fill: parent
+                            enabled: !Bridge.wifiBusy && Bridge.wifiEnabled
+                            onClicked: Bridge.scanWifi(true)
                         }
                     }
                 }
 
-                // Virtual Keyboard
-                VirtualKeyboard {
+                // Body: network list (left) + connect panel (right)
+                RowLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    accentColor: "#60a5fa"
-                    onKeyClicked: (k) => root.wifiPassword += k
-                    onBackspaceClicked: root.wifiPassword = root.wifiPassword.slice(0, -1)
-                    onClearClicked: root.wifiPassword = ""
-                    onCloseClicked: root.showWifiModal = false
+                    spacing: ScaleMetrics.dp(8)
+
+                    // Nearby networks
+                    Rectangle {
+                        Layout.preferredWidth: ScaleMetrics.dp(270)
+                        Layout.fillHeight: true
+                        radius: 4
+                        color: "#080b11"
+                        border.color: Theme.borderCard
+                        border.width: 1
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: ScaleMetrics.dp(6)
+                            spacing: ScaleMetrics.dp(4)
+
+                            Text { text: "NEARBY (TAP TO SELECT)"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
+
+                            ListView {
+                                id: wifiList
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                spacing: 4
+                                model: Bridge.wifiNetworks
+                                delegate: Rectangle {
+                                    width: wifiList.width
+                                    height: ScaleMetrics.dp(38)
+                                    radius: 3
+                                    color: modelData.ssid === root.selectedSsid
+                                        ? "#1b2740"
+                                        : (netMouse.pressed ? Theme.bgCardActive : "#10141d")
+                                    border.color: modelData.inUse
+                                        ? "#10b981"
+                                        : (modelData.ssid === root.selectedSsid ? "#60a5fa" : Theme.borderCard)
+                                    border.width: 1
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: ScaleMetrics.dp(5)
+                                        spacing: 0
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 4
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: (modelData.inUse ? "● " : "") + modelData.ssid
+                                                font.bold: true
+                                                font.pixelSize: ScaleMetrics.sp(9)
+                                                color: modelData.inUse ? "#10b981" : Theme.textPrimary
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                text: modelData.secured ? "🔒" : "○"
+                                                font.pixelSize: ScaleMetrics.sp(9)
+                                            }
+                                        }
+                                        Text {
+                                            text: modelData.signal + "% • " + modelData.quality + " • " + modelData.security
+                                            font.pixelSize: ScaleMetrics.sp(7)
+                                            color: Theme.textDim
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: netMouse
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            root.selectedSsid = modelData.ssid;
+                                            root.wifiPassword = "";
+                                            root.wifiActiveField = modelData.secured ? "password" : "ssid";
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                visible: Bridge.wifiNetworks.length === 0 && !Bridge.wifiBusy
+                                text: Bridge.wifiEnabled ? "No networks yet — tap RESCAN." : "Radio is off."
+                                font.pixelSize: ScaleMetrics.sp(7)
+                                color: Theme.textDim
+                                wrapMode: Text.Wrap
+                            }
+                        }
+                    }
+
+                    // Connect panel
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        spacing: ScaleMetrics.dp(4)
+
+                        Text { text: "NETWORK (SSID — EDITABLE FOR HIDDEN NETS)"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: ScaleMetrics.dp(30)
+                            radius: 4
+                            color: "#080b11"
+                            border.color: root.wifiActiveField === "ssid" ? "#60a5fa" : Theme.borderCard
+                            border.width: 1
+                            TextInput {
+                                id: ssidField
+                                anchors.fill: parent
+                                anchors.margins: ScaleMetrics.dp(6)
+                                text: root.selectedSsid
+                                maximumLength: 32
+                                font.bold: true
+                                font.pixelSize: ScaleMetrics.sp(10)
+                                color: Theme.textPrimary
+                                clip: true
+                                onTextEdited: root.selectedSsid = text
+                                onActiveFocusChanged: if (activeFocus) root.wifiActiveField = "ssid"
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: { root.wifiActiveField = "ssid"; ssidField.forceActiveFocus(); }
+                            }
+                        }
+
+                        Text { text: "PASSWORD / PASSPHRASE"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: ScaleMetrics.dp(6)
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: ScaleMetrics.dp(30)
+                                radius: 4
+                                color: "#080b11"
+                                border.color: root.wifiActiveField === "password" ? "#60a5fa" : Theme.borderCard
+                                border.width: 1
+                                TextInput {
+                                    id: passField
+                                    anchors.fill: parent
+                                    anchors.margins: ScaleMetrics.dp(6)
+                                    text: root.wifiPassword
+                                    maximumLength: 63
+                                    font.pixelSize: ScaleMetrics.sp(10)
+                                    color: Theme.textPrimary
+                                    clip: true
+                                    echoMode: root.wifiShowPassword ? TextInput.Normal : TextInput.Password
+                                    passwordCharacter: "•"
+                                    onTextEdited: root.wifiPassword = text
+                                    onActiveFocusChanged: if (activeFocus) root.wifiActiveField = "password"
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: { root.wifiActiveField = "password"; passField.forceActiveFocus(); }
+                                }
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: ScaleMetrics.dp(52)
+                                height: ScaleMetrics.dp(30)
+                                radius: 3
+                                color: "#10141d"
+                                border.color: Theme.borderCard
+                                border.width: 1
+                                Text { anchors.centerIn: parent; text: root.wifiShowPassword ? "HIDE" : "SHOW"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textSecondary }
+                                MouseArea { anchors.fill: parent; onClicked: root.wifiShowPassword = !root.wifiShowPassword }
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.selectedSsid === ""
+                                ? "Pick a network on the left, or type a hidden SSID above."
+                                : (root.wifiIsOpen(root.selectedSsid)
+                                    ? "Open network — just tap CONNECT."
+                                    : ("Security: " + root.wifiSecurityFor(root.selectedSsid) + " — enter the passphrase."))
+                            font.pixelSize: ScaleMetrics.sp(7)
+                            color: Theme.textDim
+                            elide: Text.ElideRight
+                        }
+
+                        // Connect button
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: ScaleMetrics.dp(30)
+                            radius: 3
+                            color: connMouse.pressed ? "#14532d" : "#10141d"
+                            border.color: "#10b981"
+                            border.width: 1
+                            opacity: (root.selectedSsid === "" || Bridge.wifiBusy) ? 0.45 : 1.0
+                            Text {
+                                anchors.centerIn: parent
+                                text: Bridge.wifiBusy
+                                    ? "WORKING…"
+                                    : (root.selectedSsid === "" ? "SELECT A NETWORK" : "CONNECT TO " + root.selectedSsid)
+                                font.bold: true
+                                font.pixelSize: ScaleMetrics.sp(8)
+                                color: "#10b981"
+                            }
+                            MouseArea {
+                                id: connMouse
+                                anchors.fill: parent
+                                enabled: root.selectedSsid !== "" && !Bridge.wifiBusy
+                                onClicked: {
+                                    Bridge.connectWifi(root.selectedSsid, root.wifiPassword);
+                                    root.wifiPassword = "";
+                                }
+                            }
+                        }
+
+                        // Disconnect + forget
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: ScaleMetrics.dp(6)
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: ScaleMetrics.dp(26)
+                                radius: 3
+                                visible: Bridge.wifiConnected
+                                color: "#10141d"
+                                border.color: Theme.recording
+                                border.width: 1
+                                opacity: Bridge.wifiBusy ? 0.45 : 1.0
+                                Text { anchors.centerIn: parent; text: "DISCONNECT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.recording }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: !Bridge.wifiBusy
+                                    onClicked: Bridge.disconnectWifi()
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: ScaleMetrics.dp(26)
+                                radius: 3
+                                color: "#10141d"
+                                border.color: Theme.borderCard
+                                border.width: 1
+                                opacity: (root.selectedSsid === "" || Bridge.wifiBusy) ? 0.45 : 1.0
+                                Text { anchors.centerIn: parent; text: "FORGET SAVED"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textSecondary }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: root.selectedSsid !== "" && !Bridge.wifiBusy
+                                    onClicked: Bridge.forgetWifi(root.selectedSsid)
+                                }
+                            }
+                        }
+
+                        // Touch keyboard (case + symbols enabled for passphrases)
+                        VirtualKeyboard {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            accentColor: "#60a5fa"
+                            allowLower: true
+                            allowSymbols: true
+                            onKeyClicked: (k) => {
+                                if (root.wifiActiveField === "ssid") {
+                                    if (root.selectedSsid.length < 32) root.selectedSsid += k;
+                                } else {
+                                    if (root.wifiPassword.length < 63) root.wifiPassword += k;
+                                }
+                            }
+                            onBackspaceClicked: {
+                                if (root.wifiActiveField === "ssid") root.selectedSsid = root.selectedSsid.slice(0, -1);
+                                else root.wifiPassword = root.wifiPassword.slice(0, -1);
+                            }
+                            onClearClicked: {
+                                if (root.wifiActiveField === "ssid") root.selectedSsid = "";
+                                else root.wifiPassword = "";
+                            }
+                            onCloseClicked: root.showWifiModal = false
+                        }
+                    }
                 }
             }
         }

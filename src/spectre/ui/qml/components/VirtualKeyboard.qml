@@ -6,6 +6,12 @@ Rectangle {
     id: root
 
     property color accentColor: Theme.tone1
+    // When true, a SHIFT key toggles A-Z / a-z (needed for Wi-Fi passwords).
+    // Existing callers leave this false and keep the legacy uppercase layout.
+    property bool allowLower: false
+    property bool isLower: true
+    // When true, an extra row of password-friendly symbols is shown.
+    property bool allowSymbols: false
     signal keyClicked(string key)
     signal backspaceClicked()
     signal clearClicked()
@@ -91,14 +97,16 @@ Rectangle {
             }
         }
 
-        // Row 2: QWERTYUIOP
+        // Row 2: QWERTYUIOP (case follows SHIFT when allowLower)
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: ScaleMetrics.dp(3)
 
             Repeater {
-                model: ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
+                model: (root.allowLower && root.isLower)
+                    ? ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"]
+                    : ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
                 KeyButton {
                     text: modelData
                     onClicked: root.keyClicked(modelData)
@@ -119,7 +127,9 @@ Rectangle {
             }
 
             Repeater {
-                model: ["A", "S", "D", "F", "G", "H", "J", "K", "L"]
+                model: (root.allowLower && root.isLower)
+                    ? ["a", "s", "d", "f", "g", "h", "j", "k", "l"]
+                    : ["A", "S", "D", "F", "G", "H", "J", "K", "L"]
                 KeyButton {
                     text: modelData
                     onClicked: root.keyClicked(modelData)
@@ -133,20 +143,31 @@ Rectangle {
             }
         }
 
-        // Row 4: ZXCVBNM (isolated on its own row, indented with side spacers)
+        // Row 4: SHIFT + ZXCVBNM (SHIFT only when allowLower)
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: ScaleMetrics.dp(3)
 
+            KeyButton {
+                visible: root.allowLower
+                implicitWidth: ScaleMetrics.dp(72)
+                Layout.preferredWidth: ScaleMetrics.dp(72)
+                text: root.isLower ? "⇧ abc" : "⇧ ABC"
+                textColor: root.isLower ? Theme.textSecondary : root.accentColor
+                onClicked: root.isLower = !root.isLower
+            }
             Item {
+                visible: !root.allowLower
                 implicitWidth: ScaleMetrics.dp(36)
                 Layout.preferredWidth: ScaleMetrics.dp(36)
                 Layout.fillHeight: true
             }
 
             Repeater {
-                model: ["Z", "X", "C", "V", "B", "N", "M"]
+                model: (root.allowLower && root.isLower)
+                    ? ["z", "x", "c", "v", "b", "n", "m"]
+                    : ["Z", "X", "C", "V", "B", "N", "M"]
                 KeyButton {
                     text: modelData
                     onClicked: root.keyClicked(modelData)
@@ -157,6 +178,22 @@ Rectangle {
                 implicitWidth: ScaleMetrics.dp(36)
                 Layout.preferredWidth: ScaleMetrics.dp(36)
                 Layout.fillHeight: true
+            }
+        }
+
+        // Row 4b: password symbols (Wi-Fi passphrases etc.)
+        RowLayout {
+            visible: root.allowSymbols
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: ScaleMetrics.dp(3)
+
+            Repeater {
+                model: ["_", ".", "-", "@", "!", "#", "$", "%", "&", "*", "/", ":"]
+                KeyButton {
+                    text: modelData
+                    onClicked: root.keyClicked(modelData)
+                }
             }
         }
 
