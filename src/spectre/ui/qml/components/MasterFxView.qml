@@ -126,18 +126,61 @@ Rectangle {
                 color: "#a855f7"
             }
             Text {
+                Layout.fillWidth: true
                 text: "MASTER FX (CHORUS, REVERB & 3-BAND MASTER PARAMETRIC EQ)"
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(12)
                 font.letterSpacing: 1.2
                 color: Theme.textPrimary
+                elide: Text.ElideRight
             }
-            Item { Layout.fillWidth: true }
-            Text {
-                text: "GLOBAL MASTER OUTPUT BUS"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(9)
-                color: Theme.textDim
+            Rectangle {
+                height: ScaleMetrics.dp(18)
+                Layout.preferredWidth: Math.min(choTarget.implicitWidth + ScaleMetrics.dp(12), ScaleMetrics.dp(100))
+                Layout.maximumWidth: ScaleMetrics.dp(100)
+                radius: 3
+                color: "#0d2838"
+                border.color: "#38bdf8"
+                border.width: 1
+                clip: true
+                Text {
+                    id: choTarget
+                    anchors.fill: parent
+                    anchors.leftMargin: ScaleMetrics.dp(6)
+                    anchors.rightMargin: ScaleMetrics.dp(6)
+                    verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: Text.AlignHCenter
+                    text: Bridge.choEditTargetLabel
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(7)
+                    font.family: Theme.fontMono
+                    color: "#38bdf8"
+                    elide: Text.ElideRight
+                }
+            }
+            Rectangle {
+                height: ScaleMetrics.dp(18)
+                Layout.preferredWidth: Math.min(revTarget.implicitWidth + ScaleMetrics.dp(12), ScaleMetrics.dp(100))
+                Layout.maximumWidth: ScaleMetrics.dp(100)
+                radius: 3
+                color: "#1c0d28"
+                border.color: "#a855f7"
+                border.width: 1
+                clip: true
+                Text {
+                    id: revTarget
+                    anchors.fill: parent
+                    anchors.leftMargin: ScaleMetrics.dp(6)
+                    anchors.rightMargin: ScaleMetrics.dp(6)
+                    verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: Text.AlignHCenter
+                    text: Bridge.revEditTargetLabel
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(7)
+                    font.family: Theme.fontMono
+                    color: "#a855f7"
+                    elide: Text.ElideRight
+                }
             }
         }
 

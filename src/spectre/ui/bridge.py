@@ -135,6 +135,7 @@ class SpectreBridge(QObject):
     matrixCtrlChanged = pyqtSignal()
     stepLfoChanged = pyqtSignal()
     perfPartsChanged = pyqtSignal()
+    perfFxChanged = pyqtSignal()
     playlistChanged = pyqtSignal()
     librarianPickChanged = pyqtSignal()
     perfPushChanged = pyqtSignal(float)
@@ -201,7 +202,12 @@ class SpectreBridge(QObject):
         # and background SysEx push progress (-1.0 = idle).
         self._part_snapshots: dict = {}
         self._part_file_status: list = [""] * 16
+        # Deep FX cache: part index -> read_part_fx() dict for PARTn origins.
+        # Lets MFX Studio / Master FX display a non-active part's patch FX
+        # without blocking QML getters on hardware reads.
+        self._part_fx_cache: dict = {}
         self._perf_push_progress: float = -1.0
+        self._editing_perf_mfx: int = 1
         self._push_lock = threading.Lock()
         # Set by app.py (non-fatal when absent, e.g. unit tests).
         self._librarian_repo = None
@@ -769,6 +775,10 @@ class SpectreBridge(QObject):
         self.matrixCtrlChanged.emit()
         self.stepLfoChanged.emit()
         self.perfPartsChanged.emit()
+        try:
+            self.perfFxChanged.emit()
+        except Exception:
+            pass
         self.vaParamsChanged.emit()
         try:
             self.playlistChanged.emit()
@@ -1335,59 +1345,59 @@ class SpectreBridge(QObject):
 
     @pyqtProperty(int, notify=chorusParamsChanged)
     def chorusType(self) -> int:
-        return self.patch_state.effects.chorus_type
+        return self._cho_view()[0]
 
     @pyqtProperty(int, notify=chorusParamsChanged)
     def chorusLevel(self) -> int:
-        return self.patch_state.effects.chorus_level
+        return self._cho_view()[1]
 
     @pyqtProperty(int, notify=chorusParamsChanged)
     def chorusToReverb(self) -> int:
-        return self.patch_state.effects.chorus_to_reverb
+        return self._cho_view()[2]
 
     @pyqtProperty(int, notify=chorusParamsChanged)
     def chorusRate(self) -> int:
-        return self.patch_state.effects.chorus_rate
+        return self._cho_view()[3]
 
     @pyqtProperty(int, notify=chorusParamsChanged)
     def chorusDepth(self) -> int:
-        return self.patch_state.effects.chorus_depth
+        return self._cho_view()[4]
 
     @pyqtProperty(int, notify=chorusParamsChanged)
     def chorusPreDelay(self) -> int:
-        return self.patch_state.effects.chorus_predelay
+        return self._cho_view()[5]
 
     @pyqtProperty(int, notify=chorusParamsChanged)
     def chorusFeedback(self) -> int:
-        return self.patch_state.effects.chorus_feedback
+        return self._cho_view()[6]
 
     @pyqtProperty(int, notify=reverbParamsChanged)
     def reverbType(self) -> int:
-        return self.patch_state.effects.reverb_type
+        return self._rev_view()[0]
 
     @pyqtProperty(int, notify=reverbParamsChanged)
     def reverbLevel(self) -> int:
-        return self.patch_state.effects.reverb_level
+        return self._rev_view()[1]
 
     @pyqtProperty(int, notify=reverbParamsChanged)
     def reverbTime(self) -> int:
-        return self.patch_state.effects.reverb_time
+        return self._rev_view()[3]
 
     @pyqtProperty(int, notify=reverbParamsChanged)
     def reverbDamp(self) -> int:
-        return self.patch_state.effects.reverb_damp
+        return self._rev_view()[4]
 
     @pyqtProperty(int, notify=reverbParamsChanged)
     def reverbPreDelay(self) -> int:
-        return self.patch_state.effects.reverb_predelay
+        return self._rev_view()[2]
 
     @pyqtProperty(int, notify=reverbParamsChanged)
     def reverbDiffusion(self) -> int:
-        return self.patch_state.effects.reverb_diffusion
+        return self._rev_view()[5]
 
     @pyqtProperty(int, notify=reverbParamsChanged)
     def reverbTone(self) -> int:
-        return self.patch_state.effects.reverb_tone
+        return self._rev_view()[6]
 
     @pyqtProperty(bool, notify=masterEqChanged)
     def eqSwitch(self) -> bool:
@@ -1457,28 +1467,27 @@ class SpectreBridge(QObject):
 
     @pyqtProperty("QVariantList", notify=mfxValuesChanged)
     def mfxParamValues(self) -> list:
-        return list(self.patch_state.effects.mfx_params)
+        return list(self._mfx_view()[5])
 
     @pyqtProperty(int, notify=mfxParamsChanged)
     def mfxAlgoId(self) -> int:
-        eff = self.patch_state.effects
-        return eff.mfx_type if not eff.mfx_bypassed else eff.mfx_last_active_type
+        return self._mfx_view()[0]
 
     @pyqtProperty(bool, notify=mfxParamsChanged)
     def mfxBypassed(self) -> bool:
-        return self.patch_state.effects.mfx_bypassed
+        return self._mfx_view()[1]
 
     @pyqtProperty(int, notify=mfxParamsChanged)
     def mfxDrySend(self) -> int:
-        return self.patch_state.effects.mfx_dry_send
+        return self._mfx_view()[2]
 
     @pyqtProperty(int, notify=mfxParamsChanged)
     def mfxChorusSend(self) -> int:
-        return self.patch_state.effects.mfx_chorus_send
+        return self._mfx_view()[3]
 
     @pyqtProperty(int, notify=mfxParamsChanged)
     def mfxReverbSend(self) -> int:
-        return self.patch_state.effects.mfx_reverb_send
+        return self._mfx_view()[4]
 
     # -------------------------------------------------------------------------
     # Properties for QML: Routing View
@@ -1514,22 +1523,22 @@ class SpectreBridge(QObject):
 
     @pyqtProperty(str, notify=mfxParamsChanged)
     def mfxAlgoName(self) -> str:
-        eff = self.patch_state.effects
-        if eff.mfx_bypassed or eff.mfx_type == 0:
+        shown, bypassed, _d, _c, _r, _p = self._mfx_view()
+        if bypassed:
             return "BYPASS / OFF"
-        algo = get_mfx_algo(eff.mfx_type)
-        return algo.get("name", f"MFX #{eff.mfx_type}") if algo else f"MFX #{eff.mfx_type}"
+        algo = get_mfx_algo(shown)
+        return algo.get("name", f"MFX #{shown}") if algo else f"MFX #{shown}"
 
     @pyqtProperty(str, notify=chorusParamsChanged)
     def chorusTypeName(self) -> str:
         names = ["OFF", "CHORUS", "DELAY", "GM2 CHORUS"]
-        idx = self.patch_state.effects.chorus_type
+        idx = self._cho_view()[0]
         return names[idx] if 0 <= idx < len(names) else "OFF"
 
     @pyqtProperty(str, notify=reverbParamsChanged)
     def reverbTypeName(self) -> str:
         names = ["OFF", "REVERB", "ROOM", "HALL", "PLATE", "GM2"]
-        idx = self.patch_state.effects.reverb_type
+        idx = self._rev_view()[0]
         return names[idx] if 0 <= idx < len(names) else "OFF"
 
     # -------------------------------------------------------------------------
@@ -1704,9 +1713,125 @@ class SpectreBridge(QObject):
                 "keyHigh": p.key_high,
                 "zoneOn": p.zone_switch,
                 "zoneOctave": p.zone_octave,
+                "drySend": getattr(p, "dry_send", 127),
+                "chorusSend": getattr(p, "chorus_send", 0),
+                "reverbSend": getattr(p, "reverb_send", 0),
+                "outputAssign": getattr(p, "output_assign", 13),
+                "mfxSelect": getattr(p, "mfx_select", 0),
             }
             for p in self.patch_state.perf_parts[:16]
         ]
+
+    def _rail_mfx_entry(self, n: int) -> dict:
+        """Rail card content: the sounding processor (origin-resolved)."""
+        fx = getattr(self.patch_state, "perf_fx", None)
+        holder = self._perf_slot(n)
+        source = int(getattr(holder, "source", 0)) if holder is not None else 0
+        shown = {"type": 0, "drySend": 127, "chorusSend": 0, "reverbSend": 0}
+        if source != 0 and self._in_perform():
+            cached = self._part_cached(source)
+            if cached is not None:
+                m = cached["mfx"]
+                shown = {"type": int(m["type"]), "drySend": int(m["dry"]),
+                         "chorusSend": int(m["chorus"]), "reverbSend": int(m["reverb"])}
+            elif holder is not None:
+                shown = {"type": int(holder.mfx_type), "drySend": int(holder.dry_send),
+                         "chorusSend": int(holder.chorus_send), "reverbSend": int(holder.reverb_send)}
+        elif holder is not None:
+            shown = {"type": int(holder.mfx_type), "drySend": int(holder.dry_send),
+                     "chorusSend": int(holder.chorus_send), "reverbSend": int(holder.reverb_send)}
+        return {"kind": f"MFX{n}", "slot": n, **shown, "source": source,
+                "editing": int(getattr(self, "_editing_perf_mfx", 1)) == n}
+
+    def _rail_cho_entry(self) -> dict:
+        fx = getattr(self.patch_state, "perf_fx", None)
+        source = int(getattr(fx, "chorus_source", 0)) if fx is not None else 0
+        if source != 0 and self._in_perform():
+            cached = self._part_cached(source)
+            if cached is not None:
+                c = cached["chorus"]
+                return {"kind": "CHORUS", "type": int(c["type"]), "level": int(c["level"]),
+                        "toReverb": int(c["toReverb"]), "source": source}
+        return {"kind": "CHORUS", "type": int(fx.chorus_type),
+                "level": int(fx.chorus_level), "toReverb": int(fx.chorus_to_reverb),
+                "source": source} if fx is not None else {"kind": "CHORUS", "type": 0,
+                "level": 0, "toReverb": 0, "source": 0}
+
+    def _rail_rev_entry(self) -> dict:
+        fx = getattr(self.patch_state, "perf_fx", None)
+        source = int(getattr(fx, "reverb_source", 0)) if fx is not None else 0
+        if source != 0 and self._in_perform():
+            cached = self._part_cached(source)
+            if cached is not None:
+                r = cached["reverb"]
+                return {"kind": "REVERB", "type": int(r["type"]), "level": int(r["level"]),
+                        "source": source}
+        return {"kind": "REVERB", "type": int(fx.reverb_type),
+                "level": int(fx.reverb_level), "source": source} if fx is not None else {
+                "kind": "REVERB", "type": 0, "level": 0, "source": 0}
+
+    @pyqtProperty("QVariantList", notify=perfFxChanged)
+    def perfFxSlots(self) -> list:
+        """5 shared FX cards: MFX1-3 + chorus + reverb (origin-resolved content)."""
+        fx = getattr(self.patch_state, "perf_fx", None)
+        if fx is None:
+            return []
+        return [self._rail_mfx_entry(1), self._rail_mfx_entry(2),
+                self._rail_mfx_entry(3), self._rail_cho_entry(),
+                self._rail_rev_entry()]
+
+    @pyqtProperty("QVariantMap", notify=perfFxChanged)
+    def perfFxSources(self) -> dict:
+        fx = getattr(self.patch_state, "perf_fx", None)
+        if fx is None:
+            return {"mfx1": 0, "mfx2": 0, "mfx3": 0, "chorus": 0, "reverb": 0, "structure": 0}
+        return {"mfx1": int(fx.mfx1.source), "mfx2": int(fx.mfx2.source),
+                "mfx3": int(fx.mfx3.source), "chorus": int(fx.chorus_source),
+                "reverb": int(fx.reverb_source), "structure": int(fx.mfx_structure)}
+
+    @pyqtProperty(int, notify=perfFxChanged)
+    def editingPerfMfx(self) -> int:
+        return max(1, min(3, int(getattr(self, "_editing_perf_mfx", 1))))
+
+    @staticmethod
+    def _origin_text(origin: int) -> str:
+        return "PERFORM" if int(origin) == 0 else f"PART {int(origin)}"
+
+    @pyqtProperty(str, notify=perfFxChanged)
+    def mfxEditTargetLabel(self) -> str:
+        """MFX Studio context chip: which MFX + origin it shows/edits (compact)."""
+        tgt = self._mfx_target()
+        if tgt[0] == "perf":
+            return f"MFX{tgt[1]}\u00b7PERF"
+        if tgt[0] == "part":
+            s = max(1, min(3, int(getattr(self, "_editing_perf_mfx", 1))))
+            return f"MFX{s}\u00b7P{tgt[1]}"
+        return "PATCH"
+
+    @pyqtProperty(str, notify=perfFxChanged)
+    def choEditTargetLabel(self) -> str:
+        """Master FX chorus context chip (compact)."""
+        tgt = self._cho_target()
+        if tgt[0] == "perf":
+            return "CHO\u00b7PERF"
+        if tgt[0] == "part":
+            return f"CHO\u00b7P{tgt[1]}"
+        return "PATCH"
+
+    @pyqtProperty(str, notify=perfFxChanged)
+    def revEditTargetLabel(self) -> str:
+        """Master FX reverb context chip (compact)."""
+        tgt = self._rev_target()
+        if tgt[0] == "perf":
+            return "REV\u00b7PERF"
+        if tgt[0] == "part":
+            return f"REV\u00b7P{tgt[1]}"
+        return "PATCH"
+
+    @pyqtProperty(int, notify=perfFxChanged)
+    def perfStructure(self) -> int:
+        fx = getattr(self.patch_state, "perf_fx", None)
+        return int(getattr(fx, "mfx_structure", 0)) if fx is not None else 0
 
     @pyqtProperty(str, notify=perfPartsChanged)
     def perfName(self) -> str:
@@ -3551,7 +3676,68 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(str, int)
     def setChorusParam(self, param: str, val: int) -> None:
-        """Set Master Chorus parameter."""
+        """Set Master Chorus parameter (origin-resolved in PERFORM mode)."""
+        tgt = self._cho_target()
+        if tgt[0] == "perf":
+            fx = self.patch_state.perf_fx
+            if param == "type":
+                fx.chorus_type = max(0, min(3, int(val)))
+            elif param == "level":
+                fx.chorus_level = max(0, min(127, int(val)))
+            elif param == "toReverb":
+                fx.chorus_to_reverb = max(0, min(2, int(val)))
+            elif param == "rate":
+                fx.chorus_rate = max(0, min(127, int(val)))
+            elif param == "depth":
+                fx.chorus_depth = max(0, min(127, int(val)))
+            elif param == "preDelay":
+                fx.chorus_predelay = max(0, min(127, int(val)))
+            elif param == "feedback":
+                fx.chorus_feedback = max(0, min(127, int(val)))
+            juno = getattr(getattr(self, "engine", None), "juno", None)
+            if juno is not None:
+                try:
+                    if param in ("type", "level", "toReverb") and hasattr(juno, "set_perf_chorus"):
+                        juno.set_perf_chorus(fx.chorus_type, level=fx.chorus_level,
+                                             output_select=fx.chorus_to_reverb)
+                    elif param in ("rate", "depth", "preDelay", "feedback") and hasattr(juno, "set_perf_chorus_param"):
+                        juno.set_perf_chorus_param(param, int(val))
+                except Exception as e:
+                    logger.error(f"Error setting perf chorus on synth: {e}")
+            self.chorusParamsChanged.emit()
+            self.routingChanged.emit()
+            try:
+                self.perfFxChanged.emit()
+            except Exception:
+                pass
+            return
+        if tgt[0] == "part":
+            n = tgt[1]
+            cached = self._part_cached(n)
+            if cached is None:
+                self._ensure_part_fx_cache(n)
+                cached = self._part_cached(n)
+            if cached is not None:
+                c = cached["chorus"]
+                keymap = {"type": "type", "level": "level", "toReverb": "toReverb",
+                          "rate": "rate", "depth": "depth",
+                          "preDelay": "predelay", "feedback": "feedback"}
+                if param in keymap:
+                    lo, hi = (0, 3) if param == "type" else ((0, 2) if param == "toReverb" else (0, 127))
+                    c[keymap[param]] = max(lo, min(hi, int(val)))
+                juno = getattr(getattr(self, "engine", None), "juno", None)
+                if juno is not None:
+                    try:
+                        if param in ("type", "level", "toReverb") and hasattr(juno, "set_part_patch_chorus"):
+                            juno.set_part_patch_chorus(n, chorus_type=c["type"], level=c["level"],
+                                                       output_select=c["toReverb"])
+                        elif param in ("rate", "depth", "preDelay", "feedback") and hasattr(juno, "set_part_patch_chorus_param"):
+                            juno.set_part_patch_chorus_param(n, param, int(val))
+                    except Exception as e:
+                        logger.error(f"Error setting part {n} chorus on synth: {e}")
+                self.chorusParamsChanged.emit()
+                self.routingChanged.emit()
+                return
         eff = self.patch_state.effects
         if param == "type":
             eff.chorus_type = max(0, min(3, int(val)))
@@ -3584,7 +3770,66 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(str, int)
     def setReverbParam(self, param: str, val: int) -> None:
-        """Set Master Reverb parameter."""
+        """Set Master Reverb parameter (origin-resolved in PERFORM mode)."""
+        tgt = self._rev_target()
+        if tgt[0] == "perf":
+            fx = self.patch_state.perf_fx
+            if param == "type":
+                fx.reverb_type = max(0, min(5, int(val)))
+            elif param == "level":
+                fx.reverb_level = max(0, min(127, int(val)))
+            elif param == "time":
+                fx.reverb_time = max(0, min(127, int(val)))
+            elif param == "damp":
+                fx.reverb_damp = max(0, min(127, int(val)))
+            elif param == "preDelay":
+                fx.reverb_predelay = max(0, min(127, int(val)))
+            elif param == "diffusion":
+                fx.reverb_diffusion = max(0, min(127, int(val)))
+            elif param == "tone":
+                fx.reverb_tone = max(0, min(127, int(val)))
+            juno = getattr(getattr(self, "engine", None), "juno", None)
+            if juno is not None:
+                try:
+                    if param in ("type", "level") and hasattr(juno, "set_perf_reverb"):
+                        juno.set_perf_reverb(fx.reverb_type, level=fx.reverb_level)
+                    elif param in ("time", "damp", "preDelay", "diffusion", "tone") and hasattr(juno, "set_perf_reverb_param"):
+                        juno.set_perf_reverb_param(param, int(val))
+                except Exception as e:
+                    logger.error(f"Error setting perf reverb on synth: {e}")
+            self.reverbParamsChanged.emit()
+            self.routingChanged.emit()
+            try:
+                self.perfFxChanged.emit()
+            except Exception:
+                pass
+            return
+        if tgt[0] == "part":
+            n = tgt[1]
+            cached = self._part_cached(n)
+            if cached is None:
+                self._ensure_part_fx_cache(n)
+                cached = self._part_cached(n)
+            if cached is not None:
+                r = cached["reverb"]
+                keymap = {"type": "type", "level": "level", "time": "time",
+                          "damp": "damp", "preDelay": "predelay",
+                          "diffusion": "diffusion", "tone": "tone"}
+                if param in keymap:
+                    hi = 5 if param == "type" else 127
+                    r[keymap[param]] = max(0, min(hi, int(val)))
+                juno = getattr(getattr(self, "engine", None), "juno", None)
+                if juno is not None:
+                    try:
+                        if param in ("type", "level") and hasattr(juno, "set_part_patch_reverb"):
+                            juno.set_part_patch_reverb(n, reverb_type=r["type"], level=r["level"])
+                        elif param in ("time", "damp", "preDelay", "diffusion", "tone") and hasattr(juno, "set_part_patch_reverb_param"):
+                            juno.set_part_patch_reverb_param(n, param, int(val))
+                    except Exception as e:
+                        logger.error(f"Error setting part {n} reverb on synth: {e}")
+                self.reverbParamsChanged.emit()
+                self.routingChanged.emit()
+                return
         eff = self.patch_state.effects
         if param == "type":
             eff.reverb_type = max(0, min(5, int(val)))
@@ -3650,35 +3895,101 @@ class SpectreBridge(QObject):
     # Invokable Slots from QML: MFX Studio View
     # -------------------------------------------------------------------------
 
-    @pyqtSlot(int)
-    def setMfxAlgoId(self, algo_id: int) -> None:
-        """Select active MFX Algorithm (0..80)."""
-        eff = self.patch_state.effects
+    def _apply_mfx_algo(self, store, algo_id: int) -> int:
+        """Shared algo-select onto an MFX-like store (EffectsState or PerfMfxSlotState).
+
+        Returns the clamped id. Loads catalog default params when selecting
+        a real algorithm; marks bypass when selecting 0.
+        """
         clamped = max(0, min(80, int(algo_id)))
-        eff.mfx_type = clamped
+        store.mfx_type = clamped
         if clamped > 0:
-            eff.mfx_last_active_type = clamped
-            eff.mfx_bypassed = False
-            # Load default parameter values from catalog
+            store.last_active_type = clamped
+            if hasattr(store, "mfx_last_active_type"):
+                store.mfx_last_active_type = clamped
+            if hasattr(store, "mfx_bypassed"):
+                store.mfx_bypassed = False
             algo = get_mfx_algo(clamped)
             if algo and "params" in algo:
-                for p in algo["params"]:
-                    idx = p["idx"]
+                for pp in algo["params"]:
+                    idx = pp["idx"]
                     if 0 <= idx < 32:
-                        eff.mfx_params[idx] = p.get("val", 0)
+                        try:
+                            store.params[idx] = pp.get("val", 0)
+                        except Exception:
+                            pass
+                        if hasattr(store, "mfx_params"):
+                            store.mfx_params[idx] = pp.get("val", 0)
         else:
-            eff.mfx_bypassed = True
+            if hasattr(store, "mfx_bypassed"):
+                store.mfx_bypassed = True
+        return clamped
 
+    def _push_mfx_algo(self, juno, kind, slot_or_part, store, clamped: int) -> None:
+        """Push an algo-select to hardware (catalog defaults included)."""
+        try:
+            algo = get_mfx_algo(clamped) if clamped > 0 else None
+            if kind == "perf":
+                juno.set_perf_mfx(slot_or_part, mfx_type=store.mfx_type)
+                if algo and "params" in algo:
+                    for pp in algo["params"]:
+                        try:
+                            juno.set_perf_mfx_param(slot_or_part, pp["idx"], store.params[pp["idx"]])
+                        except Exception:
+                            pass
+            elif kind == "part":
+                juno.set_part_patch_mfx(slot_or_part, mfx_type=store.mfx_type)
+                if algo and "params" in algo:
+                    for pp in algo["params"]:
+                        try:
+                            juno.set_part_patch_mfx_param(slot_or_part, pp["idx"], store.params[pp["idx"]])
+                        except Exception:
+                            pass
+            else:
+                params = getattr(store, "mfx_params", getattr(store, "params", []))
+                juno.set_mfx(store.mfx_type)
+                if algo and "params" in algo:
+                    vals = [params[pp["idx"]] for pp in algo["params"]]
+                    juno.set_mfx_params_bulk(vals)
+        except Exception as e:
+            logger.error(f"Error setting MFX type on synth: {e}")
+
+    @pyqtSlot(int)
+    def setMfxAlgoId(self, algo_id: int) -> None:
+        """Select active MFX Algorithm (0..80), origin-resolved in PERFORM mode."""
+        tgt = self._mfx_target()
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if tgt[0] == "perf":
+            holder = self._perf_slot(tgt[1])
+            clamped = self._apply_mfx_algo(holder, algo_id)
+            if juno is not None and hasattr(juno, "set_perf_mfx"):
+                self._push_mfx_algo(juno, "perf", tgt[1], holder, clamped)
+            self._emit_fx_editor_signals()
+            return
+        if tgt[0] == "part":
+            n = tgt[1]
+            cached = self._part_cached(n)
+            if cached is None:
+                self._ensure_part_fx_cache(n)
+                cached = self._part_cached(n)
+            if cached is not None:
+                entry = dict(cached["mfx"])
+                store = type("M", (), {})()
+                store.mfx_type = entry["type"]; store.params = list(entry["params"])
+                store.last_active_type = entry.get("lastActive", 15)
+                store.mfx_last_active_type = entry.get("lastActive", 15)
+                clamped = self._apply_mfx_algo(store, algo_id)
+                entry["type"] = store.mfx_type; entry["params"] = list(store.params[:32])
+                entry["lastActive"] = int(getattr(store, "last_active_type", 15) or 15)
+                cached["mfx"] = entry
+                if juno is not None and hasattr(juno, "set_part_patch_mfx"):
+                    self._push_mfx_algo(juno, "part", n, store, clamped)
+                self._emit_fx_editor_signals()
+                return
+        eff = self.patch_state.effects
+        clamped = self._apply_mfx_algo(eff, algo_id)
         if self.engine.juno:
-            try:
-                self.engine.juno.set_mfx(eff.mfx_type)
-                if clamped > 0:
-                    algo = get_mfx_algo(clamped)
-                    if algo and "params" in algo:
-                        vals = [eff.mfx_params[p["idx"]] for p in algo["params"]]
-                        self.engine.juno.set_mfx_params_bulk(vals)
-            except Exception as e:
-                logger.error(f"Error setting MFX type on synth: {e}")
+            self._push_mfx_algo(self.engine.juno, "patch", 0, eff, clamped)
 
         self.mfxValuesChanged.emit()
         self.mfxParamsChanged.emit()
@@ -3686,9 +3997,42 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(int, int)
     def setMfxParam(self, param_index: int, val: int) -> None:
-        """Set an individual MFX parameter (0..31) and transmit live SysEx to synth."""
+        """Set an individual MFX parameter (0..31), origin-resolved in PERFORM mode."""
         if not (0 <= param_index < 32):
             return
+        tgt = self._mfx_target()
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if tgt[0] == "perf":
+            holder = self._perf_slot(tgt[1])
+            holder.params[param_index] = int(val)
+            if juno is not None:
+                try:
+                    if hasattr(juno, "set_perf_mfx_param"):
+                        juno.set_perf_mfx_param(tgt[1], int(param_index), int(val))
+                except Exception as e:
+                    logger.error(f"Error setting perf MFX param on synth: {e}")
+            self.mfxValuesChanged.emit()
+            try:
+                self.perfFxChanged.emit()
+            except Exception:
+                pass
+            return
+        if tgt[0] == "part":
+            n = tgt[1]
+            cached = self._part_cached(n)
+            if cached is None:
+                self._ensure_part_fx_cache(n)
+                cached = self._part_cached(n)
+            if cached is not None:
+                cached["mfx"]["params"][param_index] = int(val)
+                if juno is not None:
+                    try:
+                        if hasattr(juno, "set_part_patch_mfx_param"):
+                            juno.set_part_patch_mfx_param(n, int(param_index), int(val))
+                    except Exception as e:
+                        logger.error(f"Error setting part MFX param on synth: {e}")
+                self.mfxValuesChanged.emit()
+                return
         eff = self.patch_state.effects
         eff.mfx_params[param_index] = int(val)
 
@@ -3702,7 +4046,43 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(bool)
     def setMfxBypass(self, bypassed: bool) -> None:
-        """Toggle MFX Bypass switch."""
+        """Toggle MFX Bypass switch (origin-resolved in PERFORM mode)."""
+        tgt = self._mfx_target()
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if tgt[0] == "perf":
+            holder = self._perf_slot(tgt[1])
+            if bypassed:
+                holder.mfx_type = 0
+            else:
+                holder.mfx_type = int(getattr(holder, "last_active_type", 15) or 15)
+            if juno is not None:
+                try:
+                    if hasattr(juno, "set_perf_mfx"):
+                        juno.set_perf_mfx(tgt[1], mfx_type=int(holder.mfx_type))
+                except Exception as e:
+                    logger.error(f"Error toggling perf MFX bypass on synth: {e}")
+            self._emit_fx_editor_signals()
+            return
+        if tgt[0] == "part":
+            n = tgt[1]
+            cached = self._part_cached(n)
+            if cached is None:
+                self._ensure_part_fx_cache(n)
+                cached = self._part_cached(n)
+            if cached is not None:
+                m = cached["mfx"]
+                if bypassed:
+                    m["type"] = 0
+                else:
+                    m["type"] = int(m.get("lastActive") or 15)
+                if juno is not None:
+                    try:
+                        if hasattr(juno, "set_part_patch_mfx"):
+                            juno.set_part_patch_mfx(n, mfx_type=int(m["type"]))
+                    except Exception as e:
+                        logger.error(f"Error toggling part MFX bypass on synth: {e}")
+                self._emit_fx_editor_signals()
+                return
         eff = self.patch_state.effects
         eff.mfx_bypassed = bypassed
         target_type = 0 if bypassed else eff.mfx_last_active_type
@@ -3719,9 +4099,59 @@ class SpectreBridge(QObject):
 
     @pyqtSlot(str, int)
     def setMfxSend(self, send_type: str, val: int) -> None:
-        """Set MFX Dry, Chorus, or Reverb send level (0..127)."""
-        eff = self.patch_state.effects
+        """Set MFX Dry, Chorus, or Reverb send level (0..127), origin-resolved."""
+        tgt = self._mfx_target()
         clamped = max(0, min(127, int(val)))
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if tgt[0] == "perf":
+            holder = self._perf_slot(tgt[1])
+            if send_type == "dry":
+                holder.dry_send = clamped
+            elif send_type == "chorus":
+                holder.chorus_send = clamped
+            elif send_type == "reverb":
+                holder.reverb_send = clamped
+            if juno is not None:
+                try:
+                    if hasattr(juno, "set_perf_mfx"):
+                        juno.set_perf_mfx(tgt[1], dry_send=int(holder.dry_send),
+                                          chorus_send=int(holder.chorus_send),
+                                          reverb_send=int(holder.reverb_send))
+                except Exception as e:
+                    logger.error(f"Error setting perf MFX sends on synth: {e}")
+            self.mfxParamsChanged.emit()
+            self.routingChanged.emit()
+            try:
+                self.perfFxChanged.emit()
+            except Exception:
+                pass
+            return
+        if tgt[0] == "part":
+            n = tgt[1]
+            cached = self._part_cached(n)
+            if cached is None:
+                self._ensure_part_fx_cache(n)
+                cached = self._part_cached(n)
+            if cached is not None:
+                m = cached["mfx"]
+                if send_type == "dry":
+                    m["dry"] = clamped
+                elif send_type == "chorus":
+                    m["chorus"] = clamped
+                elif send_type == "reverb":
+                    m["reverb"] = clamped
+                if juno is not None:
+                    try:
+                        if hasattr(juno, "set_part_patch_mfx"):
+                            juno.set_part_patch_mfx(n, dry_send=int(m["dry"]),
+                                                    chorus_send=int(m["chorus"]),
+                                                    reverb_send=int(m["reverb"]))
+                    except Exception as e:
+                        logger.error(f"Error setting part MFX sends on synth: {e}")
+                self.mfxParamsChanged.emit()
+                self.routingChanged.emit()
+                return
+        eff = self.patch_state.effects
         if send_type == "dry":
             eff.mfx_dry_send = clamped
         elif send_type == "chorus":
@@ -4386,6 +4816,104 @@ class SpectreBridge(QObject):
                     logger.debug(f"setPartZoneOctave: synth write failed: {e}")
             self.perfPartsChanged.emit()
 
+    @pyqtSlot(int, int)
+    def setPartFx(self, part_index: int, which: int, val: int) -> None:
+        """Set per-part sends: which 0=dry 1=chorus 2=reverb (state + SysEx)."""
+        if not 1 <= int(part_index) <= 16:
+            return
+        part = self.patch_state.perf_parts[int(part_index) - 1]
+        v = max(0, min(127, int(val)))
+        kwargs = {}
+        if int(which) == 0:
+            part.dry_send = v; kwargs["dry"] = v
+        elif int(which) == 1:
+            part.chorus_send = v; kwargs["chorus"] = v
+        else:
+            part.reverb_send = v; kwargs["reverb"] = v
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is not None:
+            try:
+                if hasattr(juno, "set_perf_part_fx"):
+                    juno.set_perf_part_fx(int(part_index), **kwargs)
+            except Exception as e:
+                logger.debug(f"setPartFx: synth write failed: {e}")
+        self.perfPartsChanged.emit()
+
+    @pyqtSlot(int, int, int)
+    def setPartOutput(self, part_index: int, assign: int, mfx_select: int) -> None:
+        """Set per-part output assign (0..13) + MFX select (0..2)."""
+        if not 1 <= int(part_index) <= 16:
+            return
+        part = self.patch_state.perf_parts[int(part_index) - 1]
+        part.output_assign = max(0, min(13, int(assign)))
+        part.mfx_select = max(0, min(2, int(mfx_select)))
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is not None:
+            try:
+                if hasattr(juno, "set_perf_part_output"):
+                    juno.set_perf_part_output(int(part_index), assign=part.output_assign,
+                                              mfx_select=part.mfx_select)
+            except Exception as e:
+                logger.debug(f"setPartOutput: synth write failed: {e}")
+        self.perfPartsChanged.emit()
+
+    @pyqtSlot(int, int)
+    def setPartMfxSelect(self, part_index: int, slot: int) -> None:
+        """Tiny MFX 1/2/3 switcher on mixer strips (slot 0..2 from QML)."""
+        if not 1 <= int(part_index) <= 16:
+            return
+        s = max(0, min(2, int(slot)))
+        part = self.patch_state.perf_parts[int(part_index) - 1]
+        part.mfx_select = s
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is not None:
+            try:
+                if hasattr(juno, "set_perf_part_output"):
+                    juno.set_perf_part_output(int(part_index), mfx_select=s)
+            except Exception as e:
+                logger.debug(f"setPartMfxSelect: synth write failed: {e}")
+        self.perfPartsChanged.emit()
+
+    def _refresh_editors_for_part(self, part_index: int) -> None:
+        """Best-effort reload of tones/effects for the newly selected part.
+
+        Reads the part temp patch buffer (11..14..) so Routing/MFX/MasterFX
+        show the newly targeted part. Offline-safe: keeps current state.
+        Emits editor signals so QML repaints (header already shows part).
+        """
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is None:
+            return
+        try:
+            state = None
+            if hasattr(juno, "read_full_patch"):
+                try:
+                    state = juno.read_full_patch(timeout=1.0)
+                except Exception as e:
+                    logger.debug(f"_refresh_editors_for_part: read failed: {e}")
+                    state = None
+            if state is not None:
+                try:
+                    self.patch_state.tones = state.tones
+                    self.patch_state.effects = state.effects
+                    self.patch_state.common = state.common
+                except Exception:
+                    pass
+                try:
+                    # Seed the deep-FX cache: the freshly read image IS this
+                    # part's patch FX, so PARTn origins targeting it resolve.
+                    self._part_fx_cache[int(part_index)] = self._cache_from_effects(state.effects)
+                except Exception:
+                    pass
+                try:
+                    self.mfxParamsChanged.emit(); self.mfxValuesChanged.emit()
+                    self.chorusParamsChanged.emit(); self.reverbParamsChanged.emit()
+                    self.routingChanged.emit()
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"_refresh_editors_for_part failed: {e}")
+
     @pyqtSlot(int)
     def editPerfPart(self, part_index: int) -> None:
         """Select which performance part patch editors target (deep edit)."""
@@ -4398,6 +4926,172 @@ class SpectreBridge(QObject):
                 except Exception as e:
                     logger.debug(f"editPerfPart: {e}")
             self.perfPartsChanged.emit()
+            self._refresh_editors_for_part(int(part_index))
+
+    def _in_perform(self) -> bool:
+        return str(getattr(self, "_sound_mode", "PATCH")).upper() == "PERFORM"
+
+    def _perf_slot(self, slot: int):
+        fx = getattr(self.patch_state, "perf_fx", None)
+        if fx is None:
+            return None
+        s = max(1, min(3, int(slot)))
+        return (fx.mfx1, fx.mfx2, fx.mfx3)[s - 1]
+
+    def _mfx_target(self):
+        """Where MFX Studio edits: ('perf', slot) | ('part', n) | ('patch',)."""
+        if not self._in_perform():
+            return ("patch",)
+        s = max(1, min(3, int(getattr(self, "_editing_perf_mfx", 1))))
+        holder = self._perf_slot(s)
+        origin = int(getattr(holder, "source", 0)) if holder is not None else 0
+        if origin == 0:
+            return ("perf", s)
+        return ("part", max(1, min(16, origin)))
+
+    def _cho_target(self):
+        """Where Master FX chorus edits: ('perf',) | ('part', n) | ('patch',)."""
+        if not self._in_perform():
+            return ("patch",)
+        fx = getattr(self.patch_state, "perf_fx", None)
+        origin = int(getattr(fx, "chorus_source", 0)) if fx is not None else 0
+        if origin == 0:
+            return ("perf",)
+        return ("part", max(1, min(16, origin)))
+
+    def _rev_target(self):
+        """Where Master FX reverb edits: ('perf',) | ('part', n) | ('patch',)."""
+        if not self._in_perform():
+            return ("patch",)
+        fx = getattr(self.patch_state, "perf_fx", None)
+        origin = int(getattr(fx, "reverb_source", 0)) if fx is not None else 0
+        if origin == 0:
+            return ("perf",)
+        return ("part", max(1, min(16, origin)))
+
+    @staticmethod
+    def _cache_from_effects(eff) -> dict:
+        """Build a read_part_fx-shaped cache entry from an EffectsState."""
+        try:
+            params = list(eff.mfx_params[:32])
+        except Exception:
+            params = [0] * 32
+        return {
+            "mfx": {"type": int(eff.mfx_type), "dry": int(eff.mfx_dry_send),
+                    "chorus": int(eff.mfx_chorus_send), "reverb": int(eff.mfx_reverb_send),
+                    "params": params + [0] * (32 - len(params)),
+                    "lastActive": int(getattr(eff, "mfx_last_active_type", 15) or 15)},
+            "chorus": {"type": int(eff.chorus_type), "level": int(eff.chorus_level),
+                       "toReverb": int(eff.chorus_to_reverb),
+                       "predelay": int(eff.chorus_predelay), "rate": int(eff.chorus_rate),
+                       "depth": int(eff.chorus_depth), "feedback": int(eff.chorus_feedback)},
+            "reverb": {"type": int(eff.reverb_type), "level": int(eff.reverb_level),
+                       "predelay": int(eff.reverb_predelay), "time": int(eff.reverb_time),
+                       "damp": int(eff.reverb_damp), "diffusion": int(eff.reverb_diffusion),
+                       "tone": int(eff.reverb_tone)},
+        }
+
+    def _refresh_part_fx_cache(self, part_index: int) -> bool:
+        """Best-effort hardware read of one part-patch FX into the cache."""
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is None or not hasattr(juno, "read_part_fx"):
+            return False
+        try:
+            data = juno.read_part_fx(int(part_index), timeout=1.0)
+            if isinstance(data, dict) and "mfx" in data:
+                data["mfx"].setdefault("lastActive", int(data["mfx"].get("type") or 15) or 15)
+                if int(data["mfx"].get("type") or 0) > 0:
+                    data["mfx"]["lastActive"] = int(data["mfx"]["type"])
+                self._part_fx_cache[int(part_index)] = data
+                return True
+        except Exception as e:
+            logger.debug(f"_refresh_part_fx_cache({part_index}) failed: {e}")
+        return False
+
+    def _ensure_part_fx_cache(self, part_index: int) -> None:
+        """Fill the cache for a PARTn target (no-op when already cached)."""
+        n = max(1, min(16, int(part_index)))
+        if n not in self._part_fx_cache:
+            self._refresh_part_fx_cache(n)
+
+    def _part_cached(self, part_index: int):
+        return self._part_fx_cache.get(max(1, min(16, int(part_index))))
+
+    def _emit_fx_editor_signals(self) -> None:
+        for sig in (self.mfxParamsChanged, self.mfxValuesChanged,
+                    self.chorusParamsChanged, self.reverbParamsChanged,
+                    self.routingChanged, self.perfFxChanged):
+            try:
+                sig.emit()
+            except Exception:
+                pass
+
+    def _mfx_view(self):
+        """Resolved (type_shown, bypassed, dry, cho, rev, params) for MFX Studio."""
+        tgt = self._mfx_target()
+        eff = self.patch_state.effects
+        if tgt[0] == "perf":
+            holder = self._perf_slot(tgt[1])
+            mtype = int(holder.mfx_type)
+            last = int(getattr(holder, "last_active_type", 15) or 15)
+            try:
+                params = list(holder.params[:32])
+            except Exception:
+                params = [0] * 32
+            shown = mtype if mtype != 0 else last
+            return (shown, mtype == 0, int(holder.dry_send),
+                    int(holder.chorus_send), int(holder.reverb_send), params)
+        if tgt[0] == "part":
+            cached = self._part_cached(tgt[1])
+            if cached is not None:
+                m = cached["mfx"]
+                shown = int(m["type"]) if int(m["type"]) != 0 else int(m.get("lastActive") or 15)
+                return (shown, int(m["type"]) == 0, int(m["dry"]),
+                        int(m["chorus"]), int(m["reverb"]), list(m["params"][:32]))
+        shown = eff.mfx_type if not eff.mfx_bypassed else eff.mfx_last_active_type
+        return (shown, bool(eff.mfx_bypassed), int(eff.mfx_dry_send),
+                int(eff.mfx_chorus_send), int(eff.mfx_reverb_send),
+                list(eff.mfx_params[:32]))
+
+    def _cho_view(self):
+        """Resolved (type, level, toReverb, rate, depth, predelay, feedback)."""
+        tgt = self._cho_target()
+        eff = self.patch_state.effects
+        if tgt[0] == "perf":
+            fx = self.patch_state.perf_fx
+            return (int(fx.chorus_type), int(fx.chorus_level), int(fx.chorus_to_reverb),
+                    int(fx.chorus_rate), int(fx.chorus_depth),
+                    int(fx.chorus_predelay), int(fx.chorus_feedback))
+        if tgt[0] == "part":
+            cached = self._part_cached(tgt[1])
+            if cached is not None:
+                c = cached["chorus"]
+                return (int(c["type"]), int(c["level"]), int(c["toReverb"]),
+                        int(c["rate"]), int(c["depth"]),
+                        int(c["predelay"]), int(c["feedback"]))
+        return (int(eff.chorus_type), int(eff.chorus_level), int(eff.chorus_to_reverb),
+                int(eff.chorus_rate), int(eff.chorus_depth),
+                int(eff.chorus_predelay), int(eff.chorus_feedback))
+
+    def _rev_view(self):
+        """Resolved (type, level, predelay, time, damp, diffusion, tone)."""
+        tgt = self._rev_target()
+        eff = self.patch_state.effects
+        if tgt[0] == "perf":
+            fx = self.patch_state.perf_fx
+            return (int(fx.reverb_type), int(fx.reverb_level),
+                    int(fx.reverb_predelay), int(fx.reverb_time),
+                    int(fx.reverb_damp), int(fx.reverb_diffusion), int(fx.reverb_tone))
+        if tgt[0] == "part":
+            cached = self._part_cached(tgt[1])
+            if cached is not None:
+                r = cached["reverb"]
+                return (int(r["type"]), int(r["level"]), int(r["predelay"]),
+                        int(r["time"]), int(r["damp"]),
+                        int(r["diffusion"]), int(r["tone"]))
+        return (int(eff.reverb_type), int(eff.reverb_level),
+                int(eff.reverb_predelay), int(eff.reverb_time),
+                int(eff.reverb_damp), int(eff.reverb_diffusion), int(eff.reverb_tone))
 
     @pyqtSlot(str)
     def setSoundMode(self, mode: str) -> None:
@@ -4416,6 +5110,210 @@ class SpectreBridge(QObject):
         self.patch_state.sound_mode = m
         self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
         self.perfPartsChanged.emit()
+        try:
+            self._emit_fx_editor_signals()
+        except Exception:
+            pass
+
+    @pyqtSlot(int)
+    def setEditingPerfMfx(self, slot: int) -> None:
+        """Editing radio: which shared MFX the MFX Studio shows/edits (1..3)."""
+        self._editing_perf_mfx = max(1, min(3, int(slot)))
+        try:
+            tgt = self._mfx_target()
+            if tgt[0] == "part":
+                self._ensure_part_fx_cache(tgt[1])
+            self._emit_fx_editor_signals()
+        except Exception:
+            pass
+
+    @pyqtSlot(str, int)
+    def setPerfSource(self, which: str, origin: int) -> None:
+        """Set FX origin: which mfx1/mfx2/mfx3/chorus/reverb, origin 0=PERFORM 1..16=PARTn."""
+        o = max(0, min(16, int(origin)))
+        fx = getattr(self.patch_state, "perf_fx", None)
+        if fx is not None:
+            k = str(which or "").lower()
+            try:
+                if k == "mfx1": fx.mfx1.source = o
+                elif k == "mfx2": fx.mfx2.source = o
+                elif k == "mfx3": fx.mfx3.source = o
+                elif k in ("chorus", "cho"): fx.chorus_source = o
+                elif k in ("reverb", "rev"): fx.reverb_source = o
+            except Exception:
+                pass
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is not None:
+            try:
+                if hasattr(juno, "set_perf_source"):
+                    juno.set_perf_source(str(which), o)
+            except Exception as e:
+                logger.debug(f"setPerfSource: synth write failed: {e}")
+        try:
+            if o != 0:
+                self._ensure_part_fx_cache(o)
+            self._emit_fx_editor_signals()
+        except Exception:
+            pass
+
+    @pyqtSlot(int)
+    def setPerfStructure(self, structure: int) -> None:
+        """Set MFX Structure TYPE01..16 (0..15 on the wire)."""
+        fx = getattr(self.patch_state, "perf_fx", None)
+        if fx is not None:
+            fx.mfx_structure = max(0, min(15, int(structure)))
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is not None:
+            try:
+                if hasattr(juno, "set_perf_structure"):
+                    juno.set_perf_structure(int(structure))
+            except Exception as e:
+                logger.debug(f"setPerfStructure: synth write failed: {e}")
+        try:
+            self.perfFxChanged.emit()
+        except Exception:
+            pass
+
+    @pyqtSlot(int, int, int, int, int)
+    def setPerfMfx(self, slot: int, mfx_type: int, dry: int, chorus: int, reverb: int) -> None:
+        """Rail MFX card write: targets the sounding processor (origin-resolved).
+
+        PERFORM-owned slots write Performance Common; PART-sourced slots write
+        that part's patch (same as MFX Studio would).
+        """
+        s = max(1, min(3, int(slot)))
+        fx = getattr(self.patch_state, "perf_fx", None)
+        holder = (fx.mfx1, fx.mfx2, fx.mfx3)[s - 1] if fx is not None else None
+        origin = int(getattr(holder, "source", 0)) if holder is not None else 0
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if self._in_perform() and origin != 0:
+            cached = self._part_cached(origin)
+            if cached is None:
+                self._ensure_part_fx_cache(origin)
+                cached = self._part_cached(origin)
+            if cached is not None:
+                m = cached["mfx"]
+                m["type"] = max(0, min(80, int(mfx_type)))
+                m["dry"] = max(0, min(127, int(dry)))
+                m["chorus"] = max(0, min(127, int(chorus)))
+                m["reverb"] = max(0, min(127, int(reverb)))
+                if juno is not None and hasattr(juno, "set_part_patch_mfx"):
+                    try:
+                        juno.set_part_patch_mfx(origin, mfx_type=m["type"], dry_send=m["dry"],
+                                                chorus_send=m["chorus"], reverb_send=m["reverb"])
+                    except Exception as e:
+                        logger.debug(f"setPerfMfx: part synth write failed: {e}")
+                self._emit_fx_editor_signals()
+                return
+        if holder is not None:
+            holder.mfx_type = max(0, min(80, int(mfx_type)))
+            holder.dry_send = max(0, min(127, int(dry)))
+            holder.chorus_send = max(0, min(127, int(chorus)))
+            holder.reverb_send = max(0, min(127, int(reverb)))
+        if juno is not None:
+            try:
+                if hasattr(juno, "set_perf_mfx"):
+                    juno.set_perf_mfx(s, mfx_type=int(mfx_type), dry_send=int(dry),
+                                      chorus_send=int(chorus), reverb_send=int(reverb))
+            except Exception as e:
+                logger.debug(f"setPerfMfx: synth write failed: {e}")
+        try:
+            self.perfFxChanged.emit(); self.mfxParamsChanged.emit(); self.routingChanged.emit()
+        except Exception:
+            pass
+
+    @pyqtSlot(str)
+    def copyOriginToPerform(self, which: str) -> bool:
+        """Copy current origin block to PERFORM and switch origin to PERFORM.
+
+        Head-start for MFX editing: reads the sourced block (part patch when
+        PARTn, perf-common when already PERFORM) and writes it into the
+        perf-common block, then sets source=PERFORM. Returns True on success.
+        Offline: copies state only.
+        """
+        k = str(which or "").lower()
+        fx = getattr(self.patch_state, "perf_fx", None)
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        try:
+            if k in ("mfx1", "mfx2", "mfx3"):
+                s = {"mfx1": 1, "mfx2": 2, "mfx3": 3}[k]
+                holder = (fx.mfx1, fx.mfx2, fx.mfx3)[s - 1] if fx is not None else None
+                origin = int(getattr(holder, "source", 0)) if holder is not None else 0
+                if origin == 0:
+                    return True  # already PERFORM
+                # Try hardware copy: part patch MFX -> perf common MFX slot.
+                copied = False
+                if juno is not None and hasattr(juno, "request_data"):
+                    try:
+                        from ..core.protocol import temp_perf_patch_base as _ppb
+                        from ..core.sysex import (OFFSET_PATCH_COMMON_MFX as _MFX,
+                                                  PERF_MFX_BLOCK_SIZE as _SZ)
+                        from ..core.sysex import add_address as _add
+                        src = _add(_ppb(origin), _MFX)
+                        raw = juno.request_data(src, _SZ, timeout=1.0)
+                        if raw is not None and len(raw) >= 4:
+                            juno.send_data(__import__("src.spectre.core.sysex", fromlist=["perf_common_fx_base"]).perf_common_fx_base(s), list(bytes(raw)))
+                            copied = True
+                    except Exception as e:
+                        logger.debug(f"copyOriginToPerform mfx HW copy failed: {e}")
+                # State copy: mirror active part editor MFX into the slot.
+                if fx is not None and holder is not None:
+                    try:
+                        eff = self.patch_state.effects
+                        holder.mfx_type = int(eff.mfx_type)
+                        holder.dry_send = int(eff.mfx_dry_send)
+                        holder.chorus_send = int(eff.mfx_chorus_send)
+                        holder.reverb_send = int(eff.mfx_reverb_send)
+                        holder.params = list(eff.mfx_params[:32])
+                        holder.source = 0
+                    except Exception:
+                        holder.source = 0
+                if juno is not None and hasattr(juno, "set_perf_source"):
+                    try:
+                        juno.set_perf_source(k, 0)
+                    except Exception:
+                        pass
+                try:
+                    self._emit_fx_editor_signals()
+                except Exception:
+                    pass
+                return True
+            elif k in ("chorus", "cho", "reverb", "rev"):
+                is_cho = k in ("chorus", "cho")
+                origin = int(fx.chorus_source if is_cho else fx.reverb_source) if fx is not None else 0
+                if origin == 0:
+                    return True
+                if fx is not None:
+                    try:
+                        eff = self.patch_state.effects
+                        if is_cho:
+                            fx.chorus_type = int(eff.chorus_type); fx.chorus_level = int(eff.chorus_level)
+                            fx.chorus_to_reverb = int(eff.chorus_to_reverb); fx.chorus_source = 0
+                        else:
+                            fx.reverb_type = int(eff.reverb_type); fx.reverb_level = int(eff.reverb_level)
+                            fx.reverb_source = 0
+                    except Exception:
+                        pass
+                if juno is not None:
+                    try:
+                        if is_cho and hasattr(juno, "set_perf_chorus") and fx is not None:
+                            juno.set_perf_chorus(fx.chorus_type, level=fx.chorus_level,
+                                                 output_select=fx.chorus_to_reverb)
+                        elif not is_cho and hasattr(juno, "set_perf_reverb") and fx is not None:
+                            juno.set_perf_reverb(fx.reverb_type, level=fx.reverb_level)
+                        if hasattr(juno, "set_perf_source"):
+                            juno.set_perf_source("chorus" if is_cho else "reverb", 0)
+                    except Exception as e:
+                        logger.debug(f"copyOriginToPerform {'cho' if is_cho else 'rev'} HW failed: {e}")
+                try:
+                    self._emit_fx_editor_signals()
+                except Exception:
+                    pass
+                return True
+        except Exception as e:
+            logger.debug(f"copyOriginToPerform failed: {e}")
+            return False
+        return False
 
     @pyqtSlot()
     def syncPerformanceFromSynth(self) -> None:
@@ -4445,10 +5343,21 @@ class SpectreBridge(QObject):
                             p.patch_name = kept_names[i]
             except Exception as e:
                 logger.debug(f"syncPerformance: parts read failed: {e}")
+            try:
+                if hasattr(juno, "get_perf_fx"):
+                    fx = juno.get_perf_fx(timeout=1.0)
+                    if fx is not None:
+                        self.patch_state.perf_fx = fx
+            except Exception as e:
+                logger.debug(f"syncPerformance: fx read failed: {e}")
             self._sound_mode = "PERFORM"
             self.patch_state.sound_mode = "PERFORM"
             self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
             self.perfPartsChanged.emit()
+            try:
+                self._emit_fx_editor_signals()
+            except Exception:
+                pass
         except Exception as e:
             logger.warning(f"syncPerformanceFromSynth failed: {e}")
 
@@ -4612,6 +5521,20 @@ class SpectreBridge(QObject):
                     juno.set_perf_part_level(p.part_index, p.volume)
                     juno.set_perf_part_pan(p.part_index, p.pan)
                     juno.set_perf_part_mute(p.part_index, p.muted)
+                    if hasattr(juno, "set_perf_part_fx"):
+                        try:
+                            juno.set_perf_part_fx(p.part_index, dry=int(getattr(p, "dry_send", 127)),
+                                                  chorus=int(getattr(p, "chorus_send", 0)),
+                                                  reverb=int(getattr(p, "reverb_send", 0)))
+                        except Exception as e:
+                            logger.debug(f"playlist load: part {p.part_index} fx push failed: {e}")
+                    if hasattr(juno, "set_perf_part_output"):
+                        try:
+                            juno.set_perf_part_output(p.part_index,
+                                                      assign=int(getattr(p, "output_assign", 13)),
+                                                      mfx_select=int(getattr(p, "mfx_select", 0)))
+                        except Exception as e:
+                            logger.debug(f"playlist load: part {p.part_index} output push failed: {e}")
                     juno.set_perf_zone(max(1, min(16, int(p.rx_channel) + 1)),
                                        p.key_low, p.key_high, p.zone_switch, p.zone_octave)
                 except Exception as e:
@@ -4632,6 +5555,51 @@ class SpectreBridge(QObject):
                             image_jobs.append(("image", p.part_index, _from_dict(snap)))
                         except Exception as e:
                             logger.debug(f"playlist load: bad part snapshot: {e}")
+            try:
+                fx = getattr(self.patch_state, "perf_fx", None)
+                if fx is not None:
+                    if hasattr(juno, "set_perf_source"):
+                        for _w, _o in (("mfx1", int(fx.mfx1.source)), ("mfx2", int(fx.mfx2.source)),
+                                       ("mfx3", int(fx.mfx3.source)), ("chorus", int(fx.chorus_source)),
+                                       ("reverb", int(fx.reverb_source))):
+                            try:
+                                juno.set_perf_source(_w, _o)
+                            except Exception as e:
+                                logger.debug(f"playlist load: source {_w} push failed: {e}")
+                    if hasattr(juno, "set_perf_structure"):
+                        try:
+                            juno.set_perf_structure(int(fx.mfx_structure))
+                        except Exception as e:
+                            logger.debug(f"playlist load: structure push failed: {e}")
+                    if hasattr(juno, "set_perf_mfx"):
+                        for _s, _h in ((1, fx.mfx1), (2, fx.mfx2), (3, fx.mfx3)):
+                            try:
+                                juno.set_perf_mfx(_s, mfx_type=int(_h.mfx_type),
+                                                  dry_send=int(_h.dry_send),
+                                                  chorus_send=int(_h.chorus_send),
+                                                  reverb_send=int(_h.reverb_send))
+                            except Exception as e:
+                                logger.debug(f"playlist load: mfx{_s} push failed: {e}")
+                            if int(_h.source) == 0 and hasattr(juno, "set_perf_mfx_param"):
+                                try:
+                                    for _pi, _pv in enumerate(list(getattr(_h, "params", []) or [])[:32]):
+                                        if int(_pv) != 0:
+                                            juno.set_perf_mfx_param(_s, _pi, int(_pv))
+                                except Exception as e:
+                                    logger.debug(f"playlist load: mfx{_s} params push failed: {e}")
+                    if hasattr(juno, "set_perf_chorus"):
+                        try:
+                            juno.set_perf_chorus(int(fx.chorus_type), level=int(fx.chorus_level),
+                                                 output_select=int(fx.chorus_to_reverb))
+                        except Exception as e:
+                            logger.debug(f"playlist load: chorus push failed: {e}")
+                    if hasattr(juno, "set_perf_reverb"):
+                        try:
+                            juno.set_perf_reverb(int(fx.reverb_type), level=int(fx.reverb_level))
+                        except Exception as e:
+                            logger.debug(f"playlist load: reverb push failed: {e}")
+            except Exception as e:
+                logger.debug(f"playlist load: perf fx push failed: {e}")
             try:
                 solos = [p.part_index for p in self.patch_state.perf_parts if p.solo]
                 juno.set_perf_solo(solos[-1] if solos else 0)
@@ -5131,6 +6099,11 @@ class SpectreBridge(QObject):
         self._sound_mode = "PERFORM"
         self.patch_state.sound_mode = "PERFORM"
         self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
+        self.perfPartsChanged.emit()
+        try:
+            self._emit_fx_editor_signals()
+        except Exception:
+            pass
         self._set_current_slot_ref(int(msb), int(lsb), int(pc), "performance")
         self._pending_view = "PERFORMANCE"
 
@@ -5213,6 +6186,10 @@ class SpectreBridge(QObject):
         self._sound_mode = "PATCH"
         self.patch_state.sound_mode = "PATCH"
         self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
+        try:
+            self._emit_fx_editor_signals()
+        except Exception:
+            pass
         self._set_current_slot_ref(int(msb), int(lsb), int(pc),
                                    "drum" if int(msb) == 86 else "patch")
         self._pending_view = "JUNO PCM"

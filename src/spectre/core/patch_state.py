@@ -542,6 +542,43 @@ def default_macro_slots() -> list["MacroSlot"]:
 
 
 @dataclass
+class PerfMfxSlotState:
+    """One shared Performance MFX (MFX1..MFX3) stored in Performance Common."""
+    mfx_type: int = 0            # 0..80 (0 = bypass)
+    dry_send: int = 127          # 0..127
+    chorus_send: int = 0         # 0..127
+    reverb_send: int = 0         # 0..127
+    params: list[int] = field(default_factory=lambda: [0] * 32)
+    source: int = 0              # 0=PERFORM, 1..16=PARTn (live reference)
+    last_active_type: int = 15   # last nonzero type (restored on un-bypass)
+
+
+@dataclass
+class PerfFxState:
+    """Shared Performance FX: 3x MFX + chorus + reverb + routing."""
+    mfx1: PerfMfxSlotState = field(default_factory=PerfMfxSlotState)
+    mfx2: PerfMfxSlotState = field(default_factory=PerfMfxSlotState)
+    mfx3: PerfMfxSlotState = field(default_factory=PerfMfxSlotState)
+    chorus_type: int = 1         # 0=OFF, 1..3
+    chorus_level: int = 80       # 0..127
+    chorus_to_reverb: int = 0    # 0=MAIN, 1=REV, 2=MAIN+REV
+    chorus_source: int = 0       # 0=PERFORM, 1..16=PARTn
+    chorus_rate: int = 40        # 0..127 (detail)
+    chorus_depth: int = 65       # 0..127 (detail)
+    chorus_predelay: int = 12    # 0..127 (detail)
+    chorus_feedback: int = 20    # 0..127 (detail)
+    reverb_type: int = 4         # 0=OFF, 1..5
+    reverb_level: int = 60       # 0..127
+    reverb_source: int = 0       # 0=PERFORM, 1..16=PARTn
+    reverb_predelay: int = 15    # 0..127 (detail)
+    reverb_time: int = 70        # 0..127 (detail)
+    reverb_damp: int = 45        # 0..127 (detail)
+    reverb_diffusion: int = 60   # 0..127 (detail)
+    reverb_tone: int = 64        # 0..127 (detail)
+    mfx_structure: int = 0       # 0..15 (TYPE01..TYPE16)
+
+
+@dataclass
 class PerfPartState:
     """State for a single Performance Mode Part (Part 1..16).
 
@@ -574,6 +611,12 @@ class PerfPartState:
     key_high: int = 127          # 0..127 (LOWER..G9)
     zone_switch: bool = True     # Zone Switch OFF/ON (per-channel block)
     zone_octave: int = 64        # 61..67 (-3..+3, 64=0)
+    # Performance output routing (Performance Part block 0x1C..0x20)
+    dry_send: int = 127          # 0..127 (Part Dry Send Level)
+    chorus_send: int = 0         # 0..127 (CC#93)
+    reverb_send: int = 0         # 0..127 (CC#91)
+    output_assign: int = 13      # 0..13 (PATCH=13 defers to tone assigns)
+    mfx_select: int = 0          # 0..2 (MFX1, MFX2, MFX3)
 
     def __post_init__(self) -> None:
         if not 1 <= int(self.part_index) <= 16:
@@ -604,6 +647,8 @@ class PatchState:
     perf_name: str = "SPECTRE PERF"
     # Which performance part the patch editors target in PERFORM mode (1..16).
     active_perf_part: int = 1
+    # Shared Performance FX (Performance Common MFX1-3 / chorus / reverb).
+    perf_fx: PerfFxState = field(default_factory=PerfFxState)
 
     # Workstation / VA state (software-side only, never sent as a dedicated SysEx message)
     auto_detune: bool = False           # Auto Detune disabled by default

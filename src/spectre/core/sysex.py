@@ -68,13 +68,60 @@ PERF_PART_MUTE = 0x1B            # 0..1 (OFF, MUTE)
 PERF_PART_DRY_SEND = 0x1C        # 0..127
 PERF_PART_CHORUS_SEND = 0x1D     # 0..127 (CC#93)
 PERF_PART_REVERB_SEND = 0x1E     # 0..127 (CC#91)
-PERF_PART_OUTPUT_ASSIGN = 0x1F   # 0..13 (PATCH=13)
+PERF_PART_OUTPUT_ASSIGN = 0x1F   # 0..13 (PATCH=13 defers to tone assigns)
+PERF_PART_OUTPUT_MFX_SELECT = 0x20  # 0..2 (MFX1, MFX2, MFX3)
 PERF_PART_BLOCK_SIZE = 0x31
 
 # Offsets inside Performance Common (base 10 00 00 00)
 PERF_COMMON_NAME = 0x00          # 12 ASCII bytes
 PERF_COMMON_NAME_SIZE = 12
 PERF_COMMON_SOLO_PART = 0x0C     # 0..16 (OFF, 1..16)
+PERF_COMMON_MFX1_SOURCE = 0x30   # 0..16 (PERFORM=0, PART 1..16)
+PERF_COMMON_MFX2_SOURCE = 0x31   # 0..16
+PERF_COMMON_MFX3_SOURCE = 0x32   # 0..16
+PERF_COMMON_CHORUS_SOURCE = 0x33  # 0..16
+PERF_COMMON_REVERB_SOURCE = 0x34  # 0..16
+PERF_COMMON_MFX_STRUCTURE = 0x37  # 0..15 (TYPE01..TYPE16)
+PERF_COMMON_BLOCK_SIZE = 0x38
+
+# Performance Common FX blocks (offsets from 10 00 00 00, see MIDI impl p.20)
+OFFSET_PERF_MFX1 = (0x00, 0x00, 0x02, 0x00)
+OFFSET_PERF_CHORUS = (0x00, 0x00, 0x04, 0x00)
+OFFSET_PERF_REVERB = (0x00, 0x00, 0x06, 0x00)
+OFFSET_PERF_MFX2 = (0x00, 0x00, 0x08, 0x00)
+OFFSET_PERF_MFX3 = (0x00, 0x00, 0x0A, 0x00)
+ADDR_PERF_MFX1 = (0x10, 0x00, 0x02, 0x00)
+ADDR_PERF_CHORUS = (0x10, 0x00, 0x04, 0x00)
+ADDR_PERF_REVERB = (0x10, 0x00, 0x06, 0x00)
+ADDR_PERF_MFX2 = (0x10, 0x00, 0x08, 0x00)
+ADDR_PERF_MFX3 = (0x10, 0x00, 0x0A, 0x00)
+PERF_MFX_BLOCK_SIZE = (0x00, 0x00, 0x01, 0x11)  # 145 bytes
+PERF_CHORUS_BLOCK_SIZE = (0x00, 0x00, 0x00, 0x54)  # 84 bytes
+PERF_REVERB_BLOCK_SIZE = (0x00, 0x00, 0x00, 0x53)  # 83 bytes
+
+
+def perf_common_fx_base(slot: int) -> tuple[int, int, int, int]:
+    """Absolute base of Performance Common MFX slot 1..3."""
+    s = int(slot)
+    if s == 1:
+        return ADDR_PERF_MFX1
+    if s == 2:
+        return ADDR_PERF_MFX2
+    if s == 3:
+        return ADDR_PERF_MFX3
+    raise ValueError(f"Performance MFX slot must be 1..3, got {slot}")
+
+
+def perf_common_fx_offset(slot: int) -> tuple[int, int, int, int]:
+    """Offset of Performance Common MFX slot 1..3 from 10 00 00 00."""
+    s = int(slot)
+    if s == 1:
+        return OFFSET_PERF_MFX1
+    if s == 2:
+        return OFFSET_PERF_MFX2
+    if s == 3:
+        return OFFSET_PERF_MFX3
+    raise ValueError(f"Performance MFX slot must be 1..3, got {slot}")
 
 # Offsets inside one Performance Zone block (0x1B bytes)
 PERF_ZONE_OCTAVE_SHIFT = 0x00    # 61..67 (-3..+3)

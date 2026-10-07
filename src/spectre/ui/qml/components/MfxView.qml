@@ -81,6 +81,33 @@ Rectangle {
                         color: Theme.textPrimary
                     }
                     Item { Layout.fillWidth: true }
+                    Rectangle {
+                        objectName: "mfxTargetChip"
+                        height: ScaleMetrics.dp(18)
+                        Layout.preferredWidth: Math.min(targetLabel.implicitWidth + ScaleMetrics.dp(12), ScaleMetrics.dp(110))
+                        Layout.maximumWidth: ScaleMetrics.dp(110)
+                        Layout.minimumWidth: ScaleMetrics.dp(52)
+                        radius: 3
+                        color: "#1c1533"
+                        border.color: Theme.tone2
+                        border.width: 1
+                        clip: true
+                        Text {
+                            id: targetLabel
+                            objectName: "mfxTargetLabel"
+                            anchors.fill: parent
+                            anchors.leftMargin: ScaleMetrics.dp(6)
+                            anchors.rightMargin: ScaleMetrics.dp(6)
+                            verticalAlignment: Text.AlignVCenter
+                            horizontalAlignment: Text.AlignHCenter
+                            text: Bridge.mfxEditTargetLabel
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(7)
+                            font.family: Theme.fontMono
+                            color: Theme.tone2
+                            elide: Text.ElideRight
+                        }
+                    }
                     Text {
                         text: root.filteredAlgos.length + " / " + root.algoList.length
                         font.family: Theme.fontMono

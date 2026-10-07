@@ -153,30 +153,42 @@ Rectangle {
             Layout.preferredHeight: root.subView === "mixer" ? ScaleMetrics.dp(84) : 0
         }
 
-        // 8 Channel Strips Row (paged over 16 parts)
+        // Mixer + permanent FX rail (strips shrink ~15% to fund 160px rail)
         RowLayout {
             visible: root.subView === "mixer"
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: ScaleMetrics.dp(6)
-            Repeater {
-                model: 8
-                delegate: ChannelStrip {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    property var _p: (root.allParts && root.allParts.length > ((root.page - 1) * 8 + index))
-                                     ? root.allParts[(root.page - 1) * 8 + index]
-                                     : null
-                    partIndex: _p ? _p.index : ((root.page - 1) * 8 + index + 1)
-                    partName: _p ? (_p.name || ("Part " + partIndex)) : ("Part " + partIndex)
-                    volume: _p ? _p.volume : 0
-                    pan: _p ? _p.pan : 64
-                    isMuted: _p ? _p.muted : false
-                    isSolo: _p ? _p.solo : false
-                    isActive: Bridge.activePerfPart === partIndex
-                    partStatus: (Bridge.partFileStatus && Bridge.partFileStatus.length >= partIndex)
-                                ? Bridge.partFileStatus[partIndex - 1] : ""
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: ScaleMetrics.dp(5)
+                Repeater {
+                    model: 8
+                    delegate: ChannelStrip {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        property var _p: (root.allParts && root.allParts.length > ((root.page - 1) * 8 + index))
+                                         ? root.allParts[(root.page - 1) * 8 + index]
+                                         : null
+                        partIndex: _p ? _p.index : ((root.page - 1) * 8 + index + 1)
+                        partName: _p ? (_p.name || ("Part " + partIndex)) : ("Part " + partIndex)
+                        volume: _p ? _p.volume : 0
+                        pan: _p ? _p.pan : 64
+                        isMuted: _p ? _p.muted : false
+                        isSolo: _p ? _p.solo : false
+                        isActive: Bridge.activePerfPart === partIndex
+                        mfxSelect: _p ? (_p.mfxSelect || 0) : 0
+                        feedsEditing: _p ? ((_p.mfxSelect || 0) === (Bridge.editingPerfMfx - 1)) : false
+                        partStatus: (Bridge.partFileStatus && Bridge.partFileStatus.length >= partIndex)
+                                    ? Bridge.partFileStatus[partIndex - 1] : ""
+                    }
                 }
+            }
+            PerfFxRail {
+                Layout.preferredWidth: ScaleMetrics.dp(160)
+                Layout.maximumWidth: ScaleMetrics.dp(160)
+                Layout.fillHeight: true
             }
         }
 
@@ -199,6 +211,8 @@ Rectangle {
         property bool isSolo: false
         property bool isActive: false
         property string partStatus: ""
+        property int mfxSelect: 0
+        property bool feedsEditing: false
 
         radius: ScaleMetrics.dp(6)
         color: chan.isActive ? "#1c1533" : Theme.bgApp
@@ -316,6 +330,48 @@ Rectangle {
                         anchors.fill: parent
                         enabled: !root.pushBusy
                         onClicked: Bridge.setPartSolo(chan.partIndex, !chan.isSolo)
+                    }
+                }
+            }
+
+            // MFX selector: label row + 1/2/3 segmented switch
+            // (spacer above separates it from the M/S buttons)
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: ScaleMetrics.dp(4)
+            }
+            Text {
+                text: "MFX"
+                font.bold: true
+                font.pixelSize: ScaleMetrics.sp(7)
+                font.letterSpacing: 1.0
+                color: Theme.textDim
+                Layout.alignment: Qt.AlignHCenter
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 1
+                Repeater {
+                    model: [0, 1, 2]
+                    delegate: Rectangle {
+                        Layout.fillWidth: true
+                        height: ScaleMetrics.dp(16)
+                        radius: 2
+                        color: chan.mfxSelect === modelData ? Theme.tone2 : "#1e293b"
+                        border.color: chan.mfxSelect === modelData ? "#ffffff" : Theme.borderCard
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: (modelData + 1)
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(7)
+                            color: chan.mfxSelect === modelData ? "#ffffff" : Theme.textDim
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: !root.pushBusy
+                            onClicked: Bridge.setPartMfxSelect(chan.partIndex, modelData)
+                        }
                     }
                 }
             }

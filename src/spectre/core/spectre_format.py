@@ -97,6 +97,8 @@ def patch_state_from_dict(d: Dict[str, Any]) -> PatchState:
         EffectsState,
         PatchCommonState,
         PatchState as PS,
+        PerfFxState,
+        PerfMfxSlotState,
         PerfPartState,
         StepLfoState,
         ToneState,
@@ -143,6 +145,18 @@ def patch_state_from_dict(d: Dict[str, Any]) -> PatchState:
             parts = [_safe_construct(PerfPartState, p, PerfPartState()) for p in raw_parts[:16]]
             if len(parts) == 16:
                 out.perf_parts = parts
+        raw_fx = d.get("perf_fx")
+        if isinstance(raw_fx, dict):
+            fx = _safe_construct(PerfFxState, raw_fx, PerfFxState())
+            try:
+                for slot_name in ("mfx1", "mfx2", "mfx3"):
+                    raw_slot = raw_fx.get(slot_name)
+                    if isinstance(raw_slot, dict):
+                        setattr(fx, slot_name,
+                                _safe_construct(PerfMfxSlotState, raw_slot, PerfMfxSlotState()))
+            except Exception:
+                pass
+            out.perf_fx = fx
         for key in ("auto_detune", "auto_detune_cents"):
             if key in d:
                 try:

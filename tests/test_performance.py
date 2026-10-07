@@ -655,3 +655,260 @@ def test_zone_fields_round_trip():
     restored = patch_state_from_dict(patch_state_to_dict(state))
     p = restored.perf_parts[0]
     assert (p.key_low, p.key_high, p.zone_switch, p.zone_octave) == (36, 72, False, 62)
+
+
+# --- performance FX (phase 3: shared MFX1-3 / chorus / reverb) ----------------
+
+def test_perf_part_fx_addresses(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    client.set_perf_part_fx(2, dry=90, chorus=40, reverb=70)
+    calls = mock_midi_mgr.send_juno_sysex.call_args_list
+    addrs = [tuple(c[0][0][6:10]) for c in calls[-3:]]
+    assert addrs == [(0x10, 0x00, 0x21, 0x1C), (0x10, 0x00, 0x21, 0x1D), (0x10, 0x00, 0x21, 0x1E)]
+    client.set_perf_part_output(4, assign=13, mfx_select=2)
+    calls = mock_midi_mgr.send_juno_sysex.call_args_list
+    addrs = [tuple(c[0][0][6:10]) for c in calls[-2:]]
+    assert addrs == [(0x10, 0x00, 0x23, 0x1F), (0x10, 0x00, 0x23, 0x20)]
+    with __import__("pytest").raises(ValueError):
+        client.set_perf_part_output(17, assign=0)
+
+
+def test_perf_common_fx_addresses(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    client.set_perf_mfx(2, mfx_type=15, dry_send=100, chorus_send=20, reverb_send=30)
+    addrs = [tuple(c[0][0][6:10]) for c in mock_midi_mgr.send_juno_sysex.call_args_list[-4:]]
+    assert addrs[0] == (0x10, 0x00, 0x08, 0x00)
+    client.set_perf_chorus(1, level=80, output_select=2)
+    addr, _ = _sysex_addr(client.midi)
+    assert addr == (0x10, 0x00, 0x04, 0x03)
+    client.set_perf_reverb(4, level=60)
+    addr, _ = _sysex_addr(client.midi)
+    assert addr == (0x10, 0x00, 0x06, 0x01)
+    client.set_perf_source("mfx1", 3)
+    addr, payload = _sysex_addr(client.midi)
+    assert addr == (0x10, 0x00, 0x00, 0x30) and payload == [3]
+    client.set_perf_structure(5)
+    addr, payload = _sysex_addr(client.midi)
+    assert addr == (0x10, 0x00, 0x00, 0x37) and payload == [5]
+
+
+def test_get_perf_parts_decodes_fx():
+    from unittest.mock import MagicMock
+    from src.spectre.core.midi import MidiDeviceManager
+    client = JunoClient(MagicMock(spec=MidiDeviceManager))
+    blk = bytearray(0x31)
+    blk[0x07] = 100; blk[0x1C] = 90; blk[0x1D] = 11; blk[0x1E] = 22
+    blk[0x1F] = 13; blk[0x20] = 2
+    client.get_perf_part_block = lambda part, timeout=1.0: bytes(blk)
+    client.request_data = MagicMock(return_value=None)
+    client.get_perf_zones = lambda timeout=1.0: [{"low": 0, "high": 127, "switch": True, "octave": 64}] * 16
+    parts = client.get_perf_parts(timeout=0.05)
+    assert (parts[0].dry_send, parts[0].chorus_send, parts[0].reverb_send) == (90, 11, 22)
+    assert (parts[0].output_assign, parts[0].mfx_select) == (13, 2)
+
+
+def test_perf_fx_state_round_trip():
+    state = PatchState()
+    state.perf_parts[0].dry_send = 90
+    state.perf_parts[0].mfx_select = 2
+    state.perf_fx.mfx2.mfx_type = 15
+    state.perf_fx.mfx2.source = 3
+    state.perf_fx.mfx_structure = 5
+    state.perf_fx.chorus_source = 2
+    restored = patch_state_from_dict(patch_state_to_dict(state))
+    assert restored.perf_parts[0].dry_send == 90
+    assert restored.perf_parts[0].mfx_select == 2
+    assert restored.perf_fx.mfx2.mfx_type == 15
+    assert restored.perf_fx.mfx2.source == 3
+    assert restored.perf_fx.mfx_structure == 5
+    assert restored.perf_fx.chorus_source == 2
+
+
+def test_bridge_part_fx_setters(tmp_path):
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    bridge.setPartFx(1, 0, 90)
+    assert bridge.patch_state.perf_parts[0].dry_send == 90
+    assert juno._store[(0x10, 0x00, 0x20, 0x1C)] == bytes([90])
+    bridge.setPartFx(1, 1, 40)
+    assert juno._store[(0x10, 0x00, 0x20, 0x1D)] == bytes([40])
+    bridge.setPartMfxSelect(1, 2)
+    assert bridge.patch_state.perf_parts[0].mfx_select == 2
+    assert juno._store[(0x10, 0x00, 0x20, 0x20)] == bytes([2])
+    bridge.setPartOutput(2, 13, 2)
+    assert bridge.patch_state.perf_parts[1].mfx_select == 2
+    exposed = bridge.perfParts[0]
+    assert exposed["drySend"] == 90 and exposed["mfxSelect"] == 2
+
+
+def test_bridge_perf_sources_and_editing(tmp_path):
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    assert bridge.editingPerfMfx == 1
+    bridge.setEditingPerfMfx(3)
+    assert bridge.editingPerfMfx == 3
+    assert bridge.perfFxSlots[2]["editing"] is True
+    bridge.setPerfSource("mfx1", 4)
+    assert bridge.patch_state.perf_fx.mfx1.source == 4
+    assert juno._store[(0x10, 0x00, 0x00, 0x30)] == bytes([4])
+    bridge.setPerfStructure(7)
+    assert bridge.patch_state.perf_fx.mfx_structure == 7
+    assert bridge.perfFxSources["structure"] == 7
+    # copy-to-PERFORM head-start: PARTn -> PERFORM
+    bridge.patch_state.effects.mfx_type = 15
+    assert bridge.copyOriginToPerform("mfx1") is True
+    assert bridge.patch_state.perf_fx.mfx1.source == 0
+    assert bridge.patch_state.perf_fx.mfx1.mfx_type == 15
+
+
+def test_bridge_perf_mfx_live_edit(tmp_path):
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    bridge.setPerfSource("mfx1", 0)
+    bridge.setEditingPerfMfx(1)
+    bridge.setPerfMfx(1, 15, 100, 20, 30)
+    assert bridge.patch_state.perf_fx.mfx1.mfx_type == 15
+    assert juno._store[(0x10, 0x00, 0x02, 0x00)] == bytes([15])
+    assert juno._store[(0x10, 0x00, 0x02, 0x01)] == bytes([100])
+
+
+def test_part_mfx_select_indexing(tmp_path):
+    """Regression: strip taps 0/1/2 must land on MFX1/2/3 (not shift by one)."""
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    for tap, expect in ((0, 0), (1, 1), (2, 2)):
+        bridge.setPartMfxSelect(1, tap)
+        assert bridge.patch_state.perf_parts[0].mfx_select == expect
+        assert juno._store[(0x10, 0x00, 0x20, 0x20)] == bytes([expect])
+
+
+def test_playlist_load_pushes_part_and_common_fx(tmp_path):
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    bridge.patch_state.perf_name = "FXGIG"
+    bridge.patch_state.perf_parts[0].dry_send = 90
+    bridge.patch_state.perf_parts[0].mfx_select = 2
+    bridge.patch_state.perf_fx.mfx1.source = 4
+    bridge.patch_state.perf_fx.mfx_structure = 7
+    bridge.patch_state.perf_fx.chorus_type = 2
+    assert bridge.addCurrentToPlaylist() is True
+    assert bridge.savePlaylistAuto() is True
+    path = bridge._playlist_path
+    # Reset hardware store markers, reload from file
+    juno._store.pop((0x10, 0x00, 0x20, 0x1C), None)
+    juno._store.pop((0x10, 0x00, 0x20, 0x20), None)
+    assert bridge.loadPlaylist(path) is True
+    assert bridge.loadPlaylistEntry(0) is True
+    assert juno._store[(0x10, 0x00, 0x20, 0x1C)] == bytes([90])
+    assert juno._store[(0x10, 0x00, 0x20, 0x20)] == bytes([2])
+    assert juno._store[(0x10, 0x00, 0x00, 0x30)] == bytes([4])
+    assert juno._store[(0x10, 0x00, 0x00, 0x37)] == bytes([7])
+    assert bridge.patch_state.perf_fx.chorus_type == 2
+    assert bridge.perfFxSources["mfx1"] == 4
+
+
+# --- origin-resolved editors: MFX Studio / Master FX follow rail selection ---
+
+def _perform_bridge(tmp_path):
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    return bridge, juno
+
+
+def test_mfx_studio_shows_perf_slot(tmp_path):
+    bridge, _ = _perform_bridge(tmp_path)
+    assert bridge.mfxEditTargetLabel == "MFX1\u00b7PERF"
+    bridge.setPerfMfx(2, 15, 100, 20, 30)
+    bridge.setEditingPerfMfx(2)
+    assert bridge.mfxAlgoId == 15
+    assert bridge.mfxDrySend == 100
+    assert bridge.mfxChorusSend == 20
+    assert bridge.mfxReverbSend == 30
+    assert "Tape" in bridge.mfxAlgoName or "15" in bridge.mfxAlgoName
+    # Active-part patch state untouched: exclusive routing, no clobber.
+    assert bridge.patch_state.effects.mfx_dry_send == 127
+    assert bridge.patch_state.effects.mfx_chorus_send == 0
+
+
+def test_mfx_studio_writes_perf_slot(tmp_path):
+    bridge, juno = _perform_bridge(tmp_path)
+    bridge.setEditingPerfMfx(1)
+    bridge.setMfxSend("dry", 77)
+    assert bridge.patch_state.perf_fx.mfx1.dry_send == 77
+    assert juno._store[(0x10, 0x00, 0x02, 0x01)] == bytes([77])
+    assert bridge.mfxDrySend == 77
+    bridge.setMfxAlgoId(15)
+    assert bridge.patch_state.perf_fx.mfx1.mfx_type == 15
+    assert bridge.mfxAlgoId == 15
+    bridge.setMfxParam(0, 40)
+    assert bridge.patch_state.perf_fx.mfx1.params[0] == 40
+    assert bridge.mfxParamValues[0] == 40
+    bridge.setMfxBypass(True)
+    assert bridge.mfxBypassed is True
+    assert bridge.patch_state.perf_fx.mfx1.mfx_type == 0
+    bridge.setMfxBypass(False)
+    assert bridge.patch_state.perf_fx.mfx1.mfx_type == 15
+
+
+def test_master_fx_follows_chorus_origin(tmp_path):
+    bridge, juno = _perform_bridge(tmp_path)
+    assert bridge.choEditTargetLabel == "CHO\u00b7PERF"
+    bridge.setChorusParam("level", 64)
+    assert bridge.patch_state.perf_fx.chorus_level == 64
+    assert juno._store[(0x10, 0x00, 0x04, 0x01)] == bytes([64])
+    assert bridge.chorusLevel == 64
+    # Part patch state untouched.
+    assert bridge.patch_state.effects.chorus_level != 64
+    bridge.setReverbParam("level", 80)
+    assert bridge.patch_state.perf_fx.reverb_level == 80
+    assert bridge.reverbLevel == 80
+
+
+def test_part_origin_routes_to_part_patch(tmp_path):
+    bridge, juno = _perform_bridge(tmp_path)
+    bridge._part_fx_cache[3] = {
+        "mfx": {"type": 20, "dry": 90, "chorus": 10, "reverb": 10,
+                "params": [5] * 32, "lastActive": 20},
+        "chorus": {"type": 2, "level": 70, "toReverb": 1, "predelay": 1,
+                   "rate": 2, "depth": 3, "feedback": 4},
+        "reverb": {"type": 3, "level": 71, "predelay": 1, "time": 2,
+                   "damp": 3, "diffusion": 4, "tone": 5},
+    }
+    bridge.setPerfSource("mfx1", 3)
+    assert bridge.mfxEditTargetLabel == "MFX1\u00b7P3"
+    assert bridge.mfxAlgoId == 20
+    assert bridge.mfxParamValues[0] == 5
+    bridge.setMfxSend("dry", 50)
+    assert bridge._part_fx_cache[3]["mfx"]["dry"] == 50
+    # Part 3 temp patch MFX dry: 11 40 00 00 + 00 00 02 01.
+    assert juno._store[(0x11, 0x40, 0x02, 0x01)] == bytes([50])
+    # Perf-common slot untouched.
+    assert (0x10, 0x00, 0x02, 0x01) not in juno._store
+    bridge.setPerfSource("chorus", 3)
+    assert bridge.choEditTargetLabel == "CHO\u00b7P3"
+    assert bridge.chorusLevel == 70
+    bridge.setChorusParam("level", 33)
+    assert bridge._part_fx_cache[3]["chorus"]["level"] == 33
+    assert juno._store[(0x11, 0x40, 0x04, 0x01)] == bytes([33])
+
+
+def test_patch_mode_editors_unchanged(tmp_path):
+    bridge, juno = _perform_bridge(tmp_path)
+    bridge.setSoundMode("PATCH")
+    assert bridge.mfxEditTargetLabel == "PATCH"
+    bridge.setMfxSend("dry", 85)
+    assert bridge.patch_state.effects.mfx_dry_send == 85
+    bridge.setChorusParam("level", 64)
+    assert bridge.patch_state.effects.chorus_level == 64
+
+
+def test_read_part_fx_decode():
+    from unittest.mock import MagicMock
+    from src.spectre.core.midi import MidiDeviceManager
+    from src.spectre.core.sysex import pack_4nibbles
+    client = JunoClient(MagicMock(spec=MidiDeviceManager))
+    mfx = bytes([15, 100, 20, 30] + [0] * 13 + pack_4nibbles(32768 + 40) + [0] * (145 - 21))
+    cho = bytes([1, 80, 0, 2] + [0] * 8 + pack_4nibbles(32768 + 12) + [0] * (84 - 16))
+    rev = bytes([4, 60, 0] + pack_4nibbles(32768 + 15) + [0] * (83 - 7))
+    assert len(mfx) == 145 and len(cho) == 84 and len(rev) == 83
+    client.request_data = MagicMock(side_effect=[mfx, cho, rev])
+    out = client.read_part_fx(3)
+    assert out["mfx"]["type"] == 15 and out["mfx"]["params"][0] == 40
+    assert out["chorus"]["level"] == 80 and out["chorus"]["predelay"] == 12
+    assert out["reverb"]["level"] == 60 and out["reverb"]["predelay"] == 15
