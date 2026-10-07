@@ -310,7 +310,13 @@ def main() -> None:
     ap.add_argument("--timeout", type=float, default=1.0)
     ap.add_argument("--pc-limit", type=int, default=None)
     ap.add_argument("--write-db", action="store_true")
-    ap.add_argument("--db", default=None)
+    ap.add_argument("--db", default=None,
+                    help="user DB path (synth-user rows go here)")
+    ap.add_argument("--factory-db", default=None,
+                    help="factory DB path (ROM rows go here via builder)."
+                    " Defaults to src/spectre/assets/librarian/factory.db")
+    ap.add_argument("--model-variant", default="xps30",
+                    help="hardware preset variant being dumped (xps30, juno-ds, ...)")
     ap.add_argument("--resume", action="store_true",
                     help="skip (source,kind,msb,lsb,pc) already present in --out; appends new rows")
     ap.add_argument("--only-banks", default=None,
@@ -352,10 +358,22 @@ def main() -> None:
             kinds[f"{r['source']}/{r['kind']}"] = kinds.get(f"{r['source']}/{r['kind']}", 0) + 1
         print(f"Wrote {len(all_rows)} rows -> {args.out} {kinds}")
         if args.write_db:
-            repo = PatchRepository(db_path=args.db) if args.db else PatchRepository()
-            n = repo.bulk_upsert_factory(all_rows)
-            print(f"DB upserted {n}: factory={repo.count('factory')} synth-user={repo.count('synth-user')}")
-            repo.close()
+            from spectre.librarian.factory import build_factory_db
+            from spectre.librarian.repository import PatchRepository
+
+            factory_rows = [r for r in all_rows if r.get("source") == "factory"]
+            user_rows = [r for r in all_rows if r.get("source") != "factory"]
+            if factory_rows:
+                default_assets = (PROJECT_ROOT / "src" / "spectre" / "assets"
+                                  / "librarian" / "factory.db")
+                fdb = Path(args.factory_db) if args.factory_db else default_assets
+                n = build_factory_db(fdb, factory_rows, args.model_variant)
+                print(f"Factory catalog: {n} rows ({args.model_variant}) -> {fdb}")
+            if user_rows:
+                repo = PatchRepository(db_path=args.db) if args.db else PatchRepository()
+                n = repo.bulk_upsert_factory(user_rows)
+                print(f"User DB upserted {n}: synth-user={repo.count('synth-user')}")
+                repo.close()
     finally:
         try:
             juno.send_data(ADDR_SETUP, [0])  # ensure PATCH mode

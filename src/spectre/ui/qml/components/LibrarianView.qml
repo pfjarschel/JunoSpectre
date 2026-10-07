@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import JunoSpectre
 import ".."
 
@@ -10,73 +11,45 @@ Rectangle {
     border.color: Theme.borderCard
     border.width: 1
 
-    property int activeCatIdx: 0
     property int activeKindIdx: 0
     property bool favOnly: false
+    property bool userFilesOnly: false
     property string selectedPath: ""
     property int selectedIndex: -1
     property var selectedRow: null
     property string pendingAction: ""
     property string statusText: ""
-    property bool showAllCats: false
     property string activeCode: ""
     property var kinds: ["", "patch", "drum", "performance"]
     property var kindLabels: ["ALL", "PATCH", "DRUM", "PERF"]
-    property var categories: ["ALL", "ACOUSTIC PIANO", "E.PIANO", "SYNTH LEAD", "SYNTH PAD", "BASS", "STRINGS", "USER CUSTOM"]
-    // Live library model (PatchListModel) when provided via context property
-    // `patchLibrary` from app.py; null = fall back to the hardcoded demo list.
-    property var patchModel: null
+    // Live library model. Bound declaratively (onCompleted proved unreliable
+    // for nested views): app.py always sets the `patchLibrary` context
+    // property, even to an empty model on failure. Null/undefined = demo.
+    property var patchModel: (typeof patchLibrary !== "undefined") ? patchLibrary : null
     property string searchText: ""
     property var patchList: [
-        { num: "0001", name: "Grand Pno DS", cat: "ACOUSTIC PIANO", fav: true },
-        { num: "0002", name: "Bright Grand", cat: "ACOUSTIC PIANO", fav: false },
-        { num: "0025", name: "Pure EP", cat: "E.PIANO", fav: true },
-        { num: "0104", name: "Juno 106 Lead", cat: "SYNTH LEAD", fav: true },
-        { num: "0112", name: "JP-8000 Saw", cat: "SYNTH LEAD", fav: false },
-        { num: "0180", name: "Warm Lush Pad", cat: "SYNTH PAD", fav: true },
-        { num: "0210", name: "Spectre Vector 1", cat: "USER CUSTOM", fav: true },
-        { num: "0211", name: "Wavetable Morph A", cat: "USER CUSTOM", fav: false }
+        { num: "0001", name: "Grand Pno DS", cat: "PNO", fav: true },
+        { num: "0002", name: "Bright Grand", cat: "PNO", fav: false },
+        { num: "0025", name: "Pure EP", cat: "EP", fav: true },
+        { num: "0104", name: "Juno 106 Lead", cat: "HLD", fav: true },
+        { num: "0112", name: "JP-8000 Saw", cat: "HLD", fav: false },
+        { num: "0180", name: "Warm Lush Pad", cat: "SPD", fav: true },
+        { num: "0210", name: "Spectre Vector 1", cat: "USER FILE", fav: true },
+        { num: "0211", name: "Wavetable Morph A", cat: "USER FILE", fav: false }
     ]
-    // Filtered fallback view (keeps old behavior when no live model is bound)
-    property var filteredFallback: {
-        if (root.activeCatIdx === 0) return root.patchList
-        var cat = root.categories[root.activeCatIdx]
-        return root.patchList.filter(function(p) { return p.cat === cat })
-    }
+    // Filtered fallback view (demo data only, when no live model is bound)
+    property var filteredFallback: root.patchList
 
     Component.onCompleted: {
-        try {
-            if (typeof patchLibrary !== "undefined" && patchLibrary) {
-                root.patchModel = patchLibrary
-                patchLibrary.refresh("", "ALL", false, "", 2500)
-            }
-        } catch (e) { root.patchModel = null }
-    }
-
-    // Roland 3-letter category codes per chip (mirrors core/categories.py).
-    // USER CUSTOM is source-based (user files), not a category.
-    property var chipCodes: {
-        "ALL": [],
-        "ACOUSTIC PIANO": ["PNO"],
-        "E.PIANO": ["EP"],
-        "SYNTH LEAD": ["HLD", "SLD"],
-        "SYNTH PAD": ["BPD", "SPD"],
-        "BASS": ["BS", "SBS"],
-        "STRINGS": ["STR", "ORC"],
-        "USER CUSTOM": []
+        // Model arrives pre-refreshed from app.py; just re-apply local state.
+        root.applyFilter()
     }
 
     function applyFilter() {
         if (!root.patchModel) return
-        var chip = root.categories[root.activeCatIdx]
         var kind = root.kinds[root.activeKindIdx]
-        var source = (chip === "USER CUSTOM") ? "file" : ""
-        var codes = []
-        if (root.activeCode !== "") {
-            codes = [root.activeCode]
-        } else if (chip !== "USER CUSTOM") {
-            codes = root.chipCodes[chip] || []
-        }
+        var source = root.userFilesOnly ? "file" : ""
+        var codes = root.activeCode !== "" ? [root.activeCode] : []
         root.patchModel.refresh(root.searchText, "ALL", root.favOnly, source, 2500, codes.join(","), kind)
     }
 
@@ -142,19 +115,21 @@ Rectangle {
             }
             Item { Layout.fillWidth: true }
             Rectangle {
-                visible: root.patchModel === null
+                visible: root.patchModel === null || root.patchModel === undefined || (Bridge.libraryError || "") !== ""
                 color: "#3a2f10"
                 radius: 3
                 border.color: "#fbbf24"
                 border.width: 1
-                Layout.preferredWidth: ScaleMetrics.dp(220)
+                Layout.preferredWidth: ScaleMetrics.dp(280)
                 height: ScaleMetrics.dp(22)
                 Text {
                     anchors.centerIn: parent
-                    text: "DEMO DATA — LIBRARY OFFLINE"
+                    width: parent.width - ScaleMetrics.dp(8)
+                    text: "DEMO DATA — LIBRARY OFFLINE" + (((Bridge.libraryError || "") !== "") ? (": " + Bridge.libraryError) : "")
                     font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
+                    font.pixelSize: ScaleMetrics.sp(7)
                     color: "#fbbf24"
+                    elide: Text.ElideRight
                 }
             }
             Text {
@@ -166,32 +141,18 @@ Rectangle {
             }
         }
 
-        // Category Filter Chips
+        // Browser (left) + full-height actions (right)
         RowLayout {
             Layout.fillWidth: true
-            spacing: ScaleMetrics.dp(4)
-            Repeater {
-                model: root.categories
-                delegate: Rectangle {
-                    Layout.fillWidth: true
-                    height: ScaleMetrics.dp(24)
-                    radius: 3
-                    color: root.activeCatIdx === index ? Theme.bgCardActive : "#10141d"
-                    border.color: root.activeCatIdx === index ? "#60a5fa" : Theme.borderCard
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: modelData
-                        font.bold: root.activeCatIdx === index
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: root.activeCatIdx === index ? "#60a5fa" : Theme.textDim
-                    }
-                    MouseArea { anchors.fill: parent; onClicked: { root.activeCatIdx = index; root.activeCode = ""; root.applyFilter() } }
-                }
-            }
-        }
+            Layout.fillHeight: true
+            spacing: ScaleMetrics.dp(10)
 
-        // Kind tabs + full-category toggle + result count + favorites-only
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: ScaleMetrics.dp(8)
+
+        // Kind tabs + user-files toggle + result count + favorites-only
         RowLayout {
             Layout.fillWidth: true
             spacing: ScaleMetrics.dp(4)
@@ -215,20 +176,20 @@ Rectangle {
                 }
             }
             Rectangle {
-                width: ScaleMetrics.dp(64)
+                width: ScaleMetrics.dp(76)
                 height: ScaleMetrics.dp(24)
                 radius: 3
-                color: root.showAllCats ? Theme.bgCardActive : "#10141d"
-                border.color: root.showAllCats ? "#60a5fa" : Theme.borderCard
+                color: root.userFilesOnly ? Theme.bgCardActive : "#10141d"
+                border.color: root.userFilesOnly ? "#60a5fa" : Theme.borderCard
                 border.width: 1
                 Text {
                     anchors.centerIn: parent
-                    text: root.activeCode !== "" ? root.activeCode : "CATS ≡"
-                    font.bold: root.showAllCats || root.activeCode !== ""
+                    text: "USER FILES"
+                    font.bold: root.userFilesOnly
                     font.pixelSize: ScaleMetrics.sp(8)
-                    color: (root.showAllCats || root.activeCode !== "") ? "#60a5fa" : Theme.textDim
+                    color: root.userFilesOnly ? "#60a5fa" : Theme.textDim
                 }
-                MouseArea { anchors.fill: parent; onClicked: { root.showAllCats = !root.showAllCats } }
+                MouseArea { anchors.fill: parent; onClicked: { root.userFilesOnly = !root.userFilesOnly; root.applyFilter() } }
             }
             Item { Layout.fillWidth: true }
             Text {
@@ -254,36 +215,66 @@ Rectangle {
             }
         }
 
-        // Full Roland category grid (all 38 codes; tap again to clear)
+        // Roland category browser: all 38 with full names (tap again to clear)
         Rectangle {
             Layout.fillWidth: true
-            height: ScaleMetrics.dp(64)
+            height: ScaleMetrics.dp(96)
             radius: 4
             color: Theme.bgApp
             border.color: Theme.borderCard
             border.width: 1
-            visible: root.showAllCats && root.patchModel !== null
+            visible: root.patchModel !== null
             Flickable {
                 anchors.fill: parent
                 anchors.margins: ScaleMetrics.dp(5)
-                contentWidth: catFlow.width
-                contentHeight: catFlow.height
+                contentWidth: width
+                contentHeight: catGrid.implicitHeight
                 clip: true
                 interactive: true
-                Flow {
-                    id: catFlow
-                    width: parent.width
-                    spacing: ScaleMetrics.dp(4)
+                ScrollBar.vertical: ScrollBar {
+                    anchors.right: parent.right
+                    policy: ScrollBar.AsNeeded
+                    width: ScaleMetrics.dp(10)
+                }
+                GridLayout {
+                    id: catGrid
+                    width: parent.width - ScaleMetrics.dp(10)
+                    columns: 4
+                    rowSpacing: ScaleMetrics.dp(4)
+                    columnSpacing: ScaleMetrics.dp(4)
                     Repeater {
-                        model: ["PNO","EP","KEY","BEL","MLT","ORG","ACD","HRM","AGT","EGT","DGT","BS","SBS","STR","ORC","HIT","WND","FLT","BRS","SBR","SAX","HLD","SLD","TEK","PLS","FX","SYN","BPD","SPD","VOX","PLK","ETH","FRT","PRC","SFX","BTS","DRM","CMB"]
+                        model: ["PNO:Acoustic Piano","EP:Electric Piano","KEY:Keyboards","BEL:Bell","MLT:Mallet","ORG:Organ","ACD:Accordion","HRM:Harmonica","AGT:Acoustic Guitar","EGT:Electric Guitar","DGT:Distortion Guitar","BS:Bass","SBS:Synth Bass","STR:Strings","ORC:Orchestra","HIT:Hit & Stab","WND:Wind","FLT:Flute","BRS:Acoustic Brass","SBR:Synth Brass","SAX:Sax","HLD:Hard Lead","SLD:Soft Lead","TEK:Techno Synth","PLS:Pulsating Synth","FX:Synth FX","SYN:Poly Synth","BPD:Bright Pad","SPD:Soft Pad","VOX:Vox / Choir","PLK:Plucked","ETH:Ethnic","FRT:Fretted","PRC:Percussion","SFX:Sound FX","BTS:Beat & Groove","DRM:Drums","CMB:Combination"]
                         delegate: Rectangle {
-                            width: ScaleMetrics.dp(46); height: ScaleMetrics.dp(24)
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: ScaleMetrics.dp(28)
                             radius: 3
-                            color: root.activeCode === modelData ? Theme.bgCardActive : "#10141d"
-                            border.color: root.activeCode === modelData ? "#60a5fa" : Theme.borderCard
+                            property string code: modelData.split(":")[0]
+                            property string label: modelData.split(":").slice(1).join(":")
+                            property bool isActive: root.activeCode === code
+                            color: isActive ? Theme.bgCardActive : "#10141d"
+                            border.color: isActive ? "#60a5fa" : Theme.borderCard
                             border.width: 1
-                            Text { anchors.centerIn: parent; text: modelData; font.bold: root.activeCode === modelData; font.pixelSize: ScaleMetrics.sp(8); color: root.activeCode === modelData ? "#60a5fa" : Theme.textDim }
-                            MouseArea { anchors.fill: parent; onClicked: root.toggleCode(modelData) }
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: ScaleMetrics.dp(6)
+                                anchors.rightMargin: ScaleMetrics.dp(6)
+                                spacing: ScaleMetrics.dp(6)
+                                Text {
+                                    text: code
+                                    font.family: Theme.fontMono
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: isActive ? "#60a5fa" : Theme.tone1
+                                }
+                                Text {
+                                    text: label
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: isActive ? "#60a5fa" : Theme.textDim
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                            }
+                            MouseArea { anchors.fill: parent; onClicked: root.toggleCode(code) }
                         }
                     }
                 }
@@ -318,13 +309,7 @@ Rectangle {
             }
         }
 
-        // Main List & Action Side-column
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: ScaleMetrics.dp(10)
-
-            // Patch List Table
+        // Patch List Table (fills the left column's remaining height)
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -334,14 +319,35 @@ Rectangle {
                 border.width: 1
 
                 ListView {
+                    id: patchListView
                     anchors.fill: parent
                     anchors.margins: ScaleMetrics.dp(6)
                     clip: true
                     model: root.patchModel !== null ? root.patchModel : root.filteredFallback
                     spacing: ScaleMetrics.dp(4)
 
+                    // Always-visible touch scrollbar: drag the thumb to jump
+                    // anywhere in the (up to ~2500-row) library.
+                    ScrollBar.vertical: ScrollBar {
+                        anchors.right: parent.right
+                        anchors.rightMargin: ScaleMetrics.dp(1)
+                        policy: ScrollBar.AlwaysOn
+                        width: ScaleMetrics.dp(14)
+                        minimumSize: 0.04
+                        contentItem: Rectangle {
+                            radius: width / 2
+                            color: parent.pressed ? "#60a5fa" : "#3b82a6"
+                            opacity: 0.9
+                        }
+                        background: Rectangle {
+                            radius: width / 2
+                            color: "#10141d"
+                            opacity: 0.7
+                        }
+                    }
+
                     delegate: Rectangle {
-                        width: ListView.view.width
+                        width: ListView.view.width - ScaleMetrics.dp(16)
                         height: ScaleMetrics.dp(48)
                         radius: 4
                         color: rowMouse.pressed ? Theme.bgCardActive : "#0d1017"
@@ -425,7 +431,10 @@ Rectangle {
                 }
             }
 
-            // Right Action Column (~240dp)
+            // End of left browser column; action column spans the full height.
+            }
+
+            // Right Action Column (~240dp, full height)
             Rectangle {
                 Layout.preferredWidth: ScaleMetrics.dp(240)
                 Layout.fillHeight: true

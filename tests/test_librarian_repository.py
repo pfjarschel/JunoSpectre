@@ -6,7 +6,10 @@ from src.spectre.librarian.repository import PatchRepository
 
 
 def _make_repo(tmp_path):
-    return PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db")
+    # Factory side disabled: these predate the split and assert on
+    # user-DB contents alone (see test_factory_split.py for union tests).
+    return PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db",
+                           factory_db_path=False)
 
 
 def test_rescan_search_and_rebuild(tmp_path):
@@ -99,6 +102,21 @@ def test_kinds_and_category_lists(tmp_path):
     repo.close()
 
 
+def test_data_root_env_override(tmp_path, monkeypatch):
+    from src.spectre.librarian.repository import data_root, default_db_path
+    import os
+    monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path / "custom"))
+    assert data_root() == tmp_path / "custom"
+    assert default_db_path() == tmp_path / "custom" / "librarian.db"
+    repo = PatchRepository(user_dir=tmp_path / "custom" / "patches",
+                           db_path=tmp_path / "custom" / "lib.db",
+                           factory_db_path=False)
+    repo.close()
+    monkeypatch.delenv("JUNOSPECTRE_DATA_DIR")
+    from pathlib import Path
+    assert default_db_path() == Path.home() / ".local" / "share" / "JunoSpectre" / "librarian.db"
+
+
 def test_legacy_db_migrates_kind(tmp_path):
     import sqlite3
     db = tmp_path / "legacy.db"
@@ -112,7 +130,7 @@ def test_legacy_db_migrates_kind(tmp_path):
     conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
     conn.commit()
     conn.close()
-    repo = PatchRepository(user_dir=tmp_path / "p", db_path=db)
+    repo = PatchRepository(user_dir=tmp_path / "p", db_path=db, factory_db_path=False)
     row = repo.get("factory:87:64:0")
     assert row is not None and row["kind"] == "patch"
     repo.close()

@@ -68,7 +68,8 @@ def rig(tmp_path):
     juno = FakeJuno()
     engine.juno = juno
     bridge = SpectreBridge(engine)
-    repo = PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db")
+    repo = PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db",
+                           factory_db_path=False)
     bridge._librarian_repo = repo
     JunoClient.FLASH_SETTLE_S, saved = 0.0, JunoClient.FLASH_SETTLE_S
     yield SimpleNamespace(engine=engine, juno=juno, bridge=bridge, repo=repo)

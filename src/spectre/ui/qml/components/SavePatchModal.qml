@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import JunoSpectre
 import ".."
 
@@ -341,8 +342,25 @@ Rectangle {
                     clip: true
                     spacing: ScaleMetrics.dp(3)
                     model: root.slotList
+                    ScrollBar.vertical: ScrollBar {
+                        anchors.right: parent.right
+                        anchors.rightMargin: ScaleMetrics.dp(1)
+                        policy: ScrollBar.AlwaysOn
+                        width: ScaleMetrics.dp(14)
+                        minimumSize: 0.06
+                        contentItem: Rectangle {
+                            radius: width / 2
+                            color: parent.pressed ? "#fbbf24" : "#a67c3b"
+                            opacity: 0.9
+                        }
+                        background: Rectangle {
+                            radius: width / 2
+                            color: "#10141d"
+                            opacity: 0.7
+                        }
+                    }
                     delegate: Rectangle {
-                        width: ListView.view.width
+                        width: ListView.view.width - ScaleMetrics.dp(16)
                         height: ScaleMetrics.dp(30)
                         radius: 3
                         color: root.slotIndex === index ? Theme.bgCardActive : "#0d1017"

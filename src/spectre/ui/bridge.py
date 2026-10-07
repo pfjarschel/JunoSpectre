@@ -92,6 +92,7 @@ class SpectreBridge(QObject):
     # Patch Librarian signals
     currentRefChanged = pyqtSignal()
     librarianChanged = pyqtSignal()
+    libraryErrorChanged = pyqtSignal()
 
     # Tone selection & linked mode
     selectedToneChanged = pyqtSignal(int)
@@ -176,6 +177,7 @@ class SpectreBridge(QObject):
         # Set by app.py (non-fatal when absent, e.g. unit tests).
         self._librarian_repo = None
         self._librarian_model = None
+        self._library_error: str = ""
 
         # Workstation Shell State
         self._active_view: str = "JUNO PCM"
@@ -4165,6 +4167,11 @@ class SpectreBridge(QObject):
         except Exception:
             pass
         return extras
+
+    @pyqtProperty(str, notify=libraryErrorChanged)
+    def libraryError(self) -> str:
+        """Why the librarian model failed to bind ('' when healthy)."""
+        return getattr(self, "_library_error", "")
 
     @pyqtSlot()
     def openSavePatchModal(self) -> None:

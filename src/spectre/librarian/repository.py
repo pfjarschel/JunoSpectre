@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 import sqlite3
 import time
@@ -27,12 +28,24 @@ logger = logging.getLogger(__name__)
 SCHEMA_VERSION = 1
 
 
+def data_root() -> Path:
+    """Base dir for the librarian DB + user patch files.
+
+    Overridable via JUNOSPECTRE_DATA_DIR (handy for services whose HOME
+    is read-only or shared). Defaults to ~/.local/share/JunoSpectre.
+    """
+    override = os.environ.get("JUNOSPECTRE_DATA_DIR", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".local" / "share" / "JunoSpectre"
+
+
 def default_user_dir() -> Path:
-    return Path.home() / ".local" / "share" / "JunoSpectre" / "patches"
+    return data_root() / "patches"
 
 
 def default_db_path() -> Path:
-    return Path.home() / ".local" / "share" / "JunoSpectre" / "librarian.db"
+    return data_root() / "librarian.db"
 
 
 def factory_key(msb: int, lsb: int, pc: int, kind: str = "patch") -> str:
@@ -73,21 +86,41 @@ def _tags_from_str(s: Any) -> list[str]:
 
 
 class PatchRepository:
-    """SQLite-backed index over factory/synth-user/file patch sources."""
+    """SQLite-backed index over factory/synth-user/file patch sources.
+
+    Two databases:
+    - user DB (writable): file index, synth-user slots, and the
+      factory_meta overlay (user favorites/ratings/tags on factory rows).
+    - factory DB (read-only, shipped with the app): static ROM catalog with
+      a model_variant column ('xps30', 'juno-ds', ...). Resolved via
+      ensure_shipped_factory() unless an explicit path is given.
+    """
 
     def __init__(
         self,
         user_dir: str | Path | None = None,
         db_path: str | Path | None = None,
+        factory_db_path: str | Path | bool | None = None,
+        model_variant: str | None = None,
     ) -> None:
+        import os as _os
+
         self.user_dir = Path(user_dir) if user_dir is not None else default_user_dir()
         self.db_path = Path(db_path) if db_path is not None else default_db_path()
+        self.model_variant = (
+            model_variant or _os.environ.get("JUNOSPECTRE_MODEL", "").strip() or "xps30"
+        )
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.user_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Librarian data root: {self.db_path.parent} (db: {self.db_path.name})")
         self._conn = sqlite3.connect(str(self.db_path))
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self.ensure_schema()
+        self._factory: sqlite3.Connection | None = None
+        self._factory_path: Path | None = None
+        self._attach_factory(factory_db_path)
+        self._migrate_legacy_factory_rows()
 
     # ------------------------------------------------------------------ schema
     def ensure_schema(self) -> None:
@@ -114,6 +147,14 @@ class PatchRepository:
             CREATE INDEX IF NOT EXISTS idx_patches_category ON patches(category);
             CREATE INDEX IF NOT EXISTS idx_patches_fav ON patches(favorite);
             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+            -- User customizations of shipped factory rows (the factory DB
+            -- itself is read-only): keyed by factory path.
+            CREATE TABLE IF NOT EXISTS factory_meta (
+              path TEXT PRIMARY KEY,
+              favorite INTEGER NOT NULL DEFAULT 0,
+              rating INTEGER NOT NULL DEFAULT 0,
+              tags TEXT NOT NULL DEFAULT '[]'
+            );
             """
         )
         # Migration for DBs created before the kind column existed.
@@ -136,12 +177,203 @@ class PatchRepository:
         )
         self._conn.commit()
 
+    # ------------------------------------------------- factory split DB
+    def _attach_factory(self, factory_db_path: str | Path | bool | None) -> None:
+        """Open the shipped read-only factory catalog (graceful when absent).
+
+        factory_db_path=False explicitly disables the factory side (tests).
+        """
+        from .factory import ensure_shipped_factory
+
+        if factory_db_path is False:
+            return
+
+        if factory_db_path is not None:
+            cand = Path(factory_db_path)
+            if not cand.is_file():
+                logger.warning(f"Factory catalog not found: {cand}")
+                return
+        else:
+            cand = ensure_shipped_factory(self.db_path.parent)
+            if cand is None or not cand.is_file():
+                logger.warning("No shipped factory catalog; factory search disabled.")
+                return
+        try:
+            conn = sqlite3.connect(f"file:{cand}?mode=ro", uri=True)
+            conn.row_factory = sqlite3.Row
+            n = conn.execute("SELECT COUNT(*) AS n FROM patches").fetchone()["n"]
+            self._factory = conn
+            self._factory_path = cand
+            logger.info(f"Factory catalog: {int(n)} rows from {cand}")
+        except Exception as e:
+            logger.warning(f"Could not open factory catalog {cand}: {e}")
+            self._factory = None
+
+    def _factory_variants(self) -> list[str]:
+        if self._factory is None:
+            return []
+        try:
+            rows = self._factory.execute(
+                "SELECT DISTINCT model_variant FROM patches ORDER BY 1").fetchall()
+            return [r[0] for r in rows if r[0]]
+        except Exception:
+            return []
+
+    @staticmethod
+    def _parse_legacy_factory_path(path: str) -> tuple[str, int, int, int] | None:
+        """Legacy user-DB factory keys -> (kind, msb, lsb, pc)."""
+        parts = (path or "").split(":")
+        try:
+            if len(parts) == 5 and parts[0] == "factory":
+                _, kind, msb, lsb, pc = parts
+                return kind, int(msb), int(lsb), int(pc)
+            if len(parts) == 4 and parts[0] == "factory":
+                _, msb, lsb, pc = parts
+                return "patch", int(msb), int(lsb), int(pc)
+        except (ValueError, TypeError):
+            pass
+        return None
+
+    def _migrate_legacy_factory_rows(self) -> None:
+        """Move pre-split factory rows out of the user DB.
+
+        Only runs when the shipped factory DB actually contains our variant
+        (else we'd delete sounds with nothing to replace them). User
+        favorites/ratings/tags are preserved into the factory_meta overlay
+        under the new variant-qualified path.
+        """
+        from .factory import factory_key
+
+        try:
+            legacy = self._conn.execute(
+                "SELECT * FROM patches WHERE source='factory'").fetchall()
+        except Exception:
+            return
+        if not legacy:
+            return
+        if self._factory is None or self.model_variant not in self._factory_variants():
+            logger.warning(
+                f"Keeping {len(legacy)} legacy factory rows: variant "
+                f"'{self.model_variant}' not in shipped catalog.")
+            return
+        moved = kept = 0
+        for r in legacy:
+            parsed = self._parse_legacy_factory_path(r["path"])
+            if parsed is None:
+                continue
+            kind, msb, lsb, pc = parsed
+            new_path = factory_key(self.model_variant, kind, msb, lsb, pc)
+            fav = int(r["favorite"] or 0)
+            rating = int(r["rating"] or 0)
+            tags = r["tags"] if r["tags"] not in (None, "[]", "") else "[]"
+            # Overlay may already hold customizations under the legacy key
+            # (set_favorite/set_tags on pre-split rows): remap them.
+            old_ov = self._conn.execute(
+                "SELECT * FROM factory_meta WHERE path=?", (r["path"],)).fetchone()
+            if old_ov is not None:
+                fav = fav or int(old_ov["favorite"] or 0)
+                rating = max(rating, int(old_ov["rating"] or 0))
+                if old_ov["tags"] not in (None, "[]", ""):
+                    tags = old_ov["tags"]
+                self._conn.execute("DELETE FROM factory_meta WHERE path=?", (r["path"],))
+            if fav or rating or (tags not in ("[]", "")):
+                self._conn.execute(
+                    "INSERT INTO factory_meta(path, favorite, rating, tags)"
+                    " VALUES(?,?,?,?)"
+                    " ON CONFLICT(path) DO UPDATE SET favorite=excluded.favorite,"
+                    " rating=excluded.rating, tags=excluded.tags",
+                    (new_path, fav, rating, _tags_to_str(_tags_from_str(tags))),
+                )
+                kept += 1
+            moved += 1
+        self._conn.execute("DELETE FROM patches WHERE source='factory'")
+        self._conn.commit()
+        logger.info(f"Factory split migration: {moved} legacy rows removed, "
+                    f"{kept} customizations kept in overlay.")
+
+    def _overlay_map(self, paths: list[str] | None = None) -> dict[str, dict]:
+        try:
+            if paths:
+                rows = self._conn.execute(
+                    "SELECT * FROM factory_meta WHERE path IN (%s)" % ",".join("?" * len(paths)),
+                    paths).fetchall()
+            else:
+                rows = self._conn.execute("SELECT * FROM factory_meta").fetchall()
+        except Exception:
+            return {}
+        return {r["path"]: {"favorite": bool(r["favorite"]), "rating": int(r["rating"]),
+                            "tags": _tags_from_str(r["tags"])} for r in rows}
+
+    def _overlay_upsert(self, path: str, favorite: bool | None = None,
+                        rating: int | None = None, tags: list[str] | None = None) -> None:
+        cur = self._conn.execute(
+            "SELECT * FROM factory_meta WHERE path=?", (path,)).fetchone()
+        fav = int(bool(favorite)) if favorite is not None else (int(cur["favorite"]) if cur else 0)
+        rat = int(rating) if rating is not None else (int(cur["rating"]) if cur else 0)
+        tgs = _tags_to_str(tags) if tags is not None else (cur["tags"] if cur else "[]")
+        self._conn.execute(
+            "INSERT INTO factory_meta(path, favorite, rating, tags) VALUES(?,?,?,?)"
+            " ON CONFLICT(path) DO UPDATE SET favorite=excluded.favorite,"
+            " rating=excluded.rating, tags=excluded.tags",
+            (path, fav, rat, tgs))
+        self._conn.commit()
+
+    def _factory_search(self, query: str, cats: list[str] | None, single_cat: str,
+                        favorites_only: bool, kind: str | None,
+                        limit: int) -> list[dict[str, Any]]:
+        if self._factory is None:
+            return []
+        sql = ("SELECT path, kind, name, category, tags, msb, lsb, pc FROM patches"
+               " WHERE model_variant=?")
+        args: list[Any] = [self.model_variant]
+        if kind:
+            sql += " AND kind=?"
+            args.append(kind)
+        if cats:
+            sql += " AND category IN (%s)" % ",".join("?" * len(cats))
+            args += cats
+        elif single_cat and single_cat.upper() != "ALL":
+            sql += " AND category=? COLLATE NOCASE"
+            args.append(single_cat)
+        q = (query or "").strip()
+        if q:
+            sql += " AND (name LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')"
+            like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            args += [like, like]
+        sql += " ORDER BY name COLLATE NOCASE ASC LIMIT ?"
+        args.append(int(limit))
+        try:
+            rows = self._factory.execute(sql, args).fetchall()
+        except Exception as e:
+            logger.warning(f"Factory search failed: {e}")
+            return []
+        overlay = self._overlay_map([r["path"] for r in rows])
+        out = []
+        for r in rows:
+            ov = overlay.get(r["path"], {})
+            out.append({
+                "path": r["path"], "source": "factory", "name": r["name"],
+                "category": r["category"], "tags": ov.get("tags", _tags_from_str(r["tags"])),
+                "favorite": ov.get("favorite", False), "rating": ov.get("rating", 0),
+                "mtime": 0, "hash": "", "msb": r["msb"], "lsb": r["lsb"], "pc": r["pc"],
+                "format_version": 0, "kind": r["kind"] or "patch",
+            })
+        if favorites_only:
+            out = [d for d in out if d["favorite"]]
+        return out
+
     def close(self) -> None:
         try:
             self._conn.commit()
             self._conn.close()
         except Exception:
             pass
+        try:
+            if self._factory is not None:
+                self._factory.close()
+        except Exception:
+            pass
+        self._factory = None
 
     def __enter__(self) -> "PatchRepository":
         return self
@@ -293,15 +525,39 @@ class PatchRepository:
         self._conn.commit()
 
     def count(self, source: Optional[str] = None, kind: Optional[str] = None) -> int:
+        if source == "factory" and self._factory is not None:
+            return self._factory_count(kind)
         sql = "SELECT COUNT(*) AS n FROM patches WHERE 1=1"
         args: list[Any] = []
         if source:
             sql += " AND source=?"
             args.append(source)
+        elif self._factory is not None:
+            # Union total: user rows (never factory post-migration) + factory.
+            n = int(self._conn.execute("SELECT COUNT(*) AS n FROM patches"
+                                       + (" WHERE kind=?" if kind else ""),
+                                       ([kind] if kind else [])).fetchone()["n"])
+            return n + self._factory_count(kind)
         if kind:
             sql += " AND kind=?"
             args.append(kind)
         return int(self._conn.execute(sql, args).fetchone()["n"])
+
+    def _factory_count(self, kind: Optional[str] = None) -> int:
+        if self._factory is None:
+            return 0
+        try:
+            if kind:
+                row = self._factory.execute(
+                    "SELECT COUNT(*) AS n FROM patches WHERE model_variant=? AND kind=?",
+                    (self.model_variant, kind)).fetchone()
+            else:
+                row = self._factory.execute(
+                    "SELECT COUNT(*) AS n FROM patches WHERE model_variant=?",
+                    (self.model_variant,)).fetchone()
+            return int(row["n"])
+        except Exception:
+            return 0
 
     # ----------------------------------------------------------------- query
     def search(
@@ -314,6 +570,10 @@ class PatchRepository:
         categories: Optional[list[str]] = None,
         kind: Optional[str] = None,
     ) -> list[dict[str, Any]]:
+        cats = [c for c in (categories or []) if c]
+        if source == "factory" and self._factory is not None:
+            return self._factory_search(query, cats or None, category,
+                                        favorites_only, kind, limit)
         sql = "SELECT * FROM patches WHERE 1=1"
         args: list[Any] = []
         if source:
@@ -324,7 +584,6 @@ class PatchRepository:
             args.append(kind)
         if favorites_only:
             sql += " AND favorite=1"
-        cats = [c for c in (categories or []) if c]
         if cats:
             sql += " AND category IN (%s)" % ",".join("?" * len(cats))
             args += cats
@@ -339,20 +598,59 @@ class PatchRepository:
         sql += " ORDER BY favorite DESC, name COLLATE NOCASE ASC LIMIT ?"
         args.append(int(limit))
         rows = self._conn.execute(sql, args).fetchall()
-        return [self._row_to_dict(r) for r in rows]
+        user_rows = [self._row_to_dict(r) for r in rows]
+        if source is not None or self._factory is None:
+            return user_rows
+        # Union with the shipped factory catalog (user rows never hold
+        # factory data post-migration, so no dedup needed).
+        factory_rows = self._factory_search(query, cats or None, category,
+                                            favorites_only, kind, limit)
+        merged = user_rows + factory_rows
+        merged.sort(key=lambda d: (not d["favorite"], d["name"].casefold()))
+        return merged[: int(limit)]
 
     def get(self, path: str) -> Optional[dict[str, Any]]:
         row = self._conn.execute("SELECT * FROM patches WHERE path=?", (path,)).fetchone()
-        return self._row_to_dict(row) if row else None
+        if row:
+            return self._row_to_dict(row)
+        if self._factory is not None and (path or "").startswith("factory:"):
+            try:
+                r = self._factory.execute(
+                    "SELECT * FROM patches WHERE path=? AND model_variant=?",
+                    (path, self.model_variant)).fetchone()
+            except Exception:
+                return None
+            if r is None:
+                return None
+            ov = self._overlay_map([path]).get(path, {})
+            return {
+                "path": r["path"], "source": "factory", "name": r["name"],
+                "category": r["category"], "tags": ov.get("tags", _tags_from_str(r["tags"])),
+                "favorite": ov.get("favorite", False), "rating": ov.get("rating", 0),
+                "mtime": 0, "hash": "", "msb": r["msb"], "lsb": r["lsb"], "pc": r["pc"],
+                "format_version": 0, "kind": r["kind"] or "patch",
+            }
+        return None
 
     def list_categories(self, source: Optional[str] = None) -> list[str]:
-        sql = "SELECT DISTINCT category FROM patches"
-        args: list[Any] = []
-        if source:
-            sql += " WHERE source=?"
-            args.append(source)
-        rows = self._conn.execute(sql, args).fetchall()
-        return sorted({r["category"] for r in rows if r["category"]})
+        cats: set[str] = set()
+        if source != "factory":
+            sql = "SELECT DISTINCT category FROM patches"
+            args: list[Any] = []
+            if source:
+                sql += " WHERE source=?"
+                args.append(source)
+            rows = self._conn.execute(sql, args).fetchall()
+            cats.update(r["category"] for r in rows if r["category"])
+        if source in (None, "factory") and self._factory is not None:
+            try:
+                rows = self._factory.execute(
+                    "SELECT DISTINCT category FROM patches WHERE model_variant=?",
+                    (self.model_variant,)).fetchall()
+                cats.update(r[0] for r in rows if r[0])
+            except Exception:
+                pass
+        return sorted(cats)
 
     @staticmethod
     def _row_to_dict(r: sqlite3.Row) -> dict[str, Any]:
@@ -410,6 +708,16 @@ class PatchRepository:
             except Exception as e:
                 logger.warning(f"set_favorite file rewrite failed for {path}: {e}")
                 return False
+        if row["source"] == "factory":
+            # Shipped DB is read-only: favorites live in the user overlay.
+            # Rows still sitting in the user table (pre-migration) are
+            # updated too so both read paths agree.
+            self._overlay_upsert(path, favorite=bool(favorite))
+            self._conn.execute(
+                "UPDATE patches SET favorite=? WHERE path=?", (int(bool(favorite)), path)
+            )
+            self._conn.commit()
+            return True
         self._conn.execute(
             "UPDATE patches SET favorite=? WHERE path=?", (int(bool(favorite)), path)
         )
@@ -437,6 +745,12 @@ class PatchRepository:
             except Exception as e:
                 logger.warning(f"set_tags file rewrite failed for {path}: {e}")
                 return False
+        if row["source"] == "factory":
+            self._overlay_upsert(path, tags=tags)
+            self._conn.execute("UPDATE patches SET tags=? WHERE path=?",
+                               (_tags_to_str(tags), path))
+            self._conn.commit()
+            return True
         self._conn.execute("UPDATE patches SET tags=? WHERE path=?", (_tags_to_str(tags), path))
         self._conn.commit()
         return True

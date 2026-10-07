@@ -78,7 +78,8 @@ def test_bridge_usb_slots(tmp_path):
 
     engine = VectorEngine()
     bridge = SpectreBridge(engine)
-    repo = PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db")
+    repo = PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db",
+                           factory_db_path=False)
     bridge._librarian_repo = repo
     try:
         drive = tmp_path / "usb"

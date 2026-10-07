@@ -49,15 +49,20 @@ def test_chip_mapping_covers_all_ui_chips():
 
 
 def test_qml_full_grid_matches_category_table():
-    """The Librarian 'CATS' grid must list every Roland code exactly once."""
+    """The Librarian category browser must list every Roland code+label once."""
     import re
     from pathlib import Path
+
+    from src.spectre.core.categories import CATEGORIES as _CATS
 
     qml = Path(__file__).resolve().parent.parent / "src" / "spectre" / "ui" / "qml" \
         / "components" / "LibrarianView.qml"
     text = qml.read_text(encoding="utf-8")
-    grids = [re.findall(r'"([A-Z]{2,3})"', m) for m in re.findall(r"model:\s*\[([^\]]+)\]", text)]
-    expected = [c for c, _ in CATEGORIES if c != "---"]
+    grids = [re.findall(r'"([A-Z]{2,3}):([^"]+)"', m)
+             for m in re.findall(r"model:\s*\[([^\]]+)\]", text)]
+    expected = [(c, label) for c, label in _CATS if c != "---"]
     assert any(sorted(g) == sorted(expected) for g in grids), (
-        "no QML model lists all 38 Roland codes; found: "
-        + "; ".join(",".join(g) for g in grids))
+        "no QML model lists all 38 Roland code:label pairs")
+    # No demo-era friendly chips may remain in the Librarian view.
+    for stale in ["ACOUSTIC PIANO", "SYNTH LEAD", "USER CUSTOM", "chipCodes"]:
+        assert stale not in text, f"stale demo chip left in LibrarianView: {stale}"

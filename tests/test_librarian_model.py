@@ -17,7 +17,8 @@ def qapp():
 
 
 def test_model_roles_filter_favorite(tmp_path, qapp):
-    repo = PatchRepository(user_dir=tmp_path / "p", db_path=tmp_path / "d.db")
+    repo = PatchRepository(user_dir=tmp_path / "p", db_path=tmp_path / "d.db",
+                           factory_db_path=False)
     ps = PatchState.create_init_patch()
     save_spectre(repo.user_dir / "a.spectre", ps, meta={"name": "ALPHA", "category": "BASS", "favorite": True})
     save_spectre(repo.user_dir / "b.spectre", ps, meta={"name": "BETA", "category": "BASS"})
