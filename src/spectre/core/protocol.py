@@ -1738,6 +1738,363 @@ class JunoClient:
         patch_state.custom_detune_cache = [t.fine_tune for t in tones]
         return patch_state
 
+    # ------------------------------------------------------------------
+    # User flash slots (writable): MSB 87 LSB 0..1 -> 256 patches 501..756.
+    # Same region layout as the temp buffer, so the canonical raw image
+    # (PatchState.raw_regions) round-trips verbatim. Flash needs settle
+    # time after writes: verification reads retry (see Phase-0 findings).
+    # ------------------------------------------------------------------
+
+    USER_SLOT_MSB = 87
+    USER_SLOT_LSBS = (0, 1)
+
+    #: raw_regions key -> patch offset (mirrors the init-template layout).
+    USER_REGION_OFFSETS = {
+        "common": OFFSET_PATCH_COMMON,
+        "mfx": OFFSET_PATCH_COMMON_MFX,
+        "chorus": OFFSET_PATCH_COMMON_CHORUS,
+        "reverb": OFFSET_PATCH_COMMON_REVERB,
+        "tmt": OFFSET_PATCH_TMT,
+        "tone_1": OFFSET_PATCH_TONE_1,
+        "tone_2": OFFSET_PATCH_TONE_2,
+        "tone_3": OFFSET_PATCH_TONE_3,
+        "tone_4": OFFSET_PATCH_TONE_4,
+    }
+
+    #: Chunk start offsets inside tone_N regions (154B main + 26B LFO2/step).
+    TONE_CHUNK_STARTS = (0x0000, 0x0100)
+
+    #: Post-write settle before flash read-back (seconds).
+    FLASH_SETTLE_S = 0.6
+
+    @classmethod
+    def user_slot_base(cls, msb: int, lsb: int, pc: int) -> Tuple[int, int, int, int]:
+        """Absolute base address of a writable user patch slot."""
+        if int(msb) != cls.USER_SLOT_MSB or int(lsb) not in cls.USER_SLOT_LSBS:
+            raise ValueError(
+                f"User patch slots are MSB 87 LSB 0..1, got {msb}/{lsb}")
+        if not 0 <= int(pc) <= 127:
+            raise ValueError(f"PC must be 0..127, got {pc}")
+        return (0x30 if int(lsb) == 0 else 0x31, int(pc), 0x00, 0x00)
+
+    @staticmethod
+    def _assemble_patch_state(
+        raw_regions: dict[str, list[bytes]],
+        common: "PatchCommonState",
+        tones: list["ToneState"],
+        mfx: Tuple[int, int, int, int, list[int]],
+        chorus: Tuple[int, int, int, int, int, int, int],
+        reverb: Tuple[int, int, int, int, int, int, int],
+        mode_name: str,
+    ) -> "PatchState":
+        """Build a PatchState from gathered region bytes + decoded pieces.
+
+        Shared by read_full_patch (temp RAM) and read_user_patch (flash) so
+        both paths provably converge on the same decode.
+        """
+        mfx_type, dry, cho, rev, mfx_params = mfx
+        c_type, c_lvl, c_out, c_pre, c_rate, c_dep, c_fb = chorus
+        r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = reverb
+        effects = EffectsState(
+            mfx_type=mfx_type,
+            mfx_dry_send=dry,
+            mfx_chorus_send=cho,
+            mfx_reverb_send=rev,
+            mfx_bypassed=(mfx_type == 0),
+            mfx_last_active_type=mfx_type if mfx_type != 0 else 15,
+            mfx_params=list(mfx_params) + [0] * (32 - len(mfx_params))
+            if len(mfx_params) < 32
+            else list(mfx_params[:32]),
+            routing_preset="",
+            manual_routing_unlocked=False,
+            chorus_type=c_type,
+            chorus_level=c_lvl,
+            chorus_to_reverb=c_out,
+            chorus_predelay=c_pre,
+            chorus_rate=c_rate,
+            chorus_depth=c_dep,
+            chorus_feedback=c_fb,
+            reverb_type=r_type,
+            reverb_level=r_lvl,
+            reverb_predelay=r_pre,
+            reverb_time=r_time,
+            reverb_damp=r_damp,
+            reverb_diffusion=r_diff,
+            reverb_tone=r_tone,
+            # Master EQ lives in system memory, not the patch image: keep the
+            # app-side representation flat, identical to the init template.
+            eq_switch=True,
+            eq_low_gain=0,
+            eq_low_freq=400,
+            eq_mid_gain=0,
+            eq_mid_freq=1200,
+            eq_mid_q=1.0,
+            eq_high_gain=0,
+            eq_high_freq=4000,
+            eq_master_level=100,
+        )
+        patch_state = PatchState(
+            sound_mode=mode_name,
+            common=common,
+            tones=tones,
+            effects=effects,
+            raw_regions={k: [bytes(c) for c in v] for k, v in raw_regions.items()},
+        )
+        patch_state.step_lfo = StepLfoState(
+            steps=[0] * 16,
+            curve_type=0,
+            sync_rate_idx=2,
+            dest_idx=1,
+            depth=0,
+        )
+        patch_state.custom_detune_cache = [t.fine_tune for t in tones]
+        return patch_state
+
+    def _read_patch_regions(self, base: Tuple[int, int, int, int],
+                            timeout: float = 1.0) -> dict[str, list[bytes]]:
+        """Gather the canonical raw image at any patch base (temp or flash)."""
+        raw_regions: dict[str, list[bytes]] = {}
+        raw_regions["common"] = [bytes(self._read_common_raw(base, timeout=timeout)[:80])]
+        tone_offsets = (OFFSET_PATCH_TONE_1, OFFSET_PATCH_TONE_2,
+                        OFFSET_PATCH_TONE_3, OFFSET_PATCH_TONE_4)
+        for idx, off in enumerate(tone_offsets, start=1):
+            main_raw, lfo_raw = self._read_tone_raws(add_address(base, off), timeout=timeout)
+            raw_regions[f"tone_{idx}"] = [bytes(main_raw)] + (
+                [bytes(lfo_raw)] if lfo_raw is not None else []
+            )
+        raw_regions["tmt"] = [bytes(self._read_tmt_raw(base, timeout=timeout))]
+        raw_regions["mfx"] = [bytes(self._read_mfx_raw(base, timeout=timeout))]
+        raw_regions["chorus"] = [bytes(self._read_chorus_raw(base, timeout=timeout))]
+        raw_regions["reverb"] = [bytes(self._read_reverb_raw(base, timeout=timeout))]
+        return raw_regions
+
+    def read_user_patch(self, msb: int, lsb: int, pc: int,
+                        timeout: float = 1.5) -> PatchState:
+        """Read a full PatchState from a user flash slot (backup path).
+
+        Strict canonical decode (no legacy fallback): raises TimeoutError or
+        ValueError on short/corrupt replies.
+        """
+        base = self.user_slot_base(msb, lsb, pc)
+        raw_regions = self._read_patch_regions(base, timeout=timeout)
+        common = PatchState._decode_common(bytes(raw_regions["common"][0][:80]))
+        tones = []
+        for idx in range(1, 5):
+            main_raw, lfo_raw = raw_regions[f"tone_{idx}"][0], raw_regions[f"tone_{idx}"][1]
+            if len(main_raw) < 154 or len(lfo_raw) < 26:
+                raise ValueError(f"User slot {msb}/{lsb}/{pc} tone {idx}: short image")
+            tones.append(PatchState._decode_tone(bytes(main_raw[:154]), bytes(lfo_raw[:26]), idx))
+        tmt_raw = raw_regions["tmt"][0]
+        for tone, sw in zip(tones, (
+            tmt_raw[TMT_PARAM_TONE1_SWITCH], tmt_raw[TMT_PARAM_TONE2_SWITCH],
+            tmt_raw[TMT_PARAM_TONE3_SWITCH], tmt_raw[TMT_PARAM_TONE4_SWITCH],
+        )):
+            tone.muted = (sw == 0)
+        mfx_raw = raw_regions["mfx"][0]
+        mfx_params = [0] * 32
+        if len(mfx_raw) >= 0x11 + 4:
+            for i in range(min(32, (len(mfx_raw) - 0x11) // 4)):
+                mfx_params[i] = unpack_4nibbles(mfx_raw[0x11 + i * 4:0x11 + (i + 1) * 4]) - 32768
+        mfx = (mfx_raw[0], mfx_raw[1], mfx_raw[2], mfx_raw[3], mfx_params)
+        cho_raw = raw_regions["chorus"][0]
+        chorus = (
+            cho_raw[0], cho_raw[1], cho_raw[3],
+            max(0, unpack_4nibbles(cho_raw[0x0C:0x10]) - 32768),
+            max(0, unpack_4nibbles(cho_raw[0x14:0x18]) - 32768),
+            max(0, unpack_4nibbles(cho_raw[0x1C:0x20]) - 32768),
+            max(0, unpack_4nibbles(cho_raw[0x24:0x28]) - 32768),
+        )
+        rev_raw = raw_regions["reverb"][0]
+        reverb = (
+            rev_raw[0], rev_raw[1],
+            max(0, unpack_4nibbles(rev_raw[0x03:0x07]) - 32768),
+            max(0, unpack_4nibbles(rev_raw[0x07:0x0B]) - 32768),
+            max(0, unpack_4nibbles(rev_raw[0x0F:0x13]) - 32768),
+            max(0, unpack_4nibbles(rev_raw[0x17:0x1B]) - 32768),
+            max(0, unpack_4nibbles(rev_raw[0x1B:0x1F]) - 32768),
+        )
+        return self._assemble_patch_state(raw_regions, common, tones, mfx, chorus, reverb, "PATCH")
+
+    def _write_patch_regions(self, state: PatchState,
+                             base: Tuple[int, int, int, int],
+                             write_gap: float = 0.02) -> int:
+        """DT1-push a PatchState raw image to any patch base. Returns failures."""
+        if not state.raw_regions:
+            raise ValueError("No raw image: sync/read the patch first.")
+        failures = 0
+        common = bytearray(state.raw_regions["common"][0][:80])
+        raw_name = state.common.name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
+        common[0:12] = raw_name  # name travels in the image, not beside it
+        with self.paced_init_writes(write_gap):
+            try:
+                self.send_data(add_address(base, self.USER_REGION_OFFSETS["common"]), bytes(common))
+            except Exception as e:
+                failures += 1
+                logger.warning(f"User write failed for common: {e}")
+            for key in ("mfx", "chorus", "reverb", "tmt"):
+                for chunk in state.raw_regions.get(key, []):
+                    try:
+                        self.send_data(add_address(base, self.USER_REGION_OFFSETS[key]), bytes(chunk))
+                    except Exception as e:
+                        failures += 1
+                        logger.warning(f"User write failed for {key}: {e}")
+            for idx in range(1, 5):
+                chunks = state.raw_regions.get(f"tone_{idx}", [])
+                for chunk, start in zip(chunks, self.TONE_CHUNK_STARTS):
+                    try:
+                        self.send_data(
+                            add_address(add_address(base, self.USER_REGION_OFFSETS[f"tone_{idx}"]), start),
+                            bytes(chunk),
+                        )
+                    except Exception as e:
+                        failures += 1
+                        logger.warning(f"User write failed for tone_{idx}@0x{start:03X}: {e}")
+        return failures
+
+    def _verify_patch_regions(self, state: PatchState,
+                              base: Tuple[int, int, int, int],
+                              timeout: float = 1.5, retries: int = 3) -> list[str]:
+        """Re-read a written image and compare. Returns mismatch labels ([] = ok).
+
+        Flash needs settle time after writes: waits FLASH_SETTLE_S, then
+        retries the whole read before declaring failure (Phase-0 finding).
+        """
+        time.sleep(self.FLASH_SETTLE_S)
+        last_err: Optional[str] = None
+        for _ in range(max(1, retries)):
+            try:
+                actual = self._read_patch_regions(base, timeout=timeout)
+                break
+            except Exception as e:
+                last_err = str(e)
+                time.sleep(0.4)
+        else:
+            return [f"unreadable after write: {last_err}"]
+        mismatches: list[str] = []
+        common = bytearray(state.raw_regions["common"][0][:80])
+        raw_name = state.common.name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
+        common[0:12] = raw_name
+        if bytes(actual.get("common", [b""])[0][:80]) != bytes(common):
+            mismatches.append("common")
+        for key in ("mfx", "chorus", "reverb", "tmt"):
+            for i, chunk in enumerate(state.raw_regions.get(key, [])):
+                got = actual.get(key, [])
+                if i >= len(got) or bytes(got[i]) != bytes(chunk):
+                    mismatches.append(f"{key}[{i}]")
+        for idx in range(1, 5):
+            for i, chunk in enumerate(state.raw_regions.get(f"tone_{idx}", [])):
+                got = actual.get(f"tone_{idx}", [])
+                if i >= len(got) or bytes(got[i]) != bytes(chunk):
+                    mismatches.append(f"tone_{idx}[{i}]")
+        return mismatches
+
+    def write_user_patch(self, state: PatchState, msb: int, lsb: int, pc: int,
+                         timeout: float = 1.5, write_gap: float = 0.02,
+                         verify: bool = True) -> list[str]:
+        """Copy a PatchState image into a user flash slot.
+
+        Returns mismatch labels ([] = stored + verified). Temp buffer untouched.
+        Raises ValueError for bad slots or imageless states.
+        """
+        base = self.user_slot_base(msb, lsb, pc)
+        failures = self._write_patch_regions(state, base, write_gap=write_gap)
+        if failures:
+            return [f"{failures} DT1 send failures"]
+        if verify:
+            return self._verify_patch_regions(state, base, timeout=timeout)
+        time.sleep(self.FLASH_SETTLE_S)
+        return []
+
+    def rename_user_slot(self, msb: int, lsb: int, pc: int, name: str,
+                         timeout: float = 1.5, retries: int = 3) -> bool:
+        """Rename a user flash slot (name-only DT1 + verified read-back)."""
+        base = self.user_slot_base(msb, lsb, pc)
+        raw_name = name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
+        self.send_data(add_address(base, PATCH_PARAM_NAME), list(raw_name))
+        time.sleep(self.FLASH_SETTLE_S)
+        want = bytes(raw_name)
+        for _ in range(max(1, retries)):
+            try:
+                raw = self.request_data(
+                    add_address(base, PATCH_PARAM_NAME), (0x00, 0x00, 0x00, 0x0C),
+                    timeout=timeout,
+                )
+                if raw is not None and bytes(raw[:12]) == want:
+                    return True
+            except Exception as e:
+                logger.debug(f"rename verify retry: {e}")
+            time.sleep(0.4)
+        return False
+
+    # ------------------------------------------------------------------
+    # .syx bulk files: DT1 sequences restoring a raw patch image.
+    # Export reads nothing new (uses the raw image); import retargets the
+    # file's patch base onto the live temp base so files recorded in Patch
+    # mode also apply inside Performance parts.
+    # ------------------------------------------------------------------
+
+    def encode_patch_sysex(self, state: PatchState,
+                           base: Optional[Tuple[int, int, int, int]] = None,
+                           timeout: float = 1.0) -> bytes:
+        """Encode a PatchState raw image as .syx bytes (F0..F7 DT1 messages)."""
+        if not state.raw_regions:
+            raise ValueError("No raw image: sync/read the patch first.")
+        resolved = base if base is not None else self.get_active_patch_base(timeout=timeout)
+        common = bytearray(state.raw_regions["common"][0][:80])
+        raw_name = state.common.name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
+        common[0:12] = raw_name
+        blob = bytearray()
+        blob += bytes([0xF0] + self.sysex.build_dt1(
+            add_address(resolved, self.USER_REGION_OFFSETS["common"]), bytes(common)) + [0xF7])
+        for key in ("mfx", "chorus", "reverb", "tmt"):
+            for chunk in state.raw_regions.get(key, []):
+                blob += bytes([0xF0] + self.sysex.build_dt1(
+                    add_address(resolved, self.USER_REGION_OFFSETS[key]), bytes(chunk)) + [0xF7])
+        for idx in range(1, 5):
+            for chunk, start in zip(state.raw_regions.get(f"tone_{idx}", []),
+                                    self.TONE_CHUNK_STARTS):
+                blob += bytes([0xF0] + self.sysex.build_dt1(
+                    add_address(add_address(resolved, self.USER_REGION_OFFSETS[f"tone_{idx}"]),
+                                start), bytes(chunk)) + [0xF7])
+        return bytes(blob)
+
+    @staticmethod
+    def split_sysex_blob(blob: bytes) -> list[bytes]:
+        """Split raw .syx bytes into individual F0..F7 messages."""
+        messages: list[bytes] = []
+        start: Optional[int] = None
+        for i, byte in enumerate(blob):
+            if byte == 0xF0:
+                start = i
+            elif byte == 0xF7 and start is not None:
+                messages.append(bytes(blob[start:i + 1]))
+                start = None
+        return messages
+
+    def apply_sysex_blob(self, blob: bytes,
+                         base: Optional[Tuple[int, int, int, int]] = None,
+                         timeout: float = 1.0, write_gap: float = 0.02) -> int:
+        """Push a .syx DT1 blob into the live temp buffer. Returns messages applied.
+
+        Only Roland DT1 messages with valid checksums are honored; anything
+        else is skipped. Addresses are rebased onto the live temp base (high
+        two bytes replaced), so Patch-mode captures apply in Performance mode.
+        """
+        from .sysex import CMD_DT1
+
+        resolved = base if base is not None else self.get_active_patch_base(timeout=timeout)
+        applied = 0
+        with self.paced_init_writes(write_gap):
+            for message in self.split_sysex_blob(bytes(blob)):
+                parsed = RolandSysEx.parse(message)
+                if (parsed is None or not parsed.is_valid_checksum
+                        or parsed.command != CMD_DT1 or len(parsed.payload) == 0):
+                    continue
+                addr = (resolved[0], resolved[1], parsed.address[2], parsed.address[3])
+                self.send_data(addr, parsed.payload)
+                applied += 1
+        return applied
+
     @staticmethod
     def load_init_template() -> Optional[dict]:
         """Read the golden init template captured by scripts/capture_init_template.py."""

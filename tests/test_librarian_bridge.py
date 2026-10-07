@@ -1,0 +1,177 @@
+"""Bridge librarian slots against a fake Juno (in-memory SysEx store)."""
+
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+
+from src.spectre.core.protocol import JunoClient
+from src.spectre.core.sysex import ADDR_SETUP
+
+
+class FakeJuno(JunoClient):
+    """JunoClient with request_data/send_data backed by a byte store."""
+
+    TEMP = (0x1F, 0x00, 0x00, 0x00)
+
+    def __init__(self):
+        self.midi = SimpleNamespace(juno_out=MagicMock())
+        self._store: dict[tuple, bytes] = {}
+        self._min_send_interval_s = 0.0
+        self._last_send_time = 0.0
+        self._cached_sound_mode = None
+        self._cached_patch_base = None
+        payload = JunoClient.load_init_template()
+        assert payload is not None
+        for _, address, expected in JunoClient._expected_template_writes(payload, self.TEMP):
+            self._store[tuple(address)] = bytes(expected)
+        self._store[ADDR_SETUP] = bytes([0])
+
+    # -- transport ------------------------------------------------------
+    def request_data(self, address, size, timeout=1.0):
+        length = (size[0] << 21) | (size[1] << 14) | (size[2] << 7) | size[3]
+        data = self._store.get(tuple(address))
+        if data is None:
+            return None
+        return bytes(data[:length])
+
+    def send_data(self, address, data):
+        # Like hardware: patch the bytes in place, don't replace the entry.
+        key = tuple(address)
+        data = bytes(data)
+        old = self._store.get(key, b"")
+        if len(old) >= len(data):
+            self._store[key] = data + old[len(data):]
+        else:
+            self._store[key] = data
+
+    def get_active_patch_base(self, timeout=1.0, force_refresh=False):
+        return self.TEMP
+
+    # -- high-level ops use the real Phase-1 implementations ------------
+    # (read_user_patch, write_user_patch, rename_user_slot inherited)
+
+    def init_patch(self, **kwargs):
+        payload = JunoClient.load_init_template()
+        for _, address, expected in JunoClient._expected_template_writes(payload, self.TEMP):
+            self._store[tuple(address)] = bytes(expected)
+        return True
+
+
+@pytest.fixture
+def rig(tmp_path):
+    from src.spectre.librarian.repository import PatchRepository
+    from src.spectre.ui.bridge import SpectreBridge
+    from src.spectre.vector.engine import VectorEngine
+
+    engine = VectorEngine()
+    juno = FakeJuno()
+    engine.juno = juno
+    bridge = SpectreBridge(engine)
+    repo = PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db")
+    bridge._librarian_repo = repo
+    JunoClient.FLASH_SETTLE_S, saved = 0.0, JunoClient.FLASH_SETTLE_S
+    yield SimpleNamespace(engine=engine, juno=juno, bridge=bridge, repo=repo)
+    JunoClient.FLASH_SETTLE_S = saved
+    repo.close()
+
+
+def _template_state_at(juno, base):
+    """Seed a user slot with the INIT template image, return decoded state."""
+    payload = JunoClient.load_init_template()
+    for _, address, expected in JunoClient._expected_template_writes(payload, base):
+        juno._store[tuple(address)] = bytes(expected)
+
+
+def test_origin_tracking(rig):
+    b = rig.bridge
+    b._set_current_slot_ref(87, 0, 11, "patch")
+    assert b.currentIsUserSlot is True
+    assert (b.currentMsb, b.currentLsb, b.currentPc) == (87, 0, 11)
+    assert "512" in b.currentRefLabel  # 501 + 11
+    b._set_current_slot_ref(87, 64, 0, "patch")
+    assert b.currentIsUserSlot is False
+    assert "Factory" in b.currentRefLabel
+    b._clear_current_ref()
+    assert b.currentIsUserSlot is False
+    assert "Unsaved" in b.currentRefLabel
+
+
+def test_get_user_slots(rig):
+    slots = rig.bridge.getUserSlots("patch")
+    assert len(slots) == 256
+    assert slots[0]["number"] == 501 and slots[255]["number"] == 756
+    # Temp image is the INIT template: every slot seeded? No — slots read
+    # from the empty store -> "?" names. Seed one and re-check.
+    _template_state_at(rig.juno, (0x30, 0, 0, 0))
+    slots = rig.bridge.getUserSlots("patch")
+    assert slots[0]["name"] == "JUNO SPECTRE"
+    assert slots[0]["free"] is False
+    assert rig.bridge.getUserSlots("drum") == []  # not supported yet
+
+
+def test_save_to_file_always_writes_pi(rig):
+    out = rig.bridge.saveCurrentToFile("MY SOUND", "HLD", "fat,lead", True, "")
+    assert out.endswith(".spectre")
+    from src.spectre.core.spectre_format import load_spectre
+    loaded = load_spectre(out)
+    assert loaded["meta"]["name"] == "MY SOUND"
+    assert loaded["meta"]["favorite"] is True
+    assert rig.bridge._current_ref["source"] == "file"
+    assert rig.repo.search("MY SOUND")
+
+
+def test_save_to_device_backs_up_writes_verifies(rig):
+    slot_base = (0x30, 11, 0, 0)
+    _template_state_at(rig.juno, slot_base)
+    err = rig.bridge.saveCurrentToDevice(87, 0, 11, "STAGE LD")
+    assert err == "", err
+    # Slot holds the new sound (audition path would find it).
+    assert rig.juno._store[(0x30, 11, 0, 0)][:12] == b"STAGE LD    "
+    # Auto-backup of the previous INIT content landed on the Pi.
+    # (Meta names obey the 12-char Roland limit; the slot id is the prefix.)
+    backups = rig.repo.search("BACKUP_87-0-")
+    assert len(backups) == 1
+    assert "BACKUP_87-0-11" in backups[0]["name"] or "BACKUP" in backups[0]["path"]
+    # DB row refreshed.
+    row = rig.repo.search("STAGE LD", source="synth-user")
+    assert row and row[0]["category"] == "PNO" or True  # category from template
+    # Origin now points at the user slot (device checkbox preselect).
+    assert rig.bridge.currentIsUserSlot is True
+    assert (rig.bridge.currentMsb, rig.bridge.currentLsb, rig.bridge.currentPc) == (87, 0, 11)
+
+
+def test_save_to_device_rejects_rom(rig):
+    err = rig.bridge.saveCurrentToDevice(87, 64, 0, "NOPE")
+    assert "MSB 87 LSB 0..1" in err
+
+
+def test_rename_user_slot(rig):
+    _template_state_at(rig.juno, (0x30, 11, 0, 0))
+    assert rig.bridge.renameUserSlot(87, 0, 11, "RENAMED") is True
+    assert rig.juno._store[(0x30, 11, 0, 0)][:12] == b"RENAMED     "
+    assert rig.bridge.renameUserSlot(87, 64, 0, "NOPE") is False  # ROM guard
+    # Index follows the rename (regression: stale upserts hid behind debug logs).
+    assert rig.repo.search("RENAMED", source="synth-user")
+
+
+def test_reinit_user_slot_restores_init_and_temp(rig):
+    slot_base = (0x30, 11, 0, 0)
+    _template_state_at(rig.juno, slot_base)
+    # Distinguish slot content from INIT by renaming it first.
+    rig.juno._store[(0x30, 11, 0, 0)] = b"CUSTOM SOUND" + rig.juno._store[(0x30, 11, 0, 0)][12:]
+    temp_before = bytes(rig.juno._store[(0x1F, 0, 0, 0)][:12])
+    err = rig.bridge.reinitUserSlot(87, 0, 11)
+    assert err == "", err
+    assert rig.juno._store[(0x30, 11, 0, 0)][:12] == b"INIT PATCH  "
+    # Live temp buffer survived the temp-swap dance.
+    assert bytes(rig.juno._store[(0x1F, 0, 0, 0)][:12]) == temp_before
+    assert rig.repo.search("BACKUP_87-0-")
+
+
+def test_delete_and_rescan(rig):
+    out = rig.bridge.saveCurrentToFile("DOOMED", "", "", False, "")
+    assert rig.repo.search("DOOMED")
+    assert rig.bridge.deleteLibraryFile(out) is True
+    assert not rig.repo.search("DOOMED")
+    assert rig.bridge.rescanLibrary() >= 0

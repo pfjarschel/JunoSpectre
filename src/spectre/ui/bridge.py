@@ -8,6 +8,7 @@ and full patch template initialization.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -28,6 +29,7 @@ from ..core.patch_state import (
     LFO_FADE_MODE_NAMES,
 )
 from ..core.env_presets import env_preset_names, get_env_preset
+from ..core.categories import code_from_index
 from ..core.updater import GitUpdater, UpdaterError
 from ..core.waves import WaveCatalogManager
 from ..core.mfx_catalog import get_mfx_catalog, get_mfx_algo, get_mfx_categories, get_mfx_light_catalog
@@ -81,10 +83,15 @@ class SpectreBridge(QObject):
     requestOpenMacroAssign = pyqtSignal(int)
     requestOpenScreensOverlay = pyqtSignal()
     requestOpenInitPatchModal = pyqtSignal()
+    requestOpenSavePatchModal = pyqtSignal()
     requestOpenEnvOverlay = pyqtSignal(str)
     patchInitialized = pyqtSignal()
     powerActionChanged = pyqtSignal(str)
     telemetryChanged = pyqtSignal()
+
+    # Patch Librarian signals
+    currentRefChanged = pyqtSignal()
+    librarianChanged = pyqtSignal()
 
     # Tone selection & linked mode
     selectedToneChanged = pyqtSignal(int)
@@ -160,6 +167,15 @@ class SpectreBridge(QObject):
         self._patch_name: str = self.patch_state.common.name
         self._sound_mode: str = self.patch_state.sound_mode
         self._last_tick_time: float = time.perf_counter()
+
+        # Librarian origin tracking: where the current temp sound came from.
+        # None = edited/unknown (e.g. after INIT). Shape:
+        # {source, kind, msb, lsb, pc} for slots, or {source: "file", path}
+        # for Pi files. Drives the save dialog defaults.
+        self._current_ref: Optional[dict] = None
+        # Set by app.py (non-fatal when absent, e.g. unit tests).
+        self._librarian_repo = None
+        self._librarian_model = None
 
         # Workstation Shell State
         self._active_view: str = "JUNO PCM"
@@ -3952,6 +3968,668 @@ class SpectreBridge(QObject):
         """Query waveform catalog filtered by category, bank, and search string."""
         return self._wave_catalog.get_filtered_waves(category=category, bank=bank, search=search)
 
+    @pyqtSlot(int, int, int, result=bool)
+    def selectLibraryPerformance(self, msb: int, lsb: int, pc: int) -> bool:
+        """Audition a performance via PERFORM mode + control channel (ch 16).
+
+        Switches the synth to PERFORM, selects via Bank Select + PC on the
+        performance control channel, then follows the performance name at
+        10 00 00 00. The synth stays in PERFORM mode afterwards.
+        """
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is None:
+            return False
+        midi = getattr(juno, "midi", None)
+        out = getattr(midi, "juno_out", None) if midi is not None else None
+        if out is None or getattr(out, "closed", False):
+            return False
+        try:
+            import time as _time
+
+            import mido as _mido
+
+            from ..core.sysex import ADDR_SETUP as _SETUP
+
+            juno.send_data(_SETUP, [1])  # PERFORM
+            _time.sleep(0.4)
+            out.send(_mido.Message("control_change", channel=15, control=0, value=int(msb)))
+            out.send(_mido.Message("control_change", channel=15, control=32, value=int(lsb)))
+            out.send(_mido.Message("program_change", channel=15, program=int(pc)))
+            _time.sleep(0.8)
+            try:
+                juno._cached_patch_base = None
+                juno._cached_sound_mode = None
+            except AttributeError:
+                pass
+            try:
+                raw = juno.request_data((0x10, 0x00, 0x00, 0x00),
+                                        (0x00, 0x00, 0x00, 0x0C), timeout=0.8)
+                if raw and len(raw) >= 12:
+                    name = bytes(raw[:12]).decode("latin1", errors="replace").strip()
+                    if name:
+                        self._patch_name = name
+            except Exception as e:
+                logger.debug(f"selectLibraryPerformance: name re-read failed: {e}")
+            self._sound_mode = "PERFORM"
+            self.patch_state.sound_mode = "PERFORM"
+            self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
+            self._set_current_slot_ref(int(msb), int(lsb), int(pc), "performance")
+            return True
+        except Exception as e:
+            logger.warning(f"selectLibraryPerformance failed: {e}")
+            return False
+
+    @pyqtSlot(int, int, int, result=bool)
+    def selectLibraryPatch(self, msb: int, lsb: int, pc: int) -> bool:
+        """Audition a factory/synth-user patch via Bank Select + Program Change.
+
+        Clears the cached temp-buffer base/mode, then re-reads the patch name
+        so the header follows the keyboard. Returns True on success.
+        File patches with a synth_ref should call this with their stored
+        msb/lsb/pc; pure Pi-only files (no synth_ref) need a full DT1 push
+        (not yet implemented — syncs name locally only).
+        """
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is None:
+            logger.info("selectLibraryPatch: no synth connected.")
+            return False
+        midi = getattr(juno, "midi", None)
+        out = getattr(midi, "juno_out", None) if midi is not None else None
+        if out is None or getattr(out, "closed", False):
+            logger.info("selectLibraryPatch: MIDI out not connected.")
+            return False
+        try:
+            import mido as _mido
+
+            out.send(_mido.Message("control_change", channel=0, control=0, value=int(msb)))
+            out.send(_mido.Message("control_change", channel=0, control=32, value=int(lsb)))
+            out.send(_mido.Message("program_change", channel=0, program=int(pc)))
+            try:
+                juno._cached_patch_base = None
+                juno._cached_sound_mode = None
+            except AttributeError:
+                pass
+            # Give the synth a moment to switch, then follow its display name.
+            import time as _time
+
+            _time.sleep(0.35)
+            try:
+                name = juno.get_patch_name(timeout=0.8)
+                if isinstance(name, str) and name:
+                    self._patch_name = name
+                    self.patch_state.common.name = name
+            except Exception as e:
+                logger.debug(f"selectLibraryPatch: name re-read failed: {e}")
+            try:
+                mode = juno.get_sound_mode(timeout=0.5)
+                mode_str = mode.name if hasattr(mode, "name") else str(mode)
+                self._sound_mode = mode_str
+                self.patch_state.sound_mode = mode_str
+            except Exception:
+                pass
+            self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
+            # Pull the full sounding state so editors follow the auditioned patch.
+            try:
+                self.syncPatchFromSynth()
+            except Exception as e:
+                logger.debug(f"selectLibraryPatch: full sync failed: {e}")
+            self._set_current_slot_ref(int(msb), int(lsb), int(pc),
+                                       "drum" if int(msb) == 86 else "patch")
+            return True
+        except Exception as e:
+            logger.warning(f"selectLibraryPatch failed: {e}")
+            return False
+
+    # ---------------------------------------------------------------
+    # Patch Librarian: origin tracking + save / rename / import / export
+    # ---------------------------------------------------------------
+
+    def _set_current_slot_ref(self, msb: int, lsb: int, pc: int, kind: str) -> None:
+        """Record which synth slot the temp buffer was auditioned from."""
+        if msb == 87 and lsb in (0, 1):
+            source = "synth-user"
+        elif msb == 86 and lsb == 0:
+            source = "synth-user"
+        else:
+            source = "factory"
+        self._current_ref = {"source": source, "kind": kind,
+                             "msb": msb, "lsb": lsb, "pc": pc}
+        self.currentRefChanged.emit()
+
+    def _clear_current_ref(self) -> None:
+        self._current_ref = None
+        self.currentRefChanged.emit()
+
+    @pyqtProperty(str, notify=currentRefChanged)
+    def currentRefLabel(self) -> str:
+        ref = self._current_ref or {}
+        if ref.get("source") == "synth-user":
+            slot = 501 + int(ref.get("lsb", 0)) * 128 + int(ref.get("pc", 0))
+            return f"User slot {slot} · {self._patch_name}"
+        if ref.get("source") == "factory":
+            return f"Factory · {self._patch_name}"
+        if ref.get("source") == "file":
+            return f"Pi file · {self._patch_name}"
+        return f"Unsaved sound · {self._patch_name}"
+
+    @pyqtProperty(bool, notify=currentRefChanged)
+    def currentIsUserSlot(self) -> bool:
+        return (self._current_ref or {}).get("source") == "synth-user"
+
+    @pyqtProperty(int, notify=currentRefChanged)
+    def currentMsb(self) -> int:
+        return int((self._current_ref or {}).get("msb", -1))
+
+    @pyqtProperty(int, notify=currentRefChanged)
+    def currentLsb(self) -> int:
+        return int((self._current_ref or {}).get("lsb", -1))
+
+    @pyqtProperty(int, notify=currentRefChanged)
+    def currentPc(self) -> int:
+        return int((self._current_ref or {}).get("pc", -1))
+
+    def _librarian(self):
+        repo = getattr(self, "_librarian_repo", None)
+        if repo is None:
+            logger.warning("Librarian repository not attached.")
+        return repo
+
+    def _fresh_live_state(self, name: str):
+        """Capture the sounding temp buffer with app-side extras overlaid."""
+        from ..core.patch_state import PatchState  # noqa: F401 (type use below)
+
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is None or not hasattr(juno, "read_full_patch"):
+            raise ConnectionError("No synthesizer connected.")
+        state = juno.read_full_patch(timeout=1.5)
+        state.common.name = str(name)[:12]
+        # Preserve app-side assignments the hardware image does not carry.
+        try:
+            state.macros = self.patch_state.macros
+            state.macro_bases = dict(self.patch_state.macro_bases)
+        except Exception:
+            pass
+        return state
+
+    def _live_spectre_extras(self) -> dict:
+        extras: dict = {"engine_mode": getattr(self, "_active_view", "JUNO PCM")}
+        try:
+            extras["vector"] = {"x": float(self.engine.x),
+                                "y": float(self.engine.y),
+                                "w": float(self.engine.w)}
+        except Exception:
+            pass
+        try:
+            extras["motion"] = {"bpm": float(self.engine.motion.bpm),
+                                "speed": float(self.engine.motion.speed)}
+        except Exception:
+            pass
+        return extras
+
+    @pyqtSlot()
+    def openSavePatchModal(self) -> None:
+        """Request UI to open the Save Patch dialog."""
+        logger.debug("UI requested openSavePatchModal")
+        self.requestOpenSavePatchModal.emit()
+
+    @pyqtSlot(str, result="QVariantList")
+    def getUserSlots(self, kind: str = "patch") -> list:
+        """List user flash slots with live names. Only patches for now."""
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is None or kind != "patch":
+            return []
+        slots = []
+        for idx in range(256):
+            msb, lsb, pc = 87, (0 if idx < 128 else 1), idx % 128
+            try:
+                raw = juno.request_data((0x30 if idx < 128 else 0x31, idx % 128,
+                                         0x00, 0x00), (0x00, 0x00, 0x00, 0x0C),
+                                        timeout=1.0)
+                nm = bytes(raw[:12]).decode("latin1", errors="replace").strip() if raw else "?"
+            except Exception:
+                nm = "?"
+            slots.append({"number": 501 + idx, "msb": msb, "lsb": lsb, "pc": pc,
+                          "name": nm, "free": nm in ("INIT PATCH", "")})
+        return slots
+
+    @pyqtSlot(result="QVariantList")
+    def getUserSlotIndex(self) -> list:
+        """Instant DB-backed slot list for the save-dialog picker.
+
+        Live reads take ~13 s for 256 slots and would freeze the touch UI
+        (MIDI request/response cannot safely overlap), so the picker reads
+        the index. Our own device writes refresh it via upsert_synth_user.
+        """
+        repo = self._librarian()
+        if repo is None:
+            return []
+        try:
+            rows = repo.search("", source="synth-user", kind="patch", limit=300)
+        except Exception as e:
+            logger.debug(f"getUserSlotIndex failed: {e}")
+            return []
+        slots = []
+        for r in rows:
+            try:
+                number = 501 + int(r.get("lsb", 0)) * 128 + int(r.get("pc", 0))
+            except (TypeError, ValueError):
+                continue
+            slots.append({"number": number, "msb": r.get("msb"), "lsb": r.get("lsb"),
+                          "pc": r.get("pc"), "name": r.get("name", ""),
+                          "free": (r.get("name", "") or "").strip() in ("INIT PATCH", "")})
+        slots.sort(key=lambda s: s["number"])
+        return slots
+
+    @pyqtSlot(result=str)
+    def currentCategoryCode(self) -> str:
+        """Roland 3-letter category of the live temp sound (prefills save)."""
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is None:
+            return ""
+        try:
+            base = juno.get_active_patch_base(timeout=1.0)
+            from ..core.sysex import OFFSET_PATCH_COMMON as _OFF
+            from ..core.sysex import add_address as _add
+            raw = juno.request_data(_add(base, _OFF), (0x00, 0x00, 0x00, 0x50), timeout=1.0)
+            if raw and len(raw) >= 80:
+                return code_from_index(raw[0x0C])
+        except Exception as e:
+            logger.debug(f"currentCategoryCode failed: {e}")
+        return ""
+
+    @pyqtSlot(str, str, str, bool, str, result=str)
+    def saveCurrentToFile(self, name: str, category: str = "",
+                          tagsCsv: str = "", favorite: bool = False,
+                          filename: str = "") -> str:
+        """Always-on Pi save. Returns the file path, or '' + logs on failure."""
+        repo = self._librarian()
+        if repo is None:
+            return ""
+        try:
+            state = self._fresh_live_state(name or self._patch_name)
+            tags = [t.strip()[:32] for t in (tagsCsv or "").split(",") if t.strip()][:16]
+            origin = self._current_ref or {}
+            synth_ref = None
+            if origin.get("source") in ("factory", "synth-user"):
+                synth_ref = {"source": origin["source"], "msb": origin.get("msb"),
+                             "lsb": origin.get("lsb"), "pc": origin.get("pc")}
+            out = repo.save_current_as(
+                state, state.common.name, category=category or "", tags=tags,
+                favorite=bool(favorite), spectre=self._live_spectre_extras(),
+                synth_ref=synth_ref,
+                filename=filename or None,
+            )
+            self._current_ref = {"source": "file", "kind": "patch", "path": str(out)}
+            self.currentRefChanged.emit()
+            self.librarianChanged.emit()
+            try:
+                self._patch_name = state.common.name
+                self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
+            except Exception:
+                pass
+            return str(out)
+        except Exception as e:
+            logger.warning(f"saveCurrentToFile failed: {e}")
+            return ""
+
+    @pyqtSlot(int, int, int, str, result=str)
+    def saveCurrentToDevice(self, msb: int, lsb: int, pc: int, name: str) -> str:
+        """Save the live sound to a user flash slot. Returns '' on success.
+
+        Auto-backs the slot's previous content to a Pi .spectre file first,
+        then writes + verifies. Error text otherwise.
+        """
+        repo = self._librarian()
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if repo is None:
+            return "librarian unavailable"
+        if juno is None or not hasattr(juno, "write_user_patch"):
+            return "no synthesizer connected"
+        try:
+            msb, lsb, pc = int(msb), int(lsb), int(pc)
+            JunoClient = juno.__class__
+            JunoClient.user_slot_base(msb, lsb, pc)  # validates
+        except ValueError as e:
+            return str(e)
+        try:
+            try:
+                previous = juno.read_user_patch(msb, lsb, pc, timeout=1.5)
+                repo.save_current_as(
+                    previous, f"BACKUP_{msb}-{lsb}-{pc}_{previous.common.name}",
+                    category=code_from_index(previous.common.category),
+                    tags=["backup", "auto"],
+                    synth_ref={"source": "synth-user", "msb": msb, "lsb": lsb, "pc": pc},
+                )
+            except Exception as e:
+                return f"backup failed, aborting: {e}"
+            try:
+                live = self._fresh_live_state(name or self._patch_name)
+            except Exception as e:
+                return f"could not read live sound: {e}"
+            mismatches = juno.write_user_patch(live, msb, lsb, pc, timeout=1.5)
+            if mismatches:
+                return "verify failed: " + ", ".join(mismatches)
+            try:
+                repo.upsert_synth_user(msb, lsb, pc, live.common.name,
+                                       code_from_index(live.common.category))
+            except Exception as e:
+                logger.debug(f"synth-user index refresh failed: {e}")
+            self._set_current_slot_ref(msb, lsb, pc, "patch")
+            self.librarianChanged.emit()
+            return ""
+        except Exception as e:
+            logger.warning(f"saveCurrentToDevice failed: {e}")
+            return str(e)
+
+    @pyqtSlot(int, int, int, str, result=bool)
+    def renameUserSlot(self, msb: int, lsb: int, pc: int, name: str) -> bool:
+        """Rename a user flash slot (factory ROM can never be renamed)."""
+        repo = self._librarian()
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is None or not hasattr(juno, "rename_user_slot"):
+            return False
+        try:
+            ok = bool(juno.rename_user_slot(int(msb), int(lsb), int(pc), str(name)))
+        except (ValueError, TypeError):
+            return False
+        except Exception as e:
+            logger.warning(f"renameUserSlot failed: {e}")
+            return False
+        if ok and repo is not None:
+            # Re-read for the index (flash can stay busy briefly after a
+            # write: retry before giving up so the list never goes stale).
+            cur = None
+            for _ in range(3):
+                try:
+                    cur = juno.read_user_patch(int(msb), int(lsb), int(pc), timeout=1.5)
+                    break
+                except Exception as e:
+                    logger.debug(f"rename index re-read retry: {e}")
+                    time.sleep(0.5)
+            if cur is not None:
+                try:
+                    repo.upsert_synth_user(int(msb), int(lsb), int(pc), cur.common.name,
+                                           code_from_index(cur.common.category))
+                except Exception as e:
+                    logger.warning(f"rename index refresh failed: {e}")
+            else:
+                logger.warning("rename index refresh failed: slot unreadable after rename")
+            self.librarianChanged.emit()
+        return ok
+
+    @pyqtSlot(str, str, result=bool)
+    def renameLibraryFile(self, path: str, name: str) -> bool:
+        """Rename a Pi .spectre file (meta travels with the file)."""
+        repo = self._librarian()
+        if repo is None:
+            return False
+        try:
+            from ..core.spectre_format import load_spectre, save_spectre
+
+            loaded = load_spectre(path)
+            loaded["meta"]["name"] = str(name)
+            save_spectre(path, loaded["patch_state"], meta=loaded["meta"],
+                         spectre=loaded["spectre"], synth_ref=loaded["synth_ref"],
+                         kind=loaded["kind"], extra=loaded["extra"])
+            repo._touch_file_row(path)
+            repo._conn.commit()
+            self.librarianChanged.emit()
+            return True
+        except Exception as e:
+            logger.warning(f"renameLibraryFile failed for {path}: {e}")
+            return False
+
+    @pyqtSlot(int, int, int, result=str)
+    def reinitUserSlot(self, msb: int, lsb: int, pc: int) -> str:
+        """Restore a user flash slot to INIT (backup + temp-swap dance).
+
+        The live temp buffer is captured, restored afterwards and verified,
+        so the user's current edit survives. Returns '' on success.
+        """
+        repo = self._librarian()
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if repo is None:
+            return "librarian unavailable"
+        if juno is None or not hasattr(juno, "write_user_patch"):
+            return "no synthesizer connected"
+        try:
+            msb, lsb, pc = int(msb), int(lsb), int(pc)
+            juno.__class__.user_slot_base(msb, lsb, pc)
+            try:
+                previous = juno.read_user_patch(msb, lsb, pc, timeout=1.5)
+                repo.save_current_as(
+                    previous, f"BACKUP_{msb}-{lsb}-{pc}_{previous.common.name}",
+                    category=code_from_index(previous.common.category),
+                    tags=["backup", "auto"],
+                    synth_ref={"source": "synth-user", "msb": msb, "lsb": lsb, "pc": pc},
+                )
+                repo.save_current_as(
+                    self._fresh_live_state(self._patch_name),
+                    f"BEFORE-REINIT_{previous.common.name}",
+                    tags=["backup", "auto"],
+                )
+            except Exception as e:
+                return f"backup failed, aborting: {e}"
+            try:
+                temp_image = juno.read_full_patch(timeout=1.5)
+            except Exception as e:
+                return f"could not capture live sound: {e}"
+            if not juno.init_patch():
+                return "could not initialize temp buffer"
+            try:
+                fresh = juno.read_full_patch(timeout=1.5)
+            except Exception as e:
+                juno._write_patch_regions(temp_image, juno.get_active_patch_base())
+                return f"could not read init image: {e}"
+            fresh.common.name = "INIT PATCH"
+            mismatches = juno.write_user_patch(fresh, msb, lsb, pc, timeout=1.5)
+            temp_base = juno.get_active_patch_base(timeout=1.0)
+            restore_fail = juno._write_patch_regions(temp_image, temp_base)
+            time.sleep(juno.FLASH_SETTLE_S)
+            restore_mm = juno._verify_patch_regions(temp_image, temp_base, timeout=1.5)
+            if mismatches:
+                return "slot verify failed: " + ", ".join(mismatches)
+            if restore_fail or restore_mm:
+                return "slot written BUT temp restore needs re-sync"
+            try:
+                repo.upsert_synth_user(msb, lsb, pc, "INIT PATCH", "")
+            except Exception as e:
+                logger.debug(f"reinit index refresh failed: {e}")
+            self.librarianChanged.emit()
+            return ""
+        except Exception as e:
+            logger.warning(f"reinitUserSlot failed: {e}")
+            return str(e)
+
+    @pyqtSlot(result="QVariantList")
+    def listUsbDrives(self) -> list:
+        """Removable media roots for import/export (eglfs has no file dialog)."""
+        import getpass
+        from pathlib import Path as _P
+
+        roots = []
+        try:
+            user = getpass.getuser()
+        except Exception:
+            user = ""
+        for base in (f"/media/{user}", "/run/media/{user}", "/media", "/mnt"):
+            try:
+                p = _P(base)
+                if not p.is_dir():
+                    continue
+                for child in sorted(p.iterdir()):
+                    try:
+                        if child.is_dir() and os.access(child, os.R_OK | os.W_OK):
+                            roots.append(str(child))
+                    except OSError:
+                        continue
+            except OSError:
+                continue
+        return roots
+
+    @pyqtSlot(str, str, str, result=str)
+    def exportLibraryFile(self, path: str, driveDir: str, filename: str = "") -> str:
+        """Copy a Pi patch file to USB. Returns '' on success."""
+        import shutil
+        from pathlib import Path as _P
+
+        try:
+            src = _P(path)
+            if src.suffix not in (".spectre", ".syx") or not src.is_file():
+                return "not a patch file"
+            dest_dir = _P(driveDir)
+            if not dest_dir.is_dir():
+                return "USB drive not found"
+            dest = dest_dir / (filename or src.name)
+            if dest.suffix != src.suffix:
+                dest = dest.with_suffix(src.suffix)
+            shutil.copy2(src, dest)
+            return ""
+        except Exception as e:
+            logger.warning(f"exportLibraryFile failed: {e}")
+            return str(e)
+
+    @pyqtSlot(str, str, result=str)
+    def importUsbFile(self, driveDir: str, filename: str) -> str:
+        """Import a .spectre/.syx from USB into the Pi library. Returns path or ''."""
+        repo = self._librarian()
+        if repo is None:
+            return ""
+        try:
+            from pathlib import Path as _P
+
+            src = _P(driveDir) / filename
+            out = repo.import_file(src)
+            self.librarianChanged.emit()
+            return str(out)
+        except Exception as e:
+            logger.warning(f"importUsbFile failed: {e}")
+            return ""
+
+    @pyqtSlot(str, result=bool)
+    def deleteLibraryFile(self, path: str) -> bool:
+        """Delete a Pi patch file (flash slots are reinitialized, never deleted)."""
+        repo = self._librarian()
+        if repo is None:
+            return False
+        try:
+            ok = bool(repo.delete_file(path))
+        except Exception as e:
+            logger.warning(f"deleteLibraryFile failed: {e}")
+            return False
+        if ok:
+            self.librarianChanged.emit()
+        return ok
+
+    @pyqtSlot(str, result="QVariantList")
+    def listUsbFiles(self, driveDir: str) -> list:
+        """List importable patch files at a USB drive root."""
+        from pathlib import Path as _P
+
+        try:
+            root = _P(driveDir)
+            if not root.is_dir():
+                return []
+            out = []
+            for child in sorted(root.iterdir()):
+                try:
+                    if child.is_file() and child.suffix in (".spectre", ".syx"):
+                        out.append({"name": child.name, "suffix": child.suffix})
+                except OSError:
+                    continue
+            return out
+        except Exception as e:
+            logger.debug(f"listUsbFiles failed: {e}")
+            return []
+
+    @pyqtSlot(str, result=int)
+    def importUsbAll(self, driveDir: str) -> int:
+        """Import every .spectre/.syx at a USB drive root. Returns count."""
+        repo = self._librarian()
+        if repo is None:
+            return 0
+        try:
+            from pathlib import Path as _P
+
+            root = _P(driveDir)
+            if not root.is_dir():
+                return 0
+            count = 0
+            for child in sorted(root.iterdir()):
+                try:
+                    if child.is_file() and child.suffix in (".spectre", ".syx"):
+                        repo.import_file(child)
+                        count += 1
+                except Exception as e:
+                    logger.debug(f"import skipped {child}: {e}")
+            self.librarianChanged.emit()
+            return count
+        except Exception as e:
+            logger.warning(f"importUsbAll failed: {e}")
+            return 0
+
+    @pyqtSlot(str, str, result=str)
+    def exportLiveSyx(self, driveDir: str, filename: str = "") -> str:
+        """Export the live temp sound as .syx to USB. Returns '' on success."""
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is None or not hasattr(juno, "encode_patch_sysex"):
+            return "no synthesizer connected"
+        try:
+            from pathlib import Path as _P
+
+            dest_dir = _P(driveDir)
+            if not dest_dir.is_dir():
+                return "USB drive not found"
+            state = juno.read_full_patch(timeout=1.5)
+            blob = juno.encode_patch_sysex(state)
+            safe = "".join(c if (c.isalnum() or c in ("-", "_", " ")) else "_"
+                           for c in (filename or state.common.name)).strip() or "Untitled"
+            dest = dest_dir / f"{safe}.syx"
+            dest.write_bytes(blob)
+            return ""
+        except Exception as e:
+            logger.warning(f"exportLiveSyx failed: {e}")
+            return str(e)
+
+    @pyqtSlot(str, result=str)
+    def applySyxFile(self, path: str) -> str:
+        """Push a .syx file into the live temp buffer and sync. Returns '' on success."""
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if juno is None or not hasattr(juno, "apply_sysex_blob"):
+            return "no synthesizer connected"
+        try:
+            from pathlib import Path as _P
+
+            blob = _P(path).read_bytes()
+            if not blob or blob[0] != 0xF0:
+                return "not a .syx file"
+            applied = juno.apply_sysex_blob(blob)
+            if applied == 0:
+                return "no valid DT1 messages found"
+            try:
+                self.syncPatchFromSynth()
+            except Exception as e:
+                logger.debug(f"applySyxFile: sync failed: {e}")
+            self._current_ref = {"source": "file", "kind": "patch", "path": str(path)}
+            self.currentRefChanged.emit()
+            return ""
+        except Exception as e:
+            logger.warning(f"applySyxFile failed: {e}")
+            return str(e)
+
+    @pyqtSlot(result=int)
+    def rescanLibrary(self) -> int:
+        repo = self._librarian()
+        if repo is None:
+            return 0
+        try:
+            stats = repo.rescan_files()
+        except Exception as e:
+            logger.warning(f"rescanLibrary failed: {e}")
+            return 0
+        self.librarianChanged.emit()
+        return int(stats.get("added", 0) + stats.get("updated", 0) + stats.get("removed", 0))
+
     @pyqtSlot(int)
     def openWaveBrowser(self, tone_index: int) -> None:
         """Request the UI to open the Wave Browser modal for a target tone (1-4)."""
@@ -4021,6 +4699,7 @@ class SpectreBridge(QObject):
         # 6. Emit all signals to trigger live UI refresh across all tabs and screens
         #    (macro deck values are derived getters, so they refresh automatically)
         self._emit_all_state_signals()
+        self._clear_current_ref()  # fresh RAM template: no slot origin
         self.patchInitialized.emit()
         logger.info("Active patch initialization complete.")
 

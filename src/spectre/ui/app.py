@@ -43,6 +43,30 @@ def create_application(
     bridge = SpectreBridge(engine, parent=qml_engine)
     qml_engine._bridge = bridge
 
+    # Patch Librarian: file-backed user patches + SQLite index over them.
+    # Non-fatal: the UI must still boot when the librarian fails (e.g. RO home).
+    try:
+        from ..librarian.repository import PatchRepository
+        from .librarian_model import PatchListModel
+
+        _repo = PatchRepository()
+        try:
+            _repo.rescan_files()
+        except Exception as e:
+            logger.warning(f"Librarian rescan failed: {e}")
+        _library = PatchListModel(_repo, parent=qml_engine)
+        try:
+            _library.refresh("", "ALL", False, "", 2500)
+        except Exception as e:
+            logger.warning(f"Librarian initial refresh failed: {e}")
+        qml_engine._librarian_repo = _repo
+        qml_engine._librarian_model = _library
+        bridge._librarian_repo = _repo
+        bridge._librarian_model = _library
+        qml_engine.rootContext().setContextProperty("patchLibrary", _library)
+    except Exception as e:
+        logger.warning(f"Patch librarian unavailable: {e}")
+
     # Register as global QML singleton 'Bridge' in module 'JunoSpectre'
     qmlRegisterSingletonInstance("JunoSpectre", 1, 0, "Bridge", bridge)
     qml_engine.rootContext().setContextProperty("bridge", bridge)

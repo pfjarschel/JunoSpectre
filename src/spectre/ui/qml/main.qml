@@ -211,6 +211,12 @@ Window {
         objectName: "initPatchModal"
     }
 
+    // Global Modal: Save Sound (Pi-always + optional keyboard slot)
+    SavePatchModal {
+        id: savePatchModal
+        objectName: "savePatchModal"
+    }
+
     // Global Modal: Macro Assign / Edit (customizable relative macros)
     MacroEditModal {
         id: macroEditModal
@@ -234,6 +240,9 @@ Window {
         }
         function onRequestOpenInitPatchModal() {
             initPatchModal.open();
+        }
+        function onRequestOpenSavePatchModal() {
+            savePatchModal.open();
         }
         function onRequestOpenMacroAssign(macroIndex) {
             macroEditModal.open(macroIndex);
