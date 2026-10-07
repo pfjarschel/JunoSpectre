@@ -63,7 +63,7 @@ Window {
                     case "ROUTING": return 8;
                     case "MASTER FX": return 9;
                     case "MACROS": return 10;
-                    case "PERF MIXER": return 11;
+                    case "PERFORMANCE": return 11;
                     case "SEQUENCER": return 12;
                     case "LIBRARIAN": return 13;
                     case "MIDI LEARN": return 14;

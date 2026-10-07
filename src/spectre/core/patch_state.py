@@ -561,6 +561,7 @@ class PerfPartState:
     patch_lsb: int = 64          # 0..127
     patch_pc: int = 0            # 0..127
     patch_name: str = ""         # Display cache (not on hardware part block)
+    patch_file: str = ""         # Linked Pi .spectre file for Pi-only part sounds
     # MIDI reception
     rx_channel: int = -1         # 0..15 (ch = rx_channel + 1); -1 = default to part
     rx_switch: bool = True       # Receive Switch OFF/ON
@@ -571,6 +572,8 @@ class PerfPartState:
     # Keyboard zone display mirror (actual zone block is per-channel)
     key_low: int = 0             # 0..127 (C-1..UPPER)
     key_high: int = 127          # 0..127 (LOWER..G9)
+    zone_switch: bool = True     # Zone Switch OFF/ON (per-channel block)
+    zone_octave: int = 64        # 61..67 (-3..+3, 64=0)
 
     def __post_init__(self) -> None:
         if not 1 <= int(self.part_index) <= 16:

@@ -11,7 +11,9 @@ Rectangle {
     border.width: 1
 
     property int page: 1 // 1 = parts 1-8, 2 = parts 9-16
+    property string subView: "mixer" // "mixer" | "zones"
     property var allParts: Bridge.perfParts
+    readonly property bool pushBusy: Bridge.perfPushProgress >= 0
 
     ColumnLayout {
         anchors.fill: parent
@@ -24,7 +26,7 @@ Rectangle {
             spacing: ScaleMetrics.dp(6)
 
             Text {
-                text: "PERF MIXER"
+                text: "PERFORMANCE"
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(12)
                 font.letterSpacing: 1.2
@@ -40,6 +42,7 @@ Rectangle {
             }
             // Pager 1-8 / 9-16
             Rectangle {
+                visible: root.subView === "mixer"
                 width: ScaleMetrics.dp(76); height: ScaleMetrics.dp(26)
                 radius: ScaleMetrics.dp(4)
                 color: pageMouse.pressed ? Theme.bgCardActive : Theme.bgApp
@@ -55,6 +58,26 @@ Rectangle {
                     id: pageMouse
                     anchors.fill: parent
                     onClicked: root.page = (root.page === 1 ? 2 : 1)
+                }
+            }
+            // MIXER | ZONES sub-view toggle
+            Rectangle {
+                width: ScaleMetrics.dp(104); height: ScaleMetrics.dp(26)
+                radius: ScaleMetrics.dp(4)
+                color: subMouse.pressed ? Theme.bgCardActive : Theme.bgApp
+                border.color: root.subView === "zones" ? Theme.tone1 : Theme.borderCard
+                border.width: 1
+                Text {
+                    anchors.centerIn: parent
+                    text: root.subView === "mixer" ? "MIXER  ▶" : "◀  ZONES"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: root.subView === "zones" ? Theme.tone1 : Theme.textSecondary
+                }
+                MouseArea {
+                    id: subMouse
+                    anchors.fill: parent
+                    onClicked: root.subView = (root.subView === "mixer" ? "zones" : "mixer")
                 }
             }
             // Mode switch PATCH / PERFORM
@@ -76,16 +99,16 @@ Rectangle {
                     onClicked: Bridge.setSoundMode(Bridge.soundMode === "PERFORM" ? "PATCH" : "PERFORM")
                 }
             }
-            // Sync performance from synth
+            // Sync performance from synth (mixer-only read, never touches editors)
             Rectangle {
-                width: ScaleMetrics.dp(64); height: ScaleMetrics.dp(26)
+                width: ScaleMetrics.dp(92); height: ScaleMetrics.dp(26)
                 radius: ScaleMetrics.dp(4)
                 color: syncMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
                 border.color: syncMouse.pressed ? Theme.tone1 : Theme.borderCard
                 border.width: 1
                 Text {
                     anchors.centerIn: parent
-                    text: "⟳ SYNC"
+                    text: "⟳ SYNC PERF"
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(8)
                     color: Theme.textSecondary
@@ -98,14 +121,41 @@ Rectangle {
             }
         }
 
+        // Background part-image push progress (thin bar, controls lock meanwhile)
+        Rectangle {
+            visible: root.pushBusy
+            Layout.fillWidth: true
+            Layout.preferredHeight: root.pushBusy ? ScaleMetrics.dp(14) : 0
+            height: ScaleMetrics.dp(14)
+            radius: ScaleMetrics.dp(7)
+            color: "#0f172a"
+            border.color: Theme.tone2
+            border.width: 1
+            Rectangle {
+                width: parent.width * Math.max(0, Math.min(1, Bridge.perfPushProgress))
+                height: parent.height
+                radius: ScaleMetrics.dp(7)
+                color: Theme.tone2
+            }
+            Text {
+                anchors.centerIn: parent
+                text: "PUSHING PART SOUNDS " + Math.round(Math.max(0, Bridge.perfPushProgress) * 100) + "%"
+                font.bold: true
+                font.pixelSize: ScaleMetrics.sp(7)
+                color: "#ffffff"
+            }
+        }
+
         // Live setlist strip (songs = performance snapshots, tap or ◀/▶)
         PlaylistStrip {
+            visible: root.subView === "mixer"
             Layout.fillWidth: true
-            Layout.preferredHeight: ScaleMetrics.dp(84)
+            Layout.preferredHeight: root.subView === "mixer" ? ScaleMetrics.dp(84) : 0
         }
 
         // 8 Channel Strips Row (paged over 16 parts)
         RowLayout {
+            visible: root.subView === "mixer"
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: ScaleMetrics.dp(6)
@@ -124,8 +174,17 @@ Rectangle {
                     isMuted: _p ? _p.muted : false
                     isSolo: _p ? _p.solo : false
                     isActive: Bridge.activePerfPart === partIndex
+                    partStatus: (Bridge.partFileStatus && Bridge.partFileStatus.length >= partIndex)
+                                ? Bridge.partFileStatus[partIndex - 1] : ""
                 }
             }
+        }
+
+        // Key-zone editor (same canvas slot as the strips)
+        ZoneEditor {
+            visible: root.subView === "zones"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
         }
     }
 
@@ -139,6 +198,7 @@ Rectangle {
         property bool isMuted: false
         property bool isSolo: false
         property bool isActive: false
+        property string partStatus: ""
 
         radius: ScaleMetrics.dp(6)
         color: chan.isActive ? "#1c1533" : Theme.bgApp
@@ -150,34 +210,66 @@ Rectangle {
             anchors.margins: ScaleMetrics.dp(5)
             spacing: ScaleMetrics.dp(3)
 
-            // Part Number Badge
-            Rectangle {
+            // Part Number Badge + file-link health dot
+            RowLayout {
                 Layout.fillWidth: true
-                height: ScaleMetrics.dp(18)
-                radius: ScaleMetrics.dp(4)
-                color: chan.isActive ? Theme.tone2 : (chan.partIndex <= 2 ? Theme.bgCardActive : "#1e293b")
+                spacing: ScaleMetrics.dp(4)
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: ScaleMetrics.dp(18)
+                    radius: ScaleMetrics.dp(4)
+                    color: chan.isActive ? Theme.tone2 : (chan.partIndex <= 2 ? Theme.bgCardActive : "#1e293b")
 
-                Text {
-                    anchors.centerIn: parent
-                    text: "P" + chan.partIndex
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(9)
-                    color: chan.isActive ? "#ffffff" : (chan.partIndex === 1 ? Theme.tone1 : Theme.textSecondary)
+                    Text {
+                        anchors.centerIn: parent
+                        text: "P" + chan.partIndex
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(9)
+                        color: chan.isActive ? "#ffffff" : (chan.partIndex === 1 ? Theme.tone1 : Theme.textSecondary)
+                    }
+                }
+                // File-link health: green fresh, amber changed, red missing. Tap to re-push.
+                Rectangle {
+                    visible: chan.partStatus !== ""
+                    width: ScaleMetrics.dp(18); height: ScaleMetrics.dp(18)
+                    radius: 9
+                    color: chan.partStatus === "ok" ? "#10b981"
+                         : chan.partStatus === "updated" ? "#fbbf24" : "#ef4444"
+                    border.color: "#ffffff"; border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: chan.partStatus === "ok" ? "✓" : "!"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(9)
+                        color: "#000000"
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: !root.pushBusy && (chan.partStatus === "updated" || chan.partStatus === "missing")
+                        onClicked: Bridge.refreshPartFile(chan.partIndex)
+                    }
                 }
             }
 
-            // Patch Name
+            // Patch Name (tap to pick a library patch for this part)
             Text {
                 Layout.fillWidth: true
                 Layout.preferredHeight: ScaleMetrics.dp(22)
                 text: chan.partName
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(8)
-                color: Theme.textDim
+                font.underline: true
+                color: nameMouse.pressed ? Theme.tone1 : Theme.textDim
                 elide: Text.ElideRight
                 wrapMode: Text.NoWrap
                 horizontalAlignment: Text.AlignHCenter
                 maximumLineCount: 2
+                MouseArea {
+                    id: nameMouse
+                    anchors.fill: parent
+                    enabled: !root.pushBusy
+                    onClicked: Bridge.openPartPicker(chan.partIndex)
+                }
             }
 
             // Mute / Solo Buttons
@@ -201,6 +293,7 @@ Rectangle {
 
                     MouseArea {
                         anchors.fill: parent
+                        enabled: !root.pushBusy
                         onClicked: Bridge.setPartMute(chan.partIndex, !chan.isMuted)
                     }
                 }
@@ -221,6 +314,7 @@ Rectangle {
 
                     MouseArea {
                         anchors.fill: parent
+                        enabled: !root.pushBusy
                         onClicked: Bridge.setPartSolo(chan.partIndex, !chan.isSolo)
                     }
                 }
@@ -273,6 +367,7 @@ Rectangle {
                 MouseArea {
                     id: faderMouse
                     anchors.fill: parent
+                    enabled: !root.pushBusy
                     function updateVol(my) {
                         const norm = Math.max(0.0, Math.min(1.0, 1.0 - (my / height)));
                         Bridge.setPartVolume(chan.partIndex, Math.round(norm * 127));
@@ -331,6 +426,7 @@ Rectangle {
                 MouseArea {
                     id: panMouse
                     anchors.fill: parent
+                    enabled: !root.pushBusy
                     function updatePan(mx) {
                         const norm = Math.max(0.0, Math.min(1.0, mx / width));
                         Bridge.setPartPan(chan.partIndex, Math.round(norm * 127));
@@ -359,6 +455,7 @@ Rectangle {
                 }
                 MouseArea {
                     anchors.fill: parent
+                    enabled: !root.pushBusy
                     onClicked: Bridge.editPerfPart(chan.partIndex)
                 }
             }

@@ -52,7 +52,7 @@ Rectangle {
                 if (Bridge.macroNames && Bridge.macroNames.length >= knobIndex)
                     return Bridge.macroNames[knobIndex - 1];
                 return "M" + knobIndex;
-            } else if (currentView === "PERF MIXER") {
+            } else if (currentView === "PERFORMANCE") {
                 return "P" + knobIndex + " VOL";
             } else if (currentView === "EFFECTS") {
                 const names = ["MFX TYPE", "CTRL 1", "CTRL 2", "WET/DRY", "CHORUS", "REVERB", "REV TIME", "MAST EQ"];
@@ -129,7 +129,7 @@ Rectangle {
                     return (pct > 0 ? "+" : "") + pct;
                 }
                 return "+0";
-            } else if (currentView === "PERF MIXER") {
+            } else if (currentView === "PERFORMANCE") {
                 return Math.round(card.internalVal * 127).toString();
             } else if (currentView === "EFFECTS") {
                 if (knobIndex === 1) return Math.round(1 + card.internalVal * 78).toString();

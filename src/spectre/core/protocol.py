@@ -57,6 +57,11 @@ from .sysex import (
     PERF_PART_REVERB_SEND,
     PERF_PART_RX_CHANNEL,
     PERF_PART_RX_SWITCH,
+    PERF_ZONE_BLOCK_SIZE,
+    PERF_ZONE_KEY_HIGH,
+    PERF_ZONE_KEY_LOW,
+    PERF_ZONE_OCTAVE_SHIFT,
+    PERF_ZONE_SWITCH,
     perf_part_base,
     perf_zone_base,
     temp_perf_patch_base,
@@ -534,7 +539,76 @@ class JunoClient:
             except Exception:
                 state = PerfPartState(part_index=part, name=f"Part {part}")
             parts.append(state)
+        try:
+            zones = self.get_perf_zones(timeout=timeout)
+            for part, zone in zip(parts, zones):
+                part.key_low = zone["low"]
+                part.key_high = zone["high"]
+                part.zone_switch = zone["switch"]
+                part.zone_octave = zone["octave"]
+        except Exception as e:
+            logger.debug(f"get_perf_parts: zone read failed: {e}")
         return parts
+
+    @staticmethod
+    def _check_channel(channel: int) -> int:
+        ch = int(channel)
+        if not 1 <= ch <= 16:
+            raise ValueError(f"Performance zone channel must be 1..16, got {channel}")
+        return ch
+
+    def set_perf_zone(self, channel: int, key_low: int | None = None,
+                      key_high: int | None = None, switch: bool | None = None,
+                      octave: int | None = None) -> None:
+        """Write a Performance Zone block (10 00 (0x50+ch-1) 00, 0x1B bytes).
+
+        Low/high are ordered automatically (swapped when inverted).
+        Octave is 61..67 (-3..+3, 64 = 0).
+        """
+        ch = self._check_channel(channel)
+        base = perf_zone_base(ch)
+        if key_low is not None or key_high is not None:
+            cur_lo, cur_hi = None, None
+            if key_low is None or key_high is None:
+                try:
+                    blk = self.get_perf_zone_block(ch)
+                    cur_lo, cur_hi = int(blk[PERF_ZONE_KEY_LOW]), int(blk[PERF_ZONE_KEY_HIGH])
+                except Exception:
+                    cur_lo, cur_hi = 0, 127
+            lo = max(0, min(127, int(key_low))) if key_low is not None else cur_lo
+            hi = max(0, min(127, int(key_high))) if key_high is not None else cur_hi
+            lo, hi = min(lo, hi), max(lo, hi)
+            self.send_data(add_address(base, PERF_ZONE_KEY_LOW), [lo, hi])
+        if switch is not None:
+            self.send_data(add_address(base, PERF_ZONE_SWITCH), [1 if switch else 0])
+        if octave is not None:
+            self.send_data(add_address(base, PERF_ZONE_OCTAVE_SHIFT),
+                           [max(61, min(67, int(octave)))])
+
+    def get_perf_zone_block(self, channel: int, timeout: float = 1.0) -> bytes:
+        """Read one raw 0x1B Performance Zone block."""
+        ch = self._check_channel(channel)
+        res = self.request_data(perf_zone_base(ch), self._rq_size(PERF_ZONE_BLOCK_SIZE),
+                                timeout=timeout)
+        if res is None or len(res) < PERF_ZONE_BLOCK_SIZE:
+            raise TimeoutError(f"Timed out reading performance zone {ch}.")
+        return bytes(res[:PERF_ZONE_BLOCK_SIZE])
+
+    def get_perf_zones(self, timeout: float = 1.0) -> list[dict]:
+        """Read all 16 zone blocks as {low, high, switch, octave} dicts."""
+        zones = []
+        for ch in range(1, 17):
+            try:
+                blk = self.get_perf_zone_block(ch, timeout=timeout)
+                zones.append({
+                    "low": int(blk[PERF_ZONE_KEY_LOW]),
+                    "high": int(blk[PERF_ZONE_KEY_HIGH]),
+                    "switch": bool(blk[PERF_ZONE_SWITCH]),
+                    "octave": max(61, min(67, int(blk[PERF_ZONE_OCTAVE_SHIFT]))),
+                })
+            except Exception:
+                zones.append({"low": 0, "high": 127, "switch": True, "octave": 64})
+        return zones
 
     def push_patch_to_perf_part(self, state: "PatchState", part_index: int,
                                 write_gap: float = 0.02) -> int:

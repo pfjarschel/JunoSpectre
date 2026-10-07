@@ -98,7 +98,7 @@ def test_workstation_views_switching():
     all_views = [
         "JUNO PCM", "VECTOR", "WAVETABLE", "VA",
         "MOD MATRIX", "STEP LFO", "MSEG ENVELOPES", "MFX", "ROUTING", "MASTER FX",
-        "MACROS", "PERF MIXER", "SEQUENCER",
+        "MACROS", "PERFORMANCE", "SEQUENCER",
         "LIBRARIAN", "MIDI LEARN", "HARDWARE", "SYSTEM"
     ]
     for v in all_views:
@@ -116,6 +116,8 @@ def test_workstation_views_switching():
     assert bridge.activeView == "MFX"
     bridge.setActiveView("4-OSC VA")
     assert bridge.activeView == "VA"
+    bridge.setActiveView("PERF MIXER")
+    assert bridge.activeView == "PERFORMANCE"
 
 
 def test_sound_sculptor_and_mod_properties():

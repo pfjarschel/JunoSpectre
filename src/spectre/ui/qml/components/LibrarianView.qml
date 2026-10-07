@@ -23,8 +23,8 @@ Rectangle {
     property string activeCode: ""
     property bool searchKbVisible: false
     property bool refreshingSlots: false
-    property var kinds: ["", "patch", "drum", "performance"]
-    property var kindLabels: ["ALL", "PATCH", "DRUM", "PERF"]
+    property var kinds: ["", "patch", "drum", "performance", "playlist"]
+    property var kindLabels: ["ALL", "PATCH", "DRUM", "PERF", "SETLIST"]
     // Live library model. Bound declaratively (onCompleted proved unreliable
     // for nested views): app.py always sets the `patchLibrary` context
     // property, even to an empty model on failure. Null/undefined = demo.
@@ -155,25 +155,70 @@ Rectangle {
                 color: Theme.textDim
             }
             Item { width: ScaleMetrics.dp(4) }
+            // CANCEL: back to the previous view, no destination change
             Rectangle {
-                width: ScaleMetrics.dp(26)
+                width: ScaleMetrics.dp(72)
                 height: ScaleMetrics.dp(26)
                 radius: ScaleMetrics.dp(4)
-                color: libCloseArea.pressed ? Theme.bgCardActive : "#10141d"
+                color: libCancelArea.pressed ? Theme.bgCardActive : "#10141d"
                 border.color: Theme.borderCard
                 border.width: 1
                 Text {
                     anchors.centerIn: parent
-                    text: "✕"
+                    text: "CANCEL"
                     font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(10)
+                    font.pixelSize: ScaleMetrics.sp(9)
                     color: Theme.textSecondary
                 }
                 MouseArea {
-                    id: libCloseArea
+                    id: libCancelArea
+                    anchors.fill: parent
+                    onClicked: Bridge.cancelLibrarian()
+                }
+            }
+            // OK: close into the auditioned context (mixer / engine view)
+            Rectangle {
+                width: ScaleMetrics.dp(56)
+                height: ScaleMetrics.dp(26)
+                radius: ScaleMetrics.dp(4)
+                color: libOkArea.pressed ? Theme.bgCardActive : "#0c2f3f"
+                border.color: "#38bdf8"
+                border.width: 1
+                Text {
+                    anchors.centerIn: parent
+                    text: "OK ✓"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(9)
+                    color: "#38bdf8"
+                }
+                MouseArea {
+                    id: libOkArea
                     anchors.fill: parent
                     onClicked: Bridge.toggleLibrarian()
                 }
+            }
+        }
+
+        // Part-pick banner (pick mode: taps assign, CANCEL above aborts, OK goes to mixer)
+        Rectangle {
+            visible: Bridge.librarianPickTarget > 0
+            Layout.fillWidth: true
+            Layout.preferredHeight: Bridge.librarianPickTarget > 0 ? ScaleMetrics.dp(30) : 0
+            height: ScaleMetrics.dp(30)
+            radius: ScaleMetrics.dp(4)
+            color: "#2d1b4e"
+            border.color: Theme.tone2
+            border.width: 1
+            Text {
+                anchors.fill: parent
+                anchors.leftMargin: ScaleMetrics.dp(10)
+                anchors.rightMargin: ScaleMetrics.dp(10)
+                verticalAlignment: Text.AlignVCenter
+                text: "PICKING PATCH FOR PART " + Bridge.librarianPickTarget + " — taps audition & assign, OK when done"
+                font.bold: true
+                font.pixelSize: ScaleMetrics.sp(9)
+                color: Theme.tone2
+                elide: Text.ElideRight
             }
         }
 
@@ -525,17 +570,30 @@ Rectangle {
                                     root.selectedRow = root.patchModel.get(index)
                                     root.pendingAction = ""
                                     var ok = true
-                                    if (kind !== undefined && kind === "playlist") {
+                                    var wasPicking = Bridge.librarianPickTarget > 0
+                                    if (wasPicking) {
+                                        if (kind === "performance" || kind === "playlist") {
+                                            root.statusText = "Pick a patch or drum for Part " + Bridge.librarianPickTarget + " — not a " + kind + "."
+                                        } else {
+                                            var tgt = Bridge.librarianPickTarget
+                                            ok = Bridge.pickPartPatch(msb, lsb, pc, path, name, kind)
+                                            root.statusText = ok ? ("Part " + tgt + " ← " + name + ".") : "Assign failed."
+                                        }
+                                    } else if (kind !== undefined && kind === "playlist") {
                                         ok = Bridge.loadPlaylist(path)
-                                        root.statusText = ok ? "Playlist loaded — see PERF MIXER setlist." : "Playlist load failed."
+                                        root.statusText = ok ? "Playlist loaded — see PERFORMANCE setlist." : "Playlist load failed."
                                     } else if (kind !== undefined && kind === "performance") {
-                                        ok = Bridge.selectLibraryPerformance(msb, lsb, pc)
+                                        ok = Bridge.selectLibraryPerformance(msb, lsb, pc, name)
                                     } else if (msb !== undefined && msb >= 0) {
-                                        ok = Bridge.selectLibraryPatch(msb, lsb, pc)
+                                        ok = Bridge.selectLibraryPatch(msb, lsb, pc, name)
+                                    } else if (path !== undefined && String(path).slice(-8) === ".spectre") {
+                                        ok = Bridge.loadSpectreFile(path)
                                     } else {
                                         Bridge.setPatchName(name, "PATCH")
                                     }
-                                    root.statusText = ok ? "" : "No synthesizer connected — browsing only."
+                                    if (!wasPicking) {
+                                        root.statusText = ok ? "" : "No synthesizer connected — browsing only."
+                                    }
                                 } else {
                                     Bridge.setPatchName(modelData.num + " " + modelData.name, "PATCH")
                                 }
@@ -548,9 +606,11 @@ Rectangle {
             // End of left browser column; action column spans the full height.
             }
 
-            // Right Action Column (~240dp, full height)
+            // Right Action Column (~240dp, full height; hidden while picking
+            // a part patch so the browser gets full width and never overflows)
             Rectangle {
-                Layout.preferredWidth: ScaleMetrics.dp(240)
+                visible: Bridge.librarianPickTarget <= 0
+                Layout.preferredWidth: Bridge.librarianPickTarget > 0 ? 0 : ScaleMetrics.dp(240)
                 Layout.fillHeight: true
                 radius: ScaleMetrics.dp(6)
                 color: Theme.bgApp
@@ -565,7 +625,6 @@ Rectangle {
                     Text { text: "PRESET ACTIONS"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textDim }
 
                     LibBtn { text: "INITIALIZE ACTIVE PATCH (RAM)"; accent: "#fbbf24"; onClicked: { root.pendingAction = ""; Bridge.openInitPatchModal() } }
-                    LibBtn { text: "SAVE CURRENT SOUND"; accent: "#38bdf8"; onClicked: { root.pendingAction = ""; Bridge.openSavePatchModal() } }
                     LibBtn {
                         text: "RENAME SELECTED"
                         accent: Theme.tone2
@@ -618,42 +677,6 @@ Rectangle {
                             root.pendingAction = ""
                             var err = Bridge.reinitUserSlot(root.selectedRow.msb, root.selectedRow.lsb, root.selectedRow.pc)
                             root.statusText = err === "" ? "Slot reinitialized (backup kept)." : err
-                        }
-                    }
-                    LibBtn {
-                        text: "EXPORT SELECTED .SPECTRE"
-                        accent: "#38bdf8"
-                        opacity: root.isSpectreFileRow() ? 1.0 : 0.4
-                        onClicked: {
-                            root.pendingAction = ""
-                            if (!root.isSpectreFileRow()) { root.statusText = "Select a Pi file first."; return }
-                            var drive = root.firstUsbDrive()
-                            if (drive === "") { root.statusText = "No USB drive found."; return }
-                            var err = Bridge.exportLibraryFile(root.selectedRow.path, drive, "")
-                            root.statusText = err === "" ? ("Exported to " + drive) : err
-                        }
-                    }
-                    LibBtn {
-                        text: "EXPORT LIVE .SYX"
-                        accent: "#10b981"
-                        onClicked: {
-                            root.pendingAction = ""
-                            var drive = root.firstUsbDrive()
-                            if (drive === "") { root.statusText = "No USB drive found."; return }
-                            var err = Bridge.exportLiveSyx(drive, Bridge.patchName)
-                            root.statusText = err === "" ? ("Exported to " + drive) : err
-                        }
-                    }
-                    LibBtn {
-                        text: "IMPORT ALL FROM USB"
-                        accent: "#fbbf24"
-                        onClicked: {
-                            root.pendingAction = ""
-                            var drive = root.firstUsbDrive()
-                            if (drive === "") { root.statusText = "No USB drive found."; return }
-                            var n = Bridge.importUsbAll(drive)
-                            root.statusText = "Imported " + n + " file(s)."
-                            root.applyFilter()
                         }
                     }
                     LibBtn {

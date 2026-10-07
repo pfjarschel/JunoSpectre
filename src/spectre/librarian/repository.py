@@ -407,16 +407,17 @@ class PatchRepository:
             return
         name, category, tags, fav, rating, version = describe_for_index(loaded)
         raw = f.read_bytes()
+        file_kind = str(loaded.get("kind") or "patch")
         self._conn.execute(
             """INSERT INTO patches(path, source, name, category, tags, favorite,
-                   rating, mtime, hash, msb, lsb, pc, format_version)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   rating, mtime, hash, msb, lsb, pc, format_version, kind)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(path) DO UPDATE SET
                  source='file', name=excluded.name, category=excluded.category,
                  tags=excluded.tags, favorite=excluded.favorite, rating=excluded.rating,
                  mtime=excluded.mtime, hash=excluded.hash,
                  msb=excluded.msb, lsb=excluded.lsb, pc=excluded.pc,
-                 format_version=excluded.format_version""",
+                 format_version=excluded.format_version, kind=excluded.kind""",
             (
                 str(f), "file", name, category, _tags_to_str(tags),
                 int(bool(fav)), int(rating or 0), int(st_mtime),
@@ -425,6 +426,7 @@ class PatchRepository:
                 (loaded["synth_ref"] or {}).get("lsb") if loaded.get("synth_ref") else None,
                 (loaded["synth_ref"] or {}).get("pc") if loaded.get("synth_ref") else None,
                 int(version),
+                file_kind,
             ),
         )
 
@@ -806,6 +808,7 @@ class PatchRepository:
         spectre: Optional[dict[str, Any]] = None,
         synth_ref: Optional[dict[str, Any]] = None,
         filename: Optional[str] = None,
+        kind: str = "patch",
     ) -> Path:
         """Persist the live (possibly Pi-only) edit buffer as a .spectre file."""
         from ..core.spectre_format import save_spectre
@@ -817,7 +820,8 @@ class PatchRepository:
             "name": name[:12], "category": category, "tags": tags or [],
             "favorite": favorite, "rating": 0, "comment": "", "author": "",
         }
-        out = save_spectre(target, patch_state, meta=meta, spectre=spectre, synth_ref=synth_ref)
+        out = save_spectre(target, patch_state, meta=meta, spectre=spectre,
+                           synth_ref=synth_ref, kind=kind)
         self._touch_file_row(str(out))
         return out
 

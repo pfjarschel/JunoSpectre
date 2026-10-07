@@ -55,7 +55,7 @@ Rectangle {
                 if (v === "MSEG ENVELOPES") return "#fbbf24";
                 if (v === "MFX") return "#ec4899";
                 if (v === "ROUTING") return "#06b6d4";
-                if (v === "MASTER FX" || v === "PERF MIXER") return "#a855f7";
+                if (v === "MASTER FX" || v === "PERFORMANCE") return "#a855f7";
                 if (v === "LIBRARIAN") return "#60a5fa";
                 if (v === "MIDI LEARN") return "#f59e0b";
                 if (v === "HARDWARE") return "#94a3b8";
@@ -128,9 +128,10 @@ Rectangle {
         }
 
         // Active Patch Name Display with Sync, Init and Save Buttons
+        // (stretches in PERFORM to show "PERFNAME / N-PATCHNAME" context)
         Rectangle {
             Layout.preferredWidth: ScaleMetrics.dp(279)
-            Layout.fillWidth: false
+            Layout.fillWidth: Bridge.soundMode === "PERFORM"
             height: ScaleMetrics.dp(38)
             radius: ScaleMetrics.dp(4)
             color: Theme.bgApp

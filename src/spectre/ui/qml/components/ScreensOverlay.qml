@@ -265,9 +265,9 @@ Rectangle {
 
                         AppTile {
                             Layout.fillWidth: true
-                            viewKey: "PERF MIXER"
-                            title: "PERF MIXER"
-                            subtitle: "16-Part multi-timbral faders & zone splits"
+                            viewKey: "PERFORMANCE"
+                            title: "PERFORMANCE"
+                            subtitle: "Live rig: 16-part mixer, zones & setlist"
                             glyph: "🎛"
                             accentColor: "#a855f7"
                         }

@@ -81,6 +81,7 @@ PERF_ZONE_OCTAVE_SHIFT = 0x00    # 61..67 (-3..+3)
 PERF_ZONE_SWITCH = 0x01          # 0..1 (OFF, ON)
 PERF_ZONE_KEY_LOW = 0x0C         # 0..127 (C-1..UPPER)
 PERF_ZONE_KEY_HIGH = 0x0D        # 0..127 (LOWER..G9)
+PERF_ZONE_BLOCK_SIZE = 0x1B
 
 
 def perf_part_base(part_index: int) -> tuple[int, int, int, int]:
