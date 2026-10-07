@@ -4227,6 +4227,52 @@ class SpectreBridge(QObject):
         slots.sort(key=lambda s: s["number"])
         return slots
 
+    @pyqtSlot(result=int)
+    def refreshUserSlotNames(self) -> int:
+        """(Re)read all 256 user slot names+categories into the index.
+
+        Only slots whose content changed are rewritten. Blocking (~10-15 s
+        for a full pass); the dialog runs it deferred with a busy overlay.
+        Returns refreshed count, -1 when no synth/repo. Aborts after 5
+        consecutive read failures (cable pulled mid-pass).
+        """
+        from ..core.categories import decode_common_block
+
+        repo = self._librarian()
+        juno = getattr(getattr(self, "engine", None), "juno", None)
+        if repo is None or juno is None:
+            return -1
+        n = fails = 0
+        for idx in range(256):
+            msb, lsb, pc = 87, (0 if idx < 128 else 1), idx % 128
+            try:
+                raw = juno.request_data(
+                    (0x30 if idx < 128 else 0x31, idx % 128, 0x00, 0x00),
+                    (0x00, 0x00, 0x00, 0x50), timeout=1.0)
+            except Exception:
+                raw = None
+            if not raw or len(raw) < 80:
+                fails += 1
+                if fails >= 5:
+                    logger.warning("refreshUserSlotNames: aborting after 5 failures")
+                    break
+                continue
+            fails = 0
+            name, cat = decode_common_block(bytes(raw))
+            key = f"synth:patch:{msb}:{lsb}:{pc}"
+            try:
+                cur = repo.get(key)
+            except Exception:
+                cur = None
+            if cur is None or cur.get("name") != name or cur.get("category") != cat:
+                try:
+                    repo.upsert_synth_user(msb, lsb, pc, name, cat)
+                    n += 1
+                except Exception as e:
+                    logger.debug(f"slot upsert failed for {key}: {e}")
+        self.librarianChanged.emit()
+        return n
+
     @pyqtSlot(result=str)
     def currentCategoryCode(self) -> str:
         """Roland 3-letter category of the live temp sound (prefills save)."""

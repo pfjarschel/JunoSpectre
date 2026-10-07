@@ -176,3 +176,26 @@ def test_delete_and_rescan(rig):
     assert rig.bridge.deleteLibraryFile(out) is True
     assert not rig.repo.search("DOOMED")
     assert rig.bridge.rescanLibrary() >= 0
+
+
+def test_refresh_user_slot_names(rig):
+    # Empty store: aborts after 5 consecutive failures, nothing written.
+    assert rig.bridge.refreshUserSlotNames() == 0
+    assert rig.repo.search("", source="synth-user") == []
+    # Seed two slots: only changed slots are (re)written.
+    _template_state_at(rig.juno, (0x30, 0, 0, 0))
+    _template_state_at(rig.juno, (0x30, 1, 0, 0))
+    assert rig.bridge.refreshUserSlotNames() == 2
+    rows = rig.repo.search("", source="synth-user")
+    assert len(rows) == 2
+    assert rig.bridge.refreshUserSlotNames() == 0  # unchanged: no rewrites
+    index = rig.bridge.getUserSlotIndex()
+    assert len(index) == 2
+    assert index[0]["number"] == 501 and index[1]["number"] == 502
+
+
+def test_refresh_without_synth_returns_minus_one(rig):
+    rig.bridge.engine.juno = None
+    assert rig.bridge.refreshUserSlotNames() == -1
+    assert rig.bridge.getUserSlots("patch") == []
+

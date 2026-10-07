@@ -21,6 +21,7 @@ Rectangle {
     property bool confirmArmed: false
     property string errorText: ""
     property bool busy: false
+    property bool readingSlots: false
     property bool keyboardVisible: false
     property string activeField: "name"
 
@@ -52,6 +53,13 @@ Rectangle {
         var list = []
         try { list = Bridge.getUserSlotIndex() || [] } catch (e) { list = [] }
         root.slotList = list
+        // Self-healing: a machine that never ran the dump has an empty
+        // index — pull the names live from the keyboard instead.
+        if (list.length < 256 && !root.readingSlots) {
+            root.readingSlots = true
+            slotRefreshTimer.start()
+            return
+        }
         // Default: current slot when overwriting, else first free slot.
         var defIdx = -1
         if (Bridge.currentIsUserSlot) {
@@ -97,7 +105,7 @@ Rectangle {
 
     MouseArea {
         anchors.fill: parent
-        onClicked: { if (!root.busy) root.close() }
+        onClicked: { if (!root.busy && !root.readingSlots) root.close() }
     }
 
     Rectangle {
@@ -141,7 +149,7 @@ Rectangle {
                     color: closeArea.pressed ? Theme.bgCardActive : "#10141d"
                     border.color: Theme.borderCard; border.width: 1
                     Text { anchors.centerIn: parent; text: "✕"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
-                    MouseArea { id: closeArea; anchors.fill: parent; onClicked: { if (!root.busy) root.close() } }
+                    MouseArea { id: closeArea; anchors.fill: parent; onClicked: { if (!root.busy && !root.readingSlots) root.close() } }
                 }
             }
 
@@ -325,6 +333,43 @@ Rectangle {
                 }
             }
 
+            // Slot list header: count + manual refresh from keyboard
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: ScaleMetrics.dp(8)
+                visible: root.saveToDevice
+                Text {
+                    text: "USER SLOT" + (root.slotList.length > 0 ? (" (" + root.slotList.length + "/256)") : "")
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(9)
+                    color: Theme.textDim
+                    Layout.fillWidth: true
+                }
+                Text {
+                    visible: root.readingSlots
+                    text: "Reading slots…"
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    font.italic: true
+                    color: "#fbbf24"
+                }
+                Rectangle {
+                    width: ScaleMetrics.dp(30); height: ScaleMetrics.dp(24)
+                    radius: ScaleMetrics.dp(4)
+                    color: refreshArea.pressed ? Theme.bgCardActive : "#10141d"
+                    border.color: Theme.borderCard; border.width: 1
+                    Text { anchors.centerIn: parent; text: "⟳"; font.bold: true; font.pixelSize: ScaleMetrics.sp(11); color: Theme.tone1 }
+                    MouseArea {
+                        id: refreshArea
+                        anchors.fill: parent
+                        onClicked: {
+                            if (root.readingSlots || root.busy) return
+                            root.readingSlots = true
+                            slotRefreshTimer.start()
+                        }
+                    }
+                }
+            }
+
             // Slot list (scrollable, tap to select)
             Rectangle {
                 Layout.fillWidth: true
@@ -466,7 +511,7 @@ Rectangle {
                     color: cancelArea.pressed ? Theme.bgCardActive : "#10141d"
                     border.color: Theme.borderCard; border.width: 1
                     Text { anchors.centerIn: parent; text: "CANCEL"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textSecondary }
-                    MouseArea { id: cancelArea; anchors.fill: parent; onClicked: { if (!root.busy) root.close() } }
+                    MouseArea { id: cancelArea; anchors.fill: parent; onClicked: { if (!root.busy && !root.readingSlots) root.close() } }
                 }
                 Rectangle {
                     Layout.fillWidth: true
@@ -485,7 +530,7 @@ Rectangle {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: {
-                            if (root.busy) return
+                            if (root.busy || root.readingSlots) return
                             if ((root.patchName || "").trim() === "") { root.errorText = "Give the sound a name."; return }
                             if (root.saveToDevice) {
                                 var s = root.selectedSlot()
@@ -502,6 +547,23 @@ Rectangle {
                         }
                     }
                 }
+            }
+        }
+
+        // Deferred blocking save (lets the busy state paint first).
+        Timer {
+            id: slotRefreshTimer
+            interval: 80
+            repeat: false
+            running: false
+            onTriggered: {
+                var n = -1
+                try { n = Bridge.refreshUserSlotNames() } catch (e) { n = -1 }
+                root.readingSlots = false
+                if (n < 0) {
+                    root.errorText = "No synthesizer connected — slot names unavailable."
+                }
+                root.loadSlots()
             }
         }
 
