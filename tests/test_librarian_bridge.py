@@ -226,6 +226,21 @@ def test_reinit_verify_failure_keeps_slot_backup(rig, monkeypatch):
     assert list(rig.repo.user_dir.glob("BEFORE-REINIT_*")) == []
 
 
+def test_toggle_librarian_returns_to_previous_view(rig):
+    b = rig.bridge
+    assert b.activeView == "JUNO PCM"
+    b.toggleLibrarian()
+    assert b.activeView == "LIBRARIAN"
+    b.toggleLibrarian()
+    assert b.activeView == "JUNO PCM"
+    # Entry via another path (e.g. screens overlay) is remembered too.
+    b.setActiveView("VA")
+    b.toggleLibrarian()
+    assert b.activeView == "LIBRARIAN"
+    b.toggleLibrarian()
+    assert b.activeView == "VA"
+
+
 def test_refresh_without_synth_returns_minus_one(rig):
     rig.bridge.engine.juno = None
     assert rig.bridge.refreshUserSlotNames() == -1

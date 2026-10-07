@@ -154,6 +154,27 @@ Rectangle {
                 font.pixelSize: ScaleMetrics.sp(9)
                 color: Theme.textDim
             }
+            Item { width: ScaleMetrics.dp(4) }
+            Rectangle {
+                width: ScaleMetrics.dp(26)
+                height: ScaleMetrics.dp(26)
+                radius: ScaleMetrics.dp(4)
+                color: libCloseArea.pressed ? Theme.bgCardActive : "#10141d"
+                border.color: Theme.borderCard
+                border.width: 1
+                Text {
+                    anchors.centerIn: parent
+                    text: "✕"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(10)
+                    color: Theme.textSecondary
+                }
+                MouseArea {
+                    id: libCloseArea
+                    anchors.fill: parent
+                    onClicked: Bridge.toggleLibrarian()
+                }
+            }
         }
 
         // Browser (left) + full-height actions (right)

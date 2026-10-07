@@ -181,6 +181,7 @@ class SpectreBridge(QObject):
 
         # Workstation Shell State
         self._active_view: str = "JUNO PCM"
+        self._view_before_librarian: str = "JUNO PCM"
         self._brightness: int = 85
         try:
             from ..core.backlight import BacklightController
@@ -1886,6 +1887,8 @@ class SpectreBridge(QObject):
             v = "HARDWARE"
 
         if self._active_view != v:
+            if v == "LIBRARIAN" and self._active_view != "LIBRARIAN":
+                self._view_before_librarian = self._active_view
             self._active_view = v
             if v == "VECTOR":
                 self.setMorphMode("vector_2d")
@@ -1893,6 +1896,14 @@ class SpectreBridge(QObject):
                 self.setMorphMode("wavetable_1d")
             self.activeViewChanged.emit(self._active_view)
             self._update_telemetry_polling()
+
+    @pyqtSlot()
+    def toggleLibrarian(self) -> None:
+        """Header patch-name tap: enter Librarian, tap again to go back."""
+        if self._active_view == "LIBRARIAN":
+            self.setActiveView(getattr(self, "_view_before_librarian", "") or "JUNO PCM")
+        else:
+            self.setActiveView("LIBRARIAN")
 
     @pyqtSlot(int)
     def setSelectedTone(self, tone_number: int) -> None:

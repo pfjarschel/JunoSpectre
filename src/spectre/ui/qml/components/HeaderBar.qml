@@ -77,7 +77,7 @@ Rectangle {
                     elide: Text.ElideRight
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: Bridge.setActiveView("LIBRARIAN")
+                        onClicked: Bridge.toggleLibrarian()
                     }
                 }
 
