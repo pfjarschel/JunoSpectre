@@ -4952,6 +4952,21 @@ class SpectreBridge(QObject):
         self._host_power("reboot")
 
     @pyqtSlot()
+    def quitApp(self) -> None:
+        """Quit to desktop: silence synth, close MIDI, then exit Qt loop."""
+        from PyQt6.QtGui import QGuiApplication
+
+        logger.info("Quitting application...")
+        self.powerActionChanged.emit("quitting")
+        self._perform_appliance_cleanup("quit")
+        try:
+            app = QGuiApplication.instance()
+            if app:
+                app.quit()
+        except Exception as e:
+            logger.debug(f"Qt quit failed: {e}")
+
+    @pyqtSlot()
     def shutdownSystem(self) -> None:
         """Power off the host OS (Pi appliance). Safe no-op with warning off Linux."""
         self._host_power("poweroff")

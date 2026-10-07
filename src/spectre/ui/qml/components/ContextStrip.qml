@@ -219,9 +219,11 @@ Rectangle {
             anchors.bottom: barBg.top
             anchors.left: parent.left
             anchors.right: parent.right
+            anchors.topMargin: ScaleMetrics.dp(0)
+            anchors.bottomMargin: ScaleMetrics.dp(2)
             text: card.displayString
             font.bold: true
-            font.pixelSize: ScaleMetrics.sp(10)
+            font.pixelSize: ScaleMetrics.sp(8)
             font.family: Theme.fontMono
             color: Theme.textPrimary
             horizontalAlignment: Text.AlignHCenter
@@ -234,7 +236,9 @@ Rectangle {
             anchors.bottom: parent.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.margins: ScaleMetrics.dp(3)
+            anchors.leftMargin: ScaleMetrics.dp(3)
+            anchors.rightMargin: ScaleMetrics.dp(3)
+            anchors.bottomMargin: ScaleMetrics.dp(6)
             height: ScaleMetrics.dp(3)
             radius: ScaleMetrics.dp(2)
             color: "#1e293b"

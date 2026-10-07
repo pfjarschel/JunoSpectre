@@ -1056,6 +1056,8 @@ Rectangle {
                     MouseArea {
                         anchors.fill: parent
                         preventStealing: true
+                        property real pressX: 0
+                        property bool editing: false
 
                         function updateLevel(mouse) {
                             tb.selected();
@@ -1064,9 +1066,17 @@ Rectangle {
                             Bridge.setToneLevel(tb.toneNumber, newLvl);
                         }
 
-                        onPressed: (mouse) => updateLevel(mouse)
+                        onPressed: (mouse) => {
+                            pressX = mouse.x;
+                            editing = false;
+                            tb.selected();
+                        }
                         onPositionChanged: (mouse) => {
-                            if (pressed) updateLevel(mouse)
+                            if (pressed) {
+                                if (!editing && Math.abs(mouse.x - pressX) > ScaleMetrics.dp(5))
+                                    editing = true;
+                                if (editing) updateLevel(mouse);
+                            }
                         }
                     }
                 }

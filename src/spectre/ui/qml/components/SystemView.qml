@@ -146,6 +146,36 @@ Rectangle {
                         }
                     }
 
+                    // Quit App Button (graceful exit to desktop - two-tap confirm)
+                    Rectangle {
+                        id: quitBtn
+                        property bool confirmAction: false
+                        Layout.fillWidth: true
+                        height: ScaleMetrics.dp(36)
+                        radius: ScaleMetrics.dp(4)
+                        color: quitBtn.confirmAction ? "#1e3a2f" : (quitMouse.pressed ? Theme.bgCardActive : "#161d2b")
+                        border.color: quitBtn.confirmAction ? "#10b981" : Theme.borderCard
+                        border.width: 1
+
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Text { text: quitBtn.confirmAction ? "⚠" : "✕"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: quitBtn.confirmAction ? "#10b981" : Theme.textSecondary }
+                            Text { text: quitBtn.confirmAction ? "TAP AGAIN TO QUIT" : "QUIT APPLICATION"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: quitBtn.confirmAction ? "#10b981" : Theme.textSecondary }
+                        }
+                        Timer { id: quitReset; interval: 3000; onTriggered: quitBtn.confirmAction = false }
+                        MouseArea {
+                            id: quitMouse
+                            anchors.fill: parent
+                            onClicked: {
+                                if (!quitBtn.confirmAction) { quitBtn.confirmAction = true; quitReset.restart(); }
+                                else { quitBtn.confirmAction = false; Bridge.quitApp(); }
+                            }
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; height: 1; color: Theme.borderCard }
+
                     // Reboot System Button (two-tap confirm -> systemctl reboot)
                     Rectangle {
                         id: rebootBtn
