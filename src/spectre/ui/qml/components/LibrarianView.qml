@@ -20,6 +20,7 @@ Rectangle {
     property string pendingAction: ""
     property string statusText: ""
     property string activeCode: ""
+    property bool searchKbVisible: false
     property var kinds: ["", "patch", "drum", "performance"]
     property var kindLabels: ["ALL", "PATCH", "DRUM", "PERF"]
     // Live library model. Bound declaratively (onCompleted proved unreliable
@@ -290,23 +291,82 @@ Rectangle {
             border.color: Theme.borderCard
             border.width: 1
             visible: root.patchModel !== null
-            TextInput {
+            RowLayout {
                 anchors.fill: parent
-                anchors.margins: ScaleMetrics.dp(6)
-                verticalAlignment: Text.AlignVCenter
-                font.pixelSize: ScaleMetrics.sp(10)
-                color: Theme.textPrimary
-                clip: true
-                onTextChanged: { root.searchText = text; root.applyFilter() }
+                anchors.leftMargin: ScaleMetrics.dp(8)
+                anchors.rightMargin: ScaleMetrics.dp(6)
+                spacing: ScaleMetrics.dp(6)
                 Text {
-                    anchors.fill: parent
-                    verticalAlignment: Text.AlignVCenter
-                    text: "Search patches…"
+                    text: "🔍"
                     font.pixelSize: ScaleMetrics.sp(10)
                     color: Theme.textDim
-                    visible: parent.text === ""
+                }
+                TextInput {
+                    id: searchField
+                    Layout.fillWidth: true
+                    verticalAlignment: Text.AlignVCenter
+                    font.pixelSize: ScaleMetrics.sp(10)
+                    color: Theme.textPrimary
+                    clip: true
+                    onTextChanged: { root.searchText = text; root.applyFilter() }
+                    onActiveFocusChanged: { if (activeFocus) root.searchKbVisible = true }
+                    Text {
+                        anchors.fill: parent
+                        verticalAlignment: Text.AlignVCenter
+                        text: "Search patches…"
+                        font.pixelSize: ScaleMetrics.sp(10)
+                        color: Theme.textDim
+                        visible: parent.text === "" && !parent.activeFocus
+                    }
+                }
+                Text {
+                    visible: searchField.text.length > 0
+                    text: "✕"
+                    font.pixelSize: ScaleMetrics.sp(10)
+                    color: Theme.textDim
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { searchField.text = ""; root.searchText = ""; root.applyFilter() }
+                    }
+                }
+                Rectangle {
+                    width: ScaleMetrics.dp(28)
+                    height: ScaleMetrics.dp(22)
+                    radius: ScaleMetrics.dp(4)
+                    color: root.searchKbVisible ? "#60a5fa" : Theme.bgSurface
+                    border.color: Theme.borderCard
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⌨"
+                        font.pixelSize: ScaleMetrics.sp(12)
+                        color: root.searchKbVisible ? "#000000" : Theme.textSecondary
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: { root.searchKbVisible = !root.searchKbVisible; if (root.searchKbVisible) searchField.forceActiveFocus() } }
                 }
             }
+        }
+
+        // Touch keyboard for search (below search, above list; list shrinks)
+        VirtualKeyboard {
+            Layout.fillWidth: true
+            Layout.preferredHeight: ScaleMetrics.dp(140)
+            visible: root.searchKbVisible && root.patchModel !== null
+            accentColor: "#60a5fa"
+            onKeyClicked: (key) => {
+                searchField.text += key
+                root.searchText = searchField.text
+                root.applyFilter()
+            }
+            onBackspaceClicked: {
+                if (searchField.text.length > 0) {
+                    searchField.text = searchField.text.slice(0, -1)
+                    root.searchText = searchField.text
+                    root.applyFilter()
+                }
+            }
+            onClearClicked: { searchField.text = ""; root.searchText = ""; root.applyFilter() }
+            onCloseClicked: { root.searchKbVisible = false }
         }
 
         // Patch List Table (fills the left column's remaining height)
