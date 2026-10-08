@@ -1,5 +1,7 @@
 """spectre.control - Hardware profile, MIDI learn, and smooth scaling engine."""
 
+from .engine import ControlEvent, MidiControllerEngine
+from .midi_learn import MidiLearnEngine, build_standard_parameter_registry
 from .models import (
     ControlDefinition,
     ControlType,
@@ -13,8 +15,6 @@ from .models import (
 )
 from .profiles import DEFAULT_PROFILE_DIR, ProfileManager
 from .smooth_scaler import SmoothScaler
-from .midi_learn import MidiLearnEngine, build_standard_parameter_registry
-from .engine import ControlEvent, MidiControllerEngine
 
 __all__ = [
     "ControlDefinition",

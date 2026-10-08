@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Dict, List, Optional
+
 from pydantic import BaseModel, Field, field_validator
 
 

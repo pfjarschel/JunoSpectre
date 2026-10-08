@@ -6,11 +6,11 @@ and dirty-state change detection.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import enum
 import logging
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
 from ..core.protocol import JunoClient

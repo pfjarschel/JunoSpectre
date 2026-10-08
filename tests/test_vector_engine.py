@@ -1,7 +1,6 @@
 """Unit tests for VectorEngine, rate-limiting, and subscriber events."""
 
 from unittest.mock import MagicMock
-import pytest
 
 from src.spectre.vector.engine import MorphMode, VectorEngine
 from src.spectre.vector.math import CrossfadeCurve

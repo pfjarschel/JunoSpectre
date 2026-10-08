@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .sysex import unpack_2nibbles, unpack_4nibbles
 
-
 # Canonical initialization template (single source of truth shared by
 # protocol.init_patch, create_init_patch, PatchState.from_template, and bridge.initPatch).
 INIT_PATCH_NAME = "JUNO SPECTRE"

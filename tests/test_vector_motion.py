@@ -7,7 +7,6 @@ from src.spectre.vector.motion import (
     LoopMode,
     MotionRecorder,
     RecorderState,
-    TrajectoryPoint,
 )
 
 
@@ -133,7 +132,7 @@ def test_chaos_automator_smoothness_and_spread():
 def test_wavetable_sweeps():
     from src.spectre.vector.motion import WavetableSweepMode
     rec = MotionRecorder(bpm=120.0)
-    
+
     # MANUAL
     rec.wavetable_sweep = WavetableSweepMode.MANUAL
     assert rec.step_wavetable(0.1) is None

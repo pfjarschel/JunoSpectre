@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence, Tuple
 
-
 # Roland Manufacturer ID
 ROLAND_MANUFACTURER_ID = 0x41
 
@@ -380,7 +379,7 @@ def unpack_2nibbles(data: Sequence[int]) -> int:
 
 def calculate_checksum(data: Sequence[int]) -> int:
     """Calculate Roland 7-bit checksum.
-    
+
     Formula from Roland MIDI Implementation:
     sum = sum(address_bytes + data_or_size_bytes)
     remainder = sum % 128
@@ -398,7 +397,7 @@ def add_address(
     """Add a 4-byte Roland address and offset using 7-bit arithmetic (0x00..0x7F per byte)."""
     if len(base) != 4:
         raise ValueError(f"Base address must be 4 bytes, got {len(base)}")
-    
+
     if isinstance(offset, int):
         # Convert Roland hex offset literals (e.g. 0x0105 -> byte2=0x01, byte3=0x05)
         # Each byte in Roland SysEx address is 7-bit (0x00..0x7F)
@@ -455,17 +454,17 @@ class RolandSysEx:
         data: Sequence[int],
     ) -> list[int]:
         """Construct Roland DT1 (Data Set 1) message body (excluding F0/F7 for mido).
-        
+
         Format:
         [0x41, device_id, model_id..., 0x12, addr[0..3]..., data..., checksum]
         """
         if len(address) != 4:
             raise ValueError(f"Address must be 4 bytes, got {len(address)}")
-        
+
         addr_bytes = list(address)
         data_bytes = list(data)
         checksum = calculate_checksum(addr_bytes + data_bytes)
-        
+
         packet = [ROLAND_MANUFACTURER_ID, self.device_id]
         packet.extend(self.model_id)
         packet.append(CMD_DT1)
@@ -480,7 +479,7 @@ class RolandSysEx:
         size: Sequence[int],
     ) -> list[int]:
         """Construct Roland RQ1 (Data Request 1) message body (excluding F0/F7 for mido).
-        
+
         Format:
         [0x41, device_id, model_id..., 0x11, addr[0..3]..., size[0..3]..., checksum]
         """
@@ -488,11 +487,11 @@ class RolandSysEx:
             raise ValueError(f"Address must be 4 bytes, got {len(address)}")
         if len(size) != 4:
             raise ValueError(f"Size must be 4 bytes, got {len(size)}")
-        
+
         addr_bytes = list(address)
         size_bytes = list(size)
         checksum = calculate_checksum(addr_bytes + size_bytes)
-        
+
         packet = [ROLAND_MANUFACTURER_ID, self.device_id]
         packet.extend(self.model_id)
         packet.append(CMD_RQ1)
@@ -513,12 +512,12 @@ class RolandSysEx:
         # Minimum Roland packet: 0x41, dev, model(3), cmd, addr(4), data(>=1), checksum(1) = 12 bytes
         if len(data) < 12:
             return None
-        
+
         if data[0] != ROLAND_MANUFACTURER_ID:
             return None
 
         device_id = data[1]
-        
+
         # Check for 3-byte model ID (e.g. 00 00 3A)
         # If command byte is at index 5:
         if data[5] in (CMD_RQ1, CMD_DT1):

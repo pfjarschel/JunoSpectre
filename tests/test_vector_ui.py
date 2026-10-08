@@ -3,7 +3,9 @@
 import pytest
 
 from src.spectre.ui.app import create_application
-from src.spectre.vector.engine import MorphMode, VectorEngine
+from src.spectre.vector.engine import VectorEngine
+
+pytestmark = pytest.mark.ui
 
 
 def test_ui_application_creation():
@@ -245,6 +247,7 @@ def test_bridge_get_filtered_waves():
 def test_bridge_sync_patch_from_synth():
     """Verify syncPatchFromSynth updates patch name and tone waveforms from JunoClient."""
     from unittest.mock import MagicMock
+
     from src.spectre.core.protocol import JunoClient, SoundMode
 
     mock_client = MagicMock(spec=JunoClient)

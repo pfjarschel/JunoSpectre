@@ -97,7 +97,7 @@ class ProfileManager:
 
     def match_profile_for_device(self, port_name: str) -> Optional[HardwareProfile]:
         """Auto-detect hardware profile matching a connected MIDI port name.
-        
+
         Prioritizes the longest, most specific keyword match.
         """
         if not port_name:

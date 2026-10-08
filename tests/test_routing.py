@@ -1,19 +1,12 @@
 """Unit tests for FX and Tone Routing engine, presets, and pitfall detector."""
 
 from unittest.mock import MagicMock
+
 import pytest
-import mido
 
 from src.spectre.core.midi import MidiDeviceManager
+from src.spectre.core.patch_state import PatchState
 from src.spectre.core.protocol import JunoClient, SoundMode
-from src.spectre.core.patch_state import PatchState, ToneState, EffectsState
-from src.spectre.core.sysex import (
-    TONE_PARAM_OUTPUT_ASSIGN,
-    TONE_PARAM_DRY_SEND,
-    TONE_PARAM_CHORUS_SEND,
-    TONE_PARAM_REVERB_SEND,
-    PATCH_PARAM_OUTPUT_ASSIGN,
-)
 
 
 @pytest.fixture

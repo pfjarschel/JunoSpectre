@@ -16,25 +16,8 @@ from typing import Optional
 
 from PyQt6.QtCore import QObject, QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
-from ..core.patch_state import (
-    EffectsState,
-    MatrixCtrlState,
-    PatchCommonState,
-    PatchState,
-    PerfPartState,
-    StepLfoState,
-    ToneState,
-    TVF_TYPE_NAMES,
-    LFO_WAVE_NAMES,
-    LFO_FADE_MODE_NAMES,
-)
-from ..core.env_presets import env_preset_names, get_env_preset
 from ..core.categories import code_from_index
-from ..core.updater import GitUpdater, UpdaterError
-from ..core.wifi import WifiManager, WifiStatus
-from ..core.waves import WaveCatalogManager
-from ..core.mfx_catalog import (EQ_PARAMETRIC_PRESETS, SPECTRUM_PRESETS,
-                                get_mfx_catalog, get_mfx_algo, get_mfx_categories, get_mfx_light_catalog)
+from ..core.env_presets import env_preset_names, get_env_preset
 from ..core.macro_targets import (
     filter_macro_targets,
     get_macro_catalog,
@@ -42,6 +25,23 @@ from ..core.macro_targets import (
     macro_delta,
     resolve_sounding,
 )
+from ..core.mfx_catalog import (
+    EQ_PARAMETRIC_PRESETS,
+    SPECTRUM_PRESETS,
+    get_mfx_algo,
+    get_mfx_categories,
+    get_mfx_light_catalog,
+)
+from ..core.patch_state import (
+    LFO_FADE_MODE_NAMES,
+    LFO_WAVE_NAMES,
+    TVF_TYPE_NAMES,
+    PatchState,
+    ToneState,
+)
+from ..core.updater import GitUpdater, UpdaterError
+from ..core.waves import WaveCatalogManager
+from ..core.wifi import WifiManager, WifiStatus
 from ..vector.engine import MorphMode, VectorEngine, VectorState
 from ..vector.math import CrossfadeCurve
 from ..vector.motion import AutomatorType, LoopMode, RecorderState, WavetableSweepMode
@@ -1697,7 +1697,6 @@ class SpectreBridge(QObject):
 
     def _rail_mfx_entry(self, n: int) -> dict:
         """Rail card content: the sounding processor (origin-resolved)."""
-        fx = getattr(self.patch_state, "perf_fx", None)
         holder = self._perf_slot(n)
         source = int(getattr(holder, "source", 0)) if holder is not None else 0
         shown = {"type": 0, "drySend": 127, "chorusSend": 0, "reverbSend": 0}
@@ -2269,8 +2268,9 @@ class SpectreBridge(QObject):
     def _capture_librarian_entry(self) -> None:
         """Snapshot the sounding state so Cancel can revert auditions."""
         try:
-            from ..core.spectre_format import patch_state_to_dict
             import copy
+
+            from ..core.spectre_format import patch_state_to_dict
             self._librarian_entry_snapshot = {
                 "state": patch_state_to_dict(self.patch_state),
                 "patch_name": str(self._patch_name or ""),
@@ -2377,6 +2377,7 @@ class SpectreBridge(QObject):
             return False
         try:
             import mido as _mido
+
             from ..core.protocol import SoundMode
             midi = getattr(juno, "midi", None)
             out = getattr(midi, "juno_out", None) if midi is not None else None
@@ -5184,18 +5185,16 @@ class SpectreBridge(QObject):
                 if origin == 0:
                     return True  # already PERFORM
                 # Try hardware copy: part patch MFX -> perf common MFX slot.
-                copied = False
                 if juno is not None and hasattr(juno, "request_data"):
                     try:
                         from ..core.protocol import temp_perf_patch_base as _ppb
-                        from ..core.sysex import (OFFSET_PATCH_COMMON_MFX as _MFX,
-                                                  PERF_MFX_BLOCK_SIZE as _SZ)
+                        from ..core.sysex import OFFSET_PATCH_COMMON_MFX as _MFX
+                        from ..core.sysex import PERF_MFX_BLOCK_SIZE as _SZ
                         from ..core.sysex import add_address as _add
                         src = _add(_ppb(origin), _MFX)
                         raw = juno.request_data(src, _SZ, timeout=1.0)
                         if raw is not None and len(raw) >= 4:
                             juno.send_data(__import__("src.spectre.core.sysex", fromlist=["perf_common_fx_base"]).perf_common_fx_base(s), list(bytes(raw)))
-                            copied = True
                     except Exception as e:
                         logger.debug(f"copyOriginToPerform mfx HW copy failed: {e}")
                 # State copy: mirror active part editor MFX into the slot.
@@ -5433,7 +5432,7 @@ class SpectreBridge(QObject):
         Mixer selects + levels go synchronously (fast); part sound images for
         Pi-only/missing links restore in the background with progress.
         """
-        from ..core.spectre_format import load_spectre, patch_state_from_dict, patch_state_to_dict
+        from ..core.spectre_format import load_spectre, patch_state_from_dict
 
         try:
             state = patch_state_from_dict(patch_dict)
@@ -6382,8 +6381,7 @@ class SpectreBridge(QObject):
                         part.patch_name or part.name or name or self._patch_name)
                 except Exception:
                     # Offline: snapshot the in-memory workstation state.
-                    from ..core.spectre_format import (patch_state_from_dict,
-                                                       patch_state_to_dict)
+                    from ..core.spectre_format import patch_state_from_dict, patch_state_to_dict
                     state = patch_state_from_dict(patch_state_to_dict(self.patch_state))
                 state.perf_parts = list(self.patch_state.perf_parts)
                 state.perf_name = str(
@@ -6393,7 +6391,8 @@ class SpectreBridge(QObject):
                 file_name = state.perf_name
                 extras = self._live_spectre_extras()
                 try:
-                    from ..core.spectre_format import load_spectre as _load, patch_state_to_dict as _to_dict
+                    from ..core.spectre_format import load_spectre as _load
+                    from ..core.spectre_format import patch_state_to_dict as _to_dict
                     snaps = {}
                     for p in self.patch_state.perf_parts:
                         link = str(getattr(p, "patch_file", "") or "")

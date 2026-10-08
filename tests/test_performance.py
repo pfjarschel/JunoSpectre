@@ -9,12 +9,6 @@ import pytest
 from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.patch_state import PatchState, PerfPartState
 from src.spectre.core.protocol import JunoClient, SoundMode
-from src.spectre.core.sysex import (
-    ADDR_TEMP_PERFORMANCE,
-    perf_part_base,
-    perf_zone_base,
-    temp_perf_patch_base,
-)
 from src.spectre.core.spectre_format import (
     load_spectre,
     make_playlist_entry,
@@ -23,6 +17,12 @@ from src.spectre.core.spectre_format import (
     playlist_entry_status,
     refresh_entry_snapshot,
     save_spectre,
+)
+from src.spectre.core.sysex import (
+    ADDR_TEMP_PERFORMANCE,
+    perf_part_base,
+    perf_zone_base,
+    temp_perf_patch_base,
 )
 
 
@@ -194,11 +194,11 @@ def test_playlist_entry_unsaved_snapshot_only():
 # --- bridge: file loads, pick mode, performance saves -----------------------
 
 def _bridge_rig(tmp_path):
-    from tests.test_librarian_bridge import FakeJuno
     from src.spectre.core.sysex import DEFAULT_DEVICE_ID, JUNO_DS_MODEL_ID, RolandSysEx
     from src.spectre.librarian.repository import PatchRepository
     from src.spectre.ui.bridge import SpectreBridge
     from src.spectre.vector.engine import VectorEngine
+    from tests.test_librarian_bridge import FakeJuno
 
     engine = VectorEngine()
     juno = FakeJuno()
@@ -518,7 +518,6 @@ def test_cancel_reverts_part_pick(tmp_path):
 
 
 def test_cancel_reselects_slot_on_synth(tmp_path):
-    import mido
     bridge, juno, _ = _bridge_rig(tmp_path)
     juno.midi.juno_out.closed = False
     bridge._set_current_slot_ref(87, 0, 11, "patch")
@@ -588,6 +587,7 @@ def _sysex_addr(mock_midi_mgr):
 
 def test_zone_write_addresses():
     from unittest.mock import MagicMock
+
     from src.spectre.core.midi import MidiDeviceManager
     from src.spectre.core.protocol import JunoClient
     client = JunoClient(MagicMock(spec=MidiDeviceManager))
@@ -615,6 +615,7 @@ def test_zone_write_addresses():
 
 def test_zone_read_defaults_offline():
     from unittest.mock import MagicMock
+
     from src.spectre.core.midi import MidiDeviceManager
     from src.spectre.core.protocol import JunoClient
     client = JunoClient(MagicMock(spec=MidiDeviceManager))
@@ -694,6 +695,7 @@ def test_perf_common_fx_addresses(mock_midi_mgr):
 
 def test_get_perf_parts_decodes_fx():
     from unittest.mock import MagicMock
+
     from src.spectre.core.midi import MidiDeviceManager
     client = JunoClient(MagicMock(spec=MidiDeviceManager))
     blk = bytearray(0x31)
@@ -900,6 +902,7 @@ def test_patch_mode_editors_unchanged(tmp_path):
 
 def test_read_part_fx_decode():
     from unittest.mock import MagicMock
+
     from src.spectre.core.midi import MidiDeviceManager
     from src.spectre.core.sysex import pack_4nibbles
     client = JunoClient(MagicMock(spec=MidiDeviceManager))

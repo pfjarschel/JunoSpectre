@@ -104,7 +104,6 @@ def test_kinds_and_category_lists(tmp_path):
 
 def test_data_root_env_override(tmp_path, monkeypatch):
     from src.spectre.librarian.repository import data_root, default_db_path
-    import os
     monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path / "custom"))
     assert data_root() == tmp_path / "custom"
     assert default_db_path() == tmp_path / "custom" / "librarian.db"

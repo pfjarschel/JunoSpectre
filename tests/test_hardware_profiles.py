@@ -1,9 +1,7 @@
 """Unit tests for hardware profiles and ProfileManager."""
 
-from pathlib import Path
-import pytest
-from src.spectre.control.models import HardwareProfile, ControlType, MidiMessageType
-from src.spectre.control.profiles import ProfileManager, DEFAULT_PROFILE_DIR
+from src.spectre.control.models import HardwareProfile
+from src.spectre.control.profiles import ProfileManager
 
 
 def test_bundled_profiles_exist_and_validate():

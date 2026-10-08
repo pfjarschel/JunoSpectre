@@ -1,7 +1,7 @@
 """Unit tests and benchmarks for SmoothScaler and relative processing modes."""
 
 import time
-import pytest
+
 from src.spectre.control.models import RelativeEncoderEncoding, ScaleMode
 from src.spectre.control.smooth_scaler import SmoothScaler
 

@@ -6,13 +6,13 @@ interpolation, and provides algorithmic modulation curves (Lissajous, Circle, Ch
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import enum
 import json
 import math
-from pathlib import Path
 import random
 import time
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .math import clamp_coordinate

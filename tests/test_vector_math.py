@@ -1,6 +1,5 @@
 """Unit tests for 2D Cartesian and 1D Wavetable crossfade math."""
 
-import pytest
 
 from src.spectre.vector.math import (
     CrossfadeCurve,

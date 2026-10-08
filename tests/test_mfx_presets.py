@@ -7,7 +7,6 @@ tests cover everything around that boundary: data shape, catalog bounds,
 bridge exposure, and the exact write sequences applyPreset() performs.
 """
 
-import pytest
 
 from src.spectre.core.mfx_catalog import (
     EQ_PARAMETRIC_PRESETS,

@@ -2,6 +2,15 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+ENV/
+env/
 .env
 *.syx.bak
 ideas.md
@@ -9,3 +18,5 @@ ideas.md
 scratch/
 SUMMARY.md
 Resources/
+.idea/
+.vscode/

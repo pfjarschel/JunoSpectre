@@ -5,12 +5,12 @@ import time
 import pytest
 
 from src.spectre.core.wifi import (
-    WifiManager,
     WifiError,
+    WifiManager,
     WifiNetwork,
     WifiStatus,
-    quality_label,
     _split_terse,
+    quality_label,
 )
 
 

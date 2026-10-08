@@ -95,8 +95,9 @@ def patch_state_from_dict(d: Dict[str, Any]) -> PatchState:
     """Tolerant decode: unknown keys ignored, missing keys fall back to defaults."""
     from .patch_state import (
         EffectsState,
+        MacroLink,
+        MacroSlot,
         PatchCommonState,
-        PatchState as PS,
         PerfFxState,
         PerfMfxSlotState,
         PerfPartState,
@@ -104,7 +105,9 @@ def patch_state_from_dict(d: Dict[str, Any]) -> PatchState:
         ToneState,
         default_macro_slots,
     )
-    from .patch_state import MacroLink, MacroSlot
+    from .patch_state import (
+        PatchState as PS,
+    )
 
     base = PS()
     if not isinstance(d, dict):

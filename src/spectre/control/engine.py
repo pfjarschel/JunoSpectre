@@ -5,8 +5,8 @@ Bridges physical controller inputs, smooth scalers, MIDI learn, and Roland SysEx
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from typing import Callable, Dict, Generator, List, Optional, Union
 
 import mido
@@ -15,12 +15,10 @@ from ..core.midi import MidiDeviceManager
 from ..core.protocol import JunoClient
 from .midi_learn import MidiLearnEngine
 from .models import (
-    ControlDefinition,
     HardwareProfile,
     MidiMessageType,
     ParameterBinding,
     ParameterTarget,
-    ScaleMode,
     TargetCategory,
 )
 from .profiles import ProfileManager

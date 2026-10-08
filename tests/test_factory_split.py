@@ -1,18 +1,15 @@
 """Tests for the shipped factory catalog split (factory.db + user overlay)."""
 
-import json
 
 import pytest
 
 from src.spectre.librarian.factory import (
     build_factory_db,
-    ensure_shipped_factory,
     factory_catalog_version,
     factory_key,
     factory_variants,
 )
 from src.spectre.librarian.repository import PatchRepository
-
 
 ROWS = [
     {"source": "factory", "kind": "patch", "msb": 87, "lsb": 64, "pc": 0,

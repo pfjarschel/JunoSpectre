@@ -1,12 +1,10 @@
 """Unit tests for PatchState data model and init patch generation."""
 
 import pytest
+
 from src.spectre.core.patch_state import (
     PatchState,
     ToneState,
-    PatchCommonState,
-    EffectsState,
-    MatrixCtrlState,
 )
 
 

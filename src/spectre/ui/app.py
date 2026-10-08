@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import QUrl, Qt
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 

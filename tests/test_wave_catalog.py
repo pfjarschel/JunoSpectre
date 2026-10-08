@@ -1,9 +1,10 @@
 """Unit tests for Roland waveform catalogs and WaveCatalogManager."""
 
 import pytest
+
 from src.spectre.core.waves import WaveCatalogManager
-from src.spectre.vector.engine import VectorEngine
 from src.spectre.ui.bridge import SpectreBridge
+from src.spectre.vector.engine import VectorEngine
 
 
 def test_wave_catalog_manager_singleton():
@@ -14,12 +15,12 @@ def test_wave_catalog_manager_singleton():
 
 def test_wave_catalog_acoustic_classification():
     mgr = WaveCatalogManager.get_instance()
-    
+
     # Wave 1: Grand Piano
     w1 = mgr.get_wave("INTA", 1)
     assert w1["category"] == "piano"
     assert w1["icon"] == "piano"
-    
+
     # Wave 242: Nasty Gtr
     w242 = mgr.get_wave("INTA", 242)
     assert w242["category"] == "guitar"
@@ -33,14 +34,14 @@ def test_wave_catalog_acoustic_classification():
 
 def test_wave_catalog_synth_wave_classification():
     mgr = WaveCatalogManager.get_instance()
-    
+
     # Wave 579: Juno Saw HD
     w579 = mgr.get_wave("INTA", 579)
     assert w579["name"] == "Juno Saw HD"
     assert w579["category"] == "synth_wave"
     assert w579["icon"] == "wave"
     assert w579["is_single_cycle"] is True
-    
+
     # Wave 600: Juno Sqr HD
     w600 = mgr.get_wave("INTA", 600)
     assert w600["name"] == "Juno Sqr HD"
@@ -103,14 +104,14 @@ def test_basic_synth_waves_priority():
 def test_bridge_tone_wave_integration():
     engine = VectorEngine()
     bridge = SpectreBridge(engine)
-    
+
     waves = bridge.toneWaveData
     assert len(waves) == 4
     assert waves[0]["name"] == "Juno Saw HD"
     assert waves[1]["name"] == "Juno Sqr HD"
     assert waves[2]["name"] in ("JD Triangle", "700 Triangle")
     assert waves[3]["name"] == "Sine"
-    
+
     # Switch Tone 1 to Piano
     bridge.setToneWave(1, "INTA", 1)
     updated = bridge.toneWaveData

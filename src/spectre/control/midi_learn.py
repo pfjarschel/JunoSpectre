@@ -206,7 +206,7 @@ class MidiLearnEngine:
 
     def process_midi_message(self, msg: mido.Message) -> Tuple[Optional[ParameterBinding], bool]:
         """Process incoming MIDI message through learn engine.
-        
+
         Returns:
             Tuple of (binding_if_found_or_learned, was_consumed_by_learning)
         """

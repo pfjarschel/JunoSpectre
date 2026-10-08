@@ -1,12 +1,13 @@
 """Integration tests for MidiControllerEngine linking MIDI, Scaler, and JunoClient."""
 
 from unittest.mock import MagicMock
+
 import mido
 import pytest
+
+from src.spectre.control.engine import MidiControllerEngine
 from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.protocol import JunoClient
-from src.spectre.control.engine import MidiControllerEngine, ControlEvent
-from src.spectre.control.models import ScaleMode, ParameterTarget, TargetCategory, ParameterBinding, MidiMessageType
 
 
 @pytest.fixture

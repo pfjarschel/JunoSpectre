@@ -30,14 +30,14 @@ class MidiDeviceManager:
     @classmethod
     def find_juno_ports(cls) -> Tuple[Optional[str], Optional[str]]:
         """Find JUNO-DS or XPS-30 MIDI In and Out ports.
-        
+
         Prefers 'MIDI 1' (sound engine) over 'MIDI 2' (DAW control).
         """
         inputs = cls.get_input_names()
         outputs = cls.get_output_names()
 
         target_keywords = ["JUNO-DS", "XPS-30", "JUNO", "XPS"]
-        
+
         in_port: Optional[str] = None
         out_port: Optional[str] = None
 
@@ -67,14 +67,14 @@ class MidiDeviceManager:
     @classmethod
     def find_launch_control_ports(cls) -> Tuple[Optional[str], Optional[str]]:
         """Find Novation Launch Control XL MIDI ports.
-        
+
         Prefers standard MIDI In/Out over DAW In/Out.
         """
         inputs = cls.get_input_names()
         outputs = cls.get_output_names()
 
         target_keywords = ["LCXL", "Launch Control"]
-        
+
         in_port: Optional[str] = None
         out_port: Optional[str] = None
 
@@ -114,7 +114,7 @@ class MidiDeviceManager:
                 f"Could not find Roland synth ports. Available inputs: {self.get_input_names()}, "
                 f"outputs: {self.get_output_names()}"
             )
-        
+
         self.juno_in = mido.open_input(in_name)
         self.juno_out = mido.open_output(out_name)
         logger.info(f"Connected to Synth: In='{in_name}', Out='{out_name}'")

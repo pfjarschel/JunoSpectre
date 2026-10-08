@@ -1,15 +1,14 @@
 """Unit tests for MidiLearnEngine and parameter catalog."""
 
 from unittest.mock import MagicMock
+
 import mido
-import pytest
+
 from src.spectre.control.midi_learn import MidiLearnEngine, build_standard_parameter_registry
 from src.spectre.control.models import (
     MidiMessageType,
     ParameterBinding,
-    ParameterTarget,
     ScaleMode,
-    TargetCategory,
 )
 
 

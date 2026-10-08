@@ -82,7 +82,7 @@ def build_macro_catalog() -> list[dict]:
     ]
     for i in range(1, 5):
         for param, title, category, lo, hi, span in per_tone:
-            cat.append(_trio(f"tobe_placeholder", "", "", 0, 0, 0))  # placeholder removed below
+            cat.append(_trio("tobe_placeholder", "", "", 0, 0, 0))  # placeholder removed below
             cat.pop()
             cat.append(_trio(f"tone.{i}.{param}", f"T{i} {title}", category, lo, hi, span))
     for param, title, category, lo, hi, span in per_tone:

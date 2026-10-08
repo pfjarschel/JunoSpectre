@@ -7,7 +7,7 @@ using proportional homothety scaling, pickup/catch-up, relative delta, and endle
 from __future__ import annotations
 
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 from .models import RelativeEncoderEncoding, ScaleMode
 
@@ -62,7 +62,7 @@ class SmoothScaler:
 
     def sync_synth_value(self, new_val: float) -> None:
         """Update internal synth value when presets load or parameters are polled.
-        
+
         Decouples convergence if physical position differs from the new synth value.
         """
         clamped = max(self.min_value, min(self.max_value, float(new_val)))
@@ -82,7 +82,7 @@ class SmoothScaler:
 
     def process(self, physical_input: int) -> Tuple[int, bool, bool]:
         """Process incoming physical MIDI control value.
-        
+
         Returns:
             Tuple of (current_synth_int, has_value_changed, needs_recenter)
         """
