@@ -466,9 +466,9 @@ def test_eq_curve_panel_for_equalizer_algo():
     assert panel.property("visible") is True
     assert bridge.mfxAlgoId == 1
 
-    # Curve write path: catalog-scale gain 0..30 (dB = v - 15)
-    bridge.setMfxParam(1, 20)  # LOW GAIN +5 dB
-    assert bridge.mfxParamValues[1] == 20
+    # Curve write path: literal dB gains (-15..+15)
+    bridge.setMfxParam(1, 5)  # LOW GAIN +5 dB
+    assert bridge.mfxParamValues[1] == 5
     bridge.setMfxParam(0, 1)   # LOW FREQ 400 Hz
     assert bridge.mfxParamValues[0] == 1
 
@@ -479,8 +479,8 @@ def test_eq_curve_panel_for_equalizer_algo():
     assert panel.property("bandCount") == 8
 
     # Graphic write path: fixed bands 0..7, gain-only
-    bridge.setMfxParam(4, 22)  # BAND 5 (2000Hz) +7 dB
-    assert bridge.mfxParamValues[4] == 22
+    bridge.setMfxParam(4, 7)  # BAND 5 (2000Hz) +7 dB
+    assert bridge.mfxParamValues[4] == 7
 
     bridge.setMfxAlgoId(15)
     app.processEvents()

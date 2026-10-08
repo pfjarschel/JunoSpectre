@@ -2,6 +2,11 @@
 
 Defines the complete set of 80 MFX algorithms with accurate hardware parameter specs,
 ranges, units, and discrete option enumerations matching Roland JUNO-DS synthesizer RAM.
+
+WIRE CONVENTION (verified against hardware): 4-nibble MFX params are LITERAL
+signed values (raw = value + 32768). In particular, dB gains documented as
+-15..+15[dB] are stored as -15..+15 (min -15, max 15, flat default 0) --
+NOT 0..30. Do not apply single-byte-style (+15/+64) offsets here.
 """
 
 from typing import Any, Dict, List, Optional
@@ -27,9 +32,9 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 1,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -62,9 +67,9 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 3,
         "label": "MID1 GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -112,9 +117,9 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 6,
         "label": "MID2 GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -148,9 +153,9 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 9,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -171,65 +176,65 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 0,
         "label": "BAND 1 (250Hz)",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 1,
         "label": "BAND 2 (500Hz)",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 2,
         "label": "BAND 3 (1000Hz)",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 3,
         "label": "BAND 4 (1250Hz)",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 4,
         "label": "BAND 5 (2000Hz)",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 5,
         "label": "BAND 6 (3150Hz)",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 6,
         "label": "BAND 7 (4000Hz)",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 7,
         "label": "BAND 8 (8000Hz)",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -265,25 +270,25 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 0,
         "label": "BOOST/CUT LOW",
-        "val": 60,
-        "min": 0,
-        "max": 64,
+        "val": 0,
+        "min": -60,
+        "max": 4,
         "unit": "dB"
       },
       {
         "idx": 1,
         "label": "BOOST/CUT MID",
-        "val": 60,
-        "min": 0,
-        "max": 64,
+        "val": 0,
+        "min": -60,
+        "max": 4,
         "unit": "dB"
       },
       {
         "idx": 2,
         "label": "BOOST/CUT HIGH",
-        "val": 60,
-        "min": 0,
-        "max": 64,
+        "val": 0,
+        "min": -60,
+        "max": 4,
         "unit": "dB"
       },
       {
@@ -393,17 +398,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 3,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 4,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -832,17 +837,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 2,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 3,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -979,17 +984,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 10,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 11,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -1148,17 +1153,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 11,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 12,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -1369,17 +1374,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 10,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 11,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -1569,17 +1574,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 13,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 14,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -1708,17 +1713,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 9,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 10,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -1785,17 +1790,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 5,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 6,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -1844,17 +1849,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 3,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 4,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -2071,17 +2076,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 20,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 21,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -2185,17 +2190,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 5,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 6,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -2291,17 +2296,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 5,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 6,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -2999,17 +3004,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 13,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 14,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -3808,17 +3813,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 6,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 7,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -5026,17 +5031,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 2,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 3,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -5087,17 +5092,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 2,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 3,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -5168,17 +5173,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 4,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 5,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -5249,17 +5254,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 4,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 5,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -5488,17 +5493,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 3,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 4,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -5557,17 +5562,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 4,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 5,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -5811,17 +5816,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 11,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 12,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -5930,17 +5935,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 6,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 7,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -6112,17 +6117,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       },
       {
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 11
       },
       {
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 12
       },
@@ -6352,17 +6357,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 14,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 15,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -6586,17 +6591,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       },
       {
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 14
       },
       {
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 15
       },
@@ -6882,17 +6887,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 18,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 19,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -7208,17 +7213,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       },
       {
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 22
       },
       {
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 23
       },
@@ -7543,17 +7548,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       },
       {
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 23
       },
       {
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 24
       },
@@ -7659,17 +7664,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 6,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 7,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -7905,17 +7910,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       },
       {
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 15
       },
       {
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 16
       },
@@ -8020,17 +8025,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       },
       {
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 6
       },
       {
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 7
       },
@@ -8128,17 +8133,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 5,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 6,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -8200,17 +8205,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 3,
         "label": "BASS",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 4,
         "label": "TREBLE",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -8324,17 +8329,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 6,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 7,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -8379,17 +8384,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 2,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 3,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -8473,17 +8478,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       },
       {
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 5
       },
       {
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 6
       },
@@ -8521,9 +8526,9 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 1,
         "label": "TREBLE",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -8674,17 +8679,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       },
       {
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 6
       },
       {
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB",
         "idx": 7
       },
@@ -8898,17 +8903,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 16,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 17,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -9196,17 +9201,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 4,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 5,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -9265,17 +9270,17 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 3,
         "label": "LOW GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
         "idx": 4,
         "label": "HIGH GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -10848,9 +10853,9 @@ MFX_ALGORITHMS: List[Dict[str, Any]] = [
       {
         "idx": 5,
         "label": "PEAKING GAIN",
-        "val": 15,
-        "min": 0,
-        "max": 30,
+        "val": 0,
+        "min": -15,
+        "max": 15,
         "unit": "dB"
       },
       {
@@ -10997,3 +11002,35 @@ def get_mfx_algo(algo_id: int) -> Optional[Dict[str, Any]]:
 def get_mfx_categories() -> List[str]:
     """Return list of MFX categories."""
     return MFX_CATEGORIES
+
+
+# ---------------------------------------------------------------------------
+# EQ curve presets for EqCurvePanel (MFX Studio).
+# All values are catalog-scale (wire = value + 32768): dB gains are literal
+# -15..+15, frequencies/Q are indices into the algo's param `options` lists.
+# Band order is [low, mid1, mid2, high]; q uses -1 = "leave untouched".
+# ---------------------------------------------------------------------------
+
+# MFX 01 EQUALIZER: f = option indices into Low [200,400] / Mid 17x / High
+# [2000,4000,8000]; q = option indices into [0.5,1.0,2.0,4.0,8.0].
+EQ_PARAMETRIC_PRESETS: List[Dict[str, Any]] = [
+    {"name": "FLAT", "f": None, "g": [0, 0, 0, 0], "q": None},
+    {"name": "BRIGHT", "f": [0, 4, 11, 2], "g": [0, 0, 2, 6], "q": [-1, 1, 1, -1]},
+    {"name": "WARM", "f": [0, 3, 9, 1], "g": [3, -2, -1, -3], "q": [-1, 1, 1, -1]},
+    {"name": "SMILE", "f": [0, 5, 11, 2], "g": [4, -4, -3, 4], "q": [-1, 1, 1, -1]},
+    {"name": "MUD CUT", "f": [0, 2, 10, 2], "g": [-1, -5, 0, 0], "q": [-1, 3, 1, -1]},
+    {"name": "PHONE", "f": [0, 7, 10, 0], "g": [-15, 6, 4, -15], "q": [-1, 2, 2, -1]},
+    {"name": "PRESENCE", "f": [0, 6, 12, 2], "g": [0, -1, 5, 2], "q": [-1, 1, 1, -1]},
+]
+
+# MFX 02 SPECTRUM: g = 8 band gains in dB (250/500/1000/1250/2000/3150/4000/
+# 8000 Hz); q = shared-Q option index (-1 = leave untouched).
+SPECTRUM_PRESETS: List[Dict[str, Any]] = [
+    {"name": "FLAT", "g": [0, 0, 0, 0, 0, 0, 0, 0], "q": -1},
+    {"name": "SMILE", "g": [6, 4, 1, -3, -4, -1, 3, 6], "q": 1},
+    {"name": "MID PUSH", "g": [-4, -2, 3, 5, 5, 3, -2, -4], "q": 1},
+    {"name": "BASS", "g": [8, 6, 4, 2, 0, -2, -4, -6], "q": 1},
+    {"name": "BRIGHT", "g": [-4, -3, -2, 0, 2, 4, 5, 7], "q": 1},
+    {"name": "WARM", "g": [6, 5, 3, 1, -1, -3, -5, -7], "q": 1},
+    {"name": "PHONE", "g": [-15, -12, -4, 5, 6, 2, -8, -15], "q": 2},
+]

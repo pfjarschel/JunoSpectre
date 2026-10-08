@@ -33,7 +33,8 @@ from ..core.categories import code_from_index
 from ..core.updater import GitUpdater, UpdaterError
 from ..core.wifi import WifiManager, WifiStatus
 from ..core.waves import WaveCatalogManager
-from ..core.mfx_catalog import get_mfx_catalog, get_mfx_algo, get_mfx_categories, get_mfx_light_catalog
+from ..core.mfx_catalog import (EQ_PARAMETRIC_PRESETS, SPECTRUM_PRESETS,
+                                get_mfx_catalog, get_mfx_algo, get_mfx_categories, get_mfx_light_catalog)
 from ..core.macro_targets import (
     filter_macro_targets,
     get_macro_catalog,
@@ -1409,6 +1410,16 @@ class SpectreBridge(QObject):
     @pyqtProperty("QVariantList", constant=True)
     def mfxCategories(self) -> list:
         return get_mfx_categories()
+
+    @pyqtProperty("QVariantList", constant=True)
+    def eqParametricPresets(self) -> list:
+        """Curve presets for MFX 01 EQUALIZER (see mfx_catalog)."""
+        return [dict(p) for p in EQ_PARAMETRIC_PRESETS]
+
+    @pyqtProperty("QVariantList", constant=True)
+    def spectrumPresets(self) -> list:
+        """Curve presets for MFX 02 SPECTRUM (see mfx_catalog)."""
+        return [dict(p) for p in SPECTRUM_PRESETS]
 
     @pyqtSlot(str, str, result="QVariantList")
     def filterMfxAlgos(self, category: str, query: str) -> list:

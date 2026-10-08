@@ -409,7 +409,7 @@ Rectangle {
                 EqCurvePanel {
                     visible: root.activeAlgoId === 1 || root.activeAlgoId === 2
                     Layout.fillWidth: true
-                    Layout.preferredHeight: visible ? ScaleMetrics.dp(196) : 0
+                    Layout.preferredHeight: visible ? ScaleMetrics.dp(232) : 0
                     algo: root.currentAlgo
                     isDimmed: root.isBypassed
                 }
@@ -440,6 +440,7 @@ Rectangle {
                                 delegate: MfxSlider {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: ScaleMetrics.dp(52)
+                                    scrollView: paramFlickable
                                     paramIdx: modelData.idx
                                     label: modelData.label
                                     val: (Bridge.mfxParamValues && modelData.idx < Bridge.mfxParamValues.length) ?
@@ -518,6 +519,10 @@ Rectangle {
         property var options: []
         property color accent: Theme.primary
         property bool isDimmed: false
+        // Parent Flickable holding this slider (set at instantiation).
+        // Used for directional locking: a horizontal-first drag disables
+        // scrolling until release so vertical drift can't steal the gesture.
+        property var scrollView: null
 
         signal userModified(int newVal)
 
@@ -591,12 +596,40 @@ Rectangle {
                 MouseArea {
                     anchors.fill: parent
                     enabled: !ms.isDimmed
-                    onPositionChanged: (mouse) => {
-                        if (pressed) parent.updateVal(mouse.x);
+                    // Directional lock: on first movement past touch slop,
+                    // decide the axis. Horizontal wins -> hold the parent
+                    // Flickable (slider keeps working despite vertical drift);
+                    // vertical wins -> ignore moves, Flickable scrolls instead.
+                    property real startX: 0
+                    property real startY: 0
+                    property string lockDir: ""
+                    function releaseLock() {
+                        if (ms.scrollView) ms.scrollView.interactive = true;
+                        lockDir = "";
                     }
                     onPressed: (mouse) => {
+                        startX = mouse.x; startY = mouse.y; lockDir = "";
                         parent.updateVal(mouse.x);
                     }
+                    onPositionChanged: (mouse) => {
+                        if (!pressed) return;
+                        if (lockDir === "") {
+                            var dx = Math.abs(mouse.x - startX);
+                            var dy = Math.abs(mouse.y - startY);
+                            var slop = ScaleMetrics.dp(10);
+                            if (dx < slop && dy < slop) return;
+                            if (dx >= dy) {
+                                lockDir = "h";
+                                if (ms.scrollView) ms.scrollView.interactive = false;
+                            } else {
+                                lockDir = "v";
+                                return;
+                            }
+                        }
+                        if (lockDir === "h") parent.updateVal(mouse.x);
+                    }
+                    onReleased: releaseLock()
+                    onCanceled: releaseLock()
                 }
             }
         }

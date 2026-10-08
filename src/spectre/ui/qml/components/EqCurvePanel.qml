@@ -33,6 +33,21 @@ Rectangle {
     property var algo: null
     property bool isDimmed: false
     property int draggedBand: -1 // parametric 0-3: Low/Mid1/Mid2/High; graphic 0-7
+    property string lastPreset: ""
+    property int lastPresetAlgo: -1 // algo id the highlight belongs to (1/2)
+    // Highlight only when name AND algo match: both lists share names
+    // (e.g. BRIGHT) with unrelated settings.
+    function isPresetActive(name) {
+        return panel.lastPreset === name
+            && panel.lastPresetAlgo === (panel.graphic ? 2 : 1);
+    }
+    function currentPresetName() {
+        if (panel.lastPreset !== "" && panel.lastPresetAlgo === (panel.graphic ? 2 : 1))
+            return panel.lastPreset;
+        return "";
+    }
+    // Preset list follows the algo (data lives in mfx_catalog, via Bridge).
+    property var presets: panel.graphic ? Bridge.spectrumPresets : Bridge.eqParametricPresets
     // Grab offset: node sits at the TOTAL curve value, but dragging writes the
     // band's OWN gain. Without this, touching a node snaps its gain to the
     // displayed total (shelves read half at the corner; wide-Q bleed adds up).
@@ -77,7 +92,7 @@ Rectangle {
         if (p && p.val !== undefined) return p.val;
         return fallback;
     }
-    function _gainDb(idx) { return panel._val(idx, 15) - 15; }
+    function _gainDb(idx) { return panel._val(idx, 0); }
     function _freqHz(freqIdx) {
         var opts = panel._freqOptions(freqIdx);
         if (opts.length === 0) return 1000;
@@ -154,6 +169,25 @@ Rectangle {
         var cy = Math.max(r, Math.min(h - r, rawY));
         return { x: bx, y: cy, clipped: cy !== rawY };
     }
+    // Write one preset through the origin-resolved MFX param path.
+    function applyPreset(p) {
+        if (panel.graphic) {
+            for (var i = 0; i < 8; ++i) Bridge.setMfxParam(i, p.g[i]);
+            if (p.q !== undefined && p.q !== null && p.q >= 0) Bridge.setMfxParam(8, p.q);
+        } else {
+            var G = [1, 3, 6, 9], F = [0, 2, 5, 8], Q = [-1, 4, 7, -1];
+            for (var b = 0; b < 4; ++b) Bridge.setMfxParam(G[b], p.g[b]);
+            if (p.f !== undefined && p.f !== null)
+                for (var fb = 0; fb < 4; ++fb) Bridge.setMfxParam(F[fb], p.f[fb]);
+            if (p.q !== undefined && p.q !== null)
+                for (var qb = 0; qb < 4; ++qb)
+                    if (p.q[qb] !== undefined && p.q[qb] !== null && p.q[qb] >= 0)
+                        Bridge.setMfxParam(Q[qb], p.q[qb]);
+        }
+        panel.lastPreset = p.name;
+        panel.lastPresetAlgo = panel.graphic ? 2 : 1;
+        eqCurveCanvas.requestPaint();
+    }
     function _nearestFreqOption(freqIdx, hz) {
         var opts = panel._freqOptions(freqIdx);
         if (opts.length === 0) return 0;
@@ -181,27 +215,55 @@ Rectangle {
                 color: "#ec4899"
             }
             Item { Layout.fillWidth: true }
-            Rectangle {
-                height: ScaleMetrics.dp(20)
-                width: ScaleMetrics.dp(64)
-                radius: 3
-                color: flatMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: Theme.borderCard
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: "FLAT"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: Theme.textSecondary
-                }
-                MouseArea {
-                    id: flatMouse
-                    anchors.fill: parent
-                    onClicked: {
-                        for (var b = 0; b < panel.bandCount; ++b)
-                            Bridge.setMfxParam(panel._bandGainIdx(b), 15);
-                        eqCurveCanvas.requestPaint();
+            Text {
+                text: panel.currentPresetName()
+                font.pixelSize: ScaleMetrics.sp(7)
+                font.family: Theme.fontMono
+                color: Theme.textDim
+            }
+        }
+
+        // Preset chips (FLAT first), horizontal scroll if overflowing
+        Flickable {
+            Layout.fillWidth: true
+            Layout.preferredHeight: ScaleMetrics.dp(24)
+            contentWidth: presetRow.width
+            contentHeight: height
+            clip: true
+            interactive: contentWidth > width
+            RowLayout {
+                id: presetRow
+                height: parent.height
+                spacing: ScaleMetrics.dp(4)
+                Repeater {
+                    model: panel.presets
+                    delegate: Rectangle {
+                        id: presetChip
+                        Layout.preferredWidth: Math.min(presetLabel.implicitWidth + ScaleMetrics.dp(12), ScaleMetrics.dp(88))
+                        Layout.maximumWidth: ScaleMetrics.dp(88)
+                        Layout.fillHeight: true
+                        radius: 3
+                        color: panel.isPresetActive(modelData.name) ? "#3a1030" : Theme.bgSurface
+                        border.color: panel.isPresetActive(modelData.name) ? "#ec4899" : Theme.borderCard
+                        border.width: 1
+                        clip: true
+                        Text {
+                            id: presetLabel
+                            anchors.fill: parent
+                            anchors.leftMargin: ScaleMetrics.dp(6)
+                            anchors.rightMargin: ScaleMetrics.dp(6)
+                            verticalAlignment: Text.AlignVCenter
+                            horizontalAlignment: Text.AlignHCenter
+                            text: modelData.name
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(7)
+                            color: panel.isPresetActive(modelData.name) ? "#ec4899" : Theme.textSecondary
+                            elide: Text.ElideRight
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: panel.applyPreset(modelData)
+                        }
                     }
                 }
             }
@@ -297,7 +359,9 @@ Rectangle {
                         var newDb = Math.round(ptrDb - panel.grabOffsetDb);
                         newDb = Math.max(-15, Math.min(15, newDb));
                         var b = panel.draggedBand;
-                        Bridge.setMfxParam(panel._bandGainIdx(b), newDb + 15);
+                        panel.lastPreset = "";
+                        panel.lastPresetAlgo = -1;
+                        Bridge.setMfxParam(panel._bandGainIdx(b), newDb);
                         if (!panel.graphic) {
                             var newHz = panel.xToFreq(mouse.x, width);
                             Bridge.setMfxParam(panel._bandFreqIdx(b),
