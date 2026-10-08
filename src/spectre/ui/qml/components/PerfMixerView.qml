@@ -106,9 +106,11 @@ Rectangle {
                 color: syncMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
                 border.color: syncMouse.pressed ? Theme.tone1 : Theme.borderCard
                 border.width: 1
+                enabled: !Bridge.syncBusy
+                opacity: enabled ? 1.0 : 0.4
                 Text {
                     anchors.centerIn: parent
-                    text: "⟳ SYNC PERF"
+                    text: Bridge.syncBusy ? "⏳ SYNCING..." : "⟳ SYNC PERF"
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(8)
                     color: Theme.textSecondary
@@ -116,7 +118,8 @@ Rectangle {
                 MouseArea {
                     id: syncMouse
                     anchors.fill: parent
-                    onClicked: Bridge.syncPerformanceFromSynth()
+                    enabled: !Bridge.syncBusy
+                    onClicked: Bridge.syncPerformanceFromSynth(true)
                 }
             }
         }

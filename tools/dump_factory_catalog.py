@@ -42,7 +42,6 @@ from spectre.core.categories import decode_common_block  # noqa: E402
 from spectre.core.midi import MidiDeviceManager  # noqa: E402
 from spectre.core.protocol import JunoClient  # noqa: E402
 from spectre.core.sysex import ADDR_SETUP, OFFSET_PATCH_COMMON, add_address  # noqa: E402
-from spectre.librarian.repository import PatchRepository  # noqa: E402
 
 # (msb, lsb, num_pcs, kind, label)
 PATCH_BANKS: list[tuple[int, int, int, str, str]] = [

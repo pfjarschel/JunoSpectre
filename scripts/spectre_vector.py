@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import argparse
 import logging
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Optional
 
 # Ensure project root is in sys.path
@@ -19,13 +19,13 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from PyQt6.QtCore import QTimer
 import mido
+from PyQt6.QtCore import QTimer
 
+from src.spectre.control import MidiControllerEngine
 from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.protocol import JunoClient
-from src.spectre.control import MidiControllerEngine, ProfileManager
-from src.spectre.ui.app import run_app, create_application
+from src.spectre.ui.app import create_application
 from src.spectre.vector.engine import VectorEngine
 
 logging.basicConfig(
@@ -179,6 +179,35 @@ def main() -> int:
         if hasattr(root_obj, "showFullScreen"):
             root_obj.showFullScreen()
 
+    import signal
+
+    def _sig_handler(signum, frame):
+        logger.info(f"Received signal {signum}, initiating graceful teardown...")
+        try:
+            bridge._perform_appliance_cleanup("signal")
+        except Exception:
+            pass
+        if ctrl_engine:
+            try:
+                ctrl_engine.stop()
+            except Exception:
+                pass
+        if midi_mgr:
+            try:
+                midi_mgr.send_all_notes_off()
+                midi_mgr.close()
+            except Exception:
+                pass
+        app.quit()
+
+    signal.signal(signal.SIGINT, _sig_handler)
+    signal.signal(signal.SIGTERM, _sig_handler)
+
+    # Allow Python to process OS signals while Qt event loop is active
+    sig_timer = QTimer()
+    sig_timer.timeout.connect(lambda: None)
+    sig_timer.start(500)
+
     if args.exit_after is not None:
         timer = QTimer()
         timer.setSingleShot(True)
@@ -186,7 +215,24 @@ def main() -> int:
         timer.start(int(args.exit_after * 1000))
 
     logger.info("Juno Spectre UI started successfully.")
-    return app.exec()
+    try:
+        return app.exec()
+    finally:
+        sig_timer.stop()
+        try:
+            bridge._perform_appliance_cleanup("exit")
+        except Exception:
+            pass
+        if ctrl_engine:
+            try:
+                ctrl_engine.stop()
+            except Exception:
+                pass
+        if midi_mgr:
+            try:
+                midi_mgr.close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

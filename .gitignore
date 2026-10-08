@@ -12,11 +12,10 @@ venv/
 ENV/
 env/
 .env
+.idea/
+.vscode/
 *.syx.bak
 ideas.md
 *.wav
 scratch/
-SUMMARY.md
 Resources/
-.idea/
-.vscode/

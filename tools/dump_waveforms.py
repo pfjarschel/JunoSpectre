@@ -13,17 +13,17 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from pathlib import Path
 import shutil
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Optional, Tuple
 
+import mido
 import numpy as np
 from scipy.io import wavfile
-import mido
 
 # Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -34,46 +34,45 @@ from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.protocol import JunoClient
 from src.spectre.core.sysex import (
     ADDR_SYSTEM,
-    add_address,
-    OFFSET_PATCH_COMMON,
-    OFFSET_PATCH_COMMON_MFX,
     OFFSET_PATCH_COMMON_CHORUS,
+    OFFSET_PATCH_COMMON_MFX,
     OFFSET_PATCH_COMMON_REVERB,
     OFFSET_PATCH_TMT,
     OFFSET_PATCH_TONE_1,
     OFFSET_PATCH_TONE_2,
     OFFSET_PATCH_TONE_3,
     OFFSET_PATCH_TONE_4,
-    PATCH_PARAM_CUTOFF_OFFSET,
-    PATCH_PARAM_RESONANCE_OFFSET,
     PATCH_PARAM_ATTACK_OFFSET,
+    PATCH_PARAM_CUTOFF_OFFSET,
     PATCH_PARAM_RELEASE_OFFSET,
-    TONE_PARAM_LEVEL,
-    TONE_PARAM_COARSE_TUNE,
-    TONE_PARAM_FINE_TUNE,
-    TONE_PARAM_PAN,
-    TONE_PARAM_DRY_SEND,
+    PATCH_PARAM_RESONANCE_OFFSET,
     TONE_PARAM_CHORUS_SEND,
+    TONE_PARAM_COARSE_TUNE,
+    TONE_PARAM_DRY_SEND,
+    TONE_PARAM_FINE_TUNE,
+    TONE_PARAM_LEVEL,
+    TONE_PARAM_LFO1_PAN_DEPTH,
+    TONE_PARAM_LFO1_PITCH_DEPTH,
+    TONE_PARAM_LFO1_TVA_DEPTH,
+    TONE_PARAM_LFO1_TVF_DEPTH,
+    TONE_PARAM_LFO2_PAN_DEPTH,
+    TONE_PARAM_LFO2_PITCH_DEPTH,
+    TONE_PARAM_LFO2_TVA_DEPTH,
+    TONE_PARAM_LFO2_TVF_DEPTH,
+    TONE_PARAM_PAN,
+    TONE_PARAM_PITCH_ENV_DEPTH,
     TONE_PARAM_REVERB_SEND,
-    TONE_PARAM_WAVE_GROUP_TYPE,
+    TONE_PARAM_TVF_CUTOFF,
+    TONE_PARAM_TVF_ENV_DEPTH,
+    TONE_PARAM_TVF_FILTER_TYPE,
+    TONE_PARAM_TVF_RESONANCE,
+    TONE_PARAM_WAVE_FXM_SWITCH,
+    TONE_PARAM_WAVE_GAIN,
     TONE_PARAM_WAVE_GROUP_ID,
+    TONE_PARAM_WAVE_GROUP_TYPE,
     TONE_PARAM_WAVE_NUM_L,
     TONE_PARAM_WAVE_NUM_R,
-    TONE_PARAM_WAVE_GAIN,
-    TONE_PARAM_WAVE_FXM_SWITCH,
-    TONE_PARAM_PITCH_ENV_DEPTH,
-    TONE_PARAM_TVF_FILTER_TYPE,
-    TONE_PARAM_TVF_CUTOFF,
-    TONE_PARAM_TVF_RESONANCE,
-    TONE_PARAM_TVF_ENV_DEPTH,
-    TONE_PARAM_LFO1_PITCH_DEPTH,
-    TONE_PARAM_LFO1_TVF_DEPTH,
-    TONE_PARAM_LFO1_TVA_DEPTH,
-    TONE_PARAM_LFO1_PAN_DEPTH,
-    TONE_PARAM_LFO2_PITCH_DEPTH,
-    TONE_PARAM_LFO2_TVF_DEPTH,
-    TONE_PARAM_LFO2_TVA_DEPTH,
-    TONE_PARAM_LFO2_PAN_DEPTH,
+    add_address,
     pack_4nibbles,
 )
 
@@ -109,7 +108,7 @@ def detect_synth_midi_channel(client: JunoClient) -> int:
 
 def init_feeder_patch(client: JunoClient) -> None:
     """Initialize Roland temporary patch buffer to clean, uncolored feeder state.
-    
+
     Bypasses MFX, Chorus, Reverb, sets Tone 1 to pure flat sustain gate with filter
     bypassed, neutralizes all envelopes/LFOs, and completely mutes Tones 2, 3, and 4.
     """
@@ -193,7 +192,7 @@ def extract_single_cycle(
     min_peak: float = 0.0001,
 ) -> Tuple[Optional[np.ndarray], float, float, bool, float, float, float, Optional[list[float]]]:
     """Detect fundamental cycle, extract single-cycle wave, and compute 64-point UI preview.
-    
+
     Uses direct time-domain zero-crossing adaptive extraction:
     1. Dynamic onset detection to skip leading silence or latency.
     2. Autocorrelation over stable burst to find fundamental pitch (60 Hz to 1500 Hz).
@@ -203,7 +202,7 @@ def extract_single_cycle(
     5. Normalizes to -0.5 dB peak (~0.94).
     6. Resamples to target_samples (default 1024) for 32-bit float WAV output.
     7. Downsamples to 64 points for fast QML UI rendering.
-    
+
     Returns:
         (resampled_1024, detected_freq_hz, peak, is_single_cycle, score, cycle_sim, peak_corr, preview_64)
     """
@@ -524,12 +523,12 @@ def dump_bank(
     effective_min_peak = 1e-6 if force_detect else min_peak
     t_start = time.time()
 
-    print(f"\n=======================================================")
+    print("\n=======================================================")
     print(f" DUMPING & ANALYZING BANK {bank_name}: {total_count} waves (#{start_num:04d} to #{end_num:04d})")
     print(f" Audio Device: {capture_session.backend_desc}")
     print(f" MIDI Channel: {midi_channel + 1} | Note: {note} (C4) | Table Size: {table_size} pts")
     print(f" Mode: {'MISSING-ONLY RESCAN' if missing_only else 'STANDARD DUMP'}{' [FORCE-DETECT ON]' if force_detect else ''}")
-    print(f"=======================================================\n")
+    print("=======================================================\n")
 
     for w_num in wave_nums:
         if interrupted:
@@ -647,14 +646,14 @@ def dump_bank(
         json.dump(catalog, f, indent=2)
 
     elapsed = time.time() - t_start
-    print(f"\n=======================================================")
+    print("\n=======================================================")
     print(f" DUMP & ANALYSIS COMPLETE: {bank_name}")
     print(f" Processed: {processed} waves in {elapsed:.1f}s ({processed/max(0.1, elapsed):.1f} w/s)")
     print(f" Waveform Previews Captured: {single_cycle_count}")
     print(f" Silent / Dead Waves:        {silent_count}")
     print(f" Updated Catalog: {catalog_path}")
     print(f" Single-Cycle WAVs: {bank_out}/")
-    print(f"=======================================================\n")
+    print("=======================================================\n")
 
 
 def main() -> None:

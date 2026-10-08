@@ -121,4 +121,10 @@ def run_app(
         if hasattr(root_obj, "showFullScreen"):
             root_obj.showFullScreen()
 
-    return app.exec()
+    try:
+        return app.exec()
+    finally:
+        try:
+            bridge._perform_appliance_cleanup("app_exit")
+        except Exception:
+            pass

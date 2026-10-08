@@ -10,10 +10,9 @@ oscillator waveform or an acoustic/percussive multi-sample.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import re
 import subprocess
-import sys
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PDF_PATH = PROJECT_ROOT / "Resources" / "JUNO-DS_88_76_61_ParamGuide_eng01_W.pdf"
@@ -185,12 +184,12 @@ def build_catalogs() -> None:
     sc_inta = sum(1 for v in inta.values() if v["is_single_cycle"])
     sc_intb = sum(1 for v in intb.values() if v["is_single_cycle"])
 
-    print(f"\n=======================================================")
-    print(f" WAVEFORM CATALOGS GENERATED SUCCESSFULLY")
-    print(f"=======================================================")
+    print("\n=======================================================")
+    print(" WAVEFORM CATALOGS GENERATED SUCCESSFULLY")
+    print("=======================================================")
     print(f" INTA: {len(inta)} total waves -> {sc_inta} single-cycle synth waveforms")
     print(f" INTB: {len(intb)} total waves -> {sc_intb} single-cycle synth waveforms")
-    print(f" Saved to:")
+    print(" Saved to:")
     print(f"   {inta_path}")
     print(f"   {intb_path}\n")
 

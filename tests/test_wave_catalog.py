@@ -123,7 +123,7 @@ def test_bridge_tone_wave_integration():
 def test_extract_single_cycle_synthetic_periodic():
     np = pytest.importorskip("numpy")
     signal = pytest.importorskip("scipy.signal")
-    from scripts.dump_waveforms import extract_single_cycle
+    from tools.dump_waveforms import extract_single_cycle
 
     sr = 48000
     t = np.linspace(0, 0.15, int(sr * 0.15))
@@ -147,7 +147,7 @@ def test_extract_single_cycle_synthetic_periodic():
 
 def test_extract_single_cycle_noise():
     np = pytest.importorskip("numpy")
-    from scripts.dump_waveforms import extract_single_cycle
+    from tools.dump_waveforms import extract_single_cycle
 
     sr = 48000
     noise = np.random.uniform(-0.5, 0.5, int(sr * 0.15))
@@ -169,7 +169,7 @@ def test_extract_single_cycle_noise():
 
 def test_extract_single_cycle_silence():
     np = pytest.importorskip("numpy")
-    from scripts.dump_waveforms import extract_single_cycle
+    from tools.dump_waveforms import extract_single_cycle
 
     silence = np.zeros(7200, dtype=np.int32)
     cycle, freq, peak, is_sc, score, cycle_sim, peak_corr, preview_64 = extract_single_cycle(

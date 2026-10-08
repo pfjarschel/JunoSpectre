@@ -157,7 +157,7 @@ class MidiControllerEngine:
     def process_message(self, msg: mido.Message) -> Optional[ControlEvent]:
         """Process incoming MIDI message from the controller."""
         binding, was_consumed = self.learn.process_midi_message(msg)
-        if was_consumed:
+        if was_consumed and binding is not None:
             logger.info(f"Learned binding: {binding.target.target_key} on {binding.message_type.value} #{binding.number}")
             return None
 

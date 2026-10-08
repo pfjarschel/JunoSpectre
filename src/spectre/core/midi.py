@@ -160,15 +160,51 @@ class MidiDeviceManager:
         msg = mido.Message("control_change", channel=channel, control=control, value=max(0, min(127, value)))
         self.send_controller_message(msg)
 
+    @property
+    def is_juno_connected(self) -> bool:
+        """True if bidirectional Juno ports are currently open and valid."""
+        return bool(
+            self.juno_in is not None
+            and not getattr(self.juno_in, "closed", True)
+            and self.juno_out is not None
+            and not getattr(self.juno_out, "closed", True)
+        )
+
+    def close_juno(self) -> None:
+        """Close opened Juno ports cleanly."""
+        for port in [self.juno_in, self.juno_out]:
+            if port and not getattr(port, "closed", True):
+                try:
+                    port.close()
+                except Exception as e:
+                    logger.debug(f"Error closing Juno port {port}: {e}")
+        self.juno_in = None
+        self.juno_out = None
+
+    def reconnect_juno(self) -> bool:
+        """Attempt to re-establish connection to Juno synth ports if disconnected."""
+        try:
+            self.close_juno()
+            self.connect_juno()
+            return True
+        except Exception as e:
+            logger.debug(f"reconnect_juno attempt failed: {e}")
+            return False
+
     def send_juno_sysex(self, data: list[int]) -> None:
-        """Send a SysEx message to the Roland synth."""
-        if not self.juno_out:
+        """Send a SysEx message to the Roland synth with disconnect recovery."""
+        if not self.juno_out or getattr(self.juno_out, "closed", False):
             raise ConnectionError("JUNO-DS output port is not connected.")
         msg = mido.Message("sysex", data=data)
-        self.juno_out.send(msg)
+        try:
+            self.juno_out.send(msg)
+        except Exception as e:
+            logger.warning(f"Error sending SysEx to Juno: {e}")
+            self.close_juno()
+            raise ConnectionError(f"Error sending SysEx to Juno: {e}") from e
 
     def send_juno_cc(self, control: int, value: int, channel: int = 0) -> None:
-        """Send a Control Change message to the Roland synth."""
+        """Send a Control Change message to the Roland synth with disconnect recovery."""
         if not self.juno_out or getattr(self.juno_out, "closed", False):
             raise ConnectionError("JUNO-DS output port is not connected.")
         msg = mido.Message(
@@ -177,7 +213,12 @@ class MidiDeviceManager:
             control=int(control) & 0x7F,
             value=max(0, min(127, int(value))),
         )
-        self.juno_out.send(msg)
+        try:
+            self.juno_out.send(msg)
+        except Exception as e:
+            logger.warning(f"Error sending CC to Juno: {e}")
+            self.close_juno()
+            raise ConnectionError(f"Error sending CC to Juno: {e}") from e
 
     def send_all_notes_off(self, include_reset: bool = True) -> int:
         """Panic: All Notes Off (CC 123) + Reset All Controllers (CC 121) on all 16 channels.

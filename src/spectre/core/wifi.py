@@ -169,8 +169,12 @@ class WifiStatus:
 Runner = Callable[..., subprocess.CompletedProcess]
 
 
-def _default_runner(argv: list[str], timeout: int) -> subprocess.CompletedProcess:
-    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+def _default_runner(
+    argv: list[str], timeout: int, input_data: Optional[str] = None
+) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        argv, input=input_data, capture_output=True, text=True, timeout=timeout
+    )
 
 
 class WifiError(RuntimeError):
@@ -184,10 +188,19 @@ class WifiManager:
         self._run: Runner = runner or _default_runner
 
     # -- low level ------------------------------------------------------
-    def _nmcli(self, *args: str, timeout: int = NMCLI_TIMEOUT) -> subprocess.CompletedProcess:
+    def _nmcli(
+        self, *args: str, timeout: int = NMCLI_TIMEOUT, input_data: Optional[str] = None
+    ) -> subprocess.CompletedProcess:
         if shutil.which("nmcli") is None:
             raise WifiError("nmcli not found on this system")
         try:
+            import inspect
+
+            sig = inspect.signature(self._run)
+            if "input_data" in sig.parameters or any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+            ):
+                return self._run(["nmcli", *args], timeout=timeout, input_data=input_data)
             return self._run(["nmcli", *args], timeout=timeout)
         except FileNotFoundError as exc:
             raise WifiError("nmcli not found on this system") from exc
@@ -381,11 +394,13 @@ class WifiManager:
             except WifiError:
                 iface = ""
         argv = ["dev", "wifi", "connect", ssid]
+        input_data = None
         if password:
-            argv += ["password", password]
+            argv = ["--ask"] + argv
+            input_data = f"{password}\n"
         if iface:
             argv += ["ifname", iface]
-        proc = self._nmcli(*argv, timeout=CONNECT_TIMEOUT)
+        proc = self._nmcli(*argv, timeout=CONNECT_TIMEOUT, input_data=input_data)
         if proc.returncode != 0:
             msg = (proc.stderr or proc.stdout or "connection failed").strip()
             raise WifiError(_friendly_connect_error(msg))

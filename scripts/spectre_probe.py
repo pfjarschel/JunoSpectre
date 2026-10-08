@@ -8,9 +8,9 @@ and receives MIDI control events from Novation Launch Control XL.
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 # Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -20,10 +20,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.protocol import JunoClient, SoundMode
+from src.spectre.core.protocol import JunoClient
 
 console = Console()
 
@@ -79,7 +78,7 @@ def probe_hardware() -> None:
         # 1. Identity Request
         ident = client.ping(timeout=1.0)
         if ident:
-            console.print(f"  [green]✔[/green] Synth Identity Received:")
+            console.print("  [green]✔[/green] Synth Identity Received:")
             console.print(f"    • Device ID: [bold]{hex(ident.device_id)}[/bold] ({ident.device_id})")
             console.print(
                 f"    • Family Code: [bold]{[hex(x) for x in ident.family_code]}[/bold] "
@@ -198,12 +197,11 @@ def quick_bridge(duration: float = 60.0, fader_ccs: list[int] | None = None) -> 
 
         patch_name = client.get_patch_name()
         console.print(f"Target Synth Patch: [bold green]\"{patch_name}\"[/bold green]")
-        
+
         levels = list(client.get_tone_levels())
         console.print(f"Current Tone Levels: [bold cyan]{levels}[/bold cyan]\n")
 
         last_sent_val = {1: levels[0], 2: levels[1], 3: levels[2], 4: levels[3]}
-        last_sent_time = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
 
         start = time.time()
         try:

@@ -28,7 +28,6 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.protocol import JunoClient
 from src.spectre.core.sysex import (
-    add_address,
     OFFSET_PATCH_COMMON,
     OFFSET_PATCH_COMMON_CHORUS,
     OFFSET_PATCH_COMMON_MFX,
@@ -39,6 +38,7 @@ from src.spectre.core.sysex import (
     OFFSET_PATCH_TONE_3,
     OFFSET_PATCH_TONE_4,
     TONE_PARAM_ENV_MODE,
+    add_address,
 )
 
 DEFAULT_OUTPUT = PROJECT_ROOT / "src" / "spectre" / "assets" / "init_template.json"

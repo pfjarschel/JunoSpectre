@@ -239,5 +239,4 @@ class MidiLearnEngine:
             return binding, True
 
         # Normal routing lookup
-        binding = self.get_binding(channel, msg_type, number)
-        return binding, False
+        return self.get_binding(channel, msg_type, number), False

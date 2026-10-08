@@ -2,7 +2,7 @@
 
 Sources:
 - `factory`: Juno-DS ROM presets. Metadata only (msb/lsb/pc). Read-only.
-  Populated by scripts/dump_factory_catalog.py. Audition via Bank Select + PC.
+  Populated by tools/dump_factory_catalog.py. Audition via Bank Select + PC.
 - `synth-user`: Juno-DS User bank (MSB 87, LSB 0..1, 256 slots). Metadata +
   optional cached full dump. Written via explicit "Sync from synth".
 - `file`: `*.spectre` (v1 envelope) + `*.syx` under the user dir.
@@ -693,7 +693,7 @@ class PatchRepository:
         }
 
     # ------------------------------------------------------------------ write
-    def _touch_file_row(self, path: str) -> None:
+    def touch_file_row(self, path: str) -> None:
         """Refresh DB row from file after an in-file meta edit."""
         f = Path(path)
         if is_auto_backup(f):
@@ -705,6 +705,8 @@ class PatchRepository:
                 return
             self._index_spectre_file(f, st_mtime)
             self._conn.commit()
+
+    _touch_file_row = touch_file_row
 
     def set_favorite(self, path: str, favorite: bool) -> bool:
         row = self.get(path)

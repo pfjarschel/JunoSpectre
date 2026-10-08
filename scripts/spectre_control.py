@@ -8,9 +8,9 @@ and full real-time bridging between controller and Roland synthesizer.
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 # Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -19,22 +19,18 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import IntPrompt, Prompt
 from rich.table import Table
-from rich.prompt import Prompt, IntPrompt
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.protocol import JunoClient
 from src.spectre.control import (
-    ControlEvent,
-    HardwareProfile,
     MidiControllerEngine,
-    MidiLearnEngine,
-    ParameterTarget,
     ProfileManager,
     ScaleMode,
     SmoothScaler,
     build_standard_parameter_registry,
 )
+from src.spectre.core.midi import MidiDeviceManager
+from src.spectre.core.protocol import JunoClient
 
 console = Console()
 
@@ -253,7 +249,7 @@ def interactive_midi_learn() -> None:
         console.print("[red]Timed out waiting for MIDI message.[/red]")
 
 
-def run_live_bridge(profile_name: Optional[str] = None, duration: float = 60.0) -> None:
+def run_live_bridge(profile_name: str | None = None, duration: float = 60.0) -> None:
     """Run live real-time bridge with smooth scaling and bidirectional controller feedback."""
     console.print(
         Panel.fit(

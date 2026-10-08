@@ -343,7 +343,7 @@ Rectangle {
                             Layout.preferredWidth: ScaleMetrics.dp(74)
                             height: ScaleMetrics.dp(26)
                             title: "TONES"
-                            accentColor: "#00e5ff"
+                            accentColor: Theme.tone1
                         }
 
                         Item { Layout.fillWidth: true }
@@ -448,7 +448,7 @@ Rectangle {
                 Layout.fillHeight: true
                 stageNumber: "1"
                 stageTitle: "TONES (1-4)"
-                accentColor: "#00e5ff"
+                accentColor: Theme.tone1
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -466,7 +466,7 @@ Rectangle {
                                 Layout.fillWidth: true
                                 height: ScaleMetrics.dp(20)
                                 radius: 2
-                                color: root.selectedToneTab === index ? "#00e5ff" : "#131922"
+                                color: root.selectedToneTab === index ? Theme.tone1 : "#131922"
                                 border.color: root.selectedToneTab === index ? "#ffffff" : Theme.borderCard
                                 border.width: 1
 
@@ -551,7 +551,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         label: "OUT LEVEL"
-                        accent: "#00e5ff"
+                        accent: Theme.tone1
                         val: {
                             if (!Bridge.toneOutputLevels || Bridge.toneOutputLevels.length === 0) return 127;
                             return root.selectedToneTab === 0 ? Bridge.toneOutputLevels[0] : Bridge.toneOutputLevels[root.selectedToneTab - 1];
@@ -844,7 +844,7 @@ Rectangle {
     component RoutingStageCard: Rectangle {
         property string stageNumber: "1"
         property string stageTitle: "STAGE"
-        property color accentColor: "#00e5ff"
+        property color accentColor: Theme.tone1
         default property alias content: innerContainer.data
 
         radius: ScaleMetrics.dp(6)
@@ -905,7 +905,7 @@ Rectangle {
     // Schematic Visual Node Chip
     component SchematicNode: Rectangle {
         property string title: "NODE"
-        property color accentColor: "#00e5ff"
+        property color accentColor: Theme.tone1
 
         radius: ScaleMetrics.dp(4)
         color: "#0f141f"
@@ -930,7 +930,7 @@ Rectangle {
         property int val: 0
         property int minVal: 0
         property int maxVal: 127
-        property color accent: "#00e5ff"
+        property color accent: Theme.tone1
         signal moved(int v)
 
         implicitHeight: ScaleMetrics.dp(36)

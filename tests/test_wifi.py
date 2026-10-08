@@ -27,9 +27,11 @@ class FakeNmcli:
         # routes: tuple(argv) -> SimpleNamespace proc
         self.routes = routes
         self.calls: list[list[str]] = []
+        self.inputs: list = []
 
-    def __call__(self, argv, timeout=8):
+    def __call__(self, argv, timeout=8, input_data=None):
         self.calls.append(list(argv))
+        self.inputs.append(input_data)
         key = tuple(argv)
         if key in self.routes:
             return self.routes[key]
@@ -191,12 +193,11 @@ def test_connect_builds_argv_with_password_and_iface():
             ),
             (
                 "nmcli",
+                "--ask",
                 "dev",
                 "wifi",
                 "connect",
                 "Studio",
-                "password",
-                "s3cr3t",
                 "ifname",
                 "wlan0",
             ): _proc(stdout="success\n"),
@@ -205,6 +206,10 @@ def test_connect_builds_argv_with_password_and_iface():
     mgr = WifiManager(runner=fake)
     assert mgr.connect("Studio", "s3cr3t") == {"ssid": "Studio", "changed": True}
     assert any("connect" in c for c in fake.calls)
+    connect_call = next(c for c in fake.calls if "connect" in c)
+    assert "password" not in connect_call
+    assert "s3cr3t" not in connect_call
+    assert fake.inputs[-1] == "s3cr3t\n"
 
 
 def test_connect_requires_ssid_and_surfaces_wrong_password():

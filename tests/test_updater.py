@@ -118,3 +118,13 @@ def test_check_fetch_failure_raises_updater_error(appliance):
     )
     with pytest.raises(UpdaterError):
         appliance.check()
+
+
+def test_apply_ignores_untracked_files(appliance):
+    scratch = appliance.repo_root / "scratch.txt"
+    scratch.write_text("scratch dev")
+    assert appliance.is_dirty() is False
+    result = appliance.apply()
+    assert result["changed"] is True
+    assert scratch.read_text() == "scratch dev"
+

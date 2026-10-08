@@ -148,16 +148,26 @@ fullscreen. Useful flags:
 
 You can also add this to a `systemd` service to boot straight into Spectre.
 
-### Other tools
+### Entry Points & CLI
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/spectre_vector.py` | Main touch UI launcher |
+| `scripts/start_spectre.sh` | Production launch wrapper with display/platform detection |
+| `scripts/spectre_vector.py` | Main touch UI launcher (`juno-spectre` command) |
 | `scripts/spectre_control.py` | Hardware profile inspector and MIDI learn CLI |
-| `scripts/spectre_probe.py` | Probe the connected synth |
-| `scripts/build_wave_catalog.py` | Build the waveform catalog |
-| `scripts/dump_waveforms.py` | Dump waveform data |
-| `scripts/probe_mfx_ranges.py`, `scan_mfx_patches.py` | Explore MFX parameter ranges |
+| `scripts/spectre_probe.py` | SysEx device probe and identity verification |
+
+### Developer & Data Tools (`tools/`)
+
+| Tool | Purpose |
+|------|---------|
+| `tools/dump_waveforms.py` | Automated waveform sampler and periodicity classifier |
+| `tools/build_wave_catalog.py` | Roland Parameter Guide PDF waveform catalog compiler |
+| `tools/dump_factory_catalog.py` | Factory ROM preset dumper and `factory.db` builder |
+| `tools/capture_init_template.py` | Captures golden initialized patch template over SysEx |
+| `tools/probe_mfx_ranges.py` | Probes MFX parameter ranges and boundaries |
+| `tools/scan_mfx_patches.py` | Scans ROM presets for MFX type distribution |
+| `tools/sampler_test.py` | Audio input latency and threshold test harness |
 
 ### Tests
 
@@ -173,15 +183,17 @@ pytest
 JunoSpectre/
 ├── config/
 │   └── hardware_profiles/     # JSON maps for MIDI controllers
-├── scripts/                   # Launchers and developer tools
+├── scripts/                   # Production launchers and runtime scripts
+├── tools/                     # Offline data dumpers and asset compilers
 ├── src/spectre/
 │   ├── core/                  # SysEx, protocol, MIDI, patch state, MFX, waves, updater
 │   ├── control/               # Hardware profiles, MIDI learn, smooth scaler
 │   ├── vector/                # Vector maths, motion, engine
-│   ├── ui/                    # Qt Quick app, Python↔QML bridge, QML views
-│   └── assets/waveforms/      # Waveform catalog
+│   ├── librarian/             # SQLite patch indexing, repository, tagging
+│   ├── ui/                    # Qt Quick app, modular Python↔QML bridge, QML views
+│   └── assets/                # JSON catalogs, factory DB, waveform metadata
 ├── tests/                     # pytest suite
-└── Resources/                 # Roland reference PDFs (MIDI implementation, parameter guide)
+└── Resources/                 # Roland reference PDFs (param guide, MIDI implementation)
 ```
 
 ---

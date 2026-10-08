@@ -1,43 +1,43 @@
-import os
+import subprocess
 import sys
 import time
-import subprocess
 from pathlib import Path
+
 import numpy as np
 from scipy.io import wavfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import mido
+
 from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.protocol import JunoClient
 from src.spectre.core.sysex import (
-    add_address,
     OFFSET_PATCH_TONE_1,
     OFFSET_PATCH_TONE_2,
     OFFSET_PATCH_TONE_3,
     OFFSET_PATCH_TONE_4,
+    TONE_PARAM_CHORUS_SEND,
+    TONE_PARAM_DRY_SEND,
     TONE_PARAM_LEVEL,
-    TONE_PARAM_WAVE_GROUP_TYPE,
+    TONE_PARAM_REVERB_SEND,
+    TONE_PARAM_TVF_CUTOFF,
+    TONE_PARAM_TVF_FILTER_TYPE,
+    TONE_PARAM_TVF_RESONANCE,
+    TONE_PARAM_WAVE_GAIN,
     TONE_PARAM_WAVE_GROUP_ID,
+    TONE_PARAM_WAVE_GROUP_TYPE,
     TONE_PARAM_WAVE_NUM_L,
     TONE_PARAM_WAVE_NUM_R,
-    TONE_PARAM_WAVE_GAIN,
-    TONE_PARAM_TVF_FILTER_TYPE,
-    TONE_PARAM_TVF_CUTOFF,
-    TONE_PARAM_TVF_RESONANCE,
-    TONE_PARAM_TVA_LEVEL,
-    TONE_PARAM_DRY_SEND,
-    TONE_PARAM_CHORUS_SEND,
-    TONE_PARAM_REVERB_SEND,
+    add_address,
     pack_4nibbles,
 )
-import mido
 
 
 def prepare_feeder_patch(client: JunoClient):
     """Configure Tone 1 as flat pure wave feeder, mute Tones 2, 3, 4."""
     base = client.get_active_patch_base()
-    
+
     # 1. Mute Tones 2, 3, 4
     for offset in [OFFSET_PATCH_TONE_2, OFFSET_PATCH_TONE_3, OFFSET_PATCH_TONE_4]:
         addr = add_address(base, offset)
@@ -45,7 +45,7 @@ def prepare_feeder_patch(client: JunoClient):
 
     # 2. Configure Tone 1 as 100% clean feeder
     t1_addr = add_address(base, OFFSET_PATCH_TONE_1)
-    
+
     # Level = 127
     client.send_data(add_address(t1_addr, TONE_PARAM_LEVEL), [127])
     # Wave Gain = 1 (0 dB)
@@ -60,7 +60,7 @@ def prepare_feeder_patch(client: JunoClient):
     client.send_data(add_address(t1_addr, TONE_PARAM_DRY_SEND), [127])
     client.send_data(add_address(t1_addr, TONE_PARAM_CHORUS_SEND), [0])
     client.send_data(add_address(t1_addr, TONE_PARAM_REVERB_SEND), [0])
-    
+
     print("Feeder patch configured (Tone 1 pure, Tones 2-4 muted, filter bypassed).")
 
 
@@ -89,7 +89,7 @@ def sample_wave(mgr: MidiDeviceManager, client: JunoClient, bank_id: int, wave_n
     mgr.juno_out.send(mido.Message("note_on", note=note, velocity=100, channel=0))
     time.sleep(dur)
     mgr.juno_out.send(mido.Message("note_off", note=note, velocity=0, channel=0))
-    
+
     time.sleep(0.15)
     proc.terminate()
     proc.wait()
@@ -99,17 +99,17 @@ if __name__ == "__main__":
     mgr = MidiDeviceManager()
     in_n, out_n = mgr.connect_juno()
     client = JunoClient(mgr)
-    
+
     prepare_feeder_patch(client)
-    
+
     out_dir = Path(__file__).resolve().parent.parent / "src" / "spectre" / "assets" / "samples"
     out_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Test sample Wave 1 from INTA
     test_wav = out_dir / "test_INTA_0001.wav"
     print(f"Sampling INTA Wave 1 to {test_wav}...")
     sample_wave(mgr, client, bank_id=0, wave_num=1, out_wav=test_wav)
-    
+
     if test_wav.exists():
         sr, data = wavfile.read(test_wav)
         peak = np.max(np.abs(data)) / (2**31 - 1)

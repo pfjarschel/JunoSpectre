@@ -160,26 +160,26 @@ Rectangle {
                 // Sync button (patch only — disabled in PERFORM, perf has its own sync)
                 Rectangle {
                     id: syncBtn
-                    width: ScaleMetrics.dp(46)
+                    width: ScaleMetrics.dp(Bridge.syncBusy ? 54 : 46)
                     height: ScaleMetrics.dp(30)
                     radius: ScaleMetrics.dp(3)
                     color: syncArea.pressed ? Theme.bgCardActive : Theme.bgSurface
                     border.color: syncArea.pressed ? Theme.tone1 : Theme.borderCard
                     border.width: 1
-                    enabled: Bridge.soundMode !== "PERFORM"
+                    enabled: Bridge.soundMode !== "PERFORM" && !Bridge.syncBusy
                     opacity: enabled ? 1.0 : 0.35
 
                     RowLayout {
                         anchors.centerIn: parent
                         spacing: 2
                         Text {
-                            text: "⟳"
+                            text: Bridge.syncBusy ? "⏳" : "⟳"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(11)
                             color: Theme.tone1
                         }
                         Text {
-                            text: "SYNC"
+                            text: Bridge.syncBusy ? "SYNC..." : "SYNC"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(8)
                             color: Theme.textSecondary
@@ -191,7 +191,7 @@ Rectangle {
                         anchors.fill: parent
                         enabled: syncBtn.enabled
                         onClicked: {
-                            Bridge.syncPatchFromSynth();
+                            Bridge.syncPatchFromSynth(true);
                         }
                     }
                 }

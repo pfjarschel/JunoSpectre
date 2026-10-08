@@ -169,7 +169,7 @@ def test_golden_template_asset_decodes():
     from src.spectre.core.patch_state import TEMPLATE_ASSET_PATH
 
     if not TEMPLATE_ASSET_PATH.exists():
-        pytest.skip("init_template.json not captured (run scripts/capture_init_template.py)")
+        pytest.skip("init_template.json not captured (run tools/capture_init_template.py)")
 
     patch = PatchState.from_template_file()
     assert patch is not None

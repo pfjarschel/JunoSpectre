@@ -274,6 +274,37 @@ def test_bridge_sync_patch_from_synth():
     assert waves[3]["name"] == "Open Triangl"  # INTA 1816
 
 
+def test_bridge_sync_patch_from_synth_async():
+    """Verify async syncPatchFromSynth toggles syncBusy and updates patch state."""
+    import time
+    from unittest.mock import MagicMock
+
+    from src.spectre.core.protocol import JunoClient, SoundMode
+
+    mock_client = MagicMock(spec=JunoClient)
+    mock_client.get_patch_name.return_value = "Async Patch"
+    mock_client.get_sound_mode.return_value = SoundMode.PATCH
+    mock_client.get_all_tone_waves.return_value = [("INTA", 579)] * 4
+
+    engine = VectorEngine(juno_client=mock_client)
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+
+    assert not bridge.syncBusy
+    busy_states = []
+    bridge.syncBusyChanged.connect(lambda b: busy_states.append(b))
+
+    bridge.syncPatchFromSynth(async_mode=True)
+
+    deadline = time.time() + 3.0
+    while (bridge.syncBusy or not busy_states) and time.time() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+
+    assert True in busy_states
+    assert not bridge.syncBusy
+    assert bridge.patchName == "Async Patch"
+
+
 def test_wave_modal_and_virtual_keyboard():
     """Verify WaveBrowserModal and VirtualKeyboard integrate properly into QML tree."""
     from PyQt6.QtCore import QObject
@@ -1219,3 +1250,114 @@ def test_env_modifier_bridge_api():
     bridge.setEnvModParam("TVF", "velSens", 10)
     bridge.setEnvModParam("TVA", "t1VelSens", -5)
     assert received == ["TVF", "TVA"]
+
+
+def test_bridge_set_effect_param_table_driven():
+    """Verify table-driven setEffectParam and setChorusParam/setReverbParam clamping and signals."""
+    from src.spectre.ui.bridge import SpectreBridge
+    from src.spectre.vector.engine import VectorEngine
+
+    engine = VectorEngine()
+    bridge = SpectreBridge(engine)
+
+    chorus_signals = []
+    reverb_signals = []
+    bridge.chorusParamsChanged.connect(lambda: chorus_signals.append(True))
+    bridge.reverbParamsChanged.connect(lambda: reverb_signals.append(True))
+
+    # Unified setEffectParam for Chorus
+    bridge.setEffectParam("chorus", "level", 110)
+    assert bridge.chorusLevel == 110
+    assert len(chorus_signals) >= 1
+
+    # Clamping out-of-range value
+    bridge.setEffectParam("chorus", "type", 999)
+    assert bridge.chorusType == 3  # clamped to max 3
+
+    bridge.setEffectParam("chorus", "type", -5)
+    assert bridge.chorusType == 0  # clamped to min 0
+
+    # Unified setEffectParam for Reverb
+    bridge.setEffectParam("reverb", "level", 95)
+    assert bridge.reverbLevel == 95
+    assert len(reverb_signals) >= 1
+
+    bridge.setEffectParam("reverb", "type", 999)
+    assert bridge.reverbType == 5  # clamped to max 5
+
+    bridge.setEffectParam("reverb", "time", 150)
+    assert bridge.reverbTime == 127  # clamped to max 127
+
+
+def test_bridge_no_duplicate_signals():
+    """Verify that SpectreBridge metaObject contains no duplicate signal definitions."""
+    from collections import defaultdict
+    from src.spectre.ui.bridge import SpectreBridge
+
+    bridge = SpectreBridge(VectorEngine())
+    mo = bridge.metaObject()
+
+    signals = defaultdict(list)
+    for i in range(mo.methodCount()):
+        m = mo.method(i)
+        if m.methodType() == m.MethodType.Signal:
+            name = m.name().data().decode()
+            sig = m.methodSignature().data().decode()
+            signals[name].append((i, sig))
+
+    duplicates = {name: entries for name, entries in signals.items() if len(entries) > 1 and name != "destroyed"}
+    assert not duplicates, f"Found duplicate signals in SpectreBridge: {duplicates}"
+
+
+def test_bridge_qml_cutoff_and_mode_bindings():
+    """Verify QML property bindings for masterCutoff and soundMode reactively update."""
+    from PyQt6.QtCore import QUrl
+    from PyQt6.QtQml import QQmlComponent
+
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+
+    comp = QQmlComponent(qml_engine)
+    comp.setData(
+        b"""
+        import QtQuick 2.0
+        import JunoSpectre 1.0
+        Item {
+            property int cutoff: Bridge.masterCutoff
+            property string mode: Bridge.soundMode
+        }
+        """,
+        QUrl(),
+    )
+    obj = comp.create()
+    assert obj is not None
+    app.processEvents()
+
+    assert obj.property("cutoff") == 127
+    assert obj.property("mode") == "PATCH"
+
+    # Slide / set master cutoff
+    bridge.setMasterCutoff(80)
+    app.processEvents()
+    assert obj.property("cutoff") == 80
+    assert bridge.masterCutoff == 80
+
+    # Sculpt cutoff
+    bridge.sculptCutoff(42)
+    app.processEvents()
+    assert obj.property("cutoff") == 42
+    assert bridge.masterCutoff == 42
+
+    # Switch sound mode to PERFORM (Go PERFORM button)
+    bridge.setSoundMode("PERFORM")
+    app.processEvents()
+    assert obj.property("mode") == "PERFORM"
+    assert bridge.soundMode == "PERFORM"
+
+    # Switch back to PATCH
+    bridge.setSoundMode("PATCH")
+    app.processEvents()
+    assert obj.property("mode") == "PATCH"
+    assert bridge.soundMode == "PATCH"
+
+
