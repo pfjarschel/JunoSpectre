@@ -319,17 +319,28 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
                     from ...core.spectre_format import load_spectre as _load
                     from ...core.spectre_format import patch_state_to_dict as _to_dict
                     snaps = {}
+                    held = getattr(self, "_part_snapshots", None) or {}
                     for p in self.patch_state.perf_parts:
                         link = str(getattr(p, "patch_file", "") or "")
                         if link and Path(link).is_file():
                             try:
                                 snaps[str(p.part_index)] = _to_dict(_load(link)["patch_state"])
+                                continue
                             except Exception as e:
                                 logger.debug(f"save performance: part snapshot failed: {e}")
+                        # Missing/unreadable link: keep the image we already hold.
+                        if link and isinstance(held.get(str(p.part_index)), dict):
+                            snaps[str(p.part_index)] = held[str(p.part_index)]
                     if snaps:
                         extras["part_snapshots"] = snaps
                 except Exception as e:
                     logger.debug(f"save performance: snapshots failed: {e}")
+                # A performance is the whole song: sounds + sequence + tempo.
+                if hasattr(self, "sequencer"):
+                    try:
+                        extras["sequencer"] = self.sequencer.song.to_dict()
+                    except Exception as e:
+                        logger.debug(f"save performance: sequence failed: {e}")
             else:
                 state = self._fresh_live_state(name or self._patch_name)
                 file_name = state.common.name

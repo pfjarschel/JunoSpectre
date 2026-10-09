@@ -606,11 +606,9 @@ Rectangle {
             // End of left browser column; action column spans the full height.
             }
 
-            // Right Action Column (~240dp, full height; hidden while picking
-            // a part patch so the browser gets full width and never overflows)
+            // Right Action Column (~240dp, full height)
             Rectangle {
-                visible: Bridge.librarianPickTarget <= 0
-                Layout.preferredWidth: Bridge.librarianPickTarget > 0 ? 0 : ScaleMetrics.dp(240)
+                Layout.preferredWidth: ScaleMetrics.dp(240)
                 Layout.fillHeight: true
                 radius: ScaleMetrics.dp(6)
                 color: Theme.bgApp

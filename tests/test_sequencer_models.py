@@ -6,9 +6,9 @@ from src.spectre.core.patch_state import PatchState
 from src.spectre.core.spectre_format import (
     FORMAT_VERSION,
     load_playlist,
-    load_song,
+    load_performance,
     save_playlist,
-    save_song,
+    save_spectre,
 )
 from src.spectre.sequencer.models import (
     Clip,
@@ -96,7 +96,7 @@ def test_sequencer_song_roundtrip():
     assert song2.tracks[0].clips[0].steps[0].notes[0].pitch == 72
 
 
-def test_song_save_and_load_roundtrip(tmp_path):
+def test_performance_carries_sequence_roundtrip(tmp_path):
     ps = PatchState.create_init_patch()
     ps.common.name = "MY SONG"
     song = default_sequencer_song()
@@ -104,22 +104,25 @@ def test_song_save_and_load_roundtrip(tmp_path):
     song.tracks[0].clips[0].steps[0].notes.append(NoteEvent(60, 100))
 
     song_file = tmp_path / "test_song.spectre"
-    save_song(
-        song_file,
-        patch_state=ps,
-        sequencer_song=song,
-        meta={"name": "MY SONG", "tags": ["live"]},
-        macros=[{"key": "common.cutoff_offset", "value": 0.5}],
-    )
+    save_spectre(song_file, ps, meta={"name": "MY SONG", "tags": ["live"]},
+                 spectre={"sequencer": song.to_dict(), "part_snapshots": {"2": {"x": 1}}},
+                 kind="performance")
 
-    loaded = load_song(song_file)
-    assert loaded["kind"] == "song"
+    loaded = load_performance(song_file)
+    assert loaded["kind"] == "performance"
     assert loaded["format_version"] == FORMAT_VERSION
     assert loaded["meta"]["name"] == "MY SONG"
-    assert loaded["patch_state"].common.name == "MY SONG"
     assert loaded["sequencer_song"].bpm == 128.0
     assert loaded["sequencer_song"].tracks[0].clips[0].steps[0].notes[0].pitch == 60
-    assert len(loaded["macros"]) == 1
+    assert loaded["part_snapshots"] == {"2": {"x": 1}}
+
+
+def test_performance_without_sequence_and_song_kind_gone(tmp_path):
+    f = tmp_path / "perf.spectre"
+    save_spectre(f, PatchState.create_init_patch(), kind="performance")
+    assert load_performance(f)["sequencer_song"] is None
+    with pytest.raises(ValueError):
+        save_spectre(tmp_path / "s.spectre", PatchState.create_init_patch(), kind="song")
 
 
 def test_playlist_save_and_load_roundtrip(tmp_path):

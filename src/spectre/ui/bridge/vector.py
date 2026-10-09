@@ -905,6 +905,10 @@ class VectorBridgeMixin(BridgeBaseMixin):
             if v == "LIBRARIAN" and self._active_view != "LIBRARIAN":
                 self._view_before_librarian = self._active_view
                 self._capture_librarian_entry()
+            elif self._active_view == "LIBRARIAN" and self._pick_target:
+                # Leaving the Librarian any other way ends part picking too.
+                self._pick_target = 0
+                self.librarianPickChanged.emit()
 
             self._active_view = v
             if v == "VECTOR":

@@ -12,13 +12,12 @@ from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 from ...core.patch_state import PatchState
 from ...core.spectre_format import (
     load_playlist,
-    load_song,
+    load_performance,
     patch_state_from_dict,
     patch_state_to_dict,
     playlist_entry_status,
     refresh_entry_snapshot,
     save_playlist,
-    save_song,
     snapshot_hash_of,
 )
 from .base import BridgeBaseMixin
@@ -143,6 +142,7 @@ class SetlistBridgeMixin(BridgeBaseMixin):
                 "song_path": "",
                 "snapshot_hash": snapshot_hash_of(cached_hw),
                 "cached": cached_hw,
+                "part_snapshots": copy.deepcopy(getattr(self, "_part_snapshots", None) or {}),
                 "sequencer": seq_dict,
                 "bpm": self.sequencer.bpm if hasattr(self, "sequencer") else 120.0,
                 "macros": [m.value for m in getattr(self.patch_state, "macros", [])],
@@ -214,14 +214,16 @@ class SetlistBridgeMixin(BridgeBaseMixin):
 
         if song_path and Path(song_path).is_file():
             try:
-                loaded_song = load_song(song_path)
+                loaded_song = load_performance(song_path)
             except Exception as e:
                 logger.info(f"activateSong: linked file unreadable, falling back to snapshot: {e}")
 
         if loaded_song is not None:
             new_patch_state = loaded_song["patch_state"]
             new_seq_song = loaded_song.get("sequencer_song")
+            part_snapshots = loaded_song["part_snapshots"]
         elif entry.get("cached") is not None:
+            part_snapshots = entry.get("part_snapshots") or {}
             try:
                 new_patch_state = patch_state_from_dict(entry["cached"])
                 from ...sequencer.models import SequencerSong
@@ -234,28 +236,12 @@ class SetlistBridgeMixin(BridgeBaseMixin):
             logger.warning("activateSong: no valid song file or cached snapshot.")
             return False
 
-        # 4. Hydrate patch state & push Roland Performance SysEx
-        self.patch_state = new_patch_state
-        self.patch_state.sound_mode = "PERFORM"
-        self._sound_mode = "PERFORM"
+        # 4. Hydrate patch state & push the full performance (mixer, FX, part sounds)
+        if not self._apply_playlist_state(
+                patch_state_to_dict(new_patch_state), str(entry.get("name") or "Song"),
+                part_snapshots if isinstance(part_snapshots, dict) else {}):
+            return False
         self._patch_name = str(entry.get("name") or "Song")
-
-        juno = self.juno
-        if juno is not None:
-            try:
-                from ...core.protocol import SoundMode
-                juno.set_sound_mode(SoundMode.PERFORM)
-                for p in self.patch_state.perf_parts:
-                    juno.set_perf_part_patch(p.part_index, p.patch_msb, p.patch_lsb, p.patch_pc)
-                    juno.set_perf_part_level(p.part_index, p.volume)
-                    juno.set_perf_part_pan(p.part_index, p.pan)
-                    juno.set_perf_part_mute(p.part_index, p.muted)
-                    juno.set_perf_zone(
-                        p.part_index,
-                        p.key_low, p.key_high, p.zone_switch, p.zone_octave,
-                    )
-            except Exception as e:
-                logger.debug(f"activateSong: hardware SysEx push error: {e}")
 
         # 5. Hydrate 5-track Sequencer State & reset playheads
         if hasattr(self, "sequencer"):
@@ -265,6 +251,11 @@ class SetlistBridgeMixin(BridgeBaseMixin):
             else:
                 self._apply_tempo(float(entry.get("bpm") or 120.0))
             self.sequencer.stop()
+            if hasattr(self, "_seq_retarget_recorder"):
+                self._seq_retarget_recorder()
+            self.seqTracksChanged.emit()
+            self.seqActiveClipChanged.emit()
+            self.seqStateChanged.emit()
 
         # 6. Apply macro values
         macro_vals = entry.get("macros", [])

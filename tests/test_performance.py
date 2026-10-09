@@ -288,13 +288,15 @@ def test_pick_part_hw_row(tmp_path):
     part = bridge.patch_state.perf_parts[2]
     assert (part.patch_msb, part.patch_lsb, part.patch_pc) == (87, 0, 5)
     assert part.patch_name == "Picked LD"
-    assert bridge.librarianPickTarget == 0
+    assert bridge.librarianPickTarget == 3  # still picking: next tap auditions on P3
+    assert bridge.pickPartPatch(87, 0, 6, "", "Second LD", "patch") is True
+    assert bridge.patch_state.perf_parts[2].patch_pc == 6
     # Assign stays in the Librarian; OK proposes the mixer.
     assert bridge._active_view == "LIBRARIAN"
     assert bridge._pending_view == "PERFORMANCE"
     bridge.toggleLibrarian()
     assert bridge._active_view == "PERFORMANCE"
-    assert juno._store[(0x10, 0x00, 0x22, 0x04)] == bytes([87, 0, 5])
+    assert juno._store[(0x10, 0x00, 0x22, 0x04)] == bytes([87, 0, 6])
 
 
 def test_pick_part_pi_only_file_pushes(tmp_path):
@@ -967,3 +969,65 @@ def test_edit_perf_part_refreshes_editors(tmp_path):
     assert bridge.engine.tone_levels == (95, 60, 40, 0)
     assert bridge._tone_waves[0] == ("INTA", 123)
 
+
+
+def test_performance_file_carries_the_song(tmp_path):
+    """One file = the whole song: performance, part sounds, sequence and tempo."""
+    bridge, _, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    bridge.patch_state.perf_name = "SONG"
+    bridge.setBpm(101.0)
+    bridge.seqSetTrackTargetPart(0, 3)
+    bridge.seqToggleTrackLayer(0, 5)
+    out = bridge.saveCurrentToFile("SONG", "", "", False, "")
+    assert load_spectre(out)["spectre"]["sequencer"]["bpm"] == 101.0
+
+    bridge.setBpm(140.0)
+    bridge.seqSetTrackTargetPart(0, 1)
+    bridge.seqToggleTrackLayer(0, 5)
+    assert bridge.loadSpectreFile(out) is True
+    assert bridge._sound_mode == "PERFORM"
+    assert bridge.bpm == 101.0
+    assert bridge.sequencer.song.tracks[0].target_parts == [3, 5]
+
+
+def test_performance_file_without_sequence_keeps_current_one(tmp_path):
+    bridge, _, _ = _bridge_rig(tmp_path)
+    state = _raw_image_state("OLD")
+    state.sound_mode = "PERFORM"
+    old = tmp_path / "old.spectre"
+    save_spectre(old, state, kind="performance")
+    bridge.setBpm(133.0)
+    bridge.seqSetTrackTargetPart(2, 9)
+    assert bridge.loadSpectreFile(str(old)) is True
+    assert bridge.bpm == 133.0
+    assert bridge.sequencer.song.tracks[2].target_parts == [9]
+
+
+def test_save_keeps_held_snapshot_for_missing_link(tmp_path):
+    bridge, _, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    bridge.patch_state.perf_parts[1].patch_file = str(tmp_path / "gone.spectre")
+    bridge._part_snapshots = {"2": patch_state_to_dict(_raw_image_state("HELD"))}
+    out = bridge.saveCurrentToFile("MISS", "", "", False, "")
+    assert load_spectre(out)["spectre"]["part_snapshots"]["2"]["common"]["name"] == "HELD"
+
+
+def test_pick_part_turns_kbd_switch_on(tmp_path):
+    bridge, _, _ = _bridge_rig(tmp_path)
+    bridge.setPartZoneSwitch(6, False)
+    bridge.openPartPicker(6)
+    assert bridge.pickPartPatch(87, 0, 5, "", "Picked", "patch") is True
+    assert bridge.patch_state.perf_parts[5].zone_switch is True
+    assert bridge.perfParts[5]["zoneOn"] is True
+
+
+def test_leaving_librarian_ends_part_pick(tmp_path):
+    bridge, _, _ = _bridge_rig(tmp_path)
+    bridge.openPartPicker(4)
+    assert bridge.pickPartPatch(87, 0, 5, "", "LD", "patch") is True
+    bridge.toggleLibrarian()  # OK
+    assert bridge.librarianPickTarget == 0
+    bridge.openPartPicker(4)
+    bridge.setActiveView("SEQUENCER")  # navigated away
+    assert bridge.librarianPickTarget == 0

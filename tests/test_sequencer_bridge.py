@@ -323,19 +323,57 @@ def test_launches_move_the_selection(bridge):
     assert bridge.seqActiveClip == 4  # active track (2) unaffected
 
 
-def test_loading_a_song_file_applies_its_sequence_and_tempo(bridge, tmp_path):
+def test_loading_a_performance_applies_its_sequence_and_tempo(bridge, tmp_path):
     from src.spectre.core.patch_state import PatchState
-    from src.spectre.core.spectre_format import save_song
+    from src.spectre.core.spectre_format import save_spectre
     from src.spectre.sequencer.models import default_sequencer_song
 
     song = default_sequencer_song()
     song.bpm = 97.0
     song.tracks[1].selected_clip_idx = 4
     path = tmp_path / "song.spectre"
-    save_song(path, patch_state=PatchState.create_init_patch(), sequencer_song=song, meta={"name": "S"})
+    save_spectre(path, PatchState.create_init_patch(), meta={"name": "S"},
+                 spectre={"sequencer": song.to_dict()}, kind="performance")
 
     assert bridge.loadSpectreFile(str(path)) is True
     assert bridge.sequencer.song.tracks[1].selected_clip_idx == 4
     assert bridge.bpm == 97.0
     assert bridge.sequencer.clock.bpm == 97.0
     assert bridge.engine.motion.bpm == 97.0
+
+
+def test_track_layers(bridge):
+    bridge.seqSetTrackTargetPart(1, 4)
+    bridge.seqToggleTrackLayer(1, 9)
+    bridge.seqToggleTrackLayer(1, 6)
+    bridge.seqToggleTrackLayer(1, 4)  # the main part is never a layer
+    assert bridge.seqTracks[1]["targetParts"] == [4, 6, 9]
+    assert bridge.seqTracks[1]["layerParts"] == [6, 9]
+
+    # Changing the main part keeps the layers (minus the new main)
+    bridge.seqSetTrackTargetPart(1, 6)
+    assert bridge.seqTracks[1]["targetParts"] == [6, 9]
+
+    bridge.seqToggleTrackLayer(1, 9)
+    assert bridge.seqTracks[1]["targetParts"] == [6]
+
+
+def test_track_kbd_switch_covers_layers(bridge):
+    bridge.seqSetTrackTargetPart(0, 2)
+    bridge.seqToggleTrackLayer(0, 7)
+    bridge.seqSetTrackKbd(0, False)
+    parts = bridge.patch_state.perf_parts
+    assert parts[1].zone_switch is False and parts[6].zone_switch is False
+    bridge.seqSetTrackKbd(0, True)
+    assert parts[1].zone_switch is True and parts[6].zone_switch is True
+
+
+def test_kbd_channel_learned_from_played_keys(bridge):
+    import mido
+    assert bridge.seqKbdChannel == -1
+    bridge._on_kbd_note(mido.Message("note_on", channel=2, note=60, velocity=0))
+    assert bridge.seqKbdChannel == -1  # note-off in disguise
+    bridge._on_kbd_note(mido.Message("note_on", channel=2, note=60, velocity=90))
+    assert bridge.seqKbdChannel == 2
+    bridge._on_kbd_note(mido.Message("note_off", channel=5, note=60))
+    assert bridge.seqKbdChannel == 2

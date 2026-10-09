@@ -14,6 +14,9 @@ Rectangle {
     property string subView: "mixer" // "mixer" | "zones"
     property var allParts: Bridge.perfParts
     readonly property bool pushBusy: Bridge.perfPushProgress >= 0
+    // Parts the selected sequencer track plays/records (main + layers)
+    readonly property var recordParts: (Bridge.seqTracks && Bridge.seqTracks.length > Bridge.seqActiveTrack)
+                                       ? Bridge.seqTracks[Bridge.seqActiveTrack].targetParts : []
 
     ColumnLayout {
         anchors.fill: parent
@@ -198,7 +201,11 @@ Rectangle {
                         pan: _p ? _p.pan : 64
                         isMuted: _p ? _p.muted : false
                         isSolo: _p ? _p.solo : false
+                        kbdOn: _p ? _p.zoneOn : false
                         isActive: Bridge.activePerfPart === partIndex
+                        trackColor: root.recordParts.indexOf(partIndex) >= 0
+                                    ? Theme.trackColors[Bridge.seqActiveTrack % Theme.trackColors.length]
+                                    : "transparent"
                         mfxSelect: _p ? (_p.mfxSelect || 0) : 0
                         feedsEditing: _p ? ((_p.mfxSelect || 0) === (Bridge.editingPerfMfx - 1)) : false
                         partStatus: (Bridge.partFileStatus && Bridge.partFileStatus.length >= partIndex)
@@ -230,14 +237,17 @@ Rectangle {
         property int pan: 64
         property bool isMuted: false
         property bool isSolo: false
+        property bool kbdOn: false
         property bool isActive: false
+        // Selected sequencer track's color when it plays/records this part
+        property color trackColor: "transparent"
         property string partStatus: ""
         property int mfxSelect: 0
         property bool feedsEditing: false
 
         radius: ScaleMetrics.dp(6)
         color: chan.isActive ? "#1c1533" : Theme.bgApp
-        border.color: chan.isActive ? Theme.tone2 : Theme.borderCard
+        border.color: chan.isActive ? Theme.editingAccent : Theme.borderCard
         border.width: chan.isActive ? 2 : 1
 
         ColumnLayout {
@@ -253,14 +263,15 @@ Rectangle {
                     Layout.fillWidth: true
                     height: ScaleMetrics.dp(18)
                     radius: ScaleMetrics.dp(4)
-                    color: chan.isActive ? Theme.tone2 : (chan.partIndex <= 2 ? Theme.bgCardActive : "#1e293b")
+                    color: chan.isActive ? Theme.editingFill : "#1e293b"
 
                     Text {
                         anchors.centerIn: parent
                         text: "P" + chan.partIndex
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(9)
-                        color: chan.isActive ? "#ffffff" : (chan.partIndex === 1 ? Theme.tone1 : Theme.textSecondary)
+                        color: chan.trackColor.a > 0 ? chan.trackColor
+                             : (chan.isActive ? "#ffffff" : Theme.textSecondary)
                     }
                 }
                 // File-link health: green fresh, amber changed, red missing. Tap to re-push.
@@ -351,6 +362,30 @@ Rectangle {
                         anchors.fill: parent
                         enabled: !root.pushBusy
                         onClicked: Bridge.setPartSolo(chan.partIndex, !chan.isSolo)
+                    }
+                }
+
+                // Kbd switch: the part also sounds from the keyboard
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: ScaleMetrics.dp(16)
+                    radius: ScaleMetrics.dp(3)
+                    color: chan.kbdOn ? "#0d2b1a" : "#1e293b"
+                    border.color: chan.kbdOn ? "#10b981" : "transparent"
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "KBD"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(7)
+                        color: chan.kbdOn ? "#10b981" : Theme.textDim
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: !root.pushBusy
+                        onClicked: Bridge.setPartZoneSwitch(chan.partIndex, !chan.kbdOn)
                     }
                 }
             }
@@ -520,15 +555,15 @@ Rectangle {
                 Layout.fillWidth: true
                 height: ScaleMetrics.dp(20)
                 radius: ScaleMetrics.dp(4)
-                color: chan.isActive ? Theme.tone2 : Theme.bgSurface
-                border.color: chan.isActive ? "#ffffff" : Theme.tone2
+                color: chan.isActive ? Theme.editingFill : Theme.bgSurface
+                border.color: Theme.editingAccent
                 border.width: 1
                 Text {
                     anchors.centerIn: parent
                     text: chan.isActive ? "● EDITING" : "EDIT"
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(8)
-                    color: chan.isActive ? "#ffffff" : Theme.tone2
+                    color: chan.isActive ? "#ffffff" : Theme.editingAccent
                 }
                 MouseArea {
                     anchors.fill: parent

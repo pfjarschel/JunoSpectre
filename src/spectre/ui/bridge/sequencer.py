@@ -25,6 +25,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     seqActiveClipChanged = pyqtSignal()
     seqRecordModeChanged = pyqtSignal()
     seqCursorStepChanged = pyqtSignal()
+    seqKbdChannelChanged = pyqtSignal()
     # Internal: carries engine/recorder notifications from the clock and MIDI
     # threads to the GUI thread (QML bindings must only update there).
     _seqUiSync = pyqtSignal(int)
@@ -32,6 +33,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     _SYNC_PLAYHEADS = 1
     _SYNC_RECORDER = 2
     _SYNC_CLIPS = 3
+    _SYNC_KBD = 4
 
     def _init_sequencer(self) -> None:
         """Initialize sequencer engine, recorder, and subscriptions."""
@@ -48,6 +50,9 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         self.engine.motion.bpm = self.sequencer.bpm
 
         self._active_seq_track: int = 0
+        # Rx channel of the panel's current part, learned from keyboard notes
+        # (the current part can't be read over SysEx). -1 until a key is played.
+        self._kbd_channel: int = -1
 
         self._seqUiSync.connect(self._apply_seq_ui_sync, Qt.ConnectionType.QueuedConnection)
 
@@ -59,6 +64,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         # Connect note listener to recorder if midi manager supports it
         if hasattr(midi_mgr, "add_note_listener"):
             midi_mgr.add_note_listener(self.recorder.handle_midi_message)
+            midi_mgr.add_note_listener(self._on_kbd_note)
         if hasattr(midi_mgr, "start_input_worker"):
             midi_mgr.start_input_worker()
 
@@ -75,9 +81,17 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         """Receive recording/audition/step updates from SequencerRecorder (MIDI thread)."""
         self._seqUiSync.emit(self._SYNC_RECORDER)
 
+    def _on_kbd_note(self, msg) -> None:
+        """Learn the current part's channel from played keys (MIDI thread)."""
+        if msg.type == "note_on" and msg.velocity > 0 and msg.channel != self._kbd_channel:
+            self._kbd_channel = int(msg.channel)
+            self._seqUiSync.emit(self._SYNC_KBD)
+
     def _apply_seq_ui_sync(self, kind: int) -> None:
         """Emit QML notify signals on the GUI thread."""
-        if kind == self._SYNC_PLAYHEADS:
+        if kind == self._SYNC_KBD:
+            self.seqKbdChannelChanged.emit()
+        elif kind == self._SYNC_PLAYHEADS:
             self.seqPlayheadsChanged.emit()
         elif kind == self._SYNC_CLIPS:
             self.seqTracksChanged.emit()
@@ -106,6 +120,11 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     @pyqtProperty(int, notify=seqStateChanged)
     def seqMasterResync(self) -> int:
         return self.sequencer.song.master_resync_bars if hasattr(self, "sequencer") else 0
+
+    @pyqtProperty(int, notify=seqKbdChannelChanged)
+    def seqKbdChannel(self) -> int:
+        """MIDI channel (0..15) the keyboard last played on, -1 when unknown."""
+        return getattr(self, "_kbd_channel", -1)
 
     @pyqtProperty(int, notify=seqActiveTrackChanged)
     def seqActiveTrack(self) -> int:
@@ -145,6 +164,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
                 "name": t.name,
                 "targetParts": list(t.target_parts),
                 "targetPart": target_part,
+                "layerParts": list(t.target_parts[1:]),
                 "partIsActive": self._part_is_active(target_part),
                 "clockDivider": t.clock_divider,
                 "swing": t.swing,
@@ -268,11 +288,36 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int, int)
     def seqSetTrackTargetPart(self, track_idx: int, part_num: int) -> None:
-        """Assign which Roland performance part (1..16) this track sends to."""
+        """Assign the main Roland performance part (1..16) this track sends to (layers kept)."""
         if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
             part = max(1, min(16, int(part_num)))
-            self.sequencer.song.tracks[track_idx].target_parts = [part]
+            track = self.sequencer.song.tracks[track_idx]
+            track.target_parts = [part] + [p for p in track.target_parts[1:] if p != part]
             self.seqTracksChanged.emit()
+
+    @pyqtSlot(int, int)
+    def seqToggleTrackLayer(self, track_idx: int, part_num: int) -> None:
+        """Add/remove an extra part the track also sends to (the main part stays)."""
+        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+            part = max(1, min(16, int(part_num)))
+            track = self.sequencer.song.tracks[track_idx]
+            main = track.target_parts[0] if track.target_parts else track_idx + 1
+            layers = list(track.target_parts[1:])
+            if part == main:
+                return
+            if part in layers:
+                layers.remove(part)
+            else:
+                layers.append(part)
+            track.target_parts = [main] + sorted(layers)
+            self.seqTracksChanged.emit()
+
+    @pyqtSlot(int, bool)
+    def seqSetTrackKbd(self, track_idx: int, enabled: bool) -> None:
+        """Kbd switch for every part the track sends to (layers play together)."""
+        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+            for part in self.sequencer.song.tracks[track_idx].target_parts or [track_idx + 1]:
+                self.setPartZoneSwitch(int(part), bool(enabled))
 
     @pyqtSlot(int)
     def seqSelectClip(self, clip_idx: int) -> None:

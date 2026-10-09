@@ -17,6 +17,14 @@ QtObject {
     readonly property color tone3: "#ffb300"  // Amber (SW)
     readonly property color tone4: "#00e676"  // Lime (SE)
 
+    // Sequencer tracks T1..T4 + RHYTHM (burnt orange: clear of tone3 amber
+    // and of the amber "queued" marker)
+    readonly property var trackColors: [tone1, tone2, tone3, tone4, "#c2410c"]
+    // Mixer part being edited (badge fill; dark so track-colored labels read on it)
+    readonly property color editingFill: "#4c1d95"
+    // Edited part outline / EDIT button lines
+    readonly property color editingAccent: "#8b5cf6"
+
     // Interactive & Status Colors
     readonly property color primary: "#3d7eff"
     readonly property color primaryGlow: "#1e40af"

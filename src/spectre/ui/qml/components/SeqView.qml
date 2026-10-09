@@ -12,8 +12,9 @@ Rectangle {
 
     property int selectedStepIdx: 0
     property int currentStepPage: 0 // 16 steps per page: 0: steps 0-15 ... 7: steps 112-127
+    property bool layerPickerOpen: false
 
-    readonly property var trackColors: [Theme.tone1, Theme.tone2, Theme.tone3, Theme.tone4, "#f59e0b"]
+    readonly property var trackColors: Theme.trackColors
     readonly property var trackNames: ["T1 SYNTH", "T2 SYNTH", "T3 SYNTH", "T4 SYNTH", "RHYTHM"]
 
     readonly property var activeTrackData: (Bridge.seqTracks && Bridge.seqTracks.length > Bridge.seqActiveTrack)
@@ -77,6 +78,9 @@ Rectangle {
             }
 
             Item { Layout.fillWidth: true }
+
+            // Keyboard plays a different part than the active track sends to
+            KbdPartHint {}
 
             // Step Rec Toggle
             Rectangle {
@@ -181,6 +185,41 @@ Rectangle {
                 valueText: "P" + (index + 1)
                 valueColor: root.currentTrackColor
                 onRequested: (i) => Bridge.seqSetTrackTargetPart(Bridge.seqActiveTrack, i + 1)
+            }
+
+            // Layers: extra parts this track also sends to (tap to edit)
+            Rectangle {
+                id: layerChip
+                readonly property var layers: (root.activeTrackData && root.activeTrackData.layerParts)
+                                              ? root.activeTrackData.layerParts : []
+                height: ScaleMetrics.dp(30)
+                width: Math.min(ScaleMetrics.dp(110), layerText.implicitWidth + ScaleMetrics.dp(16))
+                radius: 3
+                color: root.layerPickerOpen ? Theme.bgCardActive : Theme.bgApp
+                border.color: layers.length > 0 || root.layerPickerOpen ? root.currentTrackColor : Theme.borderCard
+                border.width: 1
+
+                Text {
+                    id: layerText
+                    anchors.centerIn: parent
+                    width: Math.min(implicitWidth, parent.width - ScaleMetrics.dp(8))
+                    text: layerChip.layers.length > 0
+                          ? "+ " + layerChip.layers.map(p => "P" + p).join(" ")
+                          : "+ LAYER"
+                    elide: Text.ElideRight
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: layerChip.layers.length > 0 ? root.currentTrackColor : Theme.textDim
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        const pos = layerChip.mapToItem(root, 0, layerChip.height + ScaleMetrics.dp(4));
+                        layerPicker.x = Math.min(pos.x, root.width - layerPicker.width - ScaleMetrics.dp(8));
+                        layerPicker.y = pos.y;
+                        root.layerPickerOpen = !root.layerPickerOpen;
+                    }
+                }
             }
 
             // Clock Divider (ordered shortest -> longest step)
@@ -788,6 +827,80 @@ Rectangle {
             }
         }
     }
+
+    // Layer picker: tap outside to close
+    MouseArea {
+        anchors.fill: parent
+        visible: root.layerPickerOpen
+        z: 50
+        onClicked: root.layerPickerOpen = false
+    }
+    Rectangle {
+        id: layerPicker
+        visible: root.layerPickerOpen
+        z: 51
+        width: ScaleMetrics.dp(8 * 34 + 16)
+        height: pickerCol.implicitHeight + ScaleMetrics.dp(16)
+        radius: ScaleMetrics.dp(6)
+        color: Theme.bgSurface
+        border.color: root.currentTrackColor
+        border.width: 1
+
+        readonly property int mainPart: (root.activeTrackData && root.activeTrackData.targetPart)
+                                        ? root.activeTrackData.targetPart : (Bridge.seqActiveTrack + 1)
+        readonly property var layers: (root.activeTrackData && root.activeTrackData.layerParts)
+                                       ? root.activeTrackData.layerParts : []
+
+        MouseArea { anchors.fill: parent }  // swallow taps between buttons
+
+        ColumnLayout {
+            id: pickerCol
+            anchors.fill: parent
+            anchors.margins: ScaleMetrics.dp(8)
+            spacing: ScaleMetrics.dp(6)
+
+            Text {
+                text: "ALSO SEND TO (main: P" + layerPicker.mainPart + ")"
+                font.bold: true
+                font.pixelSize: ScaleMetrics.sp(8)
+                font.letterSpacing: 1.0
+                color: Theme.textDim
+            }
+            GridLayout {
+                columns: 8
+                rowSpacing: ScaleMetrics.dp(4)
+                columnSpacing: ScaleMetrics.dp(4)
+                Repeater {
+                    model: 16
+                    delegate: Rectangle {
+                        readonly property int part: index + 1
+                        readonly property bool isMain: part === layerPicker.mainPart
+                        readonly property bool isLayer: layerPicker.layers.indexOf(part) >= 0
+                        width: ScaleMetrics.dp(30)
+                        height: ScaleMetrics.dp(30)
+                        radius: 3
+                        color: isMain ? root.currentTrackColor : (isLayer ? Theme.bgCardActive : Theme.bgApp)
+                        border.color: isMain || isLayer ? root.currentTrackColor : Theme.borderCard
+                        border.width: isLayer ? 2 : 1
+                        opacity: isMain ? 0.6 : 1.0
+                        Text {
+                            anchors.centerIn: parent
+                            text: "P" + parent.part
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: parent.isMain ? "#ffffff" : (parent.isLayer ? root.currentTrackColor : Theme.textSecondary)
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: !parent.isMain
+                            onClicked: Bridge.seqToggleTrackLayer(Bridge.seqActiveTrack, parent.part)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 
     // =========================================================================
     // Step Tile Component

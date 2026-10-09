@@ -1071,8 +1071,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         """Assign the picked library row to the pick-target part.
 
         Hardware-resolvable rows select via Bank/PC; Pi-only files queue a
-        background image push. Stays in the Librarian for further browsing;
-        OK proposes the mixer.
+        background image push. Stays in the Librarian, still picking for the
+        same part; OK proposes the mixer.
         """
         target = int(self._pick_target)
         if not 1 <= target <= 16:
@@ -1124,8 +1124,11 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         except Exception as e:
             logger.warning(f"pickPartPatch failed: {e}")
             return False
-        self._pick_target = 0
-        self.librarianPickChanged.emit()
+        # A freshly assigned sound should answer the keyboard (Kbd switch on).
+        if not part.zone_switch:
+            self.setPartZoneSwitch(target, True)
+        # Picking stays on: further taps audition other sounds on the same part
+        # until OK (keep) or CANCEL (revert).
         self.perfPartsChanged.emit()
         try:
             self.refreshPartFileStatus()
@@ -1494,6 +1497,25 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         except Exception:
             pass
 
+    def _restore_song_sequence(self, seq_raw: dict) -> None:
+        """Swap in a saved sequencer song (stops playback, applies its tempo)."""
+        if not hasattr(self, "sequencer"):
+            return
+        try:
+            from ...sequencer.models import SequencerSong
+            song = SequencerSong.from_dict(seq_raw)
+        except Exception as e:
+            logger.warning(f"song load: bad sequence: {e}")
+            return
+        self.sequencer.stop()
+        self.sequencer.song = song
+        self._apply_tempo(song.bpm)
+        if hasattr(self, "_seq_retarget_recorder"):
+            self._seq_retarget_recorder()
+        self.seqTracksChanged.emit()
+        self.seqActiveClipChanged.emit()
+        self.seqStateChanged.emit()
+
     @pyqtSlot(str, result=bool)
     def loadSpectreFile(self, path: str) -> bool:
         """Load a Pi .spectre file so it actually sounds (stays in Librarian).
@@ -1514,35 +1536,25 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             if ok:
                 self._pending_view = "SETLIST"
             return ok
-        if kind == "song":
-            try:
-                from ...core.spectre_format import load_song
-                song = load_song(path).get("sequencer_song")
-                if hasattr(self, "sequencer") and song is not None:
-                    self.sequencer.stop()
-                    self.sequencer.song = song
-                    self._apply_tempo(song.bpm)
-                    self.seqTracksChanged.emit()
-                    self.seqActiveClipChanged.emit()
-                    self.seqStateChanged.emit()
-                self._set_current_file_ref(path, "song")
-                self._pending_view = "LIVE"
-                return True
-            except Exception as e:
-                logger.warning(f"loadSpectreFile failed for song {path}: {e}")
-                return False
         if kind == "performance":
+            # One file = the whole song: 16-part performance, part sounds
+            # and (when saved with one) the sequence + tempo.
+            spectre = loaded.get("spectre") or {}
             try:
                 name = str((loaded.get("meta") or {}).get("name") or "")
-                snapshots = (loaded.get("spectre") or {}).get("part_snapshots") or {}
+                snapshots = spectre.get("part_snapshots") or {}
             except Exception:
                 name, snapshots = "", {}
             ok = self._apply_playlist_state(patch_state_to_dict(loaded["patch_state"]),
                                             name, snapshots if isinstance(snapshots, dict) else {})
-            if ok:
-                self._set_current_file_ref(path, "performance")
-                self._pending_view = "PERFORMANCE"
-            return ok
+            if not ok:
+                return False
+            seq_raw = spectre.get("sequencer")
+            if isinstance(seq_raw, dict):
+                self._restore_song_sequence(seq_raw)
+            self._set_current_file_ref(path, "performance")
+            self._pending_view = "PERFORMANCE"
+            return True
         # Single-patch sound: swap state, push image to the temp buffer.
         self.patch_state = loaded["patch_state"]
         self.patch_state.sound_mode = "PATCH"

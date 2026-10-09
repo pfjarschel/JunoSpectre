@@ -10,7 +10,7 @@ Rectangle {
     border.color: Theme.borderCard
     border.width: 1
 
-    readonly property var trackColors: [Theme.tone1, Theme.tone2, Theme.tone3, Theme.tone4, "#f59e0b"]
+    readonly property var trackColors: Theme.trackColors
     readonly property var trackNames: ["T1 SYNTH", "T2 SYNTH", "T3 SYNTH", "T4 SYNTH", "RHYTHM"]
 
     ColumnLayout {
@@ -41,6 +41,9 @@ Rectangle {
             }
 
             Item { Layout.fillWidth: true }
+
+            // Keyboard plays a different part than the active track sends to
+            KbdPartHint {}
 
             // Master Resync Selector
             Rectangle {
@@ -342,6 +345,10 @@ Rectangle {
         readonly property int currentPlayhead: (Bridge.seqPlayheads && Bridge.seqPlayheads.length > trackIdx)
                                                ? Bridge.seqPlayheads[trackIdx] : 0
         readonly property color trackColor: root.trackColors[trackIdx % root.trackColors.length]
+        readonly property int mainPart: (trackData && trackData.targetPart) ? trackData.targetPart : (trackIdx + 1)
+        readonly property int layerCount: (trackData && trackData.layerParts) ? trackData.layerParts.length : 0
+        readonly property bool kbdOn: (Bridge.perfParts && Bridge.perfParts.length >= mainPart)
+                                      ? Bridge.perfParts[mainPart - 1].zoneOn : false
 
         radius: ScaleMetrics.dp(4)
         color: Theme.bgCard
@@ -384,9 +391,9 @@ Rectangle {
 
                     Item { Layout.fillWidth: true }
 
-                    // Part Selector
+                    // Part Selector ("+n" = layered parts, edited in the sequencer view)
                     Rectangle {
-                        width: ScaleMetrics.dp(22)
+                        width: ScaleMetrics.dp(colRoot.layerCount > 0 ? 34 : 22)
                         height: ScaleMetrics.dp(16)
                         radius: 2
                         color: Theme.bgApp
@@ -395,7 +402,7 @@ Rectangle {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "P" + (colRoot.trackData && colRoot.trackData.targetPart ? colRoot.trackData.targetPart : (colRoot.trackIdx + 1))
+                            text: "P" + colRoot.mainPart + (colRoot.layerCount > 0 ? "+" + colRoot.layerCount : "")
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(7)
                             color: colRoot.trackColor
@@ -403,11 +410,30 @@ Rectangle {
 
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: {
-                                const curr = colRoot.trackData && colRoot.trackData.targetPart ? colRoot.trackData.targetPart : (colRoot.trackIdx + 1);
-                                const nextPart = (curr % 16) + 1;
-                                Bridge.seqSetTrackTargetPart(colRoot.trackIdx, nextPart);
-                            }
+                            onClicked: Bridge.seqSetTrackTargetPart(colRoot.trackIdx, (colRoot.mainPart % 16) + 1)
+                        }
+                    }
+
+                    // Kbd switch of the track's part(s): also play them from the keyboard
+                    Rectangle {
+                        width: ScaleMetrics.dp(26)
+                        height: ScaleMetrics.dp(16)
+                        radius: 2
+                        color: colRoot.kbdOn ? "#0d2b1a" : Theme.bgApp
+                        border.color: colRoot.kbdOn ? "#10b981" : Theme.borderCard
+                        border.width: 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "KBD"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(6)
+                            color: colRoot.kbdOn ? "#10b981" : Theme.textDim
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: Bridge.seqSetTrackKbd(colRoot.trackIdx, !colRoot.kbdOn)
                         }
                     }
 
