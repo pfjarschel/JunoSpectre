@@ -16,29 +16,16 @@ Rectangle {
         anchors.rightMargin: ScaleMetrics.dp(12)
         spacing: ScaleMetrics.dp(10)
 
-        // Logo / Title (text hidden in PERFORM to make room for Perf/Part context)
-        RowLayout {
-            spacing: ScaleMetrics.dp(6)
-            Text {
-                text: "🌑"
-                font.pixelSize: ScaleMetrics.sp(16)
-            }
-            Text {
-                visible: Bridge.soundMode !== "PERFORM"
-                text: "JUNO SPECTRE"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(12)
-                font.letterSpacing: 1.2
-                color: Theme.textPrimary
-            }
+        // Logo
+        Text {
+            text: "🌑"
+            font.pixelSize: ScaleMetrics.sp(16)
         }
 
-        // Screens Launcher Trigger Button (narrower in PERFORM for context room)
+        // Screens Launcher Trigger Button (fixed width in every mode)
         Rectangle {
             id: screensBtn
-            Layout.fillWidth: true
-            Layout.preferredWidth: Bridge.soundMode === "PERFORM" ? ScaleMetrics.dp(150) : ScaleMetrics.dp(240)
-            Layout.maximumWidth: Bridge.soundMode === "PERFORM" ? ScaleMetrics.dp(190) : ScaleMetrics.dp(320)
+            Layout.preferredWidth: ScaleMetrics.dp(240)
             height: ScaleMetrics.dp(40)
             radius: ScaleMetrics.dp(6)
             color: screensArea.pressed ? Theme.bgCardActive : Theme.bgApp
@@ -130,10 +117,9 @@ Rectangle {
         }
 
         // Active Patch Name Display with Sync, Init and Save Buttons
-        // (stretches in PERFORM to show "PERFNAME / N-PATCHNAME" context)
+        // (takes the spare width in every mode, so the header never resizes)
         Rectangle {
-            Layout.preferredWidth: ScaleMetrics.dp(279)
-            Layout.fillWidth: Bridge.soundMode === "PERFORM"
+            Layout.fillWidth: true
             height: ScaleMetrics.dp(38)
             radius: ScaleMetrics.dp(4)
             color: Theme.bgApp

@@ -273,6 +273,12 @@ Rectangle {
                         color: chan.trackColor.a > 0 ? chan.trackColor
                              : (chan.isActive ? "#ffffff" : Theme.textSecondary)
                     }
+                    // Tap the badge to edit this part (same as EDIT)
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: !root.pushBusy
+                        onClicked: Bridge.editPerfPart(chan.partIndex)
+                    }
                 }
                 // File-link health: green fresh, amber changed, red missing. Tap to re-push.
                 Rectangle {

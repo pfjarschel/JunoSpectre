@@ -251,7 +251,7 @@ Rectangle {
                         text: modelData
                         font.bold: root.activeKindIdx === index
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: root.activeKindIdx === index ? "#60a5fa" : Theme.textDim
+                        color: root.activeKindIdx === index ? "#60a5fa" : Theme.textSecondary
                     }
                     MouseArea { anchors.fill: parent; onClicked: { root.activeKindIdx = index; root.applyFilter() } }
                 }
@@ -268,7 +268,7 @@ Rectangle {
                     text: "USER SLOTS"
                     font.bold: root.userSlotsOnly
                     font.pixelSize: ScaleMetrics.sp(8)
-                    color: root.userSlotsOnly ? "#60a5fa" : Theme.textDim
+                    color: root.userSlotsOnly ? "#60a5fa" : Theme.textSecondary
                 }
                 MouseArea { anchors.fill: parent; onClicked: root.setSourceFilter("slots") }
             }
@@ -284,7 +284,7 @@ Rectangle {
                     text: "USER FILES"
                     font.bold: root.userFilesOnly
                     font.pixelSize: ScaleMetrics.sp(8)
-                    color: root.userFilesOnly ? "#60a5fa" : Theme.textDim
+                    color: root.userFilesOnly ? "#60a5fa" : Theme.textSecondary
                 }
                 MouseArea { anchors.fill: parent; onClicked: root.setSourceFilter("files") }
             }
@@ -292,7 +292,7 @@ Rectangle {
             Text {
                 text: root.rowCountText()
                 font.pixelSize: ScaleMetrics.sp(8)
-                color: Theme.textDim
+                color: Theme.textSecondary
             }
             Rectangle {
                 width: ScaleMetrics.dp(52)
@@ -306,7 +306,7 @@ Rectangle {
                     text: "★ Fav"
                     font.bold: root.favOnly
                     font.pixelSize: ScaleMetrics.sp(8)
-                    color: root.favOnly ? "#fbbf24" : Theme.textDim
+                    color: root.favOnly ? "#fbbf24" : Theme.textSecondary
                 }
                 MouseArea { anchors.fill: parent; onClicked: { root.favOnly = !root.favOnly; root.applyFilter() } }
             }
@@ -366,7 +366,7 @@ Rectangle {
                                 Text {
                                     text: label
                                     font.pixelSize: ScaleMetrics.sp(8)
-                                    color: isActive ? "#60a5fa" : Theme.textDim
+                                    color: isActive ? "#60a5fa" : Theme.textSecondary
                                     elide: Text.ElideRight
                                     Layout.fillWidth: true
                                 }
