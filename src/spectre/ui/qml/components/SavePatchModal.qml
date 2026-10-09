@@ -24,6 +24,24 @@ Rectangle {
     property bool readingSlots: false
     property bool keyboardVisible: false
     property string activeField: "name"
+    // PERFORM: edited parts ({part, name, target, label}) and the write-back choice
+    property var editedParts: []
+    property bool updateSources: false
+
+    function writableCount() {
+        var n = 0
+        for (var i = 0; i < editedParts.length; i++) if (editedParts[i].target !== "") n++
+        return n
+    }
+
+    function editedSummary() {
+        var rows = []
+        for (var i = 0; i < editedParts.length; i++) {
+            var e = editedParts[i]
+            rows.push("P" + e.part + " " + e.name + " → " + e.label)
+        }
+        return rows.join("  ·  ")
+    }
 
     // Mirrors core/categories.py (without "---" no-assign; NONE chip covers it).
     property var catCodes: ["PNO","EP","KEY","BEL","MLT","ORG","ACD","HRM","AGT","EGT","DGT","BS","SBS","STR","ORC","HIT","WND","FLT","BRS","SBR","SAX","HLD","SLD","TEK","PLS","FX","SYN","BPD","SPD","VOX","PLK","ETH","FRT","PRC","SFX","BTS","DRM","CMB"]
@@ -36,6 +54,8 @@ Rectangle {
         // No hardware saves for performances: Pi files only (touch has no tooltips,
         // so the device option is hidden outright, not explained).
         saveToDevice = Bridge.soundMode === "PERFORM" ? false : Bridge.currentIsUserSlot
+        editedParts = Bridge.soundMode === "PERFORM" ? (Bridge.perfEditedParts() || []) : []
+        updateSources = false
         slotList = []
         slotIndex = -1
         confirmArmed = false
@@ -293,6 +313,52 @@ Rectangle {
                 font.pixelSize: ScaleMetrics.sp(8)
                 font.italic: true
                 color: Theme.textDim
+                elide: Text.ElideRight
+            }
+
+            // Edited parts (PERFORM): optionally overwrite their source patches
+            Rectangle {
+                visible: root.writableCount() > 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? ScaleMetrics.dp(30) : 0
+                height: ScaleMetrics.dp(30)
+                radius: ScaleMetrics.dp(4)
+                color: srcArea.pressed ? Theme.bgCardActive : "#10141d"
+                border.color: root.updateSources ? "#fbbf24" : Theme.borderCard
+                border.width: 1
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: ScaleMetrics.dp(8)
+                    anchors.rightMargin: ScaleMetrics.dp(8)
+                    spacing: ScaleMetrics.dp(8)
+                    Rectangle {
+                        width: ScaleMetrics.dp(16); height: ScaleMetrics.dp(16)
+                        radius: 3
+                        color: root.updateSources ? "#fbbf24" : "transparent"
+                        border.color: "#fbbf24"; border.width: 1
+                        Text { anchors.centerIn: parent; text: "✓"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: "#000000"; visible: root.updateSources }
+                    }
+                    Text {
+                        text: "Also update source patches (" + root.writableCount() + " edited)"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(9)
+                        color: root.updateSources ? "#fbbf24" : Theme.textSecondary
+                    }
+                }
+                MouseArea {
+                    id: srcArea
+                    anchors.fill: parent
+                    onClicked: { if (!root.busy) root.updateSources = !root.updateSources }
+                }
+            }
+            Text {
+                visible: root.editedParts.length > 0
+                Layout.fillWidth: true
+                text: "Edited: " + root.editedSummary()
+                font.pixelSize: ScaleMetrics.sp(8)
+                color: Theme.textDim
+                wrapMode: Text.Wrap
+                maximumLineCount: 3
                 elide: Text.ElideRight
             }
 
@@ -579,10 +645,20 @@ Rectangle {
             repeat: false
             running: false
             onTriggered: {
+                // Sources first, so the saved song references them clean.
+                var srcErr = root.updateSources ? Bridge.writeBackEditedParts() : ""
                 var piPath = Bridge.saveCurrentToFile(root.patchName, root.category, root.tagsText, root.favorite, "")
                 if (piPath === "") {
                     root.busy = false
                     root.errorText = "Pi save failed (no synth connected?)."
+                    return
+                }
+                if (srcErr !== "") {
+                    // The song is saved (edited sounds ride its snapshots); say what wasn't updated.
+                    root.busy = false
+                    root.updateSources = false
+                    root.editedParts = Bridge.perfEditedParts() || []
+                    root.errorText = "Saved. Not updated: " + srcErr
                     return
                 }
                 if (root.saveToDevice) {

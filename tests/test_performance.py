@@ -1173,3 +1173,53 @@ def test_pick_clears_edit(tmp_path):
     assert bridge.patch_state.perf_parts[4].modified is False
     assert "5" not in bridge._part_snapshots
     assert bridge.partFileStatus[4] == ""
+
+
+# --- save dialog: update source patches ---------------------------------------
+
+def _edited_part_rig(tmp_path):
+    bridge, juno, repo = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    lead = tmp_path / "lead.spectre"
+    save_spectre(lead, _raw_image_state("LEAD"), meta={"name": "LEAD", "tags": ["keep"]},
+                 kind="patch")
+    parts = bridge.patch_state.perf_parts
+    parts[1].patch_file = str(lead)                                     # P2: Pi file
+    parts[3].patch_msb, parts[3].patch_lsb, parts[3].patch_pc = 87, 0, 11  # P4: user slot
+    juno.write_user_patch(_raw_image_state("SLOTOLD"), 87, 0, 11, verify=False)
+    parts[5].patch_msb, parts[5].patch_lsb, parts[5].patch_pc = 87, 64, 3  # P6: factory
+    for n, name in ((2, "TWEAKED"), (4, "SLOTEDIT"), (6, "FACTEDIT")):
+        image = _raw_image_state(name)
+        image.raw_regions["common"] = [bytes(20) + bytes([n]) + bytes(59)]  # sound marker
+        juno.push_patch_to_perf_part(image, n)
+        _edit_part(juno, n)
+    return bridge, juno, lead
+
+
+def test_edited_parts_name_their_sources(tmp_path):
+    bridge, _, _ = _edited_part_rig(tmp_path)
+    rows = {r["part"]: r for r in bridge.perfEditedParts()}
+    assert sorted(rows) == [2, 4, 6]
+    assert (rows[2]["target"], rows[2]["label"]) == ("file", "file lead")
+    assert (rows[4]["target"], rows[4]["label"]) == ("slot", "keyboard 512")
+    assert rows[6]["target"] == ""  # factory sound: stays in the song
+
+
+def test_write_back_updates_file_and_slot(tmp_path):
+    bridge, juno, lead = _edited_part_rig(tmp_path)
+    assert bridge.writeBackEditedParts() == ""
+    parts = bridge.patch_state.perf_parts
+    assert [p.part_index for p in parts if p.modified] == [6]
+    # File keeps its library meta, takes the part's sound.
+    saved = load_spectre(lead)
+    assert saved["patch_state"].raw_regions["common"][0][20] == 2
+    assert saved["meta"]["name"] == "LEAD" and saved["meta"]["tags"] == ["keep"]
+    assert bridge.partFileStatus[1] == "ok"
+    # Slot 512 now holds the edited sound.
+    assert juno.read_user_patch(87, 0, 11).common.name.strip() == "SLOTEDIT"
+    assert "4" not in bridge._part_snapshots
+    # The factory part still rides the song snapshot.
+    out = bridge.saveCurrentToFile("WB", "", "", False, "")
+    snaps = load_spectre(out)["spectre"]["part_snapshots"]
+    assert snaps["6"]["common"]["name"].strip() == "FACTEDIT"
+    assert "4" not in snaps

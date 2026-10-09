@@ -373,6 +373,27 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
             JunoClient.user_slot_base(msb, lsb, pc)  # validates
         except ValueError as e:
             return str(e)
+        try:
+            live = self._fresh_live_state(name or self._patch_name)
+        except Exception as e:
+            return f"could not read live sound: {e}"
+        err = self._write_user_slot(live, msb, lsb, pc)
+        if not err:
+            self._set_current_slot_ref(msb, lsb, pc, "patch")
+        return err
+
+    def _write_user_slot(self, state, msb: int, lsb: int, pc: int) -> str:
+        """Write + verify a sound into a user slot. Returns '' on success.
+
+        An occupied slot is backed up to a Pi .spectre file first; the backup
+        is deleted once the write verifies, and kept (and named) if it fails.
+        """
+        repo = self._librarian()
+        juno = self.juno
+        if repo is None:
+            return "librarian unavailable"
+        if juno is None or not hasattr(juno, "write_user_patch"):
+            return "no synthesizer connected"
         backup_path = None
         try:
             try:
@@ -386,26 +407,20 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
                     )
             except Exception as e:
                 return f"backup failed, aborting: {e}"
-            try:
-                live = self._fresh_live_state(name or self._patch_name)
-            except Exception as e:
-                self._drop_backup(backup_path)
-                return f"could not read live sound: {e}"
-            mismatches = juno.write_user_patch(live, msb, lsb, pc, timeout=1.5)
+            mismatches = juno.write_user_patch(state, msb, lsb, pc, timeout=1.5)
             if mismatches:
                 kept = f" (slot backup kept at {Path(backup_path).name})" if backup_path else ""
                 return "verify failed: " + ", ".join(mismatches) + kept
             self._drop_backup(backup_path)
             try:
-                repo.upsert_synth_user(msb, lsb, pc, live.common.name,
-                                       code_from_index(live.common.category))
+                repo.upsert_synth_user(msb, lsb, pc, state.common.name,
+                                       code_from_index(state.common.category))
             except Exception as e:
                 logger.debug(f"synth-user index refresh failed: {e}")
-            self._set_current_slot_ref(msb, lsb, pc, "patch")
             self.librarianChanged.emit()
             return ""
         except Exception as e:
-            logger.warning(f"saveCurrentToDevice failed: {e}")
+            logger.warning(f"user slot write failed: {e}")
             return str(e)
 
     @pyqtSlot(int, int, int, str, result=bool)

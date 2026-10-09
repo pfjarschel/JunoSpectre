@@ -319,6 +319,90 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 logger.debug(f"part {part.part_index}: bad snapshot: {e}")
         return None
 
+    @staticmethod
+    def _part_write_target(part) -> tuple[str, str]:
+        """Where an edited part's sound can be written back: ('file'|'slot'|'', label)."""
+        link = str(getattr(part, "patch_file", "") or "")
+        if link:
+            if Path(link).is_file():
+                return "file", f"file {Path(link).stem}"
+            return "", "file missing, stays in the song"
+        from ...core.protocol import JunoClient
+        try:
+            JunoClient.user_slot_base(part.patch_msb, part.patch_lsb, part.patch_pc)
+        except ValueError:
+            return "", "no user slot, stays in the song"
+        return "slot", f"keyboard {501 + int(part.patch_lsb) * 128 + int(part.patch_pc)}"
+
+    @pyqtSlot(result="QVariantList")
+    def perfEditedParts(self) -> list:
+        """Edited parts and where 'update source patches' would write them."""
+        out = []
+        for p in self.patch_state.perf_parts:
+            if not p.modified:
+                continue
+            target, label = self._part_write_target(p)
+            out.append({"part": p.part_index, "name": p.patch_name or p.name,
+                        "target": target, "label": label})
+        return out
+
+    @pyqtSlot(result=str)
+    def writeBackEditedParts(self) -> str:
+        """Overwrite each edited part's source (Pi file or keyboard user slot)
+        with the part's current sound. Returns '' or a summary of failures.
+
+        Written parts become clean; parts with no writable source stay edited
+        (their sound lives in the song's snapshot).
+        """
+        from ...core.spectre_format import (
+            load_spectre,
+            patch_state_from_dict,
+            patch_state_to_dict,
+            save_spectre,
+        )
+        errors = []
+        for p in self.patch_state.perf_parts:
+            if not p.modified:
+                continue
+            target, _ = self._part_write_target(p)
+            if not target:
+                continue
+            key = str(p.part_index)
+            image = self._read_part_image(p.part_index)
+            if image is None and isinstance((self._part_snapshots or {}).get(key), dict):
+                try:
+                    image = patch_state_from_dict(self._part_snapshots[key])
+                except Exception as e:
+                    logger.debug(f"write back P{key}: bad snapshot: {e}")
+            if image is None:
+                errors.append(f"P{key}: sound unavailable")
+                continue
+            if target == "file":
+                try:
+                    old = load_spectre(p.patch_file)
+                    # The file keeps its library identity (name, tags...); only the sound changes.
+                    image.common.name = old["patch_state"].common.name
+                    save_spectre(p.patch_file, image, meta=old["meta"], spectre=old["spectre"],
+                                 synth_ref=old["synth_ref"], kind=old["kind"])
+                    repo = getattr(self, "_librarian_repo", None)
+                    if repo is not None:
+                        repo.touch_file_row(p.patch_file)
+                    self._part_snapshots[key] = patch_state_to_dict(
+                        load_spectre(p.patch_file)["patch_state"])
+                except Exception as e:
+                    errors.append(f"P{key}: {e}")
+                    continue
+            else:
+                err = self._write_user_slot(image, p.patch_msb, p.patch_lsb, p.patch_pc)
+                if err:
+                    errors.append(f"P{key}: {err}")
+                    continue
+                self._part_snapshots.pop(key, None)
+            p.modified = False
+        self.refreshPartFileStatus()
+        self.perfPartsChanged.emit()
+        return "; ".join(errors)
+
     def _queue_push_jobs(self, jobs: list) -> None:
         """Run part-sound jobs in a worker thread (images are slow on SysEx).
 
