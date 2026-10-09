@@ -266,7 +266,7 @@ Rectangle {
                         AppTile {
                             Layout.fillWidth: true
                             viewKey: "SEQUENCER"
-                            title: "STEP EDITOR"
+                            title: "SEQUENCER"
                             subtitle: "Polymetric step sequencer & motion"
                             glyph: "⏱"
                             accentColor: "#38bdf8"

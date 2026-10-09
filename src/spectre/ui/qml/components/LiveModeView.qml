@@ -85,7 +85,7 @@ Rectangle {
                 }
             }
 
-            // Switch to Step Editor
+            // Switch to Sequencer
             Rectangle {
                 height: ScaleMetrics.dp(28)
                 width: ScaleMetrics.dp(100)
@@ -99,7 +99,7 @@ Rectangle {
                     spacing: ScaleMetrics.dp(4)
                     Text { text: "⏱"; font.pixelSize: ScaleMetrics.sp(9); color: "#10b981" }
                     Text {
-                        text: "STEP EDITOR"
+                        text: "SEQUENCER"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
                         color: "#10b981"

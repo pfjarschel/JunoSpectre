@@ -146,3 +146,14 @@ def test_playlist_save_and_load_roundtrip(tmp_path):
     assert loaded["entries"][0]["name"] == "Song 1"
     assert loaded["index"] == 1
     assert loaded["meta"]["name"] == "Friday Gig"
+
+
+def test_track_dice_roundtrip_and_clamping():
+    from src.spectre.sequencer import Track
+    t = Track(dice_timing=7, dice_velocity=15)
+    t2 = Track.from_dict(t.to_dict())
+    assert (t2.dice_timing, t2.dice_velocity) == (7, 15)
+    t3 = Track.from_dict({"dice_timing": 99, "dice_velocity": -5})
+    assert (t3.dice_timing, t3.dice_velocity) == (24, 0)
+    # Songs saved before dice existed load with it off
+    assert (Track.from_dict({}).dice_timing, Track.from_dict({}).dice_velocity) == (0, 0)

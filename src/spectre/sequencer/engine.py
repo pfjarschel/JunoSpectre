@@ -52,9 +52,10 @@ class SequencerEngine:
         self._active_notes: List[Tuple[int, int, int]] = []
         # Scheduled note-ons: (fire_tick, channel, pitch, velocity, duration_ticks)
         self._pending_notes: List[Tuple[int, int, int, int, int]] = []
-        # Per track: (clip_idx, step_idx, plays) of the step whose early
-        # (negative-offset) notes were already scheduled by the lookahead.
-        self._prescheduled: List[Optional[Tuple[int, int, bool]]] = [None] * NUM_TRACKS
+        # Per track: (clip_idx, step_idx, plays, notes) of the step whose early
+        # (negative-offset) notes were already scheduled by the lookahead. The
+        # notes keep their dice roll, so the rest of the step plays the same one.
+        self._prescheduled: List[Optional[Tuple[int, int, bool, List[Tuple[NoteEvent, int]]]]] = [None] * NUM_TRACKS
         # (track, clip, step, pitch) just overdubbed ahead of the playhead;
         # skipped once so the live-played note isn't immediately doubled.
         self._overdub_suppress: Set[Tuple[int, int, int, int]] = set()
@@ -223,7 +224,8 @@ class SequencerEngine:
         plays = pre[2] if early_done else self._roll(step)
         if plays and step.notes and not step.tie:
             duration = self._note_duration(clip, step_idx, step_len_ticks)
-            for note, offset in self._note_offsets(track, step, step_idx, step_len_ticks):
+            timed = pre[3] if early_done else self._note_offsets(track, step, step_idx, step_len_ticks)
+            for note, offset in timed:
                 if note.pitch in suppressed or (offset < 0 and early_done):
                     continue
                 # Negative offsets not pre-scheduled (first step after start/launch) play on time.
@@ -240,10 +242,11 @@ class SequencerEngine:
             return
         next_step = clip.steps[next_idx]
         next_plays = self._roll(next_step)
-        self._prescheduled[t_idx] = (clip_idx, next_idx, next_plays)
+        next_timed = self._note_offsets(track, next_step, next_idx, step_len_ticks)
+        self._prescheduled[t_idx] = (clip_idx, next_idx, next_plays, next_timed)
         if next_plays and next_step.notes and not next_step.tie:
             duration = self._note_duration(clip, next_idx, step_len_ticks)
-            for note, offset in self._note_offsets(track, next_step, next_idx, step_len_ticks):
+            for note, offset in next_timed:
                 if offset < 0:
                     self._schedule_note(total_ticks + step_len_ticks + offset, channels, note, duration)
 
@@ -278,13 +281,28 @@ class SequencerEngine:
     def _note_offsets(
         self, track: Track, step: Step, step_idx: int, step_len_ticks: int
     ) -> List[Tuple[NoteEvent, int]]:
-        """Per-note start offset (ticks from the step's grid position): swing + micro + strum."""
+        """Per-note start offset (ticks from the step's grid position): swing + micro + strum,
+        plus the track's dice, which also nudges each note's velocity (rolled per note)."""
         base = self.swing_delay(track, step_idx, step_len_ticks) + int(step.micro_timing)
         # Strum > 0 rolls low->high, < 0 high->low
         notes = sorted(step.notes, key=lambda n: n.pitch, reverse=step.strum < 0)
         spread = abs(int(step.strum))
         lo, hi = -(step_len_ticks - 1), 2 * step_len_ticks
-        return [(n, max(lo, min(hi, base + i * spread))) for i, n in enumerate(notes)]
+        out: List[Tuple[NoteEvent, int]] = []
+        for i, n in enumerate(notes):
+            offset = base + i * spread + self._dice(track.dice_timing)
+            if track.dice_velocity > 0:
+                vel = n.velocity + self._dice(track.dice_velocity * 127 / 100)
+                n = NoteEvent(pitch=n.pitch, velocity=max(1, min(127, vel)))
+            out.append((n, max(lo, min(hi, offset))))
+        return out
+
+    @staticmethod
+    def _dice(amount: float) -> int:
+        """Random integer in [-amount, +amount], weighted toward 0 like a human player."""
+        if amount <= 0:
+            return 0
+        return int(round(random.triangular(-amount, amount, 0.0)))
 
     @staticmethod
     def _note_duration(clip: Clip, step_idx: int, step_len_ticks: int) -> int:

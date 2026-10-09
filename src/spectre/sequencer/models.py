@@ -10,6 +10,9 @@ from typing import Any, Dict, List, Optional
 # Most notes one step can hold (fills the pad's 3 x 4 note grid)
 MAX_STEP_NOTES = 12
 NUM_TRACKS = 8
+# Dice (humanize) ranges: timing in +/- clock ticks, velocity in +/- % of 127
+MAX_DICE_TIMING = 24
+MAX_DICE_VELOCITY = 50
 # Performance part of the JUNO-DS rhythm set: tracks sending to it are drum tracks
 DRUM_PART = 10
 MAX_TRACK_NAME = 12
@@ -154,6 +157,8 @@ class Track:
     target_parts: List[int] = dataclasses.field(default_factory=lambda: [1])
     clock_divider: str = "1/16"         # "1/32", "1/16", "1/8", "1/4", "1/8T", "1/16T"
     swing: float = 0.50                 # 0.50 (neutral) .. 0.75 (max swing)
+    dice_timing: int = 0                # 0..MAX_DICE_TIMING: random +/- ticks per note
+    dice_velocity: int = 0              # 0..MAX_DICE_VELOCITY: random +/- % of 127 per note
     active_clip_idx: int = 0            # Current playing clip index (or -1 if stopped)
     queued_clip_idx: int = -1           # Staged clip for next measure (-1 if none)
     selected_clip_idx: int = 0          # Clip being edited; what Play starts from a stop
@@ -176,6 +181,8 @@ class Track:
             "target_parts": list(self.target_parts),
             "clock_divider": self.clock_divider,
             "swing": float(self.swing),
+            "dice_timing": int(self.dice_timing),
+            "dice_velocity": int(self.dice_velocity),
             "active_clip_idx": int(self.active_clip_idx),
             "queued_clip_idx": int(self.queued_clip_idx),
             "selected_clip_idx": int(self.selected_clip_idx),
@@ -192,6 +199,8 @@ class Track:
             target_parts=[int(p) for p in d.get("target_parts", [1])] or [1],
             clock_divider=str(d.get("clock_divider", "1/16")),
             swing=max(0.50, min(0.75, float(d.get("swing", 0.50)))),
+            dice_timing=max(0, min(MAX_DICE_TIMING, int(d.get("dice_timing", 0)))),
+            dice_velocity=max(0, min(MAX_DICE_VELOCITY, int(d.get("dice_velocity", 0)))),
             active_clip_idx=int(d.get("active_clip_idx", 0)),
             queued_clip_idx=int(d.get("queued_clip_idx", -1)),
             # Older songs have no selection: start from the clip that was playing

@@ -10,6 +10,8 @@ from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, pyqtSlot
 from ...sequencer.chords import chord_name
 from ...sequencer.engine import SequencerEngine
 from ...sequencer.models import (
+    MAX_DICE_TIMING,
+    MAX_DICE_VELOCITY,
     MAX_STEP_NOTES,
     MAX_TRACK_NAME,
     NUM_TRACKS,
@@ -185,6 +187,8 @@ class SequencerBridgeMixin(BridgeBaseMixin):
                 "partIsActive": self._part_is_active(target_part),
                 "clockDivider": t.clock_divider,
                 "swing": t.swing,
+                "diceTiming": t.dice_timing,
+                "diceVelocity": t.dice_velocity,
                 "activeClipIdx": t.active_clip_idx,
                 "queuedClipIdx": t.queued_clip_idx,
                 "selectedClipIdx": t.selected_clip_idx,
@@ -631,6 +635,15 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     def seqSetTrackSwing(self, track_idx: int, swing: float) -> None:
         if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
             self.sequencer.song.tracks[track_idx].swing = max(0.50, min(0.75, float(swing)))
+            self.seqTracksChanged.emit()
+
+    @pyqtSlot(int, int, int)
+    def seqSetTrackDice(self, track_idx: int, timing: int, velocity: int) -> None:
+        """Dice (humanize): random +/- ticks and +/- % of 127 velocity, rolled per note."""
+        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+            track = self.sequencer.song.tracks[track_idx]
+            track.dice_timing = max(0, min(MAX_DICE_TIMING, int(timing)))
+            track.dice_velocity = max(0, min(MAX_DICE_VELOCITY, int(velocity)))
             self.seqTracksChanged.emit()
 
     @pyqtSlot(int)

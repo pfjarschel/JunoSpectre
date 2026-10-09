@@ -79,12 +79,14 @@ def test_sequencer_tracks_and_step_editing(bridge):
     # Test step params
     bridge.seqSetStepParam(0, "gateLength", 0.5)
     bridge.seqSetStepParam(0, "microTiming", -10)
+    bridge.seqSetStepParam(0, "strum", -30)
     bridge.seqSetStepParam(0, "probability", 0.75)
     bridge.seqSetStepParam(0, "tie", True)
 
     steps_updated = bridge.seqActiveClipSteps
     assert steps_updated[0]["gateLength"] == pytest.approx(0.5)
     assert steps_updated[0]["microTiming"] == -10
+    assert steps_updated[0]["strum"] == -24  # clamped
     assert steps_updated[0]["probability"] == pytest.approx(0.75)
     assert steps_updated[0]["tie"] is True
 
@@ -148,6 +150,10 @@ def test_sequencer_recording_and_track_controls(bridge):
 
     bridge.seqSetTrackSwing(0, 0.5)
     assert bridge.seqTracks[0]["swing"] == pytest.approx(0.5)
+
+    bridge.seqSetTrackDice(0, 8, 99)
+    assert bridge.seqTracks[0]["diceTiming"] == 8
+    assert bridge.seqTracks[0]["diceVelocity"] == 50  # clamped
 
     # Step params: velocity & pitch
     bridge.seqSelectTrack(0)

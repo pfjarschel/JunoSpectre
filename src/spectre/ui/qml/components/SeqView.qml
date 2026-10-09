@@ -241,7 +241,7 @@ Rectangle {
             }
 
             // Layers: extra parts this track also sends to (tap to edit).
-            // Grows into the free space before DIV / SWING; elides past that.
+            // Grows into the free space before DIV / SWING / DICE; elides past that.
             Rectangle {
                 id: layerChip
                 objectName: "layerChip"
@@ -272,7 +272,7 @@ Rectangle {
                 }
             }
 
-            // DIV and SWING sit at the right edge
+            // DIV, SWING and DICE sit at the right edge
             Item { Layout.fillWidth: true }
 
             // Clock Divider (ordered shortest -> longest step)
@@ -296,6 +296,33 @@ Rectangle {
                 valueColor: "#fbbf24"
                 pxPerStep: ScaleMetrics.dp(8)
                 onRequested: (i) => Bridge.seqSetTrackSwing(Bridge.seqActiveTrack, 0.50 + i / 100)
+            }
+
+            // Dice (humanize): random timing / velocity per note (tap to edit)
+            Rectangle {
+                id: diceChip
+                objectName: "diceChip"
+                readonly property bool on: root.activeTrackData
+                                           ? (root.activeTrackData.diceTiming > 0 || root.activeTrackData.diceVelocity > 0)
+                                           : false
+                height: ScaleMetrics.dp(30)
+                width: ScaleMetrics.dp(56)
+                radius: 3
+                color: dicePicker.visible ? Theme.bgCardActive : Theme.bgApp
+                border.color: on || dicePicker.visible ? root.currentTrackColor : Theme.borderCard
+                border.width: 1
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "DICE"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: diceChip.on ? root.currentTrackColor : Theme.textDim
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: dicePicker.open(Bridge.seqActiveTrack, diceChip)
+                }
             }
         }
 
@@ -778,6 +805,21 @@ Rectangle {
                         }
                     }
 
+                    // Strum: ticks between a chord's notes (↑ low -> high, ↓ high -> low); a flam on drums
+                    InspectorParam {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        title: "STRUM"
+                        valStr: selStep && selStep.strum ? (selStep.strum > 0 ? "↑" : "↓") + Math.abs(selStep.strum) + "t" : "OFF"
+                        accent: "#f472b6"
+                        onAdjust: (delta) => {
+                            if (selStep) {
+                                const curr = selStep.strum || 0;
+                                Bridge.seqSetStepParam(root.selectedStepIdx, "strum", Math.max(-24, Math.min(24, curr + delta)));
+                            }
+                        }
+                    }
+
                     // Probability
                     InspectorParam {
                         Layout.fillWidth: true
@@ -880,6 +922,11 @@ Rectangle {
     // Main part / layers picker (opened from the LAYER chip)
     PartPicker {
         id: partPicker
+    }
+
+    // Dice (humanize) settings (opened from the DICE chip)
+    DicePicker {
+        id: dicePicker
     }
 
     // =========================================================================

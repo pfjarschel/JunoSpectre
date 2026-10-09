@@ -228,6 +228,62 @@ def test_track_swing_delays_odd_steps():
     assert ons[61] == 24 + round(0.16 * 2 * 24)
 
 
+def test_dice_off_keeps_notes_on_the_grid():
+    engine, song, log, run = _engine_with_log()
+    song.tracks[0].clips[0].steps[0].notes = [NoteEvent(60, 100)]
+    for _ in range(20):
+        offsets = engine._note_offsets(song.tracks[0], song.tracks[0].clips[0].steps[0], 0, 24)
+        assert [(n.velocity, o) for n, o in offsets] == [(100, 0)]
+
+
+def test_dice_rolls_timing_and_velocity_per_note_within_range():
+    engine, song, log, run = _engine_with_log()
+    track = song.tracks[0]
+    track.dice_timing = 6
+    track.dice_velocity = 20  # +/- 25 (20% of 127)
+    step = track.clips[0].steps[1]
+    step.notes = [NoteEvent(60, 100), NoteEvent(64, 120), NoteEvent(67, 5)]
+    step.micro_timing = 2
+    offsets, vels = set(), set()
+    for _ in range(300):
+        for n, o in engine._note_offsets(track, step, 1, 24):
+            assert -4 <= o <= 8
+            src = {60: 100, 64: 120, 67: 5}[n.pitch]
+            assert 1 <= n.velocity <= 127 and abs(n.velocity - src) <= 25
+            offsets.add(o)
+            vels.add(n.velocity - src)
+    assert len(offsets) > 5 and len(vels) > 10
+    # The step's own data is never modified
+    assert [n.velocity for n in step.notes] == [100, 120, 5]
+
+
+def test_dice_early_notes_play_once_per_pass():
+    """A step whose dice roll lands early is scheduled by the lookahead; it must not
+    be played again (or dropped) when the step itself starts."""
+    engine, song, log, run = _engine_with_log()
+    track = song.tracks[0]
+    track.dice_timing = 10
+    track.clips[0].steps[2].notes = [NoteEvent(62, 100)]
+    run(24 * 16 * 30)
+    ons = [e[0] for e in log if e[1] == "note_on" and e[3] == 62]
+    assert len(ons) == 30
+    passes = [t - (i * 16 * 24 + 48) for i, t in enumerate(ons)]
+    assert all(-10 <= d <= 10 for d in passes)
+    assert any(d < 0 for d in passes) and any(d > 0 for d in passes)
+
+
+def test_dice_velocity_reaches_midi_output():
+    engine, song, log, run = _engine_with_log()
+    vels = []
+    engine.midi.juno_out.send = lambda m: vels.append(m.velocity) if m.type == "note_on" else None
+    track = song.tracks[0]
+    track.dice_velocity = 30
+    track.clips[0].steps[0].notes = [NoteEvent(60, 64)]
+    run(24 * 16 * 30)
+    assert len(vels) == 30 and len(set(vels)) > 3
+    assert all(abs(v - 64) <= 38 for v in vels)
+
+
 def test_retriggered_pitch_releases_previous_voice_first():
     engine, song, log, run = _engine_with_log()
     clip = song.tracks[0].clips[0]
