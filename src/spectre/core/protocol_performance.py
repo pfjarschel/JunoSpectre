@@ -653,5 +653,11 @@ class PerformanceProtocolMixin:
         DT1 send failures (0 = ok). No flash writes, no verification reads.
         """
         part = self._check_part(part_index)
-        return self.write_patch_regions(state, temp_perf_patch_base(part),
-                                         write_gap=write_gap)
+        with self.quiet_part_writes():
+            return self.write_patch_regions(state, temp_perf_patch_base(part),
+                                             write_gap=write_gap)
+
+    def read_perf_part_patch(self, part_index: int, timeout: float = 1.5) -> PatchState:
+        """Read a part's sounding image from its temp buffer (no part switch)."""
+        part = self._check_part(part_index)
+        return self.read_patch_at(temp_perf_patch_base(part), f"Part {part}", timeout=timeout)

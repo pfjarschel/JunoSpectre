@@ -588,6 +588,7 @@ class PerfPartState:
     patch_pc: int = 0            # 0..127
     patch_name: str = ""         # Display cache (not on hardware part block)
     patch_file: str = ""         # Linked Pi .spectre file for Pi-only part sounds
+    modified: bool = False       # Temp buffer differs from its slot/file (edited or Pi-only image)
     # MIDI reception
     rx_channel: int = -1         # 0..15 (ch = rx_channel + 1); -1 = default to part
     rx_switch: bool = True       # Receive Switch OFF/ON

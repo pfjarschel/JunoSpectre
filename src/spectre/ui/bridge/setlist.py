@@ -142,7 +142,7 @@ class SetlistBridgeMixin(BridgeBaseMixin):
                 "song_path": "",
                 "snapshot_hash": snapshot_hash_of(cached_hw),
                 "cached": cached_hw,
-                "part_snapshots": copy.deepcopy(getattr(self, "_part_snapshots", None) or {}),
+                "part_snapshots": copy.deepcopy(self._capture_part_snapshots()),
                 "sequencer": seq_dict,
                 "bpm": self.sequencer.bpm if hasattr(self, "sequencer") else 120.0,
                 "macros": [m.value for m in getattr(self.patch_state, "macros", [])],

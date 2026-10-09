@@ -44,6 +44,7 @@ class FakeJuno(JunoClient):
             self._store[key] = data + old[len(data):]
         else:
             self._store[key] = data
+        self._notify_part_write(key)
 
     def get_active_patch_base(self, timeout=1.0, force_refresh=False):
         return self.TEMP

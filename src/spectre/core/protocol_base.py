@@ -87,6 +87,10 @@ class BaseProtocolMixin:
         self._active_perf_part: int = 1
         self._min_send_interval_s: float = 0.0
         self._last_send_time: float = 0.0
+        # Called with the part index (1..16) for every DT1 into a performance
+        # part's temp patch buffer, except image pushes (quiet_part_writes).
+        self.on_perf_part_write = None
+        self._quiet_part_writes: int = 0
 
     def invalidate_cache(self) -> None:
         """Clear cached state (call when changing synth patches or modes)."""
@@ -208,6 +212,25 @@ class BaseProtocolMixin:
             else:
                 raise
         self._last_send_time = time.monotonic()
+        self._notify_part_write(address)
+
+    def _notify_part_write(self, address: Sequence[int]) -> None:
+        """Report a DT1 into a part's temp patch buffer (11 00 00 00..14 7F 7F 7F)."""
+        hook = getattr(self, "on_perf_part_write", None)
+        if hook is None or getattr(self, "_quiet_part_writes", 0):
+            return
+        a0, a1 = int(address[0]), int(address[1])
+        if 0x11 <= a0 <= 0x14:
+            hook(((a0 - 0x11) * 128 + a1) // 0x20 + 1)
+
+    @contextmanager
+    def quiet_part_writes(self):
+        """Image pushes restore a known sound: don't report them as edits."""
+        self._quiet_part_writes = getattr(self, "_quiet_part_writes", 0) + 1
+        try:
+            yield self
+        finally:
+            self._quiet_part_writes -= 1
 
     def get_sound_mode(self, timeout: float = 1.0, force_refresh: bool = False) -> SoundMode:
         """Query synth Sound Mode (Setup address 01 00 00 00)."""

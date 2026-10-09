@@ -186,6 +186,7 @@ Rectangle {
                         feedsEditing: _p ? ((_p.mfxSelect || 0) === (Bridge.editingPerfMfx - 1)) : false
                         partStatus: (Bridge.partFileStatus && Bridge.partFileStatus.length >= partIndex)
                                     ? Bridge.partFileStatus[partIndex - 1] : ""
+                        hasFile: _p ? !!_p.hasFile : false
                     }
                 }
             }
@@ -218,6 +219,7 @@ Rectangle {
         // Selected sequencer track's color when it plays/records this part
         property color trackColor: "transparent"
         property string partStatus: ""
+        property bool hasFile: false
         property int mfxSelect: 0
         property bool feedsEditing: false
 
@@ -256,24 +258,27 @@ Rectangle {
                         onClicked: Bridge.editPerfPart(chan.partIndex)
                     }
                 }
-                // File-link health: green fresh, amber changed, red missing. Tap to re-push.
+                // Sound health: green fresh, amber file changed, red file missing,
+                // blue edited (differs from its slot/file). Tap reloads from the file.
                 Rectangle {
                     visible: chan.partStatus !== ""
                     width: ScaleMetrics.dp(18); height: ScaleMetrics.dp(18)
                     radius: 9
                     color: chan.partStatus === "ok" ? "#10b981"
-                         : chan.partStatus === "updated" ? "#fbbf24" : "#ef4444"
+                         : chan.partStatus === "updated" ? "#fbbf24"
+                         : chan.partStatus === "edited" ? "#60a5fa" : "#ef4444"
                     border.color: "#ffffff"; border.width: 1
                     Text {
                         anchors.centerIn: parent
-                        text: chan.partStatus === "ok" ? "✓" : "!"
+                        text: chan.partStatus === "ok" ? "✓" : chan.partStatus === "edited" ? "✎" : "!"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(9)
                         color: "#000000"
                     }
                     MouseArea {
                         anchors.fill: parent
-                        enabled: !root.pushBusy && (chan.partStatus === "updated" || chan.partStatus === "missing")
+                        enabled: !root.pushBusy && (chan.partStatus === "updated" || chan.partStatus === "missing"
+                                                    || (chan.partStatus === "edited" && chan.hasFile))
                         onClicked: Bridge.refreshPartFile(chan.partIndex)
                     }
                 }

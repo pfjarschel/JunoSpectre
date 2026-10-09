@@ -165,4 +165,7 @@ class SpectreBridge(
     def juno(self):
         """Direct, typed accessor for the connected JunoClient protocol instance."""
         engine = getattr(self, "engine", None)
-        return getattr(engine, "juno", None) if engine is not None else None
+        juno = getattr(engine, "juno", None) if engine is not None else None
+        if juno is not None and getattr(juno, "on_perf_part_write", None) is None:
+            juno.on_perf_part_write = self._on_perf_part_write
+        return juno

@@ -54,6 +54,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 "reverbSend": getattr(p, "reverb_send", 0),
                 "outputAssign": getattr(p, "output_assign", 13),
                 "mfxSelect": getattr(p, "mfx_select", 0),
+                "hasFile": bool(p.patch_file),
             }
             for p in self.patch_state.perf_parts[:16]
         ]
@@ -215,6 +216,9 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         statuses = []
         for i, part in enumerate(self.patch_state.perf_parts[:16]):
             link = str(getattr(part, "patch_file", "") or "")
+            if part.modified and (not link or Path(link).is_file()):
+                statuses.append("edited")
+                continue
             if not link:
                 statuses.append("")
                 continue
@@ -235,6 +239,85 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             self.partFileStatusChanged.emit()
         except Exception:
             pass
+
+    def _on_perf_part_write(self, part_index: int) -> None:
+        """A DT1 reached a part's temp buffer: its sound now differs from its source."""
+        parts = self.patch_state.perf_parts
+        if not 1 <= int(part_index) <= len(parts) or parts[part_index - 1].modified:
+            return
+        parts[part_index - 1].modified = True
+        try:
+            self._part_file_status[part_index - 1] = "edited"
+            self.partFileStatusChanged.emit()
+        except Exception:
+            pass
+
+    def _read_part_image(self, part_index: int):
+        """Read a part's sounding image from the synth, or None (offline/failed)."""
+        juno = self.juno
+        if juno is None or not hasattr(juno, "read_perf_part_patch"):
+            return None
+        # Don't read a buffer while a background push is still writing it.
+        if not self._push_lock.acquire(timeout=10.0):
+            return None
+        try:
+            return juno.read_perf_part_patch(int(part_index))
+        except Exception as e:
+            logger.debug(f"part {part_index} image read failed: {e}")
+            return None
+        finally:
+            self._push_lock.release()
+
+    def _capture_part_snapshots(self) -> dict:
+        """Every part's sound, for saving: edits read from the synth, files as stored.
+
+        Untouched slot parts need no image (the Bank/PC reference is the sound).
+        Offline or on read failure an edited part keeps the image already held.
+        """
+        from ...core.spectre_format import load_spectre, patch_state_to_dict
+        held = self._part_snapshots or {}
+        snaps = {}
+        for p in self.patch_state.perf_parts:
+            key = str(p.part_index)
+            link = str(getattr(p, "patch_file", "") or "")
+            if p.modified:
+                image = self._read_part_image(p.part_index)
+                if image is not None:
+                    snaps[key] = patch_state_to_dict(image)
+                    continue
+                if isinstance(held.get(key), dict):
+                    snaps[key] = held[key]
+                    continue
+            if link and Path(link).is_file():
+                try:
+                    snaps[key] = patch_state_to_dict(load_spectre(link)["patch_state"])
+                    continue
+                except Exception as e:
+                    logger.debug(f"part {key} snapshot: link unreadable: {e}")
+            # Missing/unreadable link: keep the image we already hold.
+            if link and isinstance(held.get(key), dict):
+                snaps[key] = held[key]
+        return snaps
+
+    def _part_restore_image(self, part, part_snapshots: dict):
+        """The image a part sounds on load, or None when its slot select suffices.
+
+        Edits ride the snapshot; an untouched file part follows its (newer) file.
+        """
+        from ...core.spectre_format import load_spectre, patch_state_from_dict
+        link = str(getattr(part, "patch_file", "") or "")
+        snap = (part_snapshots or {}).get(str(part.part_index))
+        if link and not part.modified and Path(link).is_file():
+            try:
+                return load_spectre(link)["patch_state"]
+            except Exception as e:
+                logger.debug(f"part {part.part_index}: link unreadable: {e}")
+        if (link or part.modified) and isinstance(snap, dict):
+            try:
+                return patch_state_from_dict(snap)
+            except Exception as e:
+                logger.debug(f"part {part.part_index}: bad snapshot: {e}")
+        return None
 
     def _queue_push_jobs(self, jobs: list) -> None:
         """Run part-sound jobs in a worker thread (images are slow on SysEx).
@@ -279,10 +362,11 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int, result=bool)
     def refreshPartFile(self, part_index: int) -> bool:
-        """Re-push a file-linked part: fresh file image when healthy, else snapshot."""
+        """Re-push a file-linked part: the file always wins (it is the newer
+        sound, edits are dropped); a missing file falls back to the snapshot."""
         if not 1 <= int(part_index) <= 16:
             return False
-        from ...core.spectre_format import load_spectre, patch_state_from_dict
+        from ...core.spectre_format import load_spectre, patch_state_from_dict, patch_state_to_dict
         part = self.patch_state.perf_parts[int(part_index) - 1]
         link = str(getattr(part, "patch_file", "") or "")
         snap = (self._part_snapshots or {}).get(str(part.part_index))
@@ -290,6 +374,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         if link and Path(link).is_file():
             try:
                 state = load_spectre(link)["patch_state"]
+                self._part_snapshots[str(part.part_index)] = patch_state_to_dict(state)
+                part.modified = False
             except Exception as e:
                 logger.debug(f"refreshPartFile: link unreadable: {e}")
         if state is None and isinstance(snap, dict):
@@ -300,6 +386,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         if state is None:
             return False
         self._queue_push_jobs([("image", part.part_index, state)])
+        self.refreshPartFileStatus()
         return True
 
     @pyqtSlot(int, bool)
@@ -1057,14 +1144,15 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             if i == 1:
                 # Sounds from the template image pushed below, not from a slot
                 p.patch_name = state.common.name
+                p.modified = True
             elif i in (INIT_PERF_PIANO_PART, INIT_PERF_DRUM_PART):
                 ref = INIT_PERF_PIANO if i == INIT_PERF_PIANO_PART else INIT_PERF_DRUMS
                 p.patch_msb, p.patch_lsb, p.patch_pc, p.patch_name = ref
             elif i - 1 < len(old_parts):
                 o = old_parts[i - 1]
                 p.patch_msb, p.patch_lsb, p.patch_pc = o.patch_msb, o.patch_lsb, o.patch_pc
-                p.patch_name, p.patch_file = o.patch_name, o.patch_file
-                if p.patch_file and isinstance(old_snaps.get(str(i)), dict):
+                p.patch_name, p.patch_file, p.modified = o.patch_name, o.patch_file, o.modified
+                if (p.patch_file or p.modified) and isinstance(old_snaps.get(str(i)), dict):
                     snaps[str(i)] = old_snaps[str(i)]
             parts.append(p)
         state.perf_parts = parts
@@ -1187,6 +1275,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 part.patch_msb, part.patch_lsb, part.patch_pc = int(msb), int(lsb), int(pc)
                 part.patch_name = display
                 part.patch_file = file_path if is_file else ""
+                part.modified = False
+                self._part_snapshots.pop(str(target), None)
                 if juno is not None:
                     try:
                         juno.set_perf_part_patch(target, int(msb), int(lsb), int(pc))
@@ -1216,6 +1306,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                     logger.debug(f"pickPartPatch: snapshot failed: {e}")
                 part.patch_name = display
                 part.patch_file = file_path
+                part.modified = False
             else:
                 return False
         except Exception as e:
@@ -1239,9 +1330,9 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         """Swap in a cached/loaded performance image and push the mixer live.
 
         Mixer selects + levels go synchronously (fast); part sound images for
-        Pi-only/missing links restore in the background with progress.
+        Pi-only/edited parts and file links restore in the background with progress.
         """
-        from ...core.spectre_format import load_spectre, patch_state_from_dict
+        from ...core.spectre_format import patch_state_from_dict
 
         try:
             state = patch_state_from_dict(patch_dict)
@@ -1290,21 +1381,9 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 except Exception as e:
                     logger.debug(f"playlist load: part {p.part_index} push failed: {e}")
                     break
-                link = str(getattr(p, "patch_file", "") or "")
-                if link and Path(link).is_file():
-                    try:
-                        image_jobs.append(("image", p.part_index, load_spectre(link)["patch_state"]))
-                        continue
-                    except Exception as e:
-                        logger.debug(f"playlist load: part link unreadable: {e}")
-                if link:
-                    snap = (self._part_snapshots or {}).get(str(p.part_index))
-                    if isinstance(snap, dict):
-                        try:
-                            from ...core.spectre_format import patch_state_from_dict as _from_dict
-                            image_jobs.append(("image", p.part_index, _from_dict(snap)))
-                        except Exception as e:
-                            logger.debug(f"playlist load: bad part snapshot: {e}")
+                image = self._part_restore_image(p, self._part_snapshots)
+                if image is not None:
+                    image_jobs.append(("image", p.part_index, image))
             try:
                 fx = getattr(self.patch_state, "perf_fx", None)
                 if fx is not None:

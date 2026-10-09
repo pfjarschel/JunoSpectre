@@ -183,14 +183,19 @@ class FlashProtocolMixin:
         Strict canonical decode (no legacy fallback): raises TimeoutError or
         ValueError on short/corrupt replies.
         """
-        base = self.user_slot_base(msb, lsb, pc)
+        return self.read_patch_at(self.user_slot_base(msb, lsb, pc),
+                                  f"User slot {msb}/{lsb}/{pc}", timeout=timeout)
+
+    def read_patch_at(self, base: Tuple[int, int, int, int], label: str,
+                      timeout: float = 1.5) -> PatchState:
+        """Read and strictly decode the patch image at any base (temp or flash)."""
         raw_regions = self._read_patch_regions(base, timeout=timeout)
         common = PatchState._decode_common(bytes(raw_regions["common"][0][:80]))
         tones = []
         for idx in range(1, 5):
             main_raw, lfo_raw = raw_regions[f"tone_{idx}"][0], raw_regions[f"tone_{idx}"][1]
             if len(main_raw) < 154 or len(lfo_raw) < 26:
-                raise ValueError(f"User slot {msb}/{lsb}/{pc} tone {idx}: short image")
+                raise ValueError(f"{label} tone {idx}: short image")
             tones.append(PatchState._decode_tone(bytes(main_raw[:154]), bytes(lfo_raw[:26]), idx))
         tmt_raw = raw_regions["tmt"][0]
         for tone, sw in zip(tones, (

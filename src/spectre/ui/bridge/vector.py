@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-from pathlib import Path
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
@@ -1064,7 +1063,6 @@ class VectorBridgeMixin(BridgeBaseMixin):
 
     def _restore_performance_sound(self, state, part_snapshots: dict) -> None:
         """Restore a performance sound: mixer selects sync, images queued."""
-        from ...core.spectre_format import load_spectre, patch_state_from_dict
         juno = self.juno
         if juno is None:
             return
@@ -1092,20 +1090,7 @@ class VectorBridgeMixin(BridgeBaseMixin):
         jobs = []
         jobbed = set()
         for p in state.perf_parts:
-            link = str(getattr(p, "patch_file", "") or "")
-            image = None
-            if link and Path(link).is_file():
-                try:
-                    image = load_spectre(link)["patch_state"]
-                except Exception as e:
-                    logger.debug(f"cancel restore: link unreadable: {e}")
-            if image is None:
-                snap = (part_snapshots or {}).get(str(p.part_index))
-                if isinstance(snap, dict):
-                    try:
-                        image = patch_state_from_dict(snap)
-                    except Exception as e:
-                        logger.debug(f"cancel restore: bad snapshot: {e}")
+            image = self._part_restore_image(p, part_snapshots)
             if image is not None:
                 jobs.append(("image", p.part_index, image))
                 jobbed.add(p.part_index)

@@ -1074,3 +1074,102 @@ def test_init_performance_fresh_song(tmp_path):
     assert song.tracks[0].name == "Track 1"
     assert all(not s.notes for t in song.tracks for c in t.clips for s in c.steps)
     assert bridge._current_ref is None
+
+
+# --- part edits: modified flag, full snapshots, edited badge -----------------
+
+def test_part_write_hook_reports_part(mock_midi_mgr):
+    from src.spectre.core.sysex import add_address
+    client = JunoClient(mock_midi_mgr)
+    hits = []
+    client.on_perf_part_write = hits.append
+    client.send_data(add_address(temp_perf_patch_base(3), (0x00, 0x00, 0x10, 0x00)), [5])
+    client.send_data(add_address(temp_perf_patch_base(16), (0x00, 0x02, 0x00, 0x00)), [5])
+    client.send_data((0x1F, 0x00, 0x00, 0x00), [5])  # PATCH temp: not a part
+    client.send_data(perf_part_base(3), [5])  # mixer block: not the sound
+    with client.quiet_part_writes():
+        client.send_data(temp_perf_patch_base(4), [5])  # image push
+    assert hits == [3, 16]
+
+
+def _edit_part(juno, part, value=9):
+    from src.spectre.core.sysex import add_address
+    juno.send_data(add_address(temp_perf_patch_base(part), (0x00, 0x00, 0x00, 0x20)), [value])
+
+
+def test_edit_marks_part_and_save_snapshots_it(tmp_path):
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    assert juno.push_patch_to_perf_part(_raw_image_state("SLOTTED"), 3) == 0
+    assert bridge.patch_state.perf_parts[2].modified is False  # pushes aren't edits
+    _edit_part(juno, 3)
+    assert bridge.patch_state.perf_parts[2].modified is True
+    assert bridge.partFileStatus[2] == "edited"
+    out = bridge.saveCurrentToFile("EDITS", "", "", False, "")
+    loaded = load_spectre(out)
+    snaps = loaded["spectre"]["part_snapshots"]
+    assert snaps["3"]["common"]["name"].strip() == "SLOTTED"  # read back from the synth
+    assert "4" not in snaps  # untouched slot part: the reference is enough
+    assert loaded["patch_state"].perf_parts[2].modified is True
+
+
+def test_load_restores_edited_part_over_its_file(tmp_path):
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    lead = tmp_path / "lead.spectre"
+    save_spectre(lead, _raw_image_state("LEAD"), meta={"name": "LEAD"}, kind="patch")
+    bridge.setSoundMode("PERFORM")
+    part = bridge.patch_state.perf_parts[1]
+    part.patch_file, part.modified = str(lead), True
+    bridge._part_snapshots = {"2": patch_state_to_dict(_raw_image_state("TWEAKED"))}
+    # Read failure (like offline): the save keeps the held image.
+    juno.read_perf_part_patch = MagicMock(side_effect=TimeoutError)
+    out = bridge.saveCurrentToFile("TWK", "", "", False, "")
+
+    assert bridge.loadSpectreFile(out) is True
+    _wait_push_idle(bridge)
+    assert bytes(juno._store[temp_perf_patch_base(2)][:7]) == b"TWEAKED"
+    assert bridge.partFileStatus[1] == "edited"
+    # Tapping the badge takes the file (the newer sound) and clears the edit.
+    assert bridge.refreshPartFile(2) is True
+    _wait_push_idle(bridge)
+    assert bytes(juno._store[temp_perf_patch_base(2)][:4]) == b"LEAD"
+    assert bridge.patch_state.perf_parts[1].modified is False
+    assert bridge.partFileStatus[1] == "ok"
+
+
+def test_badge_turns_green_after_refresh(tmp_path):
+    bridge, _, _ = _bridge_rig(tmp_path)
+    lead = tmp_path / "lead.spectre"
+    save_spectre(lead, _raw_image_state("LEAD"), meta={"name": "LEAD"}, kind="patch")
+    bridge.setSoundMode("PERFORM")
+    bridge.patch_state.perf_parts[0].patch_file = str(lead)
+    bridge._part_snapshots = {"1": patch_state_to_dict(_raw_image_state("OLD"))}
+    bridge.refreshPartFileStatus()
+    assert bridge.partFileStatus[0] == "updated"
+    assert bridge.refreshPartFile(1) is True
+    _wait_push_idle(bridge)
+    assert bridge.partFileStatus[0] == "ok"
+
+
+def test_init_perf_template_part_survives_save(tmp_path):
+    bridge, _, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    bridge.initPerformance()
+    _wait_push_idle(bridge)
+    assert bridge.patch_state.perf_parts[0].modified is True
+    bridge.editPerfPart(3)  # P1 is no longer the active part
+    out = bridge.saveCurrentToFile("INITSAVE", "", "", False, "")
+    snaps = load_spectre(out)["spectre"]["part_snapshots"]
+    assert "1" in snaps
+
+
+def test_pick_clears_edit(tmp_path):
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    _edit_part(juno, 5)
+    bridge._part_snapshots = {"5": {"x": 1}}
+    bridge.openPartPicker(5)
+    assert bridge.pickPartPatch(87, 0, 5, "", "Picked", "patch") is True
+    assert bridge.patch_state.perf_parts[4].modified is False
+    assert "5" not in bridge._part_snapshots
+    assert bridge.partFileStatus[4] == ""
