@@ -7,12 +7,17 @@ from typing import Any, Dict, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, pyqtSlot
 
+from ...sequencer.chords import chord_name
 from ...sequencer.engine import SequencerEngine
-from ...sequencer.models import NoteEvent, default_sequencer_song
+from ...sequencer.models import MAX_STEP_NOTES, NoteEvent, Step, default_sequencer_song
 from ...sequencer.recording import SequencerRecorder
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
+
+DRUM_TRACK = 4
+# Pitches a new note on a drum step tries first: BD, SD, CH, OH, CP, CY
+DRUM_ADD_ORDER = (36, 38, 42, 46, 39, 49)
 
 
 class SequencerBridgeMixin(BridgeBaseMixin):
@@ -194,23 +199,27 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             track = self.sequencer.song.tracks[t_idx]
             if 0 <= c_idx < len(track.clips):
                 clip = track.clips[c_idx]
-                return [
-                    {
-                        "index": i,
-                        "gateLength": s.gate_length,
-                        "microTiming": s.micro_timing,
-                        "strum": s.strum,
-                        "probability": s.probability,
-                        "tie": s.tie,
-                        "isActive": s.is_active,
-                        "noteCount": len(s.notes),
-                        "notes": [n.to_dict() for n in s.notes],
-                        "primaryPitch": s.notes[0].pitch if s.notes else -1,
-                        "primaryVelocity": s.notes[0].velocity if s.notes else 0,
-                    }
-                    for i, s in enumerate(clip.steps)
-                ]
+                return [self._seq_step_dict(i, s, t_idx == DRUM_TRACK) for i, s in enumerate(clip.steps)]
         return []
+
+    @staticmethod
+    def _seq_step_dict(i: int, s: Step, is_drum: bool) -> Dict[str, Any]:
+        notes = sorted(s.notes, key=lambda n: n.pitch)
+        return {
+            "index": i,
+            "gateLength": s.gate_length,
+            "microTiming": s.micro_timing,
+            "strum": s.strum,
+            "probability": s.probability,
+            "tie": s.tie,
+            "isActive": s.is_active,
+            "noteCount": len(notes),
+            "notes": [n.to_dict() for n in notes],  # low to high
+            "chordName": "" if is_drum else chord_name(n.pitch for n in notes),
+            "primaryPitch": notes[0].pitch if notes else -1,
+            "primaryVelocity": notes[0].velocity if notes else 0,
+            "maxVelocity": max((n.velocity for n in notes), default=0),
+        }
 
     @pyqtProperty(bool, notify=seqRecordModeChanged)
     def seqStepRecordEnabled(self) -> bool:
@@ -375,8 +384,9 @@ class SequencerBridgeMixin(BridgeBaseMixin):
                     if matching:
                         step.notes = [n for n in step.notes if n.pitch != pitch]
                     else:
-                        if len(step.notes) < 6:
+                        if len(step.notes) < MAX_STEP_NOTES:
                             step.notes.append(NoteEvent(pitch=pitch, velocity=velocity))
+                            step.notes.sort(key=lambda n: n.pitch)
                     self.seqActiveClipChanged.emit()
                     self.seqTracksChanged.emit()
 
@@ -481,6 +491,104 @@ class SequencerBridgeMixin(BridgeBaseMixin):
                         step.notes.append(NoteEvent(pitch=new_pitch, velocity=100))
                     self.seqActiveClipChanged.emit()
                     self.seqTracksChanged.emit()
+
+    # -- Per-note editing (the pad's note grid). Notes are addressed by pitch,
+    # since a step never holds the same pitch twice; slots that move a note
+    # return its new pitch so the UI selection can follow it.
+
+    def _seq_edit_step(self, step_idx: int) -> Optional[Step]:
+        """The step at step_idx in the active track's selected clip, if any."""
+        t_idx = getattr(self, "_active_seq_track", 0)
+        c_idx = self._seq_selected_clip(t_idx)
+        if hasattr(self, "sequencer") and 0 <= t_idx < len(self.sequencer.song.tracks):
+            track = self.sequencer.song.tracks[t_idx]
+            if 0 <= c_idx < len(track.clips) and 0 <= step_idx < len(track.clips[c_idx].steps):
+                return track.clips[c_idx].steps[step_idx]
+        return None
+
+    def _seq_step_edited(self, step: Step) -> None:
+        step.notes.sort(key=lambda n: n.pitch)
+        self.seqActiveClipChanged.emit()
+        self.seqTracksChanged.emit()
+
+    @pyqtSlot(int, result=int)
+    def seqAddStepNote(self, step_idx: int) -> int:
+        """Add a note to a step: a default pitch on an empty step, else the first
+        free pitch above the highest note. Returns the new pitch, or -1 if full."""
+        step = self._seq_edit_step(step_idx)
+        if step is None or len(step.notes) >= MAX_STEP_NOTES:
+            return -1
+        used = {n.pitch for n in step.notes}
+        is_drum = getattr(self, "_active_seq_track", 0) == DRUM_TRACK
+        free_drums = [p for p in DRUM_ADD_ORDER if p not in used] if is_drum else []
+        if free_drums:
+            pitch = free_drums[0]
+        elif not step.notes:
+            pitch = 60
+        else:
+            top = max(used)
+            above = [p for p in range(top + 1, 128) if p not in used]
+            below = [p for p in range(top - 1, -1, -1) if p not in used]
+            pitch = (above or below)[0]
+        velocity = max(step.notes, key=lambda n: n.pitch).velocity if step.notes else 100
+        step.notes.append(NoteEvent(pitch=pitch, velocity=velocity))
+        self._seq_step_edited(step)
+        return pitch
+
+    @pyqtSlot(int, int)
+    def seqDeleteStepNote(self, step_idx: int, pitch: int) -> None:
+        step = self._seq_edit_step(step_idx)
+        if step is not None and any(n.pitch == pitch for n in step.notes):
+            step.notes = [n for n in step.notes if n.pitch != pitch]
+            self._seq_step_edited(step)
+
+    @pyqtSlot(int, int, int, result=int)
+    def seqNudgeNotePitch(self, step_idx: int, pitch: int, semitones: int) -> int:
+        """Move one note by semitones, skipping pitches the step already has.
+        Returns its new pitch (unchanged if it can't move), or -1 if not found."""
+        step = self._seq_edit_step(step_idx)
+        note = next((n for n in step.notes if n.pitch == pitch), None) if step else None
+        if note is None or not semitones:
+            return pitch if note else -1
+        used = {n.pitch for n in step.notes if n is not note}
+        direction = 1 if semitones > 0 else -1
+        new = pitch + int(semitones)
+        while new in used:
+            new += direction
+        if not 0 <= new <= 127:
+            return pitch
+        note.pitch = new
+        self._seq_step_edited(step)
+        return new
+
+    @pyqtSlot(int, int, int, result=int)
+    def seqSetNotePitch(self, step_idx: int, pitch: int, new_pitch: int) -> int:
+        """Change one note to new_pitch (drum quick buttons). If the step has no
+        such note it gets one added; if new_pitch is already there nothing moves.
+        Returns the pitch to select, or -1 if the step is missing or full."""
+        step = self._seq_edit_step(step_idx)
+        if step is None:
+            return -1
+        new_pitch = max(0, min(127, int(new_pitch)))
+        if any(n.pitch == new_pitch for n in step.notes):
+            return new_pitch
+        note = next((n for n in step.notes if n.pitch == pitch), None)
+        if note is not None:
+            note.pitch = new_pitch
+        elif len(step.notes) < MAX_STEP_NOTES:
+            step.notes.append(NoteEvent(pitch=new_pitch, velocity=100))
+        else:
+            return -1
+        self._seq_step_edited(step)
+        return new_pitch
+
+    @pyqtSlot(int, int, int)
+    def seqSetNoteVelocity(self, step_idx: int, pitch: int, velocity: int) -> None:
+        step = self._seq_edit_step(step_idx)
+        note = next((n for n in step.notes if n.pitch == pitch), None) if step else None
+        if note is not None:
+            note.velocity = max(1, min(127, int(velocity)))
+            self._seq_step_edited(step)
 
     @pyqtSlot(int)
     def seqSetClipLength(self, length: int) -> None:

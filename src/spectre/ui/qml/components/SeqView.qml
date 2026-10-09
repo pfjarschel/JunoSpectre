@@ -28,6 +28,35 @@ Rectangle {
     onStepPageCountChanged: if (currentStepPage >= stepPageCount) currentStepPage = 0
     readonly property var selStep: (stepsList && stepsList.length > selectedStepIdx)
                                    ? stepsList[selectedStepIdx] : null
+    // The note the inspector's PITCH / VELOCITY edit: the one picked on the pad
+    // if the step still has it, else the step's lowest note
+    property int selectedNotePitch: -1
+    readonly property var selNote: {
+        const notes = (selStep && selStep.notes) ? selStep.notes : [];
+        for (let i = 0; i < notes.length; i++)
+            if (notes[i].pitch === selectedNotePitch) return notes[i];
+        return notes.length > 0 ? notes[0] : null;
+    }
+
+    function selectNote(stepIdx, pitch) {
+        selectedStepIdx = stepIdx;
+        selectedNotePitch = pitch;
+        Bridge.seqSetCursorStep(stepIdx);
+    }
+
+    // Move the selected note; on an empty step, add one instead
+    function nudgeSelNote(semitones) {
+        if (selNote)
+            selectedNotePitch = Bridge.seqNudgeNotePitch(selectedStepIdx, selNote.pitch, semitones);
+        else if (selStep)
+            selectedNotePitch = Bridge.seqAddStepNote(selectedStepIdx);
+    }
+
+    // Drum quick buttons: turn the selected hit into another one
+    function setSelNotePitch(pitch) {
+        const p = Bridge.seqSetNotePitch(selectedStepIdx, selNote ? selNote.pitch : -1, pitch);
+        if (p >= 0) selectedNotePitch = p;
+    }
 
     // Pitch to Note Name Helper
     function formatPitch(pitch, isDrum) {
@@ -554,17 +583,9 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         title: "PITCH"
-                        // Chords show their extra notes as "C4 +2"
-                        valStr: (selStep && selStep.isActive)
-                                ? root.formatPitch(selStep.primaryPitch, Bridge.seqActiveTrack === 4)
-                                  + (selStep.noteCount > 1 ? " +" + (selStep.noteCount - 1) : "")
-                                : "--"
+                        valStr: root.selNote ? root.formatPitch(root.selNote.pitch, Bridge.seqActiveTrack === 4) : "--"
                         accent: "#e879f9"
-                        onAdjust: (delta) => {
-                            if (selStep) {
-                                Bridge.seqNudgeStepPitch(root.selectedStepIdx, delta);
-                            }
-                        }
+                        onAdjust: (delta) => root.nudgeSelNote(delta)
                     }
 
                     // Pitch Semitone / Octave / Drum Quick Buttons
@@ -597,17 +618,17 @@ Rectangle {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
                                             radius: 2
-                                            color: (selStep && selStep.primaryPitch === modelData.p) ? "#f59e0b" : Theme.bgApp
+                                            color: (root.selNote && root.selNote.pitch === modelData.p) ? "#f59e0b" : Theme.bgApp
                                             Text {
                                                 anchors.centerIn: parent
                                                 text: modelData.name
                                                 font.bold: true
                                                 font.pixelSize: ScaleMetrics.sp(9)
-                                                color: (selStep && selStep.primaryPitch === modelData.p) ? "#000000" : Theme.textSecondary
+                                                color: (root.selNote && root.selNote.pitch === modelData.p) ? "#000000" : Theme.textSecondary
                                             }
                                             MouseArea {
                                                 anchors.fill: parent
-                                                onClicked: Bridge.seqSetStepPitch(root.selectedStepIdx, modelData.p)
+                                                onClicked: root.setSelNotePitch(modelData.p)
                                             }
                                         }
                                     }
@@ -622,17 +643,17 @@ Rectangle {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
                                             radius: 2
-                                            color: (selStep && selStep.primaryPitch === modelData.p) ? "#f59e0b" : Theme.bgApp
+                                            color: (root.selNote && root.selNote.pitch === modelData.p) ? "#f59e0b" : Theme.bgApp
                                             Text {
                                                 anchors.centerIn: parent
                                                 text: modelData.name
                                                 font.bold: true
                                                 font.pixelSize: ScaleMetrics.sp(9)
-                                                color: (selStep && selStep.primaryPitch === modelData.p) ? "#000000" : Theme.textSecondary
+                                                color: (root.selNote && root.selNote.pitch === modelData.p) ? "#000000" : Theme.textSecondary
                                             }
                                             MouseArea {
                                                 anchors.fill: parent
-                                                onClicked: Bridge.seqSetStepPitch(root.selectedStepIdx, modelData.p)
+                                                onClicked: root.setSelNotePitch(modelData.p)
                                             }
                                         }
                                     }
@@ -655,7 +676,7 @@ Rectangle {
                                         radius: 2
                                         color: Theme.bgApp
                                         Text { anchors.centerIn: parent; text: "-1"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
-                                        MouseArea { anchors.fill: parent; onClicked: Bridge.seqNudgeStepPitch(root.selectedStepIdx, -1) }
+                                        MouseArea { anchors.fill: parent; onClicked: root.nudgeSelNote(-1) }
                                     }
                                     Rectangle {
                                         Layout.fillWidth: true
@@ -663,7 +684,7 @@ Rectangle {
                                         radius: 2
                                         color: Theme.bgApp
                                         Text { anchors.centerIn: parent; text: "+1"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
-                                        MouseArea { anchors.fill: parent; onClicked: Bridge.seqNudgeStepPitch(root.selectedStepIdx, 1) }
+                                        MouseArea { anchors.fill: parent; onClicked: root.nudgeSelNote(1) }
                                     }
                                 }
                                 RowLayout {
@@ -676,7 +697,7 @@ Rectangle {
                                         radius: 2
                                         color: Theme.bgApp
                                         Text { anchors.centerIn: parent; text: "-OCT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: "#38bdf8" }
-                                        MouseArea { anchors.fill: parent; onClicked: Bridge.seqNudgeStepPitch(root.selectedStepIdx, -12) }
+                                        MouseArea { anchors.fill: parent; onClicked: root.nudgeSelNote(-12) }
                                     }
                                     Rectangle {
                                         Layout.fillWidth: true
@@ -684,7 +705,7 @@ Rectangle {
                                         radius: 2
                                         color: Theme.bgApp
                                         Text { anchors.centerIn: parent; text: "+OCT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: "#38bdf8" }
-                                        MouseArea { anchors.fill: parent; onClicked: Bridge.seqNudgeStepPitch(root.selectedStepIdx, 12) }
+                                        MouseArea { anchors.fill: parent; onClicked: root.nudgeSelNote(12) }
                                     }
                                 }
                             }
@@ -696,12 +717,12 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         title: "VELOCITY"
-                        valStr: (selStep && selStep.isActive) ? selStep.primaryVelocity.toString() : "--"
+                        valStr: root.selNote ? root.selNote.velocity.toString() : "--"
                         accent: root.currentTrackColor
                         onAdjust: (delta) => {
-                            if (selStep) {
-                                const curr = selStep.primaryVelocity || 100;
-                                Bridge.seqSetStepParam(root.selectedStepIdx, "velocity", Math.max(1, Math.min(127, curr + delta * 2)));
+                            if (root.selNote) {
+                                Bridge.seqSetNoteVelocity(root.selectedStepIdx, root.selNote.pitch,
+                                                          Math.max(1, Math.min(127, root.selNote.velocity + delta * 2)));
                             }
                         }
                     }
@@ -751,9 +772,9 @@ Rectangle {
                         }
                     }
 
-                    // Tie Toggle
+                    // Tie Toggle (sized and laid out like the drag tiles)
                     Rectangle {
-                        width: ScaleMetrics.dp(46)
+                        Layout.fillWidth: true
                         Layout.fillHeight: true
                         radius: ScaleMetrics.dp(4)
                         color: selStep && selStep.tie ? "#1e3a5f" : Theme.bgSurface
@@ -761,7 +782,8 @@ Rectangle {
                         border.width: 1
 
                         ColumnLayout {
-                            anchors.centerIn: parent
+                            anchors.fill: parent
+                            anchors.margins: ScaleMetrics.dp(4)
                             spacing: 2
                             Text {
                                 Layout.alignment: Qt.AlignHCenter
@@ -770,13 +792,16 @@ Rectangle {
                                 font.pixelSize: ScaleMetrics.sp(9)
                                 color: selStep && selStep.tie ? "#38bdf8" : Theme.textDim
                             }
+                            Item { Layout.fillHeight: true }
                             Text {
                                 Layout.alignment: Qt.AlignHCenter
                                 text: selStep && selStep.tie ? "ON" : "OFF"
+                                font.family: Theme.fontMono
                                 font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(12)
+                                font.pixelSize: ScaleMetrics.sp(14)
                                 color: selStep && selStep.tie ? "#ffffff" : Theme.textSecondary
                             }
+                            Item { Layout.fillHeight: true }
                         }
 
                         MouseArea {
@@ -791,7 +816,7 @@ Rectangle {
 
                     // Clear Step
                     Rectangle {
-                        width: ScaleMetrics.dp(44)
+                        Layout.fillWidth: true
                         Layout.fillHeight: true
                         radius: ScaleMetrics.dp(4)
                         color: clearStepMouse.pressed ? "#7f1d1d" : Theme.bgSurface
@@ -799,22 +824,25 @@ Rectangle {
                         border.width: 1
 
                         ColumnLayout {
-                            anchors.centerIn: parent
+                            anchors.fill: parent
+                            anchors.margins: ScaleMetrics.dp(4)
                             spacing: 2
                             Text {
                                 Layout.alignment: Qt.AlignHCenter
-                                text: "✕"
+                                text: "STEP"
                                 font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(10)
-                                color: Theme.recording
+                                font.pixelSize: ScaleMetrics.sp(9)
+                                color: Theme.textDim
                             }
+                            Item { Layout.fillHeight: true }
                             Text {
                                 Layout.alignment: Qt.AlignHCenter
-                                text: "CLEAR"
+                                text: "✕ CLEAR"
                                 font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(8)
+                                font.pixelSize: ScaleMetrics.sp(14)
                                 color: Theme.recording
                             }
+                            Item { Layout.fillHeight: true }
                         }
 
                         MouseArea {
@@ -923,52 +951,124 @@ Rectangle {
                                                         : (isSelected ? root.currentTrackColor : Theme.borderCard))
         border.width: (isCurrentPlayhead || isCursorStep || isSelected) ? 2 : 1
 
+        readonly property var notes: (stepData && stepData.notes) ? stepData.notes : []
+        readonly property bool isDrum: Bridge.seqActiveTrack === 4
+
+        // Taps outside the note grid just select the step
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.selectNote(stepOffset, -1)
+        }
+
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: ScaleMetrics.dp(4)
-            spacing: 2
+            spacing: ScaleMetrics.dp(3)
 
-            // Top Row: Step Number & Indicators
+            // Top Row: Step Number, Chord Name & Tie
             RowLayout {
                 Layout.fillWidth: true
+                spacing: ScaleMetrics.dp(4)
                 Text {
                     text: (stepOffset + 1).toString()
                     font.family: Theme.fontMono
                     font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(7)
-                    color: (stepOffset % 4 === 0) ? Theme.primary : Theme.textDim
+                    font.pixelSize: ScaleMetrics.sp(10)
+                    color: (stepOffset % 4 === 0) ? Theme.primary : Theme.textSecondary
                 }
-                Item { Layout.fillWidth: true }
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignRight
+                    elide: Text.ElideRight
+                    text: stepData ? stepData.chordName : ""
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(10)
+                    color: Theme.textPrimary
+                }
                 Text {
                     visible: stepData && stepData.tie
                     text: "—"
                     font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(7)
+                    font.pixelSize: ScaleMetrics.sp(10)
                     color: "#38bdf8"
                 }
-                Text {
-                    visible: stepData && stepData.noteCount > 1
-                    text: stepData.noteCount + "♪"
-                    font.pixelSize: ScaleMetrics.sp(7)
-                    color: Theme.tone1
+            }
+
+            // Note Grid: 3 x 4, sorted low to high (left-right, top-bottom).
+            // Tap a note to edit it, double-tap to delete it, tap a free cell to add one.
+            GridLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                columns: 3
+                rowSpacing: ScaleMetrics.dp(2)
+                columnSpacing: ScaleMetrics.dp(2)
+
+                Repeater {
+                    model: 12
+                    delegate: Rectangle {
+                        id: cell
+                        readonly property var note: index < stepRoot.notes.length ? stepRoot.notes[index] : null
+                        readonly property bool isSel: note !== null && stepRoot.isSelected
+                                                      && root.selNote !== null && root.selNote.pitch === note.pitch
+                        // Where a tap adds the next note, shown on the selected step only
+                        readonly property bool showAdd: note === null && index === stepRoot.notes.length
+                                                        && stepRoot.isSelected && !Bridge.seqStepRecordEnabled
+                        readonly property real vel: note ? note.velocity / 127.0 : 0
+                        // The tap that added a note mustn't let its double-tap delete it
+                        property bool justAdded: false
+
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: 1
+                        Layout.preferredHeight: 1
+                        radius: 2
+                        color: isSel ? root.currentTrackColor
+                                     : (note ? Qt.rgba(root.currentTrackColor.r, root.currentTrackColor.g,
+                                                       root.currentTrackColor.b, 0.08 + 0.27 * vel)
+                                             : "transparent")
+                        border.color: showAdd ? Theme.borderCard : "transparent"
+                        border.width: 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: cell.note ? root.formatPitch(cell.note.pitch, stepRoot.isDrum) : (cell.showAdd ? "+" : "")
+                            font.family: Theme.fontMono
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(11)
+                            // Softer notes read dimmer
+                            color: cell.isSel ? Theme.bgApp : (cell.note ? root.currentTrackColor : Theme.textSecondary)
+                            opacity: (cell.note && !cell.isSel) ? 0.5 + 0.5 * cell.vel : 1.0
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                cell.justAdded = false;
+                                if (cell.note) {
+                                    root.selectNote(stepOffset, cell.note.pitch);
+                                    return;
+                                }
+                                root.selectNote(stepOffset, -1);
+                                if (!Bridge.seqStepRecordEnabled) {
+                                    const p = Bridge.seqAddStepNote(stepOffset);
+                                    if (p >= 0) {
+                                        root.selectedNotePitch = p;
+                                        cell.justAdded = true;
+                                    }
+                                }
+                            }
+                            onDoubleClicked: {
+                                if (cell.justAdded)
+                                    cell.justAdded = false;
+                                else if (cell.note)
+                                    Bridge.seqDeleteStepNote(stepOffset, cell.note.pitch);
+                            }
+                        }
+                    }
                 }
             }
 
-            Item { Layout.fillHeight: true }
-
-            // Center: Primary Note Pitch
-            Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: isActive ? root.formatPitch(stepData.primaryPitch, Bridge.seqActiveTrack === 4) : ""
-                font.family: Theme.fontMono
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(9)
-                color: isActive ? root.currentTrackColor : Theme.textDim
-            }
-
-            Item { Layout.fillHeight: true }
-
-            // Bottom: Velocity Bar
+            // Bottom: Velocity Bar (loudest note)
             Rectangle {
                 Layout.fillWidth: true
                 height: ScaleMetrics.dp(4)
@@ -978,25 +1078,9 @@ Rectangle {
 
                 Rectangle {
                     height: parent.height
-                    width: isActive && stepData ? (parent.width * (stepData.primaryVelocity / 127.0)) : 0
+                    width: isActive && stepData ? (parent.width * (stepData.maxVelocity / 127.0)) : 0
                     color: isCurrentPlayhead ? "#ffffff" : root.currentTrackColor
                 }
-            }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: {
-                root.selectedStepIdx = stepOffset;
-                Bridge.seqSetCursorStep(stepOffset);
-                if (!stepRoot.isActive && !Bridge.seqStepRecordEnabled) {
-                    const defaultPitch = (Bridge.seqActiveTrack === 4) ? 36 : 60;
-                    Bridge.seqToggleStepNote(stepOffset, defaultPitch, 100);
-                }
-            }
-            onDoubleClicked: {
-                const defaultPitch = (Bridge.seqActiveTrack === 4) ? 36 : 60;
-                Bridge.seqToggleStepNote(stepOffset, defaultPitch, 100);
             }
         }
     }

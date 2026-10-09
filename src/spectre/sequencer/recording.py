@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 import mido
 
 from .engine import SequencerEngine
-from .models import Clip, NoteEvent, Step
+from .models import MAX_STEP_NOTES, Clip, NoteEvent, Step
 
 logger = logging.getLogger(__name__)
 
@@ -172,9 +172,10 @@ class SequencerRecorder:
                 for n in self._buffered_chord:
                     if n.pitch not in unique_notes or n.velocity > unique_notes[n.pitch]:
                         unique_notes[n.pitch] = n.velocity
-                clip.steps[self.cursor_step].notes = [
-                    NoteEvent(p, v) for p, v in list(unique_notes.items())[:6]
-                ]
+                clip.steps[self.cursor_step].notes = sorted(
+                    (NoteEvent(p, v) for p, v in list(unique_notes.items())[:MAX_STEP_NOTES]),
+                    key=lambda n: n.pitch,
+                )
                 self._buffered_chord.clear()
                 # Auto-advance
                 self.cursor_step = (self.cursor_step + 1) % clip.length
@@ -215,11 +216,12 @@ class SequencerRecorder:
             micro -= eng.swing_delay(track, target, step_len)
 
             step = clip.steps[target]
-            if any(n.pitch == pitch for n in step.notes) or len(step.notes) >= 6:
+            if any(n.pitch == pitch for n in step.notes) or len(step.notes) >= MAX_STEP_NOTES:
                 return
             if not step.notes:
                 step.micro_timing = max(-24, min(24, micro))
             step.notes.append(NoteEvent(pitch=pitch, velocity=vel))
+            step.notes.sort(key=lambda n: n.pitch)
             if ahead:
                 # The player is already sounding it; don't retrigger it on this pass.
                 eng.suppress_overdub_note(t_idx, c_idx, target, pitch)

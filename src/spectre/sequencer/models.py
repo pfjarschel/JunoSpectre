@@ -7,6 +7,9 @@ import dataclasses
 import uuid
 from typing import Any, Dict, List, Optional
 
+# Most notes one step can hold (fills the pad's 3 x 4 note grid)
+MAX_STEP_NOTES = 12
+
 
 @dataclasses.dataclass
 class NoteEvent:
@@ -60,7 +63,7 @@ class Step:
             strum=max(-24, min(24, int(d.get("strum", 0)))),
             probability=max(0.0, min(1.0, float(d.get("probability", 1.0)))),
             tie=bool(d.get("tie", False)),
-            notes=notes[:6],  # limit to 6-note polyphony
+            notes=sorted(notes[:MAX_STEP_NOTES], key=lambda n: n.pitch),
         )
 
 

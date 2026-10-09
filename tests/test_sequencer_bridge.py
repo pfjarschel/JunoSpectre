@@ -377,3 +377,54 @@ def test_kbd_channel_learned_from_played_keys(bridge):
     assert bridge.seqKbdChannel == 2
     bridge._on_kbd_note(mido.Message("note_off", channel=5, note=60))
     assert bridge.seqKbdChannel == 2
+
+
+def test_per_note_step_editing(bridge):
+    bridge.seqSelectTrack(0)
+    # Empty step: first added note is C4, the next ones stack above the top note
+    assert bridge.seqAddStepNote(0) == 60
+    for p in (64, 67):
+        bridge.seqToggleStepNote(0, p, 90)
+    assert bridge.seqAddStepNote(0) == 68
+    step = bridge.seqActiveClipSteps[0]
+    assert [n["pitch"] for n in step["notes"]] == [60, 64, 67, 68]
+    assert step["notes"][3]["velocity"] == 90  # copies the top note's velocity
+
+    # Nudging keeps notes sorted and skips pitches the step already has
+    assert bridge.seqNudgeNotePitch(0, 68, -1) == 66
+    assert bridge.seqNudgeNotePitch(0, 66, -2) == 63  # 64 is taken
+    step = bridge.seqActiveClipSteps[0]
+    assert [n["pitch"] for n in step["notes"]] == [60, 63, 64, 67]
+    assert bridge.seqNudgeNotePitch(0, 63, 200) == 63  # off the top: stays
+    assert bridge.seqNudgeNotePitch(0, 99, 1) == -1
+
+    bridge.seqDeleteStepNote(0, 63)
+    step = bridge.seqActiveClipSteps[0]
+    assert [n["pitch"] for n in step["notes"]] == [60, 64, 67]
+    assert step["chordName"] == "C"
+
+    bridge.seqSetNoteVelocity(0, 64, 30)
+    bridge.seqSetNoteVelocity(0, 64, 500)
+    step = bridge.seqActiveClipSteps[0]
+    assert [n["velocity"] for n in step["notes"]] == [100, 127, 90]
+    assert step["maxVelocity"] == 127
+
+    # Up to 12 notes per step
+    while bridge.seqAddStepNote(0) != -1:
+        pass
+    assert bridge.seqActiveClipSteps[0]["noteCount"] == 12
+    bridge.seqToggleStepNote(0, 20, 100)
+    assert bridge.seqActiveClipSteps[0]["noteCount"] == 12
+
+
+def test_drum_step_notes(bridge):
+    bridge.seqSelectTrack(4)
+    assert [bridge.seqAddStepNote(1) for _ in range(3)] == [36, 38, 42]
+    assert bridge.seqActiveClipSteps[1]["chordName"] == ""
+    # Quick buttons swap the selected hit; an existing hit is just selected
+    assert bridge.seqSetNotePitch(1, 42, 46) == 46
+    assert bridge.seqSetNotePitch(1, 46, 36) == 36
+    assert [n["pitch"] for n in bridge.seqActiveClipSteps[1]["notes"]] == [36, 38, 46]
+    # On an empty step the button adds the hit
+    assert bridge.seqSetNotePitch(2, -1, 39) == 39
+    assert bridge.seqActiveClipSteps[2]["primaryPitch"] == 39
