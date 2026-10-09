@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 import mido
 
 from .engine import SequencerEngine
-from .models import MAX_STEP_NOTES, Clip, NoteEvent, Step
+from .models import MAX_STEP_NOTES, NUM_TRACKS, Clip, NoteEvent, Step
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class SequencerRecorder:
         self._notify_ui("live_record_toggle", self.live_record_enabled)
 
     def set_target(self, track_idx: int, clip_idx: int, step_idx: int = 0) -> None:
-        self.active_track_idx = max(0, min(4, int(track_idx)))
+        self.active_track_idx = max(0, min(NUM_TRACKS - 1, int(track_idx)))
         self.active_clip_idx = max(0, int(clip_idx))
         self.cursor_step = max(0, int(step_idx))
         if self.live_record_enabled:

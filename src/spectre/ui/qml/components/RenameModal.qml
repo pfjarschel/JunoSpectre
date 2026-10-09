@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import JunoSpectre
 import ".."
 
-// Rename a user sound. Factory ROM rows can never be renamed:
+// Rename a user sound or a sequencer track. Factory ROM rows can never be renamed:
 // the caller only opens this modal for file rows and synth-user slots.
 Rectangle {
     id: root
@@ -12,7 +12,8 @@ Rectangle {
     z: 998
     color: "#e60a0c10"
 
-    property string mode: "file" // "file" | "slot"
+    property string mode: "file" // "file" | "slot" | "track"
+    property int trackIdx: -1
     property string path: ""
     property int msb: -1
     property int lsb: -1
@@ -39,6 +40,16 @@ Rectangle {
         newName = currentName
         errorText = ""
         busy = false
+        visible = true
+    }
+
+    function openTrack(idx, currentName) {
+        mode = "track"
+        trackIdx = idx
+        newName = currentName
+        errorText = ""
+        busy = false
+        keyboardVisible = true
         visible = true
     }
 
@@ -91,7 +102,9 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: root.mode === "slot" ? ("User slot " + (501 + root.lsb * 128 + root.pc) + " on the keyboard") : "Pi file (travels with the patch)"
+                text: root.mode === "slot" ? ("User slot " + (501 + root.lsb * 128 + root.pc) + " on the keyboard")
+                      : (root.mode === "track" ? ("Sequencer track " + (root.trackIdx + 1) + " (saved with the song)")
+                                               : "Pi file (travels with the patch)")
                 font.pixelSize: ScaleMetrics.sp(8)
                 color: Theme.textDim
             }
@@ -208,7 +221,10 @@ Rectangle {
             running: false
             onTriggered: {
                 var ok = false
-                if (root.mode === "slot") {
+                if (root.mode === "track") {
+                    Bridge.seqRenameTrack(root.trackIdx, root.newName)
+                    ok = true
+                } else if (root.mode === "slot") {
                     ok = Bridge.renameUserSlot(root.msb, root.lsb, root.pc, root.newName)
                     if (!ok) root.errorText = "Rename failed (synth unreachable?)."
                 } else {

@@ -1,4 +1,4 @@
-"""Data models for the Juno Spectre 5-track polymetric sequencer & clip launcher."""
+"""Data models for the Juno Spectre 8-track polymetric sequencer & clip launcher."""
 
 from __future__ import annotations
 
@@ -9,6 +9,10 @@ from typing import Any, Dict, List, Optional
 
 # Most notes one step can hold (fills the pad's 3 x 4 note grid)
 MAX_STEP_NOTES = 12
+NUM_TRACKS = 8
+# Performance part of the JUNO-DS rhythm set: tracks sending to it are drum tracks
+DRUM_PART = 10
+MAX_TRACK_NAME = 12
 
 
 @dataclasses.dataclass
@@ -145,7 +149,7 @@ class Clip:
 @dataclasses.dataclass
 class Track:
     """One of the 5 fixed tracks in the performance sequencer."""
-    track_id: int = 1                   # 1..5
+    track_id: int = 1                   # 1..NUM_TRACKS
     name: str = "Track"
     target_parts: List[int] = dataclasses.field(default_factory=lambda: [1])
     clock_divider: str = "1/16"         # "1/32", "1/16", "1/8", "1/4", "1/8T", "1/16T"
@@ -159,6 +163,11 @@ class Track:
         if not self.clips:
             self.clips = [Clip(name=f"Pattern {i+1}", length=16) for i in range(8)]
         self.selected_clip_idx = max(0, min(len(self.clips) - 1, int(self.selected_clip_idx)))
+
+    @property
+    def is_drum(self) -> bool:
+        """True when the track's main part is the rhythm part (drum names, drum buttons)."""
+        return bool(self.target_parts) and self.target_parts[0] == DRUM_PART
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -178,8 +187,8 @@ class Track:
         clips_data = d.get("clips", [])
         clips = [Clip.from_dict(c) for c in clips_data] if isinstance(clips_data, list) else []
         return cls(
-            track_id=max(1, min(5, int(d.get("track_id", 1)))),
-            name=str(d.get("name", "Track")),
+            track_id=max(1, min(NUM_TRACKS, int(d.get("track_id", 1)))),
+            name=str(d.get("name", "Track"))[:MAX_TRACK_NAME],
             target_parts=[int(p) for p in d.get("target_parts", [1])] or [1],
             clock_divider=str(d.get("clock_divider", "1/16")),
             swing=max(0.50, min(0.75, float(d.get("swing", 0.50)))),
@@ -193,14 +202,16 @@ class Track:
 
 @dataclasses.dataclass
 class SequencerSong:
-    """Complete 5-track sequencer state container."""
+    """Complete 8-track sequencer state container."""
     bpm: float = 120.0
     master_resync_bars: int = 0         # 0 = Off, 1, 2, 4, 8, 16, 32
     tracks: List[Track] = dataclasses.field(default_factory=list)
 
     def __post_init__(self):
-        if not self.tracks or len(self.tracks) != 5:
-            self.tracks = default_tracks()
+        # Always NUM_TRACKS tracks: missing ones get their defaults, extras are dropped
+        if len(self.tracks) != NUM_TRACKS:
+            defaults = default_tracks()
+            self.tracks = (list(self.tracks) + defaults[len(self.tracks):])[:NUM_TRACKS]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -215,8 +226,6 @@ class SequencerSong:
             return cls()
         tracks_data = d.get("tracks", [])
         tracks = [Track.from_dict(t) for t in tracks_data] if isinstance(tracks_data, list) else []
-        if len(tracks) != 5:
-            tracks = default_tracks()
 
         return cls(
             bpm=max(20.0, min(300.0, float(d.get("bpm", 120.0)))),
@@ -236,16 +245,13 @@ def default_clip(name: str = "Clip", length: int = 16) -> Clip:
 
 
 def default_tracks() -> List[Track]:
-    """Build the standard 5 tracks: Tracks 1-4 for Synth Parts 1-4, Track 5 for Drums Part 10."""
-    track_names = ["Track 1 (Lead)", "Track 2 (Poly)", "Track 3 (Bass)", "Track 4 (Pad)", "Track 5 (Drums)"]
-    target_parts = [[1], [2], [3], [4], [10]]
-
+    """Build the standard tracks: Tracks 1-7 send to Parts 1-7, Track 8 to the rhythm part."""
     tracks = []
-    for i in range(5):
+    for i in range(NUM_TRACKS):
         t = Track(
             track_id=i + 1,
-            name=track_names[i],
-            target_parts=target_parts[i],
+            name=f"Track {i + 1}",
+            target_parts=[DRUM_PART] if i == NUM_TRACKS - 1 else [i + 1],
             clock_divider="1/16",
             swing=0.50,
             active_clip_idx=0,

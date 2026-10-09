@@ -11,7 +11,8 @@ Rectangle {
     border.width: 1
 
     readonly property var trackColors: Theme.trackColors
-    readonly property var trackNames: ["T1 SYNTH", "T2 SYNTH", "T3 SYNTH", "T4 SYNTH", "RHYTHM"]
+    // Track headers and the scene column's STOP ALL share this height (keeps rows aligned)
+    readonly property real trackHeaderHeight: ScaleMetrics.dp(40)
 
     ColumnLayout {
         anchors.fill: parent
@@ -139,7 +140,9 @@ Rectangle {
         }
 
         // =====================================================================
-        // 2. SESSION MATRIX: 5 TRACKS + SCENE LAUNCH FLANK
+        // 2. SESSION MATRIX: 8 TRACKS + SCENE LAUNCH COLUMN
+        // The scene column copies a track column's header height, margins and
+        // spacing so each scene button lines up with its row of clips.
         // =====================================================================
         Rectangle {
             Layout.fillWidth: true
@@ -152,13 +155,13 @@ Rectangle {
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: ScaleMetrics.dp(6)
-                spacing: ScaleMetrics.dp(6)
+                spacing: ScaleMetrics.dp(4)
 
-                // 5 Track Columns
                 Repeater {
-                    model: 5
+                    model: Bridge.seqTracks ? Bridge.seqTracks.length : 0
                     delegate: TrackColumn {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 1  // equal columns whatever the names
                         Layout.fillHeight: true
                         trackIdx: index
                     }
@@ -166,7 +169,7 @@ Rectangle {
 
                 // Scene Launch Column
                 Rectangle {
-                    width: ScaleMetrics.dp(85)
+                    Layout.preferredWidth: ScaleMetrics.dp(62)
                     Layout.fillHeight: true
                     radius: ScaleMetrics.dp(4)
                     color: Theme.bgCard
@@ -178,27 +181,52 @@ Rectangle {
                         anchors.margins: ScaleMetrics.dp(4)
                         spacing: ScaleMetrics.dp(3)
 
-                        // Scenes Header
+                        // Stop All Tracks (in the header row)
                         Rectangle {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(24)
-                            color: "transparent"
-                            Text {
+                            Layout.preferredHeight: root.trackHeaderHeight
+                            radius: ScaleMetrics.dp(3)
+                            color: stopAllMouse.pressed ? "#7f1d1d" : Theme.bgSurface
+                            border.color: stopAllMouse.containsPress ? Theme.recording : Theme.borderCard
+                            border.width: 1
+
+                            Column {
                                 anchors.centerIn: parent
-                                text: "SCENES"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(8)
-                                font.letterSpacing: 1.0
-                                color: Theme.textDim
+                                spacing: 1
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "■ STOP"
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: Theme.recording
+                                }
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "ALL"
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: Theme.recording
+                                }
+                            }
+
+                            MouseArea {
+                                id: stopAllMouse
+                                anchors.fill: parent
+                                onClicked: {
+                                    const n = Bridge.seqTracks ? Bridge.seqTracks.length : 0;
+                                    for (let i = 0; i < n; i++)
+                                        Bridge.seqStopTrack(i);
+                                }
                             }
                         }
 
-                        // 8 Scene Launch Buttons
+                        // 8 Scene Launch Buttons, one per clip row
                         Repeater {
                             model: 8
                             delegate: Rectangle {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
+                                Layout.preferredHeight: 1
                                 radius: ScaleMetrics.dp(4)
                                 color: sceneMouse.pressed ? "#047857" : Theme.bgSurface
                                 border.color: sceneMouse.containsPress ? "#10b981" : Theme.borderCard
@@ -213,9 +241,9 @@ Rectangle {
                                         color: "#10b981"
                                     }
                                     Text {
-                                        text: "S " + (index + 1)
+                                        text: "S" + (index + 1)
                                         font.bold: true
-                                        font.pixelSize: ScaleMetrics.sp(8)
+                                        font.pixelSize: ScaleMetrics.sp(9)
                                         color: Theme.textPrimary
                                     }
                                 }
@@ -227,115 +255,40 @@ Rectangle {
                                 }
                             }
                         }
-
-                        // Stop All Tracks
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: ScaleMetrics.dp(22)
-                            radius: ScaleMetrics.dp(3)
-                            color: stopAllMouse.pressed ? "#7f1d1d" : Theme.bgSurface
-                            border.color: stopAllMouse.containsPress ? Theme.recording : Theme.borderCard
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "■ STOP ALL"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(7)
-                                color: Theme.recording
-                            }
-
-                            MouseArea {
-                                id: stopAllMouse
-                                anchors.fill: parent
-                                onClicked: {
-                                    for (let i = 0; i < 5; i++) {
-                                        Bridge.seqStopTrack(i);
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
         }
 
         // =====================================================================
-        // 3. BOTTOM LIVE MACRO STRIP (8 Dials connected to MacroDeck)
+        // 3. LIVE MACROS: compact cards like the encoder strip
+        // (drag to change, double-tap to center; deep edit in the Macro Deck)
         // =====================================================================
-        Rectangle {
+        RowLayout {
             Layout.fillWidth: true
-            height: ScaleMetrics.dp(98)
-            radius: ScaleMetrics.dp(6)
-            color: Theme.bgApp
-            border.color: Theme.borderCard
-            border.width: 1
+            Layout.fillHeight: false
+            Layout.preferredHeight: ScaleMetrics.dp(40)
+            spacing: ScaleMetrics.dp(6)
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: ScaleMetrics.dp(6)
-                spacing: ScaleMetrics.dp(4)
-
-                // Macro Strip Label
-                RowLayout {
+            Repeater {
+                model: 8
+                delegate: LiveMacroDial {
                     Layout.fillWidth: true
-                    spacing: ScaleMetrics.dp(6)
-
-                    Text {
-                        text: "LIVE MACROS"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        font.letterSpacing: 1.0
-                        color: Theme.textDim
-                    }
-
-                    Text {
-                        text: "DRAG VERTICALLY • DOUBLE-TAP TO CENTER"
-                        font.pixelSize: ScaleMetrics.sp(7)
-                        color: Theme.textDim
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    Text {
-                        text: "DEEP EDIT IN MACRO DECK ➜"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(7)
-                        color: Theme.tone2
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Bridge.setActiveView("MACROS")
-                        }
-                    }
-                }
-
-                // 8 Macro Knobs Row
-                RowLayout {
-                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
                     Layout.fillHeight: true
-                    spacing: ScaleMetrics.dp(6)
-
-                    Repeater {
-                        model: 8
-                        delegate: LiveMacroDial {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            macroIndex: modelData + 1
-                            macroTitle: (Bridge.macroNames && Bridge.macroNames.length > modelData)
-                                        ? Bridge.macroNames[modelData] : ("M" + (modelData + 1))
-                            macroColor: root.trackColors[modelData % root.trackColors.length]
-                            macroValue01: (Bridge.macroValues && Bridge.macroValues.length > modelData)
-                                          ? Bridge.macroValues[modelData] : 0.0
-                        }
-                    }
+                    macroIndex: modelData + 1
+                    macroTitle: (Bridge.macroNames && Bridge.macroNames.length > modelData)
+                                ? Bridge.macroNames[modelData] : ("M" + (modelData + 1))
+                    macroColor: root.trackColors[modelData % root.trackColors.length]
+                    macroValue01: (Bridge.macroValues && Bridge.macroValues.length > modelData)
+                                  ? Bridge.macroValues[modelData] : 0.0
                 }
             }
         }
     }
 
     // =========================================================================
-    // Track Column Component (Header + 8 Clip Slots)
+    // Track Column Component (2-row Header + 8 Clip Slots)
     // =========================================================================
     component TrackColumn: Rectangle {
         id: colRoot
@@ -360,121 +313,137 @@ Rectangle {
             anchors.margins: ScaleMetrics.dp(4)
             spacing: ScaleMetrics.dp(3)
 
-            // Track Header
+            // Track Header: name on top, part / KBD / stop below.
+            // Tap to select the track, long-press to rename it.
             Rectangle {
                 Layout.fillWidth: true
-                height: ScaleMetrics.dp(24)
+                Layout.preferredHeight: root.trackHeaderHeight
                 radius: ScaleMetrics.dp(3)
                 color: Theme.bgSurface
                 border.color: Theme.borderCard
                 border.width: 1
 
-                RowLayout {
+                MouseArea {
                     anchors.fill: parent
-                    anchors.margins: ScaleMetrics.dp(4)
-                    spacing: ScaleMetrics.dp(4)
-
-                    Rectangle {
-                        width: ScaleMetrics.dp(6)
-                        height: ScaleMetrics.dp(6)
-                        radius: 3
-                        color: colRoot.trackColor
+                    onClicked: Bridge.seqSelectTrack(colRoot.trackIdx)
+                    onPressAndHold: {
+                        Bridge.seqSelectTrack(colRoot.trackIdx);
+                        trackRename.openTrack(colRoot.trackIdx, colRoot.trackData ? colRoot.trackData.name : "");
                     }
+                }
 
-                    Text {
-                        text: root.trackNames[trackIdx]
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.textPrimary
-                        elide: Text.ElideRight
-                    }
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: ScaleMetrics.dp(3)
+                    spacing: ScaleMetrics.dp(2)
 
-                    Item { Layout.fillWidth: true }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(4)
 
-                    // Part Selector ("+n" = layered parts, edited in the sequencer view)
-                    Rectangle {
-                        width: ScaleMetrics.dp(colRoot.layerCount > 0 ? 34 : 22)
-                        height: ScaleMetrics.dp(16)
-                        radius: 2
-                        color: Theme.bgApp
-                        border.color: Theme.borderCard
-                        border.width: 1
+                        Rectangle {
+                            width: ScaleMetrics.dp(6)
+                            height: ScaleMetrics.dp(6)
+                            radius: 3
+                            color: colRoot.trackColor
+                        }
 
                         Text {
-                            anchors.centerIn: parent
-                            text: "P" + colRoot.mainPart + (colRoot.layerCount > 0 ? "+" + colRoot.layerCount : "")
+                            Layout.fillWidth: true
+                            text: colRoot.trackData ? colRoot.trackData.name : ""
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Theme.textPrimary
+                            elide: Text.ElideRight
+                        }
+
+                        // Step playhead display
+                        Text {
+                            visible: Bridge.seqIsPlaying && colRoot.trackData && colRoot.trackData.activeClipIdx >= 0
+                            text: (colRoot.currentPlayhead + 1).toString()
+                            font.family: Theme.fontMono
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(7)
                             color: colRoot.trackColor
                         }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Bridge.seqSetTrackTargetPart(colRoot.trackIdx, (colRoot.mainPart % 16) + 1)
-                        }
                     }
 
-                    // Kbd switch of the track's part(s): also play them from the keyboard
-                    Rectangle {
-                        width: ScaleMetrics.dp(26)
-                        height: ScaleMetrics.dp(16)
-                        radius: 2
-                        color: colRoot.kbdOn ? "#0d2b1a" : Theme.bgApp
-                        border.color: colRoot.kbdOn ? "#10b981" : Theme.borderCard
-                        border.width: 1
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        spacing: ScaleMetrics.dp(3)
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: "KBD"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(6)
-                            color: colRoot.kbdOn ? "#10b981" : Theme.textDim
+                        // Parts: main part + layer count; tap to pick them
+                        Rectangle {
+                            id: partBadge
+                            objectName: "partBadge"
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            radius: 2
+                            color: Theme.bgApp
+                            border.color: Theme.borderCard
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "P" + colRoot.mainPart + (colRoot.layerCount > 0 ? "+" + colRoot.layerCount : "")
+                                font.bold: true
+                                font.pixelSize: ScaleMetrics.sp(7)
+                                color: colRoot.trackColor
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: partPicker.open(colRoot.trackIdx, "main", partBadge)
+                            }
                         }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Bridge.seqSetTrackKbd(colRoot.trackIdx, !colRoot.kbdOn)
+                        // Kbd switch of the track's part(s): also play them from the keyboard
+                        Rectangle {
+                            Layout.preferredWidth: ScaleMetrics.dp(26)
+                            Layout.fillHeight: true
+                            radius: 2
+                            color: colRoot.kbdOn ? "#0d2b1a" : Theme.bgApp
+                            border.color: colRoot.kbdOn ? "#10b981" : Theme.borderCard
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "KBD"
+                                font.bold: true
+                                font.pixelSize: ScaleMetrics.sp(6)
+                                color: colRoot.kbdOn ? "#10b981" : Theme.textDim
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: Bridge.seqSetTrackKbd(colRoot.trackIdx, !colRoot.kbdOn)
+                            }
+                        }
+
+                        // Track stop button
+                        Rectangle {
+                            Layout.preferredWidth: ScaleMetrics.dp(16)
+                            Layout.fillHeight: true
+                            radius: 2
+                            color: stopTrackMouse.pressed ? "#7f1d1d" : Theme.bgApp
+                            border.color: Theme.borderCard
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "■"
+                                font.pixelSize: ScaleMetrics.sp(7)
+                                color: Theme.textDim
+                            }
+
+                            MouseArea {
+                                id: stopTrackMouse
+                                anchors.fill: parent
+                                onClicked: Bridge.seqStopTrack(colRoot.trackIdx)
+                            }
                         }
                     }
-
-                    // Step playhead display
-                    Text {
-                        visible: Bridge.seqIsPlaying && colRoot.trackData && colRoot.trackData.activeClipIdx >= 0
-                        text: (colRoot.currentPlayhead + 1).toString()
-                        font.family: Theme.fontMono
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(7)
-                        color: colRoot.trackColor
-                    }
-
-                    // Track stop button
-                    Rectangle {
-                        width: ScaleMetrics.dp(16)
-                        height: ScaleMetrics.dp(16)
-                        radius: 2
-                        color: stopTrackMouse.pressed ? "#7f1d1d" : Theme.bgApp
-                        border.color: Theme.borderCard
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "■"
-                            font.pixelSize: ScaleMetrics.sp(7)
-                            color: Theme.textDim
-                        }
-
-                        MouseArea {
-                            id: stopTrackMouse
-                            anchors.fill: parent
-                            onClicked: Bridge.seqStopTrack(trackIdx)
-                        }
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    z: -1
-                    onClicked: Bridge.seqSelectTrack(trackIdx)
                 }
             }
 
@@ -484,6 +453,7 @@ Rectangle {
                 delegate: ClipTile {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.preferredHeight: 1
                     trackIndex: colRoot.trackIdx
                     clipIndex: index
                     trackColor: colRoot.trackColor
@@ -492,6 +462,7 @@ Rectangle {
             }
         }
     }
+
 
     // =========================================================================
     // Clip Tile Component
@@ -565,8 +536,11 @@ Rectangle {
         }
     }
 
+
     // =========================================================================
-    // Compact Live Macro Dial Component
+    // Compact Live Macro Card: name on top, value in the middle, a bipolar bar
+    // filling from the center. Drag up/right to raise, down/left to lower;
+    // double-tap to center.
     // =========================================================================
     component LiveMacroDial: Rectangle {
         id: dialRoot
@@ -575,96 +549,132 @@ Rectangle {
         property color macroColor: Theme.primary
         property real macroValue01: 0.0
 
-        radius: ScaleMetrics.dp(4)
-        color: Theme.bgSurface
+        radius: ScaleMetrics.dp(6)
+        color: Theme.bgApp
         border.color: dialMouse.containsPress ? dialRoot.macroColor : Theme.borderCard
         border.width: 1
 
         MouseArea {
             id: dialMouse
             anchors.fill: parent
+            preventStealing: true
+            property real startX: 0
             property real startY: 0
             property real startVal: 0
 
             onPressed: (mouse) => {
+                startX = mouse.x;
                 startY = mouse.y;
                 startVal = dialRoot.macroValue01;
             }
 
             onPositionChanged: (mouse) => {
                 if (pressed) {
-                    const dy = startY - mouse.y;
-                    const newVal = Math.max(-1.0, Math.min(1.0, startVal + dy / ScaleMetrics.dp(50)));
-                    Bridge.setMacro(dialRoot.macroIndex, newVal);
+                    const d = (mouse.x - startX) + (startY - mouse.y);
+                    Bridge.setMacro(dialRoot.macroIndex, Math.max(-1.0, Math.min(1.0, startVal + d / ScaleMetrics.dp(60))));
                 }
             }
 
-            onDoubleClicked: {
-                Bridge.setMacro(dialRoot.macroIndex, 0.0);
-            }
+            onDoubleClicked: Bridge.setMacro(dialRoot.macroIndex, 0.0)
         }
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: ScaleMetrics.dp(4)
-            spacing: ScaleMetrics.dp(2)
+        // Header: macro tag + name
+        Item {
+            id: macroHeader
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: ScaleMetrics.dp(3)
+            height: ScaleMetrics.dp(12)
 
-            RowLayout {
-                Layout.fillWidth: true
+            Rectangle {
+                id: macroTag
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: ScaleMetrics.dp(18)
+                height: ScaleMetrics.dp(12)
+                radius: ScaleMetrics.dp(3)
+                color: Theme.bgCardActive
+
                 Text {
+                    anchors.centerIn: parent
                     text: "M" + dialRoot.macroIndex
                     font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(7)
+                    font.pixelSize: ScaleMetrics.sp(8)
                     color: dialRoot.macroColor
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: dialRoot.macroTitle
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(7)
-                    color: Theme.textSecondary
-                    elide: Text.ElideRight
                 }
             }
 
-            // Bipolar Value Bar
-            Rectangle {
-                Layout.fillWidth: true
-                height: ScaleMetrics.dp(12)
-                radius: 2
-                color: Theme.bgApp
-                border.color: Theme.borderCard
-                border.width: 1
-                clip: true
-
-                // Center divider
-                Rectangle {
-                    width: 1
-                    height: parent.height
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    color: Theme.borderCard
-                }
-
-                // Active bipolar bar
-                Rectangle {
-                    height: parent.height
-                    color: dialRoot.macroColor
-                    x: dialRoot.macroValue01 >= 0
-                       ? parent.width / 2
-                       : (parent.width / 2) + (dialRoot.macroValue01 * (parent.width / 2))
-                    width: Math.abs(dialRoot.macroValue01) * (parent.width / 2)
-                }
-            }
-
-            // Value text
             Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: (dialRoot.macroValue01 >= 0 ? "+" : "") + dialRoot.macroValue01.toFixed(2)
-                font.family: Theme.fontMono
+                anchors.left: macroTag.right
+                anchors.right: parent.right
+                anchors.leftMargin: ScaleMetrics.dp(4)
+                anchors.verticalCenter: parent.verticalCenter
+                text: dialRoot.macroTitle
                 font.bold: true
-                font.pixelSize: ScaleMetrics.sp(7)
-                color: Theme.textPrimary
+                font.pixelSize: ScaleMetrics.sp(9)
+                color: Theme.textSecondary
+                elide: Text.ElideRight
             }
         }
+
+        // Value (-100 .. +100)
+        Text {
+            anchors.top: macroHeader.bottom
+            anchors.bottom: macroBar.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottomMargin: ScaleMetrics.dp(2)
+            text: {
+                const pct = Math.round(dialRoot.macroValue01 * 100);
+                return (pct > 0 ? "+" : "") + pct;
+            }
+            font.bold: true
+            font.pixelSize: ScaleMetrics.sp(8)
+            font.family: Theme.fontMono
+            color: Theme.textPrimary
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        // Bipolar bar, filling out from the center
+        Rectangle {
+            id: macroBar
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: ScaleMetrics.dp(3)
+            anchors.rightMargin: ScaleMetrics.dp(3)
+            anchors.bottomMargin: ScaleMetrics.dp(6)
+            height: ScaleMetrics.dp(3)
+            radius: ScaleMetrics.dp(2)
+            color: "#1e293b"
+
+            Rectangle {
+                height: parent.height
+                radius: ScaleMetrics.dp(2)
+                color: dialRoot.macroColor
+                x: dialRoot.macroValue01 >= 0 ? parent.width / 2
+                                              : parent.width / 2 * (1 + dialRoot.macroValue01)
+                width: Math.abs(dialRoot.macroValue01) * parent.width / 2
+            }
+
+            // Center tick
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                width: 1
+                height: parent.height + ScaleMetrics.dp(4)
+                color: Theme.textDim
+            }
+        }
+    }
+
+    PartPicker {
+        id: partPicker
+    }
+
+    RenameModal {
+        id: trackRename
     }
 }

@@ -9,19 +9,25 @@ from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...sequencer.chords import chord_name
 from ...sequencer.engine import SequencerEngine
-from ...sequencer.models import MAX_STEP_NOTES, NoteEvent, Step, default_sequencer_song
+from ...sequencer.models import (
+    MAX_STEP_NOTES,
+    MAX_TRACK_NAME,
+    NUM_TRACKS,
+    NoteEvent,
+    Step,
+    default_sequencer_song,
+)
 from ...sequencer.recording import SequencerRecorder
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
 
-DRUM_TRACK = 4
 # Pitches a new note on a drum step tries first: BD, SD, CH, OH, CP, CY
 DRUM_ADD_ORDER = (36, 38, 42, 46, 39, 49)
 
 
 class SequencerBridgeMixin(BridgeBaseMixin):
-    """Bridge mixin for 5-track sequencer, session matrix, and step editor."""
+    """Bridge mixin for 8-track sequencer, session matrix, and step editor."""
 
     seqStateChanged = pyqtSignal()
     seqPlayheadsChanged = pyqtSignal()
@@ -145,6 +151,11 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             return self.sequencer.song.tracks[track_idx].selected_clip_idx
         return 0
 
+    def _seq_is_drum(self, track_idx: int) -> bool:
+        """Drum tracks are the ones sending to the rhythm part."""
+        tracks = self.sequencer.song.tracks if hasattr(self, "sequencer") else []
+        return 0 <= track_idx < len(tracks) and tracks[track_idx].is_drum
+
     def _seq_retarget_recorder(self, step_idx: int = 0) -> None:
         """Point the recorder at the active track's selected clip."""
         if hasattr(self, "recorder"):
@@ -167,6 +178,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             out.append({
                 "trackId": t.track_id,
                 "name": t.name,
+                "isDrum": t.is_drum,
                 "targetParts": list(t.target_parts),
                 "targetPart": target_part,
                 "layerParts": list(t.target_parts[1:]),
@@ -199,7 +211,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             track = self.sequencer.song.tracks[t_idx]
             if 0 <= c_idx < len(track.clips):
                 clip = track.clips[c_idx]
-                return [self._seq_step_dict(i, s, t_idx == DRUM_TRACK) for i, s in enumerate(clip.steps)]
+                return [self._seq_step_dict(i, s, track.is_drum) for i, s in enumerate(clip.steps)]
         return []
 
     @staticmethod
@@ -289,7 +301,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int)
     def seqSelectTrack(self, track_idx: int) -> None:
-        self._active_seq_track = max(0, min(4, int(track_idx)))
+        self._active_seq_track = max(0, min(NUM_TRACKS - 1, int(track_idx)))
         self._seq_retarget_recorder(self.seqCursorStep)
         self.seqActiveTrackChanged.emit()
         self.seqActiveClipChanged.emit()
@@ -302,6 +314,14 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             part = max(1, min(16, int(part_num)))
             track = self.sequencer.song.tracks[track_idx]
             track.target_parts = [part] + [p for p in track.target_parts[1:] if p != part]
+            self.seqTracksChanged.emit()
+            self.seqActiveClipChanged.emit()  # drum-ness (chord names) may have changed
+
+    @pyqtSlot(int, str)
+    def seqRenameTrack(self, track_idx: int, name: str) -> None:
+        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+            name = str(name).strip()[:MAX_TRACK_NAME]
+            self.sequencer.song.tracks[track_idx].name = name or f"Track {track_idx + 1}"
             self.seqTracksChanged.emit()
 
     @pyqtSlot(int, int)
@@ -416,7 +436,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
                             for n in step.notes:
                                 n.velocity = vel
                         else:
-                            default_pitch = 36 if t_idx == 4 else 60
+                            default_pitch = 36 if self._seq_is_drum(t_idx) else 60
                             step.notes.append(NoteEvent(pitch=default_pitch, velocity=vel))
                         self.seqTracksChanged.emit()
                     elif param == "pitch":
@@ -483,7 +503,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
                 clip = track.clips[c_idx]
                 if 0 <= step_idx < len(clip.steps):
                     step = clip.steps[step_idx]
-                    curr_pitch = step.notes[0].pitch if step.notes else (36 if t_idx == 4 else 60)
+                    curr_pitch = step.notes[0].pitch if step.notes else (36 if self._seq_is_drum(t_idx) else 60)
                     new_pitch = max(0, min(127, curr_pitch + int(semitones)))
                     if step.notes:
                         step.notes[0].pitch = new_pitch
@@ -519,7 +539,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         if step is None or len(step.notes) >= MAX_STEP_NOTES:
             return -1
         used = {n.pitch for n in step.notes}
-        is_drum = getattr(self, "_active_seq_track", 0) == DRUM_TRACK
+        is_drum = self._seq_is_drum(getattr(self, "_active_seq_track", 0))
         free_drums = [p for p in DRUM_ADD_ORDER if p not in used] if is_drum else []
         if free_drums:
             pitch = free_drums[0]

@@ -73,13 +73,21 @@ def test_clip_resize_and_motion():
 
 def test_default_tracks_and_routing():
     tracks = default_tracks()
-    assert len(tracks) == 5
-    # Tracks 1-4 are synth, Track 5 is drums (part 10)
-    assert tracks[0].target_parts == [1]
-    assert tracks[1].target_parts == [2]
-    assert tracks[2].target_parts == [3]
-    assert tracks[3].target_parts == [4]
-    assert tracks[4].target_parts == [10]
+    assert len(tracks) == 8
+    # Tracks 1-7 send to parts 1-7, Track 8 to the rhythm part
+    assert [t.target_parts for t in tracks] == [[1], [2], [3], [4], [5], [6], [7], [10]]
+    assert [t.name for t in tracks] == [f"Track {i}" for i in range(1, 9)]
+    assert [t.is_drum for t in tracks] == [False] * 7 + [True]
+
+
+def test_songs_always_have_eight_tracks():
+    short = default_sequencer_song().to_dict()
+    short["tracks"] = short["tracks"][:5]
+    short["tracks"][0]["name"] = "Bass"
+    song = SequencerSong.from_dict(short)
+    assert len(song.tracks) == 8
+    assert song.tracks[0].name == "Bass"          # kept
+    assert song.tracks[7].target_parts == [10]    # filled in with defaults
 
 
 def test_sequencer_song_roundtrip():
@@ -92,7 +100,7 @@ def test_sequencer_song_roundtrip():
     song2 = SequencerSong.from_dict(d)
     assert song2.bpm == 135.0
     assert song2.master_resync_bars == 8
-    assert len(song2.tracks) == 5
+    assert len(song2.tracks) == 8
     assert song2.tracks[0].clips[0].steps[0].notes[0].pitch == 72
 
 

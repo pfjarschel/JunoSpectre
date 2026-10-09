@@ -258,7 +258,7 @@ Rectangle {
                             Layout.fillWidth: true
                             viewKey: "LIVE"
                             title: "LIVE MODE"
-                            subtitle: "5-track session matrix & 8 live macros"
+                            subtitle: "8-track session matrix & 8 live macros"
                             glyph: "▶"
                             accentColor: "#10b981"
                         }

@@ -12,14 +12,13 @@ Rectangle {
 
     property int selectedStepIdx: 0
     property int currentStepPage: 0 // 16 steps per page: 0: steps 0-15 ... 7: steps 112-127
-    property bool layerPickerOpen: false
 
     readonly property var trackColors: Theme.trackColors
-    readonly property var trackNames: ["T1 SYNTH", "T2 SYNTH", "T3 SYNTH", "T4 SYNTH", "RHYTHM"]
-
     readonly property var activeTrackData: (Bridge.seqTracks && Bridge.seqTracks.length > Bridge.seqActiveTrack)
                                            ? Bridge.seqTracks[Bridge.seqActiveTrack] : null
     readonly property color currentTrackColor: trackColors[Bridge.seqActiveTrack % trackColors.length]
+    // Tracks sending to the rhythm part show drum names and drum buttons
+    readonly property bool isDrumTrack: activeTrackData ? activeTrackData.isDrum : false
     readonly property var stepsList: Bridge.seqActiveClipSteps || []
     readonly property int currentPlayhead: (Bridge.seqPlayheads && Bridge.seqPlayheads.length > Bridge.seqActiveTrack)
                                            ? Bridge.seqPlayheads[Bridge.seqActiveTrack] : 0
@@ -56,6 +55,23 @@ Rectangle {
     function setSelNotePitch(pitch) {
         const p = Bridge.seqSetNotePitch(selectedStepIdx, selNote ? selNote.pitch : -1, pitch);
         if (p >= 0) selectedNotePitch = p;
+    }
+
+    // Sorted part numbers as "P2 P5–P8 P11": runs of three or more become ranges
+    function formatParts(parts) {
+        const out = [];
+        let i = 0;
+        while (i < parts.length) {
+            let j = i;
+            while (j + 1 < parts.length && parts[j + 1] === parts[j] + 1) j++;
+            if (j - i >= 2) {
+                out.push("P" + parts[i] + "–P" + parts[j]);
+            } else {
+                for (let k = i; k <= j; k++) out.push("P" + parts[k]);
+            }
+            i = j + 1;
+        }
+        return out.join(" ");
     }
 
     // Pitch to Note Name Helper
@@ -176,14 +192,15 @@ Rectangle {
             Layout.fillWidth: true
             spacing: ScaleMetrics.dp(6)
 
-            // 5 Track Tabs
+            // Track Tabs (long-press to rename)
             RowLayout {
-                spacing: ScaleMetrics.dp(4)
+                spacing: ScaleMetrics.dp(3)
                 Repeater {
-                    model: 5
+                    model: Bridge.seqTracks ? Bridge.seqTracks.length : 0
                     delegate: Rectangle {
+                        readonly property string trackName: Bridge.seqTracks[index] ? Bridge.seqTracks[index].name : ""
                         height: ScaleMetrics.dp(26)
-                        width: ScaleMetrics.dp(72)
+                        width: ScaleMetrics.dp(58)
                         radius: 3
                         color: Bridge.seqActiveTrack === index ? root.trackColors[index] : Theme.bgApp
                         border.color: root.trackColors[index]
@@ -191,14 +208,21 @@ Rectangle {
 
                         Text {
                             anchors.centerIn: parent
-                            text: ["T1 LEAD", "T2 POLY", "T3 BASS", "T4 PAD", "RHYTHM"][index]
+                            width: parent.width - ScaleMetrics.dp(6)
+                            horizontalAlignment: Text.AlignHCenter
+                            elide: Text.ElideRight
+                            text: parent.trackName
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(8)
-                            color: Bridge.seqActiveTrack === index ? "#ffffff" : Theme.textSecondary
+                            color: Bridge.seqActiveTrack === index ? Theme.bgApp : Theme.textSecondary
                         }
                         MouseArea {
                             anchors.fill: parent
                             onClicked: Bridge.seqSelectTrack(index)
+                            onPressAndHold: {
+                                Bridge.seqSelectTrack(index);
+                                trackRename.openTrack(index, parent.trackName);
+                            }
                         }
                     }
                 }
@@ -216,25 +240,27 @@ Rectangle {
                 onRequested: (i) => Bridge.seqSetTrackTargetPart(Bridge.seqActiveTrack, i + 1)
             }
 
-            // Layers: extra parts this track also sends to (tap to edit)
+            // Layers: extra parts this track also sends to (tap to edit).
+            // Grows into the free space before DIV / SWING; elides past that.
             Rectangle {
                 id: layerChip
+                objectName: "layerChip"
                 readonly property var layers: (root.activeTrackData && root.activeTrackData.layerParts)
                                               ? root.activeTrackData.layerParts : []
                 height: ScaleMetrics.dp(30)
-                width: Math.min(ScaleMetrics.dp(110), layerText.implicitWidth + ScaleMetrics.dp(16))
+                Layout.fillWidth: true
+                Layout.preferredWidth: layerText.implicitWidth + ScaleMetrics.dp(16)
+                Layout.maximumWidth: layerText.implicitWidth + ScaleMetrics.dp(16)
                 radius: 3
-                color: root.layerPickerOpen ? Theme.bgCardActive : Theme.bgApp
-                border.color: layers.length > 0 || root.layerPickerOpen ? root.currentTrackColor : Theme.borderCard
+                color: partPicker.visible ? Theme.bgCardActive : Theme.bgApp
+                border.color: layers.length > 0 || partPicker.visible ? root.currentTrackColor : Theme.borderCard
                 border.width: 1
 
                 Text {
                     id: layerText
                     anchors.centerIn: parent
                     width: Math.min(implicitWidth, parent.width - ScaleMetrics.dp(8))
-                    text: layerChip.layers.length > 0
-                          ? "+ " + layerChip.layers.map(p => "P" + p).join(" ")
-                          : "+ LAYER"
+                    text: layerChip.layers.length > 0 ? "+ " + root.formatParts(layerChip.layers) : "+ LAYER"
                     elide: Text.ElideRight
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(8)
@@ -242,14 +268,12 @@ Rectangle {
                 }
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: {
-                        const pos = layerChip.mapToItem(root, 0, layerChip.height + ScaleMetrics.dp(4));
-                        layerPicker.x = Math.min(pos.x, root.width - layerPicker.width - ScaleMetrics.dp(8));
-                        layerPicker.y = pos.y;
-                        root.layerPickerOpen = !root.layerPickerOpen;
-                    }
+                    onClicked: partPicker.open(Bridge.seqActiveTrack, "layers", layerChip)
                 }
             }
+
+            // DIV and SWING sit at the right edge
+            Item { Layout.fillWidth: true }
 
             // Clock Divider (ordered shortest -> longest step)
             SeqStepper {
@@ -273,8 +297,6 @@ Rectangle {
                 pxPerStep: ScaleMetrics.dp(8)
                 onRequested: (i) => Bridge.seqSetTrackSwing(Bridge.seqActiveTrack, 0.50 + i / 100)
             }
-
-            Item { Layout.fillWidth: true }
         }
 
         // =====================================================================
@@ -402,7 +424,6 @@ Rectangle {
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: ScaleMetrics.dp(4)
-                    Text { text: "🗑"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.recording }
                     Text {
                         text: "CLEAR CLIP"
                         font.bold: true
@@ -583,7 +604,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         title: "PITCH"
-                        valStr: root.selNote ? root.formatPitch(root.selNote.pitch, Bridge.seqActiveTrack === 4) : "--"
+                        valStr: root.selNote ? root.formatPitch(root.selNote.pitch, root.isDrumTrack) : "--"
                         accent: "#e879f9"
                         onAdjust: (delta) => root.nudgeSelNote(delta)
                     }
@@ -604,7 +625,7 @@ Rectangle {
 
                             // Drum Track: BD, SD, CH, OH, CP, CY
                             ColumnLayout {
-                                visible: Bridge.seqActiveTrack === 4
+                                visible: root.isDrumTrack
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 spacing: 2
@@ -662,7 +683,7 @@ Rectangle {
 
                             // Melodic Tracks: -1, +1, -OCT, +OCT
                             ColumnLayout {
-                                visible: Bridge.seqActiveTrack !== 4
+                                visible: !root.isDrumTrack
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 spacing: 2
@@ -856,79 +877,10 @@ Rectangle {
         }
     }
 
-    // Layer picker: tap outside to close
-    MouseArea {
-        anchors.fill: parent
-        visible: root.layerPickerOpen
-        z: 50
-        onClicked: root.layerPickerOpen = false
+    // Main part / layers picker (opened from the LAYER chip)
+    PartPicker {
+        id: partPicker
     }
-    Rectangle {
-        id: layerPicker
-        visible: root.layerPickerOpen
-        z: 51
-        width: ScaleMetrics.dp(8 * 34 + 16)
-        height: pickerCol.implicitHeight + ScaleMetrics.dp(16)
-        radius: ScaleMetrics.dp(6)
-        color: Theme.bgSurface
-        border.color: root.currentTrackColor
-        border.width: 1
-
-        readonly property int mainPart: (root.activeTrackData && root.activeTrackData.targetPart)
-                                        ? root.activeTrackData.targetPart : (Bridge.seqActiveTrack + 1)
-        readonly property var layers: (root.activeTrackData && root.activeTrackData.layerParts)
-                                       ? root.activeTrackData.layerParts : []
-
-        MouseArea { anchors.fill: parent }  // swallow taps between buttons
-
-        ColumnLayout {
-            id: pickerCol
-            anchors.fill: parent
-            anchors.margins: ScaleMetrics.dp(8)
-            spacing: ScaleMetrics.dp(6)
-
-            Text {
-                text: "ALSO SEND TO (main: P" + layerPicker.mainPart + ")"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(8)
-                font.letterSpacing: 1.0
-                color: Theme.textDim
-            }
-            GridLayout {
-                columns: 8
-                rowSpacing: ScaleMetrics.dp(4)
-                columnSpacing: ScaleMetrics.dp(4)
-                Repeater {
-                    model: 16
-                    delegate: Rectangle {
-                        readonly property int part: index + 1
-                        readonly property bool isMain: part === layerPicker.mainPart
-                        readonly property bool isLayer: layerPicker.layers.indexOf(part) >= 0
-                        width: ScaleMetrics.dp(30)
-                        height: ScaleMetrics.dp(30)
-                        radius: 3
-                        color: isMain ? root.currentTrackColor : (isLayer ? Theme.bgCardActive : Theme.bgApp)
-                        border.color: isMain || isLayer ? root.currentTrackColor : Theme.borderCard
-                        border.width: isLayer ? 2 : 1
-                        opacity: isMain ? 0.6 : 1.0
-                        Text {
-                            anchors.centerIn: parent
-                            text: "P" + parent.part
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: parent.isMain ? "#ffffff" : (parent.isLayer ? root.currentTrackColor : Theme.textSecondary)
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: !parent.isMain
-                            onClicked: Bridge.seqToggleTrackLayer(Bridge.seqActiveTrack, parent.part)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
 
     // =========================================================================
     // Step Tile Component
@@ -952,7 +904,7 @@ Rectangle {
         border.width: (isCurrentPlayhead || isCursorStep || isSelected) ? 2 : 1
 
         readonly property var notes: (stepData && stepData.notes) ? stepData.notes : []
-        readonly property bool isDrum: Bridge.seqActiveTrack === 4
+        readonly property bool isDrum: root.isDrumTrack
 
         // Taps outside the note grid just select the step
         MouseArea {
@@ -1145,5 +1097,9 @@ Rectangle {
             }
             Item { Layout.fillHeight: true }
         }
+    }
+
+    RenameModal {
+        id: trackRename
     }
 }

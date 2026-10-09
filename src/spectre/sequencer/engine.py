@@ -10,7 +10,7 @@ from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from ..core.midi import MidiDeviceManager
 from .clock import SequencerClock
-from .models import Clip, NoteEvent, SequencerSong, Step, Track, default_sequencer_song
+from .models import NUM_TRACKS, Clip, NoteEvent, SequencerSong, Step, Track, default_sequencer_song
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +43,10 @@ class SequencerEngine:
         self.channel_resolver: Optional[Callable[[int], int]] = channel_resolver
 
         # Track runtime execution states
-        self.track_steps: List[int] = [0] * 5
-        self._track_step_ticks: List[int] = [24] * 5  # default 1/16
-        self._track_tick_accum: List[int] = [24] * 5
-        self._track_step_started: List[bool] = [False] * 5
+        self.track_steps: List[int] = [0] * NUM_TRACKS
+        self._track_step_ticks: List[int] = [24] * NUM_TRACKS  # default 1/16
+        self._track_tick_accum: List[int] = [24] * NUM_TRACKS
+        self._track_step_started: List[bool] = [False] * NUM_TRACKS
 
         # Active sounding notes: list of (channel, pitch, note_off_tick)
         self._active_notes: List[Tuple[int, int, int]] = []
@@ -54,7 +54,7 @@ class SequencerEngine:
         self._pending_notes: List[Tuple[int, int, int, int, int]] = []
         # Per track: (clip_idx, step_idx, plays) of the step whose early
         # (negative-offset) notes were already scheduled by the lookahead.
-        self._prescheduled: List[Optional[Tuple[int, int, bool]]] = [None] * 5
+        self._prescheduled: List[Optional[Tuple[int, int, bool]]] = [None] * NUM_TRACKS
         # (track, clip, step, pitch) just overdubbed ahead of the playhead;
         # skipped once so the live-played note isn't immediately doubled.
         self._overdub_suppress: Set[Tuple[int, int, int, int]] = set()
@@ -116,10 +116,10 @@ class SequencerEngine:
             self._silence_sounding_notes()
             self._prescheduled = [None] * len(self.song.tracks)
             self._overdub_suppress.clear()
-            self.track_steps = [0] * 5
+            self.track_steps = [0] * NUM_TRACKS
             self._track_step_ticks = [DIVIDER_TICKS.get(t.clock_divider, 24) for t in self.song.tracks]
             self._track_tick_accum = list(self._track_step_ticks)
-            self._track_step_started = [False] * 5
+            self._track_step_started = [False] * NUM_TRACKS
         self._dispatch_ui(force=True)
 
     def launch_clip(self, track_idx: int, clip_idx: int) -> None:

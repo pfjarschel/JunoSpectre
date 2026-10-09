@@ -52,9 +52,10 @@ def test_sequencer_transport_properties_and_slots(bridge):
 
 def test_sequencer_tracks_and_step_editing(bridge):
     tracks = bridge.seqTracks
-    assert len(tracks) == 5
-    assert tracks[0]["name"] == "Track 1 (Lead)"
-    assert tracks[4]["name"] == "Track 5 (Drums)"
+    assert len(tracks) == 8
+    assert tracks[0]["name"] == "Track 1"
+    assert tracks[7]["name"] == "Track 8"
+    assert [t["isDrum"] for t in tracks] == [False] * 7 + [True]
 
     bridge.seqSelectTrack(1)
     assert bridge.seqActiveTrack == 1
@@ -294,19 +295,19 @@ def test_each_track_keeps_its_own_selected_clip(bridge):
     assert bridge.seqActiveClipSteps[0]["isActive"] is True
     assert bridge.recorder.active_clip_idx == 3
 
-    assert [t["selectedClipIdx"] for t in bridge.seqTracks] == [3, 5, 0, 0, 0]
+    assert [t["selectedClipIdx"] for t in bridge.seqTracks] == [3, 5, 0, 0, 0, 0, 0, 0]
 
 
 def test_play_from_stop_starts_each_tracks_selected_clip(bridge):
     bridge.seqSelectTrack(0)
     bridge.seqSelectClip(2)
-    bridge.seqSelectTrack(4)
+    bridge.seqSelectTrack(7)
     bridge.seqSelectClip(6)
     bridge.seqStopTrack(1)  # queued stop survives into Play
 
     bridge.seqPlay()
     try:
-        assert [t["activeClipIdx"] for t in bridge.seqTracks] == [2, -1, 0, 0, 6]
+        assert [t["activeClipIdx"] for t in bridge.seqTracks] == [2, -1, 0, 0, 0, 0, 0, 6]
     finally:
         bridge.seqStop()
 
@@ -418,7 +419,7 @@ def test_per_note_step_editing(bridge):
 
 
 def test_drum_step_notes(bridge):
-    bridge.seqSelectTrack(4)
+    bridge.seqSelectTrack(7)
     assert [bridge.seqAddStepNote(1) for _ in range(3)] == [36, 38, 42]
     assert bridge.seqActiveClipSteps[1]["chordName"] == ""
     # Quick buttons swap the selected hit; an existing hit is just selected
@@ -428,3 +429,23 @@ def test_drum_step_notes(bridge):
     # On an empty step the button adds the hit
     assert bridge.seqSetNotePitch(2, -1, 39) == 39
     assert bridge.seqActiveClipSteps[2]["primaryPitch"] == 39
+
+
+def test_drum_tracks_follow_the_rhythm_part(bridge):
+    bridge.seqSelectTrack(2)
+    for p in (60, 64, 67):
+        bridge.seqToggleStepNote(0, p, 100)
+    assert bridge.seqActiveClipSteps[0]["chordName"] == "C"
+    bridge.seqSetTrackTargetPart(2, 10)
+    assert bridge.seqTracks[2]["isDrum"] is True
+    assert bridge.seqActiveClipSteps[0]["chordName"] == ""
+    assert bridge.seqAddStepNote(1) == 36
+
+
+def test_rename_track(bridge):
+    bridge.seqRenameTrack(1, "  Strings  ")
+    assert bridge.seqTracks[1]["name"] == "Strings"
+    bridge.seqRenameTrack(1, "A very long track name")
+    assert bridge.seqTracks[1]["name"] == "A very long "
+    bridge.seqRenameTrack(1, "   ")
+    assert bridge.seqTracks[1]["name"] == "Track 2"
