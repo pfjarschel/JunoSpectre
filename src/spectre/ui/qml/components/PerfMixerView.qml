@@ -102,30 +102,6 @@ Rectangle {
                     onClicked: Bridge.setSoundMode(Bridge.soundMode === "PERFORM" ? "PATCH" : "PERFORM")
                 }
             }
-            // Sync performance from synth (mixer-only read, never touches editors)
-            Rectangle {
-                width: ScaleMetrics.dp(92); height: ScaleMetrics.dp(26)
-                radius: ScaleMetrics.dp(4)
-                color: syncMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: syncMouse.pressed ? Theme.tone1 : Theme.borderCard
-                border.width: 1
-                enabled: !Bridge.syncBusy
-                opacity: enabled ? 1.0 : 0.4
-                Text {
-                    anchors.centerIn: parent
-                    text: Bridge.syncBusy ? "⏳ SYNCING..." : "⟳ SYNC PERF"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: Theme.textSecondary
-                }
-                MouseArea {
-                    id: syncMouse
-                    anchors.fill: parent
-                    enabled: !Bridge.syncBusy
-                    onClicked: Bridge.syncPerformanceFromSynth(true)
-                }
-            }
-
             // Open Setlist View
             Rectangle {
                 width: ScaleMetrics.dp(80); height: ScaleMetrics.dp(26)

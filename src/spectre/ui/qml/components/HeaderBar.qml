@@ -145,7 +145,7 @@ Rectangle {
                     }
                 }
 
-                // Sync button (patch only — disabled in PERFORM, perf has its own sync)
+                // Sync: reads the patch in PATCH mode, the whole performance in PERFORM
                 Rectangle {
                     id: syncBtn
                     width: ScaleMetrics.dp(Bridge.syncBusy ? 54 : 46)
@@ -154,7 +154,7 @@ Rectangle {
                     color: syncArea.pressed ? Theme.bgCardActive : Theme.bgSurface
                     border.color: syncArea.pressed ? Theme.tone1 : Theme.borderCard
                     border.width: 1
-                    enabled: Bridge.soundMode !== "PERFORM" && !Bridge.syncBusy
+                    enabled: !Bridge.syncBusy
                     opacity: enabled ? 1.0 : 0.35
 
                     RowLayout {
@@ -179,12 +179,15 @@ Rectangle {
                         anchors.fill: parent
                         enabled: syncBtn.enabled
                         onClicked: {
-                            Bridge.syncPatchFromSynth(true);
+                            if (Bridge.soundMode === "PERFORM")
+                                Bridge.syncPerformanceFromSynth(true);
+                            else
+                                Bridge.syncPatchFromSynth(true);
                         }
                     }
                 }
 
-                // Init button (patch only — disabled in PERFORM)
+                // Init: patch template in PATCH mode, INIT PERF song in PERFORM (modal confirms)
                 Rectangle {
                     id: initBtn
                     width: ScaleMetrics.dp(44)
@@ -193,8 +196,6 @@ Rectangle {
                     color: initArea.pressed ? Theme.bgCardActive : Theme.bgSurface
                     border.color: initArea.pressed ? "#fbbf24" : Theme.borderCard
                     border.width: 1
-                    enabled: Bridge.soundMode !== "PERFORM"
-                    opacity: enabled ? 1.0 : 0.35
 
                     RowLayout {
                         anchors.centerIn: parent
@@ -216,7 +217,6 @@ Rectangle {
                     MouseArea {
                         id: initArea
                         anchors.fill: parent
-                        enabled: initBtn.enabled
                         onClicked: {
                             Bridge.openInitPatchModal();
                         }

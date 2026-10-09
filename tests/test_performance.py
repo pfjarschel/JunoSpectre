@@ -1031,3 +1031,46 @@ def test_leaving_librarian_ends_part_pick(tmp_path):
     bridge.openPartPicker(4)
     bridge.setActiveView("SEQUENCER")  # navigated away
     assert bridge.librarianPickTarget == 0
+
+
+def test_init_performance_fresh_song(tmp_path):
+    from src.spectre.core.patch_state import PerfFxState
+    from src.spectre.core.sysex import temp_perf_patch_base
+
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    ps = bridge.patch_state
+    ps.perf_parts[2].patch_msb, ps.perf_parts[2].patch_pc = 89, 7
+    ps.perf_parts[2].patch_name = "KEEP ME"
+    ps.perf_parts[4].zone_switch = True
+    ps.perf_parts[4].volume, ps.perf_parts[4].pan = 20, 10
+    ps.perf_fx.chorus_level = 3
+    bridge.seqToggleStepNote(0, 60, 100)
+    bridge.seqRenameTrack(0, "LEAD")
+    bridge._apply_tempo(140.0)
+
+    bridge.initPerformance()
+    _wait_push_idle(bridge)
+
+    ps = bridge.patch_state
+    assert bridge._sound_mode == "PERFORM"
+    assert ps.perf_name == "INIT PERF" and bridge._patch_name == "INIT PERF"
+    assert ps.active_perf_part == 1
+    parts = ps.perf_parts
+    # Kbd on for the layer (P1 + P2) only
+    assert [p.part_index for p in parts if p.zone_switch] == [1, 2]
+    assert parts[0].patch_name == ps.common.name
+    assert (parts[1].patch_msb, parts[1].patch_lsb, parts[1].patch_pc) == (87, 64, 0)
+    assert (parts[9].patch_msb, parts[9].patch_lsb, parts[9].patch_pc) == (86, 64, 0)
+    # Other parts keep their sound, mixer back to defaults
+    assert (parts[2].patch_msb, parts[2].patch_pc, parts[2].patch_name) == (89, 7, "KEEP ME")
+    assert (parts[4].volume, parts[4].pan) == (100, 64)
+    assert ps.perf_fx == PerfFxState()
+    # P1 sounds from the template image pushed into its temp buffer
+    assert bytes(juno._store[temp_perf_patch_base(1)][:12]) == ps.common.name.encode().ljust(12)
+    # Sequencer: fresh song
+    song = bridge.sequencer.song
+    assert song.bpm == 120.0
+    assert song.tracks[0].name == "Track 1"
+    assert all(not s.notes for t in song.tracks for c in t.clips for s in c.steps)
+    assert bridge._current_ref is None

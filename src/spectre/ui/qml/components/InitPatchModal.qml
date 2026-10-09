@@ -10,7 +10,26 @@ Rectangle {
     z: 999
     color: "#e60a0c10" // Deep translucent backdrop
 
+    // PERFORM inits the whole song (INIT PERF); PATCH inits the active patch
+    property bool perf: false
+
+    readonly property var patchLines: [
+        { text: "• TVF: Max Cutoff (127), 0 Resonance, 0 Env Depth, LPF", accent: false },
+        { text: "• TVA: Instant Attack (0), 0 Decay, 100% Sustain, 0 Release", accent: false },
+        { text: "• Modulation: All LFO 1 & 2 depths and Pitch Env zeroed", accent: false },
+        { text: "• Effects: MFX bypassed, Chorus & Reverb off, Master EQ flat", accent: false },
+        { text: "• Tone Waves: Restored to 4 'JUNO SPECTRE' core waves", accent: true }
+    ]
+    readonly property var perfLines: [
+        { text: "• P1: JUNO SPECTRE template · P2: Grand Pno DS (both Kbd on, layered)", accent: true },
+        { text: "• P10: Pop Kit 1 for the sequencer's drum track (Kbd off)", accent: false },
+        { text: "• Other parts keep their sounds; level, pan, mute, Kbd and routing reset", accent: false },
+        { text: "• Effects: MFX 1-3, Chorus & Reverb back to defaults", accent: false },
+        { text: "• Sequencer: tracks, clips and tempo (120 BPM) cleared", accent: false }
+    ]
+
     function open() {
+        perf = Bridge.soundMode === "PERFORM";
         visible = true;
     }
 
@@ -66,7 +85,7 @@ Rectangle {
                 }
 
                 Text {
-                    text: "INITIALIZE ACTIVE SOUND (RAM)"
+                    text: root.perf ? "INITIALIZE PERFORMANCE (RAM)" : "INITIALIZE ACTIVE SOUND (RAM)"
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(11)
                     font.letterSpacing: 1.1
@@ -112,7 +131,8 @@ Rectangle {
                     spacing: ScaleMetrics.dp(5)
 
                     Text {
-                        text: "Reset current sound in RAM to clean JUNO SPECTRE template:"
+                        text: root.perf ? "Start a fresh song as INIT PERF:"
+                                        : "Reset current sound in RAM to clean JUNO SPECTRE template:"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(9)
                         color: Theme.textPrimary
@@ -122,30 +142,13 @@ Rectangle {
                         spacing: ScaleMetrics.dp(3)
                         Layout.leftMargin: ScaleMetrics.dp(4)
 
-                        Text {
-                            text: "• TVF: Max Cutoff (127), 0 Resonance, 0 Env Depth, LPF"
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: Theme.textSecondary
-                        }
-                        Text {
-                            text: "• TVA: Instant Attack (0), 0 Decay, 100% Sustain, 0 Release"
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: Theme.textSecondary
-                        }
-                        Text {
-                            text: "• Modulation: All LFO 1 & 2 depths and Pitch Env zeroed"
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: Theme.textSecondary
-                        }
-                        Text {
-                            text: "• Effects: MFX bypassed, Chorus & Reverb off, Master EQ flat"
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: Theme.textSecondary
-                        }
-                        Text {
-                            text: "• Tone Waves: Restored to 4 'JUNO SPECTRE' core waves"
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: Theme.tone1
+                        Repeater {
+                            model: root.perf ? root.perfLines : root.patchLines
+                            delegate: Text {
+                                text: modelData.text
+                                font.pixelSize: ScaleMetrics.sp(8)
+                                color: modelData.accent ? Theme.tone1 : Theme.textSecondary
+                            }
                         }
                     }
 
@@ -219,7 +222,10 @@ Rectangle {
                         id: confirmArea
                         anchors.fill: parent
                         onClicked: {
-                            Bridge.initPatch();
+                            if (root.perf)
+                                Bridge.initPerformance();
+                            else
+                                Bridge.initPatch();
                             root.close();
                         }
                     }

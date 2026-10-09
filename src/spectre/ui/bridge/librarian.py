@@ -760,6 +760,17 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         logger.debug("UI requested openInitPatchModal")
         self.requestOpenInitPatchModal.emit()
 
+    def _reset_engine_to_patch_state(self) -> None:
+        """Sync tone wave caches from patch_state, centre the vector, reset tone levels."""
+        self._tone_waves = [
+            (t.wave_bank_l, t.wave_num_l) for t in self.patch_state.tones
+        ]
+        self._cached_tone_wave_data = [
+            self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
+        ]
+        self.engine.set_coordinates(0.5, 0.5)
+        self.engine.tone_levels = tuple(t.level for t in self.patch_state.tones)
+
     @pyqtSlot()
     def initPatch(self) -> None:
         """Initialize the active sound in RAM to the golden JUNO SPECTRE template."""
@@ -789,21 +800,12 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
                 #    so UI and synth provably match (decoded blob, or hand-built fallback).
                 self.patch_state = PatchState.from_template_file() or PatchState.create_init_patch()
 
-                # 3. Sync tone wave caches from the decoded template
-                self._tone_waves = [
-                    (t.wave_bank_l, t.wave_num_l) for t in self.patch_state.tones
-                ]
-                self._cached_tone_wave_data = [
-                    self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
-                ]
-
-                # 4. Update patch name & mode
+                # 3. Update patch name & mode
                 self._patch_name = self.patch_state.common.name
                 self._sound_mode = self.patch_state.sound_mode
 
-                # 5. Reset Vector Engine position and tone levels
-                self.engine.set_coordinates(0.5, 0.5)
-                self.engine.tone_levels = tuple(t.level for t in self.patch_state.tones)
+                # 4. Wave caches, vector position and tone levels follow the template
+                self._reset_engine_to_patch_state()
         finally:
             if motion_was_playing and self.engine.motion.state != RecorderState.PLAYING:
                 self.engine.motion.play()

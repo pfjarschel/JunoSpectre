@@ -12,6 +12,13 @@ from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
 
+# INIT PERF: fresh song layout (Bank MSB, LSB, PC, display name)
+INIT_PERF_NAME = "INIT PERF"
+INIT_PERF_PIANO_PART = 2
+INIT_PERF_PIANO = (87, 64, 0, "Grand Pno DS")
+INIT_PERF_DRUM_PART = 10  # the sequencer's default drum track sends here
+INIT_PERF_DRUMS = (86, 64, 0, "Pop Kit 1")
+
 
 class PerformanceBridgeMixin(BridgeBaseMixin):
     """Performance 16-part mixer, common FX, part-pick mode, and live setlists."""
@@ -1018,6 +1025,96 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             threading.Thread(target=_do_sync, daemon=True).start()
         else:
             _do_sync()
+
+    @pyqtSlot()
+    def initPerformance(self) -> None:
+        """Reset the temporary performance to a fresh song (RAM only, nothing saved).
+
+        P1 plays the JUNO SPECTRE template and P2 the factory grand piano, both
+        Kbd-on so they layer. P10 gets a drum kit (Kbd off) for the sequencer's
+        drum track. Other parts keep their sounds; every part's mixer, routing
+        and Kbd switch go back to defaults, as do the shared MFX, chorus and
+        reverb. The sequencer song is cleared (tracks, clips, tempo).
+        """
+        from ...core.patch_state import PatchState, PerfFxState, PerfPartState
+        from ...core.spectre_format import patch_state_to_dict
+        from ...sequencer.models import default_sequencer_song
+        from ...vector.motion import RecorderState
+
+        logger.info("Initializing performance in RAM to INIT PERF...")
+        state = PatchState.from_template_file() or PatchState.create_init_patch()
+        state.sound_mode = "PERFORM"
+        state.perf_name = INIT_PERF_NAME
+        state.active_perf_part = 1
+        state.perf_fx = PerfFxState()
+
+        old_parts = self.patch_state.perf_parts
+        old_snaps = getattr(self, "_part_snapshots", None) or {}
+        snaps = {"1": patch_state_to_dict(state)}
+        parts = []
+        for i in range(1, 17):
+            p = PerfPartState(part_index=i, name=f"Part {i}", zone_switch=i in (1, INIT_PERF_PIANO_PART))
+            if i == 1:
+                # Sounds from the template image pushed below, not from a slot
+                p.patch_name = state.common.name
+            elif i in (INIT_PERF_PIANO_PART, INIT_PERF_DRUM_PART):
+                ref = INIT_PERF_PIANO if i == INIT_PERF_PIANO_PART else INIT_PERF_DRUMS
+                p.patch_msb, p.patch_lsb, p.patch_pc, p.patch_name = ref
+            elif i - 1 < len(old_parts):
+                o = old_parts[i - 1]
+                p.patch_msb, p.patch_lsb, p.patch_pc = o.patch_msb, o.patch_lsb, o.patch_pc
+                p.patch_name, p.patch_file = o.patch_name, o.patch_file
+                if p.patch_file and isinstance(old_snaps.get(str(i)), dict):
+                    snaps[str(i)] = old_snaps[str(i)]
+            parts.append(p)
+        state.perf_parts = parts
+
+        motion_was_playing = self.engine.motion.state == RecorderState.PLAYING
+        if motion_was_playing:
+            self.engine.motion.pause()
+            self.transportStateChanged.emit(self.engine.motion.state.value)
+        try:
+            with self.engine.hold_hardware_writes():
+                if not self._apply_playlist_state(patch_state_to_dict(state), INIT_PERF_NAME, snaps):
+                    return
+                self.patch_state.macros = state.macros
+                self.patch_state.macro_bases = {}
+                self._push_perf_fx_details()
+                self._reset_engine_to_patch_state()
+        finally:
+            if motion_was_playing and self.engine.motion.state != RecorderState.PLAYING:
+                self.engine.motion.play()
+                self.transportStateChanged.emit(self.engine.motion.state.value)
+
+        self._restore_song_sequence(default_sequencer_song().to_dict())
+        if hasattr(self, "seqSelectTrack"):
+            self.seqSelectTrack(0)
+        self._emit_all_state_signals()
+        self.perfPartsChanged.emit()
+        try:
+            self._emit_fx_editor_signals()
+        except Exception as e:
+            logger.debug(f"initPerformance: fx editor signal emit failed: {e}")
+        self._clear_current_ref()  # fresh RAM performance: no slot or file origin
+        self.patchInitialized.emit()
+        logger.info("Performance initialization complete.")
+
+    def _push_perf_fx_details(self) -> None:
+        """Send the shared chorus/reverb detail parameters (playlist loads send type/level only)."""
+        juno = self.juno
+        fx = getattr(self.patch_state, "perf_fx", None)
+        if juno is None or fx is None:
+            return
+        try:
+            for param, val in (("predelay", fx.chorus_predelay), ("rate", fx.chorus_rate),
+                               ("depth", fx.chorus_depth), ("feedback", fx.chorus_feedback)):
+                juno.set_perf_chorus_param(param, int(val))
+            for param, val in (("predelay", fx.reverb_predelay), ("time", fx.reverb_time),
+                               ("damp", fx.reverb_damp), ("diffusion", fx.reverb_diffusion),
+                               ("tone", fx.reverb_tone)):
+                juno.set_perf_reverb_param(param, int(val))
+        except Exception as e:
+            logger.debug(f"perf fx detail push failed: {e}")
 
     @pyqtProperty("QVariantList", notify=playlistChanged)
     def playlistEntries(self) -> list:
