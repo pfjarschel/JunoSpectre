@@ -32,7 +32,7 @@ from typing import Any, Dict, Optional, Tuple
 from .patch_state import PatchState
 
 FORMAT_VERSION = 1
-KINDS = ("patch", "performance", "vector_set", "session", "playlist")
+KINDS = ("patch", "performance", "song", "vector_set", "session", "playlist")
 SOURCES = ("factory", "synth-user", "file", None)
 
 _TOP_LEVEL_KNOWN = {"format_version", "kind", "meta", "hw_patch", "spectre", "synth_ref"}
@@ -421,3 +421,87 @@ def refresh_entry_snapshot(entry: Dict[str, Any]) -> Dict[str, Any]:
     if not str(entry.get("name") or ""):
         entry["name"] = str((loaded.get("meta") or {}).get("name") or "Untitled")[:48]
     return entry
+
+
+def save_song(
+    path: str | Path,
+    patch_state: PatchState,
+    sequencer_song: Any,
+    meta: Optional[Dict[str, Any]] = None,
+    macros: Optional[list] = None,
+    synth_ref: Optional[Dict[str, Any]] = None,
+) -> Path:
+    """Save a complete Spectre Song (kind='song') with 16-part Roland perf + 5-track sequencer."""
+    m = dict(meta or {})
+    m.setdefault("category", "song")
+    if hasattr(sequencer_song, "bpm"):
+        m.setdefault("bpm", float(sequencer_song.bpm))
+    seq_dict = sequencer_song.to_dict() if hasattr(sequencer_song, "to_dict") else dict(sequencer_song or {})
+    spectre_payload: Dict[str, Any] = {
+        "sequencer": seq_dict,
+    }
+    if macros is not None:
+        spectre_payload["macros"] = list(macros)
+    return save_spectre(
+        path,
+        patch_state,
+        meta=m,
+        spectre=spectre_payload,
+        synth_ref=synth_ref,
+        kind="song",
+    )
+
+
+def load_song(path: str | Path) -> Dict[str, Any]:
+    """Load a kind='song' (or kind='performance') .spectre file.
+
+    Returns loaded dict including 'patch_state', 'sequencer_song' (SequencerSong instance),
+    'macros', 'meta', 'synth_ref', and 'path'.
+    """
+    from ..sequencer.models import SequencerSong
+
+    loaded = load_spectre(path)
+    seq_raw = (loaded.get("spectre") or {}).get("sequencer")
+    loaded["sequencer_song"] = SequencerSong.from_dict(seq_raw) if seq_raw else SequencerSong()
+    loaded["macros"] = (loaded.get("spectre") or {}).get("macros", [])
+    return loaded
+
+
+def save_playlist(
+    path: str | Path,
+    entries: list[dict],
+    index: int = -1,
+    name: str = "",
+    patch_state: Optional[PatchState] = None,
+) -> Path:
+    """Persist an ordered playlist as a kind='playlist' .spectre file."""
+    p = Path(path)
+    stem = name or p.stem or "Setlist"
+    ps = patch_state or PatchState()
+    return save_spectre(
+        p,
+        ps,
+        meta=default_meta(stem, "playlist"),
+        spectre={
+            "playlist": {
+                "entries": [dict(e) for e in entries if isinstance(e, dict)],
+                "index": int(index),
+            }
+        },
+        kind="playlist",
+    )
+
+
+def load_playlist(path: str | Path) -> Dict[str, Any]:
+    """Load a kind='playlist' .spectre file into a dict with entries and active index."""
+    loaded = load_spectre(path)
+    playlist_data = (loaded.get("spectre") or {}).get("playlist", {})
+    entries = playlist_data.get("entries", [])
+    index = playlist_data.get("index", -1)
+    return {
+        "entries": [e for e in entries if isinstance(e, dict)],
+        "index": int(index) if isinstance(index, int) else -1,
+        "meta": loaded.get("meta", {}),
+        "path": str(loaded.get("path") or path),
+    }
+

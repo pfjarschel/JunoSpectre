@@ -62,13 +62,15 @@ Window {
                     case "MFX": return 7;
                     case "ROUTING": return 8;
                     case "MASTER FX": return 9;
-                    case "MACROS": return 10;
-                    case "PERFORMANCE": return 11;
-                    case "SEQUENCER": return 12;
-                    case "LIBRARIAN": return 13;
-                    case "MIDI LEARN": return 14;
-                    case "HARDWARE": return 15;
-                    case "SYSTEM": return 16;
+                    case "LIVE": return 10;
+                    case "SEQUENCER": return 11;
+                    case "SETLIST": return 12;
+                    case "PERFORMANCE": return 13;
+                    case "MACROS": return 14;
+                    case "LIBRARIAN": return 15;
+                    case "MIDI LEARN": return 16;
+                    case "HARDWARE": return 17;
+                    case "SYSTEM": return 18;
                     default: return 0;
                 }
             }
@@ -145,22 +147,34 @@ Window {
             // 3. PERFORMANCE & PLAY
             // =================================================================
 
-            // View 9: Macro Play Deck (8 Large Touch Dials)
-            MacroDeck {
-                id: macroView
-                objectName: "macroView"
+            // View 10: Live Session Matrix & Live Macros
+            LiveModeView {
+                id: liveView
+                objectName: "liveView"
             }
 
-            // View 10: Performance Multi-Zone & Layer Mixer
+            // View 11: Polyphonic Step Sequencer & Motion
+            SeqView {
+                id: seqView
+                objectName: "seqView"
+            }
+
+            // View 12: Dedicated Setlist & Repertoire Manager
+            SetlistView {
+                id: setlistView
+                objectName: "setlistView"
+            }
+
+            // View 13: Performance Multi-Zone & Layer Mixer
             PerfMixerView {
                 id: mixerView
                 objectName: "mixerView"
             }
 
-            // View 11: 16-Step Trigger Sequencer & Arpeggiator
-            SeqView {
-                id: seqView
-                objectName: "seqView"
+            // View 14: Macro Play Deck (8 Large Touch Dials)
+            MacroDeck {
+                id: macroView
+                objectName: "macroView"
             }
 
             // =================================================================

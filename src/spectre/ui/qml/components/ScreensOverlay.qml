@@ -256,29 +256,52 @@ Rectangle {
 
                         AppTile {
                             Layout.fillWidth: true
-                            viewKey: "MACROS"
-                            title: "MACRO DECK"
-                            subtitle: "8 large touch dials assigned to knobs"
-                            glyph: "🎚"
-                            accentColor: Theme.tone2
+                            viewKey: "LIVE"
+                            title: "LIVE MODE"
+                            subtitle: "5-track session matrix & 8 live macros"
+                            glyph: "▶"
+                            accentColor: "#10b981"
                         }
+
+                        AppTile {
+                            Layout.fillWidth: true
+                            viewKey: "SEQUENCER"
+                            title: "STEP EDITOR"
+                            subtitle: "Polymetric step sequencer & motion"
+                            glyph: "⏱"
+                            accentColor: "#38bdf8"
+                        }
+
+                        AppTile {
+                            Layout.fillWidth: true
+                            viewKey: "SETLIST"
+                            title: "SETLIST"
+                            subtitle: "Repertoire manager & seamless transitions"
+                            glyph: "📋"
+                            accentColor: "#f59e0b"
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(8)
 
                         AppTile {
                             Layout.fillWidth: true
                             viewKey: "PERFORMANCE"
                             title: "PERFORMANCE"
-                            subtitle: "Live rig: 16-part mixer, zones & setlist"
+                            subtitle: "16-part multi-timbral mixer & key zones"
                             glyph: "🎛"
                             accentColor: "#a855f7"
                         }
 
                         AppTile {
                             Layout.fillWidth: true
-                            viewKey: "SEQUENCER"
-                            title: "SEQUENCER"
-                            subtitle: "Polyphonic 16-step trigger grid"
-                            glyph: "⏱"
-                            accentColor: "#10b981"
+                            viewKey: "MACROS"
+                            title: "MACRO DECK"
+                            subtitle: "8 large touch dials assigned to knobs"
+                            glyph: "🎚"
+                            accentColor: Theme.tone2
                         }
                     }
 

@@ -38,6 +38,7 @@ from .sysex import (
     PERF_COMMON_MFX_STRUCTURE,
     PERF_COMMON_NAME,
     PERF_COMMON_NAME_SIZE,
+    PATCH_PARAM_NAME,
     PERF_COMMON_REVERB_SOURCE,
     PERF_COMMON_SOLO_PART,
     PERF_MFX_BLOCK_SIZE,
@@ -508,6 +509,16 @@ class PerformanceProtocolMixin:
             raise TimeoutError("Timed out reading performance name.")
         return bytes(res[:PERF_COMMON_NAME_SIZE]).decode("latin1", errors="replace").strip()
 
+    def get_perf_part_patch_name(self, part_index: int, timeout: float = 0.5) -> str:
+        """Read 12 ASCII character patch name from the temporary patch buffer of part 1..16."""
+        part = self._check_part(part_index)
+        base = temp_perf_patch_base(part)
+        name_addr = add_address(base, PATCH_PARAM_NAME)
+        res = self.request_data(name_addr, (0x00, 0x00, 0x00, 0x0C), timeout=timeout)
+        if res is not None and len(res) >= 12:
+            return bytes(res[:12]).decode("latin1", errors="replace").strip()
+        return ""
+
     def get_perf_part_block(self, part_index: int, timeout: float = 1.0) -> bytes:
         part = self._check_part(part_index)
         res = self.request_data(perf_part_base(part), self._rq_size(PERF_PART_BLOCK_SIZE),
@@ -596,6 +607,16 @@ class PerformanceProtocolMixin:
         if octave is not None:
             self.send_data(add_address(base, PERF_ZONE_OCTAVE_SHIFT),
                            [max(61, min(67, int(octave)))])
+
+    def set_perf_zone_switch(self, channel: int, enabled: bool) -> None:
+        """Fast single-byte DT1 write to Performance Zone Switch (0=OFF, 1=ON).
+
+        Used for dynamic keyboard routing arbitration: silences physical keybed input
+        for sequenced backing parts while allowing external USB-MIDI to trigger sound.
+        """
+        ch = self._check_channel(channel)
+        base = perf_zone_base(ch)
+        self.send_data(add_address(base, PERF_ZONE_SWITCH), [1 if enabled else 0])
 
     def get_perf_zone_block(self, channel: int, timeout: float = 1.0) -> bytes:
         """Read one raw 0x1B Performance Zone block."""

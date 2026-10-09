@@ -649,6 +649,30 @@ class PatchRepository:
             }
         return None
 
+    def resolve_patch_name(self, msb: int, lsb: int, pc: int) -> str:
+        """Resolve patch name from user DB or factory DB by MSB/LSB/PC."""
+        try:
+            cur = self._conn.cursor()
+            cur.execute("SELECT name FROM patches WHERE msb=? AND lsb=? AND pc=? LIMIT 1",
+                        (int(msb), int(lsb), int(pc)))
+            row = cur.fetchone()
+            if row and row["name"]:
+                return str(row["name"])
+        except Exception:
+            pass
+
+        if self._factory is not None:
+            try:
+                cur = self._factory.cursor()
+                cur.execute("SELECT name FROM patches WHERE msb=? AND lsb=? AND pc=? LIMIT 1",
+                            (int(msb), int(lsb), int(pc)))
+                row = cur.fetchone()
+                if row and row["name"]:
+                    return str(row["name"])
+            except Exception:
+                pass
+        return ""
+
     def list_categories(self, source: Optional[str] = None) -> list[str]:
         cats: set[str] = set()
         if source != "factory":

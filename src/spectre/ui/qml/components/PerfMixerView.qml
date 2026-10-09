@@ -122,6 +122,31 @@ Rectangle {
                     onClicked: Bridge.syncPerformanceFromSynth(true)
                 }
             }
+
+            // Open Setlist View
+            Rectangle {
+                width: ScaleMetrics.dp(80); height: ScaleMetrics.dp(26)
+                radius: ScaleMetrics.dp(4)
+                color: setlistMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
+                border.color: "#f59e0b"
+                border.width: 1
+                RowLayout {
+                    anchors.centerIn: parent
+                    spacing: ScaleMetrics.dp(4)
+                    Text { text: "📋"; font.pixelSize: ScaleMetrics.sp(8); color: "#f59e0b" }
+                    Text {
+                        text: "SETLIST"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: "#f59e0b"
+                    }
+                }
+                MouseArea {
+                    id: setlistMouse
+                    anchors.fill: parent
+                    onClicked: Bridge.setActiveView("SETLIST")
+                }
+            }
         }
 
         // Background part-image push progress (thin bar, controls lock meanwhile)
@@ -147,13 +172,6 @@ Rectangle {
                 font.pixelSize: ScaleMetrics.sp(7)
                 color: "#ffffff"
             }
-        }
-
-        // Live setlist strip (songs = performance snapshots, tap or ◀/▶)
-        PlaylistStrip {
-            visible: root.subView === "mixer"
-            Layout.fillWidth: true
-            Layout.preferredHeight: root.subView === "mixer" ? ScaleMetrics.dp(84) : 0
         }
 
         // Mixer + permanent FX rail (strips shrink ~15% to fund 160px rail)

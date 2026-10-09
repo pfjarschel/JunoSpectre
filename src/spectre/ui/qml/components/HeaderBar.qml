@@ -52,6 +52,8 @@ Rectangle {
                 if (v === "VA" || v === "MACROS") return Theme.tone2;
                 if (v === "MOD MATRIX" || v === "PATCH EDIT") return "#38bdf8";
                 if (v === "STEP LFO" || v === "SEQUENCER") return "#10b981";
+                if (v === "LIVE") return "#10b981";
+                if (v === "SETLIST") return "#f59e0b";
                 if (v === "MSEG ENVELOPES") return "#fbbf24";
                 if (v === "MFX") return "#ec4899";
                 if (v === "ROUTING") return "#06b6d4";

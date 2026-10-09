@@ -240,6 +240,19 @@ def test_toggle_librarian_returns_to_previous_view(rig):
     b.toggleLibrarian()
     assert b.activeView == "VA"
 
+    # Navigation from LIVE and SETLIST
+    b.setActiveView("LIVE")
+    b.toggleLibrarian()
+    assert b.activeView == "LIBRARIAN"
+    b.toggleLibrarian()
+    assert b.activeView == "LIVE"
+
+    b.setActiveView("SETLIST")
+    b.toggleLibrarian()
+    assert b.activeView == "LIBRARIAN"
+    b.cancelLibrarian()
+    assert b.activeView == "SETLIST"
+
 
 def test_refresh_without_synth_returns_minus_one(rig):
     rig.bridge.engine.juno = None

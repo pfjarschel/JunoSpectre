@@ -569,6 +569,10 @@ class VectorBridgeMixin(BridgeBaseMixin):
     def activeView(self) -> str:
         return self._active_view
 
+    @activeView.setter
+    def activeView(self, view: str) -> None:
+        self.setActiveView(view)
+
 
     @pyqtProperty(str, notify=curveChanged)
     def curve(self) -> str:
@@ -879,16 +883,40 @@ class VectorBridgeMixin(BridgeBaseMixin):
             v = "MIDI LEARN"
         elif v in ("HARDWARE CONFIG", "HARDWARE_CONFIG"):
             v = "HARDWARE"
+        elif v in ("LIVE MODE", "LIVE-MODE", "SESSION", "SESSION MATRIX"):
+            v = "LIVE"
+        elif v in ("SET LIST", "SET-LIST", "SET_LIST", "PLAYLIST"):
+            v = "SETLIST"
+        elif v in ("STEP EDITOR", "STEP-EDITOR", "STEP_EDITOR", "SEQ", "STEP SEQUENCER"):
+            v = "SEQUENCER"
 
         if self._active_view != v:
             if v == "LIBRARIAN" and self._active_view != "LIBRARIAN":
                 self._view_before_librarian = self._active_view
                 self._capture_librarian_entry()
+            elif self._active_view not in ("SEQUENCER", "LIVE") and v in ("SEQUENCER", "LIVE"):
+                if hasattr(self, "patch_state") and hasattr(self.patch_state, "perf_parts"):
+                    self._perf_zone_switches_before_seq = [bool(p.zone_switch) for p in self.patch_state.perf_parts]
+            elif self._active_view in ("SEQUENCER", "LIVE") and v not in ("SEQUENCER", "LIVE"):
+                if getattr(self, "_perf_zone_switches_before_seq", None) is not None:
+                    saved = self._perf_zone_switches_before_seq
+                    self._perf_zone_switches_before_seq = None
+                    if hasattr(self, "setPartZoneSwitch"):
+                        for p_idx, sw in enumerate(saved, start=1):
+                            if hasattr(self, "_part_is_active") and self._part_is_active(p_idx):
+                                try:
+                                    self.setPartZoneSwitch(p_idx, sw)
+                                except Exception as e:
+                                    logger.debug(f"restore zone switch failed for part {p_idx}: {e}")
+
             self._active_view = v
             if v == "VECTOR":
                 self.setMorphMode("vector_2d")
             elif v == "WAVETABLE":
                 self.setMorphMode("wavetable_1d")
+            elif v in ("SEQUENCER", "LIVE"):
+                if hasattr(self, "_sync_keybed_routing"):
+                    self._sync_keybed_routing()
             self.activeViewChanged.emit(self._active_view)
             self._update_telemetry_polling()
 
@@ -1051,7 +1079,7 @@ class VectorBridgeMixin(BridgeBaseMixin):
                 juno.set_perf_part_level(p.part_index, p.volume)
                 juno.set_perf_part_pan(p.part_index, p.pan)
                 juno.set_perf_part_mute(p.part_index, p.muted)
-                juno.set_perf_zone(max(1, min(16, int(p.rx_channel) + 1)),
+                juno.set_perf_zone(p.part_index,
                                    p.key_low, p.key_high, p.zone_switch, p.zone_octave)
             except Exception as e:
                 logger.debug(f"cancel restore: part {p.part_index} failed: {e}")

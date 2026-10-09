@@ -329,9 +329,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             self.perfPartsChanged.emit()
 
     def _part_zone_channel(self, part_index: int) -> int:
-        """Zone channel for a part (zones live per MIDI channel)."""
-        part = self.patch_state.perf_parts[int(part_index) - 1]
-        return max(1, min(16, int(part.rx_channel) + 1))
+        """Performance zone index (zones 1..16 at 0x50..0x5F correspond directly to parts 1..16)."""
+        return max(1, min(16, int(part_index)))
 
     @pyqtSlot(int, int, int)
     def setPartZone(self, part_index: int, low: int, high: int) -> None:
@@ -344,7 +343,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             juno = self.juno
             if juno is not None:
                 try:
-                    juno.set_perf_zone(self._part_zone_channel(part_index), lo, hi)
+                    juno.set_perf_zone(part_index, lo, hi)
                 except Exception as e:
                     logger.debug(f"setPartZone: synth write failed: {e}")
             self.perfPartsChanged.emit()
@@ -357,8 +356,10 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             juno = self.juno
             if juno is not None:
                 try:
-                    juno.set_perf_zone(self._part_zone_channel(part_index),
-                                       switch=bool(enabled))
+                    if hasattr(juno, "set_perf_zone_switch"):
+                        juno.set_perf_zone_switch(part_index, bool(enabled))
+                    else:
+                        juno.set_perf_zone(part_index, switch=bool(enabled))
                 except Exception as e:
                     logger.debug(f"setPartZoneSwitch: synth write failed: {e}")
             self.perfPartsChanged.emit()
@@ -372,7 +373,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             juno = self.juno
             if juno is not None:
                 try:
-                    juno.set_perf_zone(self._part_zone_channel(part_index), octave=octv)
+                    juno.set_perf_zone(part_index, octave=octv)
                 except Exception as e:
                     logger.debug(f"setPartZoneOctave: synth write failed: {e}")
             self.perfPartsChanged.emit()
@@ -435,45 +436,97 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 logger.debug(f"setPartMfxSelect: synth write failed: {e}")
         self.perfPartsChanged.emit()
 
-    def _refresh_editors_for_part(self, part_index: int) -> None:
-        """Best-effort reload of tones/effects for the newly selected part.
-
-        Reads the part temp patch buffer (11..14..) so Routing/MFX/MasterFX
-        show the newly targeted part. Offline-safe: keeps current state.
-        Emits editor signals so QML repaints (header already shows part).
-        """
-        juno = self.juno
-        if juno is None:
-            return
+    def _apply_patch_state_to_editors(self, state, part_index: int) -> None:
+        """Apply a decoded PatchState to editors and emit all refresh signals."""
         try:
-            state = None
-            if hasattr(juno, "read_full_patch"):
-                try:
-                    state = juno.read_full_patch(timeout=1.0)
-                except Exception as e:
-                    logger.debug(f"_refresh_editors_for_part: read failed: {e}")
-                    state = None
-            if state is not None:
-                try:
-                    self.patch_state.tones = state.tones
-                    self.patch_state.effects = state.effects
-                    self.patch_state.common = state.common
-                except Exception:
-                    pass
-                try:
-                    # Seed the deep-FX cache: the freshly read image IS this
-                    # part's patch FX, so PARTn origins targeting it resolve.
-                    self._part_fx_cache[int(part_index)] = self._cache_from_effects(state.effects)
-                except Exception:
-                    pass
-                try:
-                    self.mfxParamsChanged.emit(); self.mfxValuesChanged.emit()
-                    self.chorusParamsChanged.emit(); self.reverbParamsChanged.emit()
-                    self.routingChanged.emit()
-                except Exception:
-                    pass
+            self.patch_state.tones = state.tones
+            self.patch_state.effects = state.effects
+            self.patch_state.common = state.common
+            if getattr(state, "common", None) and getattr(state.common, "name", ""):
+                self._patch_name = state.common.name
+            for idx in range(min(4, len(state.tones))):
+                t = state.tones[idx]
+                if idx < len(self._tone_waves):
+                    self._tone_waves[idx] = (t.wave_bank_l, t.wave_num_l)
+            if len(state.tones) >= 4:
+                self.engine.tone_levels = (
+                    state.tones[0].level,
+                    state.tones[1].level,
+                    state.tones[2].level,
+                    state.tones[3].level,
+                )
+                self.patch_state.custom_detune_cache = [t.fine_tune for t in state.tones]
+            if hasattr(self, "_wave_catalog") and hasattr(self, "_tone_waves"):
+                self._cached_tone_wave_data = [
+                    self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
+                ]
         except Exception as e:
-            logger.debug(f"_refresh_editors_for_part failed: {e}")
+            logger.debug(f"_apply_patch_state_to_editors error: {e}")
+
+        try:
+            self._part_fx_cache[int(part_index)] = self._cache_from_effects(state.effects)
+        except Exception:
+            pass
+
+        try:
+            self._emit_all_state_signals()
+        except Exception as e:
+            logger.debug(f"_emit_all_state_signals error: {e}")
+        self.perfPartsChanged.emit()
+
+    def _refresh_editors_for_part(self, part_index: int, async_mode: bool = True) -> None:
+        """Reload tones/effects for the newly selected part.
+
+        1. Instantly loads from local snapshot/file if cached.
+        2. Queries hardware temp patch buffer (11..14..) asynchronously.
+        3. Updates wave and engine levels and emits _emit_all_state_signals so all QML editors update.
+        """
+        p_idx = int(part_index)
+        if not 1 <= p_idx <= 16:
+            return
+
+        # Fast-path: if we have a snapshot or linked file for this part, apply it immediately
+        snap = (getattr(self, "_part_snapshots", None) or {}).get(str(p_idx))
+        link = ""
+        if hasattr(self, "patch_state") and hasattr(self.patch_state, "perf_parts"):
+            if 0 <= p_idx - 1 < len(self.patch_state.perf_parts):
+                link = str(getattr(self.patch_state.perf_parts[p_idx - 1], "patch_file", "") or "")
+
+        cached_state = None
+        if link and Path(link).is_file():
+            try:
+                from ...core.spectre_format import load_spectre
+                cached_state = load_spectre(link).get("patch_state")
+            except Exception as e:
+                logger.debug(f"_refresh_editors_for_part: cached link unreadable: {e}")
+        if cached_state is None and isinstance(snap, dict):
+            try:
+                from ...core.spectre_format import patch_state_from_dict
+                cached_state = patch_state_from_dict(snap)
+            except Exception as e:
+                logger.debug(f"_refresh_editors_for_part: cached snap unreadable: {e}")
+
+        if cached_state is not None:
+            self._apply_patch_state_to_editors(cached_state, p_idx)
+
+        juno = self.juno
+        if juno is None or not hasattr(juno, "read_full_patch"):
+            return
+
+        def _worker():
+            try:
+                state = juno.read_full_patch(timeout=1.5)
+                if state is not None:
+                    # Guard against user switching part while reading
+                    if getattr(self.patch_state, "active_perf_part", 1) == p_idx:
+                        self._apply_patch_state_to_editors(state, p_idx)
+            except Exception as e:
+                logger.debug(f"_refresh_editors_for_part worker failed: {e}")
+
+        if async_mode:
+            threading.Thread(target=_worker, daemon=True).start()
+        else:
+            _worker()
 
     @pyqtSlot(int)
     def editPerfPart(self, part_index: int) -> None:
@@ -487,7 +540,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 except Exception as e:
                     logger.debug(f"editPerfPart: {e}")
             self.perfPartsChanged.emit()
-            self._refresh_editors_for_part(int(part_index))
+            self._refresh_editors_for_part(int(part_index), async_mode=True)
 
     def _in_perform(self) -> bool:
         return str(getattr(self, "_sound_mode", "PATCH")).upper() == "PERFORM"
@@ -901,13 +954,40 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 except Exception as e:
                     logger.debug(f"syncPerformance: name read failed: {e}")
                 try:
+                    repo = getattr(self, "_librarian_repo", None)
+                    if repo is None:
+                        try:
+                            from ...librarian.repository import PatchRepository
+                            repo = PatchRepository()
+                        except Exception:
+                            repo = None
+
                     parts = juno.get_perf_parts(timeout=1.0)
                     if parts and len(parts) == 16:
                         kept_names = [p.patch_name or p.name for p in self.patch_state.perf_parts]
                         self.patch_state.perf_parts = parts
                         for i, p in enumerate(self.patch_state.perf_parts):
-                            if not p.patch_name and i < len(kept_names):
+                            # 1. Resolve from DB catalog (user + factory)
+                            if repo is not None:
+                                try:
+                                    resolved = repo.resolve_patch_name(p.patch_msb, p.patch_lsb, p.patch_pc)
+                                    if resolved:
+                                        p.patch_name = resolved
+                                except Exception as e:
+                                    logger.debug(f"resolve_patch_name failed for part {p.part_index}: {e}")
+                            # 2. For active part or if still empty, query live synth buffer if supported
+                            if (p.part_index == self.patch_state.active_perf_part or not p.patch_name) and hasattr(juno, "get_perf_part_patch_name"):
+                                try:
+                                    live_name = juno.get_perf_part_patch_name(p.part_index, timeout=0.25)
+                                    if live_name:
+                                        p.patch_name = live_name
+                                except Exception as e:
+                                    logger.debug(f"get_perf_part_patch_name failed for part {p.part_index}: {e}")
+                            # 3. Fallback to previously kept name if descriptive
+                            if not p.patch_name and i < len(kept_names) and kept_names[i] and not kept_names[i].startswith("Part "):
                                 p.patch_name = kept_names[i]
+                            if not p.patch_name:
+                                p.patch_name = f"Part {p.part_index}"
                 except Exception as e:
                     logger.debug(f"syncPerformance: parts read failed: {e}")
                 try:
@@ -925,6 +1005,10 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                     self._emit_fx_editor_signals()
                 except Exception as e:
                     logger.debug(f"syncPerformance: fx editor signal emit failed: {e}")
+                try:
+                    self._refresh_editors_for_part(self.patch_state.active_perf_part, async_mode=False)
+                except Exception as e:
+                    logger.debug(f"syncPerformance: part editor refresh failed: {e}")
             except Exception as e:
                 logger.warning(f"syncPerformanceFromSynth failed: {e}")
             finally:
@@ -1101,7 +1185,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                                                       mfx_select=int(getattr(p, "mfx_select", 0)))
                         except Exception as e:
                             logger.debug(f"playlist load: part {p.part_index} output push failed: {e}")
-                    juno.set_perf_zone(max(1, min(16, int(p.rx_channel) + 1)),
+                    juno.set_perf_zone(p.part_index,
                                        p.key_low, p.key_high, p.zone_switch, p.zone_octave)
                 except Exception as e:
                     logger.debug(f"playlist load: part {p.part_index} push failed: {e}")
@@ -1382,7 +1466,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         self._playlist_path = ""
         self.playlistChanged.emit()
 
-    _ENGINE_VIEWS = ("JUNO PCM", "VECTOR", "WAVETABLE", "VA")
+    _ENGINE_VIEWS = ("JUNO PCM", "VECTOR", "WAVETABLE", "VA", "LIVE", "SEQUENCER", "SETLIST", "PERFORMANCE", "MACROS")
 
     @staticmethod
     def _engine_view_for(extras) -> str:
@@ -1394,6 +1478,11 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         aliases = {
             "PATCH EDIT": "JUNO PCM", "JUNO-DS": "JUNO PCM", "JUNO_PCM": "JUNO PCM",
             "4-OSC VA": "VA", "4OSC VA": "VA", "VA ENGINE": "VA",
+            "LIVE MODE": "LIVE", "SESSION": "LIVE",
+            "STEP EDITOR": "SEQUENCER", "SEQ": "SEQUENCER",
+            "SET LIST": "SETLIST", "PLAYLIST": "SETLIST",
+            "PERF MIXER": "PERFORMANCE",
+            "MACRO DECK": "MACROS",
         }
         v = aliases.get(v, v)
         return v if v in PerformanceBridgeMixin._ENGINE_VIEWS else "JUNO PCM"
@@ -1421,7 +1510,25 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             return False
         kind = str(loaded.get("kind") or "patch")
         if kind == "playlist":
-            return self.loadPlaylist(path)
+            ok = self.loadSetlist(path) if hasattr(self, "loadSetlist") else self.loadPlaylist(path)
+            if ok:
+                self._pending_view = "SETLIST"
+            return ok
+        if kind == "song":
+            try:
+                from ...core.spectre_format import load_song
+                song = load_song(path)
+                if hasattr(self, "sequencer"):
+                    self.sequencer.song = song
+                    self.seqTracksChanged.emit()
+                    self.seqActiveClipChanged.emit()
+                    self.seqStateChanged.emit()
+                self._set_current_file_ref(path, "song")
+                self._pending_view = "LIVE"
+                return True
+            except Exception as e:
+                logger.warning(f"loadSpectreFile failed for song {path}: {e}")
+                return False
         if kind == "performance":
             try:
                 name = str((loaded.get("meta") or {}).get("name") or "")

@@ -7,7 +7,10 @@ providing safe ALSA port opening, message sending, and non-blocking polling.
 from __future__ import annotations
 
 import logging
-from typing import Generator, Optional, Tuple
+import queue
+import threading
+import time
+from typing import Callable, Generator, List, Optional, Tuple
 
 import mido
 
@@ -105,6 +108,12 @@ class MidiDeviceManager:
         self.juno_out: Optional[mido.ports.BaseOutput] = None
         self.lcxl_in: Optional[mido.ports.BaseInput] = None
         self.lcxl_out: Optional[mido.ports.BaseOutput] = None
+
+        self._note_listeners: List[Callable[[mido.Message], None]] = []
+        # SysEx replies for request/response reads; bounded so unread traffic can't pile up.
+        self._sysex_queue: queue.Queue = queue.Queue(maxsize=256)
+        self._worker_thread: Optional[threading.Thread] = None
+        self._worker_running: bool = False
 
     def connect_juno(self) -> Tuple[str, str]:
         """Open bidirectional MIDI connection to JUNO-DS / XPS-30."""
@@ -248,8 +257,73 @@ class MidiDeviceManager:
         logger.info(f"PANIC: Sent All Notes Off (+Reset) on 16 channels ({sent} msgs)")
         return sent
 
+    def add_note_listener(self, listener: Callable[[mido.Message], None]) -> None:
+        """Register a callback for incoming NoteOn/NoteOff events."""
+        if listener not in self._note_listeners:
+            self._note_listeners.append(listener)
+
+    def remove_note_listener(self, listener: Callable[[mido.Message], None]) -> None:
+        """Unregister a note callback."""
+        if listener in self._note_listeners:
+            self._note_listeners.remove(listener)
+
+    def start_input_worker(self) -> None:
+        """Start asynchronous MIDI input demuxer thread."""
+        if self._worker_running:
+            return
+        self._worker_running = True
+        self._worker_thread = threading.Thread(
+            target=self._input_loop, daemon=True, name="JunoMidiDemuxer"
+        )
+        self._worker_thread.start()
+
+    def stop_input_worker(self) -> None:
+        """Stop asynchronous MIDI input demuxer thread."""
+        self._worker_running = False
+        if self._worker_thread and self._worker_thread.is_alive():
+            self._worker_thread.join(timeout=0.2)
+        self._worker_thread = None
+
+    def _input_loop(self) -> None:
+        """Demuxer loop: routes notes to listeners and queues SysEx replies."""
+        while self._worker_running:
+            if not self.juno_in or getattr(self.juno_in, "closed", False):
+                time.sleep(0.02)
+                continue
+            has_msg = False
+            try:
+                for msg in self.juno_in.iter_pending():
+                    has_msg = True
+                    if msg.type in ("note_on", "note_off"):
+                        for listener in list(self._note_listeners):
+                            try:
+                                listener(msg)
+                            except Exception as e:
+                                logger.error(f"Error in note listener: {e}")
+                    elif msg.type == "sysex":
+                        # Only SysEx is ever consumed (RQ1/identity replies); other
+                        # traffic is dropped. When full, the oldest reply goes first.
+                        if self._sysex_queue.full():
+                            try:
+                                self._sysex_queue.get_nowait()
+                            except queue.Empty:
+                                pass
+                        self._sysex_queue.put_nowait(msg)
+            except Exception as e:
+                logger.debug(f"Midi input loop error: {e}")
+            if not has_msg:
+                time.sleep(0.002)
+
     def iter_juno_messages(self) -> Generator[mido.Message, None, None]:
         """Iterate over pending messages from the JUNO-DS."""
+        if self._worker_running:
+            while not self._sysex_queue.empty():
+                try:
+                    yield self._sysex_queue.get_nowait()
+                except queue.Empty:
+                    break
+            return
+
         if not self.juno_in:
             return
         yield from self.juno_in.iter_pending()
@@ -262,6 +336,7 @@ class MidiDeviceManager:
 
     def close(self) -> None:
         """Close all opened MIDI ports cleanly."""
+        self.stop_input_worker()
         for port in [self.juno_in, self.juno_out, self.lcxl_in, self.lcxl_out]:
             if port and not port.closed:
                 try:

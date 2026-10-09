@@ -915,3 +915,55 @@ def test_read_part_fx_decode():
     assert out["mfx"]["type"] == 15 and out["mfx"]["params"][0] == 40
     assert out["chorus"]["level"] == 80 and out["chorus"]["predelay"] == 12
     assert out["reverb"]["level"] == 60 and out["reverb"]["predelay"] == 15
+
+
+def test_sync_performance_resolves_part_names(tmp_path):
+    bridge, juno, repo = _bridge_rig(tmp_path)
+    repo.upsert_entry(
+        source="synth-user",
+        kind="patch",
+        msb=87,
+        lsb=64,
+        pc=5,
+        name="Custom Lead",
+        category="SYNTH",
+    )
+
+    mock_parts = [
+        PerfPartState(part_index=1, patch_msb=87, patch_lsb=64, patch_pc=5, volume=100),
+        PerfPartState(part_index=2, patch_msb=121, patch_lsb=0, patch_pc=0, volume=80),
+        PerfPartState(part_index=3, patch_msb=87, patch_lsb=64, patch_pc=99, volume=90),
+    ] + [PerfPartState(part_index=i) for i in range(4, 17)]
+
+    juno.get_perf_parts = MagicMock(return_value=mock_parts)
+    juno.get_perf_part_patch_name = MagicMock(side_effect=lambda idx, timeout=0.25: "Live Hardware 3" if idx == 3 else "")
+
+    bridge.syncPerformanceFromSynth(async_mode=False)
+
+    parts = bridge.patch_state.perf_parts
+    assert parts[0].patch_name == "Custom Lead"
+    assert parts[2].patch_name == "Live Hardware 3"
+
+
+def test_edit_perf_part_refreshes_editors(tmp_path):
+    bridge, juno, _ = _bridge_rig(tmp_path)
+
+    new_state = PatchState()
+    new_state.common.name = "PART2 PATCH"
+    new_state.tones[0].level = 95
+    new_state.tones[1].level = 60
+    new_state.tones[2].level = 40
+    new_state.tones[3].level = 0
+    new_state.tones[0].wave_bank_l = "INTA"
+    new_state.tones[0].wave_num_l = 123
+
+    juno.read_full_patch = MagicMock(return_value=new_state)
+    juno.set_active_perf_part = MagicMock()
+
+    bridge.patch_state.active_perf_part = 2
+    bridge._refresh_editors_for_part(2, async_mode=False)
+
+    assert bridge.patch_state.common.name == "PART2 PATCH"
+    assert bridge.engine.tone_levels == (95, 60, 40, 0)
+    assert bridge._tone_waves[0] == ("INTA", 123)
+

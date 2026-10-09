@@ -18,6 +18,8 @@ from ...vector.engine import VectorEngine
 from .librarian import LibrarianBridgeMixin
 from .patch import PatchBridgeMixin
 from .performance import PerformanceBridgeMixin
+from .sequencer import SequencerBridgeMixin
+from .setlist import SetlistBridgeMixin
 from .system import SystemBridgeMixin
 from .vector import VectorBridgeMixin
 
@@ -25,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 
 class SpectreBridge(
+    SequencerBridgeMixin,
+    SetlistBridgeMixin,
     SystemBridgeMixin,
     VectorBridgeMixin,
     PerformanceBridgeMixin,
@@ -69,6 +73,10 @@ class SpectreBridge(
         # make_playlist_entry). Pure data; persisted as kind="playlist" files.
         self._playlist: list = []
         self._playlist_index: int = -1
+
+        # Initialize sequencer & setlist subsystems
+        self._init_sequencer()
+        self._init_setlist()
         self._playlist_path: str = ""
         # Librarian pick mode: 0 = normal audition, N = picking a patch for part N.
         self._pick_target: int = 0

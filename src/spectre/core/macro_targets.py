@@ -95,6 +95,16 @@ def build_macro_catalog() -> list[dict]:
         _trio("vector.speed", "Motion Speed", "MORPH", 0.25, 4.0, 1.75),
         _trio("vector.bpm", "Tempo BPM", "MORPH", 20.0, 300.0, 140.0),
     ]
+    # --- PERFORMANCE (Parts 1..16 mixer & offsets) ---
+    for p in range(1, 17):
+        cat += [
+            _trio(f"perf.part.{p}.level", f"Part {p} Level", "PERFORMANCE", 0, 127, 127),
+            _trio(f"perf.part.{p}.pan", f"Part {p} Pan", "PERFORMANCE", 0, 127, 63),
+            _trio(f"perf.part.{p}.chorus_send", f"Part {p} Chorus Send", "PERFORMANCE", 0, 127, 127),
+            _trio(f"perf.part.{p}.reverb_send", f"Part {p} Reverb Send", "PERFORMANCE", 0, 127, 127),
+            _trio(f"perf.part.{p}.cutoff_offset", f"Part {p} Cutoff", "PERFORMANCE", 1, 127, 63),
+            _trio(f"perf.part.{p}.resonance_offset", f"Part {p} Resonance", "PERFORMANCE", 1, 127, 63),
+        ]
     return cat
 
 
@@ -109,7 +119,7 @@ def get_macro_catalog() -> list[dict]:
 
 
 def get_macro_categories() -> list[str]:
-    return ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH"]
+    return ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PERFORMANCE"]
 
 
 def filter_macro_targets(category: str = "ALL", query: str = "") -> list[dict]:
