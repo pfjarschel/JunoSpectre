@@ -11,7 +11,7 @@ Rectangle {
     border.width: 1
 
     property int selectedStepIdx: 0
-    property int currentStepPage: 0 // 0: steps 0-15, 1: 16-31, 2: 32-47, 3: 48-63
+    property int currentStepPage: 0 // 16 steps per page: 0: steps 0-15 ... 7: steps 112-127
 
     readonly property var trackColors: [Theme.tone1, Theme.tone2, Theme.tone3, Theme.tone4, "#f59e0b"]
     readonly property var trackNames: ["T1 SYNTH", "T2 SYNTH", "T3 SYNTH", "T4 SYNTH", "RHYTHM"]
@@ -22,6 +22,9 @@ Rectangle {
     readonly property var stepsList: Bridge.seqActiveClipSteps || []
     readonly property int currentPlayhead: (Bridge.seqPlayheads && Bridge.seqPlayheads.length > Bridge.seqActiveTrack)
                                            ? Bridge.seqPlayheads[Bridge.seqActiveTrack] : 0
+    readonly property int stepPageCount: Math.max(1, Math.ceil((stepsList.length || 16) / 16))
+    // Switching to a shorter clip/track must not leave the view on a page that no longer exists
+    onStepPageCountChanged: if (currentStepPage >= stepPageCount) currentStepPage = 0
     readonly property var selStep: (stepsList && stepsList.length > selectedStepIdx)
                                    ? stepsList[selectedStepIdx] : null
 
@@ -267,33 +270,13 @@ Rectangle {
             Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard }
 
             // Target Part Selector
-            Rectangle {
-                height: ScaleMetrics.dp(26)
-                width: ScaleMetrics.dp(65)
-                radius: 3
-                color: Theme.bgApp
-                border.color: Theme.borderCard
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(3)
-                    Text { text: "PART:"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-                    Text {
-                        text: "P" + (root.activeTrackData && root.activeTrackData.targetPart ? root.activeTrackData.targetPart : (Bridge.seqActiveTrack + 1))
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: root.currentTrackColor
-                    }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        const curr = root.activeTrackData && root.activeTrackData.targetPart ? root.activeTrackData.targetPart : (Bridge.seqActiveTrack + 1);
-                        const nextPart = (curr % 16) + 1;
-                        Bridge.seqSetTrackTargetPart(Bridge.seqActiveTrack, nextPart);
-                    }
-                }
+            SeqStepper {
+                label: "PART:"
+                count: 16
+                index: (root.activeTrackData && root.activeTrackData.targetPart ? root.activeTrackData.targetPart : (Bridge.seqActiveTrack + 1)) - 1
+                valueText: "P" + (index + 1)
+                valueColor: root.currentTrackColor
+                onRequested: (i) => Bridge.seqSetTrackTargetPart(Bridge.seqActiveTrack, i + 1)
             }
 
             // Roland Keybed Switch Toggle
@@ -324,71 +307,27 @@ Rectangle {
                 }
             }
 
-            // Clock Divider
-            Rectangle {
-                height: ScaleMetrics.dp(26)
-                width: ScaleMetrics.dp(66)
-                radius: 3
-                color: Theme.bgApp
-                border.color: Theme.borderCard
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(3)
-                    Text { text: "DIV:"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-                    Text {
-                        text: root.activeTrackData ? root.activeTrackData.clockDivider : "1/16"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: "#38bdf8"
-                    }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        const divs = ["1/16", "1/8", "1/32", "1/8T", "1/16T", "1/4"];
-                        const curr = root.activeTrackData ? root.activeTrackData.clockDivider : "1/16";
-                        const idx = divs.indexOf(curr);
-                        const next = divs[(idx + 1) % divs.length];
-                        Bridge.seqSetTrackClockDivider(Bridge.seqActiveTrack, next);
-                    }
-                }
+            // Clock Divider (ordered shortest -> longest step)
+            SeqStepper {
+                readonly property var divs: ["1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4"]
+                label: "DIV:"
+                count: divs.length
+                index: Math.max(0, divs.indexOf(root.activeTrackData ? root.activeTrackData.clockDivider : "1/16"))
+                valueText: divs[index]
+                valueColor: "#38bdf8"
+                pxPerStep: ScaleMetrics.dp(18)
+                onRequested: (i) => Bridge.seqSetTrackClockDivider(Bridge.seqActiveTrack, divs[i])
             }
 
-            // Swing
-            Rectangle {
-                height: ScaleMetrics.dp(26)
-                width: ScaleMetrics.dp(68)
-                radius: 3
-                color: Theme.bgApp
-                border.color: Theme.borderCard
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(3)
-                    Text { text: "SWING:"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-                    Text {
-                        text: root.activeTrackData ? Math.round(root.activeTrackData.swing * 100) + "%" : "50%"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: "#fbbf24"
-                    }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        // 50% = straight, 66% ≈ triplet shuffle, 75% = hard swing
-                        const swings = [0.50, 0.54, 0.58, 0.62, 0.66, 0.75];
-                        const curr = root.activeTrackData ? root.activeTrackData.swing : 0.50;
-                        let next = 0.50;
-                        for (let s of swings) {
-                            if (s > curr + 0.01) { next = s; break; }
-                        }
-                        Bridge.seqSetTrackSwing(Bridge.seqActiveTrack, next);
-                    }
-                }
+            // Swing: 50% = straight, 66% ≈ triplet shuffle, 75% = hard swing (1% steps)
+            SeqStepper {
+                label: "SWING:"
+                count: 26
+                index: Math.round(((root.activeTrackData ? root.activeTrackData.swing : 0.50) - 0.50) * 100)
+                valueText: (50 + index) + "%"
+                valueColor: "#fbbf24"
+                pxPerStep: ScaleMetrics.dp(8)
+                onRequested: (i) => Bridge.seqSetTrackSwing(Bridge.seqActiveTrack, 0.50 + i / 100)
             }
 
             Item { Layout.fillWidth: true }
@@ -437,37 +376,61 @@ Rectangle {
             Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard }
 
             // Clip Length
-            Rectangle {
-                height: ScaleMetrics.dp(26)
-                width: ScaleMetrics.dp(65)
-                radius: 3
-                color: Theme.bgApp
-                border.color: Theme.borderCard
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(3)
-                    Text { text: "LEN:"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-                    Text {
-                        text: (root.stepsList ? root.stepsList.length : 16) + "S"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: "#10b981"
-                    }
+            SeqStepper {
+                readonly property var lens: [16, 32, 64, 128]
+                label: "LEN:"
+                count: lens.length
+                index: Math.max(0, lens.indexOf(root.stepsList ? root.stepsList.length : 16))
+                valueText: lens[index] + "S"
+                valueColor: "#10b981"
+                pxPerStep: ScaleMetrics.dp(20)
+                onRequested: (i) => {
+                    root.currentStepPage = 0;
+                    Bridge.seqSetClipLength(lens[i]);
                 }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        const lens = [16, 32, 64];
-                        const curr = root.stepsList ? root.stepsList.length : 16;
-                        const idx = lens.indexOf(curr);
-                        const next = lens[(idx + 1) % lens.length];
-                        root.currentStepPage = 0;
-                        Bridge.seqSetClipLength(next);
+            }
+
+            // Bar Pages (always shown, one tab per 16 steps)
+            Rectangle {
+                width: 1
+                height: ScaleMetrics.dp(20)
+                color: Theme.borderCard
+            }
+
+            RowLayout {
+                spacing: ScaleMetrics.dp(4)
+                Text {
+                    text: "PAGES:"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Theme.textDim
+                }
+                Repeater {
+                    model: root.stepPageCount
+                    delegate: Rectangle {
+                        height: ScaleMetrics.dp(26)
+                        width: ScaleMetrics.dp(42)
+                        radius: 3
+                        color: root.currentStepPage === index ? root.currentTrackColor : Theme.bgApp
+                        border.color: root.currentStepPage === index ? root.currentTrackColor : Theme.borderCard
+                        border.width: 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: ((index * 16) + 1) + "-" + ((index + 1) * 16)
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: root.currentStepPage === index ? "#ffffff" : Theme.textDim
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: root.currentStepPage = index
+                        }
                     }
                 }
             }
+
+            Item { Layout.fillWidth: true }
 
             // Clear Clip Button
             Rectangle {
@@ -495,50 +458,6 @@ Rectangle {
                     onClicked: Bridge.seqClearActiveClip()
                 }
             }
-
-            // Bar Pages when clip length > 16
-            Rectangle {
-                visible: root.stepsList.length > 16
-                width: 1
-                height: ScaleMetrics.dp(20)
-                color: Theme.borderCard
-            }
-
-            RowLayout {
-                visible: root.stepsList.length > 16
-                spacing: ScaleMetrics.dp(4)
-                Text {
-                    text: "PAGES:"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: Theme.textDim
-                }
-                Repeater {
-                    model: Math.ceil((root.stepsList.length || 16) / 16)
-                    delegate: Rectangle {
-                        height: ScaleMetrics.dp(26)
-                        width: ScaleMetrics.dp(55)
-                        radius: 3
-                        color: root.currentStepPage === index ? root.currentTrackColor : Theme.bgApp
-                        border.color: root.currentStepPage === index ? root.currentTrackColor : Theme.borderCard
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: ((index * 16) + 1) + " - " + ((index + 1) * 16)
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: root.currentStepPage === index ? "#ffffff" : Theme.textDim
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: root.currentStepPage = index
-                        }
-                    }
-                }
-            }
-
-            Item { Layout.fillWidth: true }
         }
 
         // =====================================================================
