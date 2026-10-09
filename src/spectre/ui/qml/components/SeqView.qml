@@ -416,7 +416,7 @@ Rectangle {
 
                 // Step-Record Controls (Active when Step Record is On)
                 Rectangle {
-                    width: ScaleMetrics.dp(135)
+                    Layout.preferredWidth: ScaleMetrics.dp(250)
                     Layout.fillHeight: true
                     radius: ScaleMetrics.dp(4)
                     color: Bridge.seqStepRecordEnabled ? "#3f1a1a" : Theme.bgSurface
@@ -431,57 +431,59 @@ Rectangle {
                         Text {
                             text: Bridge.seqStepRecordEnabled ? "● STEP REC CURSOR: " + (Bridge.seqCursorStep + 1) : "STEP REC: OFF"
                             font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(7)
+                            font.pixelSize: ScaleMetrics.sp(8)
                             color: Bridge.seqStepRecordEnabled ? Theme.recording : Theme.textDim
                         }
 
                         RowLayout {
                             Layout.fillWidth: true
+                            Layout.fillHeight: true
                             spacing: ScaleMetrics.dp(3)
 
                             Rectangle {
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(20)
+                                Layout.fillHeight: true
                                 radius: 2
                                 color: Theme.bgApp
                                 border.color: Theme.borderCard
                                 border.width: 1
-                                Text { anchors.centerIn: parent; text: "REST"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textSecondary }
+                                Text { anchors.centerIn: parent; text: "REST"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
                                 MouseArea { anchors.fill: parent; onClicked: Bridge.seqRecordRest() }
                             }
 
                             Rectangle {
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(20)
+                                Layout.fillHeight: true
                                 radius: 2
                                 color: Theme.bgApp
                                 border.color: Theme.borderCard
                                 border.width: 1
-                                Text { anchors.centerIn: parent; text: "TIE"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textSecondary }
+                                Text { anchors.centerIn: parent; text: "TIE"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
                                 MouseArea { anchors.fill: parent; onClicked: Bridge.seqRecordTie() }
                             }
 
                             Rectangle {
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(20)
+                                Layout.fillHeight: true
                                 radius: 2
                                 color: Theme.bgApp
                                 border.color: Theme.borderCard
                                 border.width: 1
-                                Text { anchors.centerIn: parent; text: "CLEAR"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.recording }
+                                Text { anchors.centerIn: parent; text: "CLEAR"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.recording }
                                 MouseArea { anchors.fill: parent; onClicked: Bridge.seqClearStep(Bridge.seqCursorStep) }
                             }
                         }
 
                         RowLayout {
                             Layout.fillWidth: true
+                            Layout.fillHeight: true
                             spacing: ScaleMetrics.dp(3)
                             Rectangle {
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(18)
+                                Layout.fillHeight: true
                                 radius: 2
                                 color: Theme.bgApp
-                                Text { anchors.centerIn: parent; text: "◀ PREV"; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
+                                Text { anchors.centerIn: parent; text: "◀ PREV"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textSecondary }
                                 MouseArea {
                                     anchors.fill: parent
                                     onClicked: Bridge.seqSetCursorStep(Math.max(0, Bridge.seqCursorStep - 1))
@@ -489,10 +491,10 @@ Rectangle {
                             }
                             Rectangle {
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(18)
+                                Layout.fillHeight: true
                                 radius: 2
                                 color: Theme.bgApp
-                                Text { anchors.centerIn: parent; text: "NEXT ▶"; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
+                                Text { anchors.centerIn: parent; text: "NEXT ▶"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textSecondary }
                                 MouseArea {
                                     anchors.fill: parent
                                     onClicked: Bridge.seqSetCursorStep(Bridge.seqCursorStep + 1)
@@ -508,36 +510,16 @@ Rectangle {
                     Layout.fillHeight: true
                     spacing: ScaleMetrics.dp(4)
 
-                    // Step Info Box
-                    ColumnLayout {
-                        width: ScaleMetrics.dp(55)
-                        spacing: 1
-                        Text {
-                            text: "STEP " + (root.selectedStepIdx + 1)
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: root.currentTrackColor
-                        }
-                        Text {
-                            text: selStep && selStep.isActive ? root.formatPitch(selStep.primaryPitch, Bridge.seqActiveTrack === 4) : "REST"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(11)
-                            color: selStep && selStep.isActive ? Theme.textPrimary : Theme.textDim
-                        }
-                        Text {
-                            visible: selStep && selStep.noteCount > 1
-                            text: (selStep ? selStep.noteCount : 0) + " CHORD"
-                            font.pixelSize: ScaleMetrics.sp(7)
-                            color: "#38bdf8"
-                        }
-                    }
-
                     // Pitch Scrubber
                     InspectorParam {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         title: "PITCH"
-                        valStr: (selStep && selStep.isActive) ? root.formatPitch(selStep.primaryPitch, Bridge.seqActiveTrack === 4) : "--"
+                        // Chords show their extra notes as "C4 +2"
+                        valStr: (selStep && selStep.isActive)
+                                ? root.formatPitch(selStep.primaryPitch, Bridge.seqActiveTrack === 4)
+                                  + (selStep.noteCount > 1 ? " +" + (selStep.noteCount - 1) : "")
+                                : "--"
                         accent: "#e879f9"
                         onAdjust: (delta) => {
                             if (selStep) {
@@ -581,7 +563,7 @@ Rectangle {
                                                 anchors.centerIn: parent
                                                 text: modelData.name
                                                 font.bold: true
-                                                font.pixelSize: ScaleMetrics.sp(7)
+                                                font.pixelSize: ScaleMetrics.sp(9)
                                                 color: (selStep && selStep.primaryPitch === modelData.p) ? "#000000" : Theme.textSecondary
                                             }
                                             MouseArea {
@@ -606,7 +588,7 @@ Rectangle {
                                                 anchors.centerIn: parent
                                                 text: modelData.name
                                                 font.bold: true
-                                                font.pixelSize: ScaleMetrics.sp(7)
+                                                font.pixelSize: ScaleMetrics.sp(9)
                                                 color: (selStep && selStep.primaryPitch === modelData.p) ? "#000000" : Theme.textSecondary
                                             }
                                             MouseArea {
@@ -633,7 +615,7 @@ Rectangle {
                                         Layout.fillHeight: true
                                         radius: 2
                                         color: Theme.bgApp
-                                        Text { anchors.centerIn: parent; text: "-1"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textSecondary }
+                                        Text { anchors.centerIn: parent; text: "-1"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
                                         MouseArea { anchors.fill: parent; onClicked: Bridge.seqNudgeStepPitch(root.selectedStepIdx, -1) }
                                     }
                                     Rectangle {
@@ -641,7 +623,7 @@ Rectangle {
                                         Layout.fillHeight: true
                                         radius: 2
                                         color: Theme.bgApp
-                                        Text { anchors.centerIn: parent; text: "+1"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textSecondary }
+                                        Text { anchors.centerIn: parent; text: "+1"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
                                         MouseArea { anchors.fill: parent; onClicked: Bridge.seqNudgeStepPitch(root.selectedStepIdx, 1) }
                                     }
                                 }
@@ -654,7 +636,7 @@ Rectangle {
                                         Layout.fillHeight: true
                                         radius: 2
                                         color: Theme.bgApp
-                                        Text { anchors.centerIn: parent; text: "-OCT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: "#38bdf8" }
+                                        Text { anchors.centerIn: parent; text: "-OCT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: "#38bdf8" }
                                         MouseArea { anchors.fill: parent; onClicked: Bridge.seqNudgeStepPitch(root.selectedStepIdx, -12) }
                                     }
                                     Rectangle {
@@ -662,7 +644,7 @@ Rectangle {
                                         Layout.fillHeight: true
                                         radius: 2
                                         color: Theme.bgApp
-                                        Text { anchors.centerIn: parent; text: "+OCT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: "#38bdf8" }
+                                        Text { anchors.centerIn: parent; text: "+OCT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: "#38bdf8" }
                                         MouseArea { anchors.fill: parent; onClicked: Bridge.seqNudgeStepPitch(root.selectedStepIdx, 12) }
                                     }
                                 }
@@ -746,14 +728,14 @@ Rectangle {
                                 Layout.alignment: Qt.AlignHCenter
                                 text: "TIE"
                                 font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(8)
+                                font.pixelSize: ScaleMetrics.sp(9)
                                 color: selStep && selStep.tie ? "#38bdf8" : Theme.textDim
                             }
                             Text {
                                 Layout.alignment: Qt.AlignHCenter
                                 text: selStep && selStep.tie ? "ON" : "OFF"
                                 font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(9)
+                                font.pixelSize: ScaleMetrics.sp(12)
                                 color: selStep && selStep.tie ? "#ffffff" : Theme.textSecondary
                             }
                         }
@@ -791,7 +773,7 @@ Rectangle {
                                 Layout.alignment: Qt.AlignHCenter
                                 text: "CLEAR"
                                 font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(7)
+                                font.pixelSize: ScaleMetrics.sp(8)
                                 color: Theme.recording
                             }
                         }
@@ -924,14 +906,19 @@ Rectangle {
         MouseArea {
             id: ipMouse
             anchors.fill: parent
-            property real startY: 0
-            onPressed: (mouse) => { startY = mouse.y; }
+            preventStealing: true
+            // Drag right/up to increase, left/down to decrease: a tile at the
+            // screen's bottom edge still has the horizontal axis free.
+            property real lastX: 0
+            property real lastY: 0
+            onPressed: (mouse) => { lastX = mouse.x; lastY = mouse.y; }
             onPositionChanged: (mouse) => {
                 if (pressed) {
-                    const dy = startY - mouse.y;
-                    if (Math.abs(dy) > ScaleMetrics.dp(4)) {
-                        ipRoot.adjust(dy > 0 ? 1 : -1);
-                        startY = mouse.y;
+                    const d = (mouse.x - lastX) + (lastY - mouse.y);
+                    if (Math.abs(d) > ScaleMetrics.dp(4)) {
+                        ipRoot.adjust(d > 0 ? 1 : -1);
+                        lastX = mouse.x;
+                        lastY = mouse.y;
                     }
                 }
             }
@@ -945,7 +932,7 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 text: ipRoot.title
                 font.bold: true
-                font.pixelSize: ScaleMetrics.sp(7)
+                font.pixelSize: ScaleMetrics.sp(9)
                 color: Theme.textDim
             }
             Item { Layout.fillHeight: true }
@@ -954,7 +941,7 @@ Rectangle {
                 text: ipRoot.valStr
                 font.family: Theme.fontMono
                 font.bold: true
-                font.pixelSize: ScaleMetrics.sp(10)
+                font.pixelSize: ScaleMetrics.sp(14)
                 color: ipRoot.accent
             }
             Item { Layout.fillHeight: true }
