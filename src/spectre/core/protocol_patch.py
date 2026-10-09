@@ -16,6 +16,7 @@ from .patch_state import (
 from .sysex import (
     ADDR_SETUP_CHORUS_SWITCH,
     ADDR_SETUP_REVERB_SWITCH,
+    ADDR_TEMP_PATCH_PART_1,
     CHORUS_PARAM_DEPTH,
     CHORUS_PARAM_FEEDBACK,
     CHORUS_PARAM_LEVEL,
@@ -150,6 +151,17 @@ logger = logging.getLogger(__name__)
 
 class PatchProtocolMixin:
     """Patch Common, Tone parameters, envelopes, LFOs, and patch decoding."""
+
+    @staticmethod
+    def _mirrors_perf_fx(base) -> bool:
+        """True when patch FX writes should also hit Performance Common FX.
+
+        Only the PATCH-mode temp patch (1F 00) mirrors. In PERFORM mode the
+        base is a part patch (11..), and the shared MFX1/chorus/reverb plus
+        the global FX switches belong to the whole performance, so a part
+        edit must not overwrite them.
+        """
+        return tuple(base) == ADDR_TEMP_PATCH_PART_1
 
     def get_patch_name(self, timeout: float = 1.0) -> str:
         """Read active patch name (12 ASCII characters) from the temporary buffer."""
@@ -731,20 +743,19 @@ class PatchProtocolMixin:
         """Set MFX type and optional sends."""
         base = self.get_active_patch_base()
         mfx_base = add_address(base, OFFSET_PATCH_COMMON_MFX)
+        mirror = self._mirrors_perf_fx(base)
         self.send_data(add_address(mfx_base, MFX_PARAM_TYPE), [max(0, min(80, int(mfx_type)))])
-        # On Roland JUNO-DS, also sync Performance Common MFX1 (10 00 02 00)
-        perf_type_addr = (0x10, 0x00, 0x02, MFX_PARAM_TYPE)
-        if add_address(mfx_base, MFX_PARAM_TYPE) != perf_type_addr:
-            self.send_data(perf_type_addr, [max(0, min(80, int(mfx_type)))])
-        if dry_send is not None:
-            self.send_data(add_address(mfx_base, MFX_PARAM_DRY_SEND), [max(0, min(127, int(dry_send)))])
-            self.send_data((0x10, 0x00, 0x02, MFX_PARAM_DRY_SEND), [max(0, min(127, int(dry_send)))])
-        if chorus_send is not None:
-            self.send_data(add_address(mfx_base, MFX_PARAM_CHORUS_SEND), [max(0, min(127, int(chorus_send)))])
-            self.send_data((0x10, 0x00, 0x02, MFX_PARAM_CHORUS_SEND), [max(0, min(127, int(chorus_send)))])
-        if reverb_send is not None:
-            self.send_data(add_address(mfx_base, MFX_PARAM_REVERB_SEND), [max(0, min(127, int(reverb_send)))])
-            self.send_data((0x10, 0x00, 0x02, MFX_PARAM_REVERB_SEND), [max(0, min(127, int(reverb_send)))])
+        # PATCH mode: also sync Performance Common MFX1 (10 00 02 00)
+        if mirror:
+            self.send_data((0x10, 0x00, 0x02, MFX_PARAM_TYPE), [max(0, min(80, int(mfx_type)))])
+        for offset, val in ((MFX_PARAM_DRY_SEND, dry_send), (MFX_PARAM_CHORUS_SEND, chorus_send),
+                            (MFX_PARAM_REVERB_SEND, reverb_send)):
+            if val is None:
+                continue
+            v = [max(0, min(127, int(val)))]
+            self.send_data(add_address(mfx_base, offset), v)
+            if mirror:
+                self.send_data((0x10, 0x00, 0x02, offset), v)
 
     def set_mfx_param(self, param_index: int, value: int) -> None:
         """Set an individual MFX parameter (0..31) via Roland 4-nibble SysEx."""
@@ -756,10 +767,9 @@ class PatchProtocolMixin:
         raw_val = int(value) + 32768
         nibbles = pack_4nibbles(raw_val)
         self.send_data(param_addr, nibbles)
-        # Also mirror to Performance Common MFX1 (10 00 02 xx)
-        perf_param_addr = (0x10, 0x00, param_addr[2], param_addr[3])
-        if param_addr != perf_param_addr:
-            self.send_data(perf_param_addr, nibbles)
+        # PATCH mode: also mirror to Performance Common MFX1 (10 00 02 xx)
+        if self._mirrors_perf_fx(base):
+            self.send_data((0x10, 0x00, param_addr[2], param_addr[3]), nibbles)
 
     def set_mfx_params_bulk(self, param_values: Sequence[int], start_index: int = 0) -> None:
         """Set a contiguous sequence of MFX parameters in a single SysEx DT1 packet."""
@@ -773,9 +783,9 @@ class PatchProtocolMixin:
         mfx_base = add_address(base, OFFSET_PATCH_COMMON_MFX)
         param_addr = add_address(mfx_base, MFX_PARAM_DATA_START + start_index * 4)
         self.send_data(param_addr, nibbles)
-        perf_param_addr = (0x10, 0x00, param_addr[2], param_addr[3])
-        if param_addr != perf_param_addr:
-            self.send_data(perf_param_addr, nibbles)
+        # PATCH mode: also mirror to Performance Common MFX1 (10 00 02 xx)
+        if self._mirrors_perf_fx(base):
+            self.send_data((0x10, 0x00, param_addr[2], param_addr[3]), nibbles)
 
     def set_chorus(
         self,
@@ -787,18 +797,21 @@ class PatchProtocolMixin:
         c_type = max(0, min(3, int(chorus_type)))
         base = self.get_active_patch_base()
         cho_base = add_address(base, OFFSET_PATCH_COMMON_CHORUS)
+        mirror = self._mirrors_perf_fx(base)
         self.send_data(add_address(cho_base, CHORUS_PARAM_TYPE), [c_type])
-        perf_base = (0x10, 0x00, 0x04, 0x00)
-        self.send_data(perf_base, [c_type])
-        self.send_data(ADDR_SETUP_CHORUS_SWITCH, [0 if c_type == 0 else 1])
+        if mirror:
+            self.send_data((0x10, 0x00, 0x04, CHORUS_PARAM_TYPE), [c_type])
+            self.send_data(ADDR_SETUP_CHORUS_SWITCH, [0 if c_type == 0 else 1])
         if level is not None:
             lvl = max(0, min(127, int(level)))
             self.send_data(add_address(cho_base, CHORUS_PARAM_LEVEL), [lvl])
-            self.send_data((perf_base[0], perf_base[1], perf_base[2], CHORUS_PARAM_LEVEL), [lvl])
+            if mirror:
+                self.send_data((0x10, 0x00, 0x04, CHORUS_PARAM_LEVEL), [lvl])
         if output_select is not None:
             out = max(0, min(2, int(output_select)))
             self.send_data(add_address(cho_base, CHORUS_PARAM_OUTPUT_SELECT), [out])
-            self.send_data((perf_base[0], perf_base[1], perf_base[2], CHORUS_PARAM_OUTPUT_SELECT), [out])
+            if mirror:
+                self.send_data((0x10, 0x00, 0x04, CHORUS_PARAM_OUTPUT_SELECT), [out])
 
     def set_chorus_param(self, param: str, val: int) -> None:
         """Set an individual Master Chorus 4-nibble parameter (rate, depth, preDelay, feedback)."""
@@ -818,9 +831,8 @@ class PatchProtocolMixin:
         base = self.get_active_patch_base()
         cho_base = add_address(base, OFFSET_PATCH_COMMON_CHORUS)
         self.send_data(add_address(cho_base, offset), nibbles)
-        perf_param_addr = (0x10, 0x00, 0x04, offset)
-        if add_address(cho_base, offset) != perf_param_addr:
-            self.send_data(perf_param_addr, nibbles)
+        if self._mirrors_perf_fx(base):
+            self.send_data((0x10, 0x00, 0x04, offset), nibbles)
 
     def set_reverb(
         self,
@@ -831,14 +843,16 @@ class PatchProtocolMixin:
         r_type = max(0, min(5, int(reverb_type)))
         base = self.get_active_patch_base()
         rev_base = add_address(base, OFFSET_PATCH_COMMON_REVERB)
+        mirror = self._mirrors_perf_fx(base)
         self.send_data(add_address(rev_base, REVERB_PARAM_TYPE), [r_type])
-        perf_base = (0x10, 0x00, 0x06, 0x00)
-        self.send_data(perf_base, [r_type])
-        self.send_data(ADDR_SETUP_REVERB_SWITCH, [0 if r_type == 0 else 1])
+        if mirror:
+            self.send_data((0x10, 0x00, 0x06, REVERB_PARAM_TYPE), [r_type])
+            self.send_data(ADDR_SETUP_REVERB_SWITCH, [0 if r_type == 0 else 1])
         if level is not None:
             lvl = max(0, min(127, int(level)))
             self.send_data(add_address(rev_base, REVERB_PARAM_LEVEL), [lvl])
-            self.send_data((perf_base[0], perf_base[1], perf_base[2], REVERB_PARAM_LEVEL), [lvl])
+            if mirror:
+                self.send_data((0x10, 0x00, 0x06, REVERB_PARAM_LEVEL), [lvl])
 
     def set_reverb_param(self, param: str, val: int) -> None:
         """Set an individual Master Reverb 4-nibble parameter (time, damp, preDelay, diffusion, tone)."""
@@ -861,9 +875,8 @@ class PatchProtocolMixin:
         base = self.get_active_patch_base()
         rev_base = add_address(base, OFFSET_PATCH_COMMON_REVERB)
         self.send_data(add_address(rev_base, offset), nibbles)
-        perf_param_addr = (0x10, 0x00, 0x06, offset)
-        if add_address(rev_base, offset) != perf_param_addr:
-            self.send_data(perf_param_addr, nibbles)
+        if self._mirrors_perf_fx(base):
+            self.send_data((0x10, 0x00, 0x06, offset), nibbles)
 
     def set_tone_pitch_env(
         self,

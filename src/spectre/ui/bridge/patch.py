@@ -2199,14 +2199,16 @@ class PatchBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(result="QVariantList")
     def detectRoutingPitfalls(self) -> list:
         """Detect potential parallel routing pitfalls, phase cancellation, or reverb overloading."""
-        eff = self.patch_state.effects
+        # Origin-resolved: in PERFORM these are the processors that sound
+        _, mfx_bypassed, mfx_dry, mfx_cho, mfx_rev, _ = self._mfx_view()
+        cho_type, cho_level, cho_to_rev = self._cho_view()[:3]
         tones = self.patch_state.tones
         pitfalls = []
 
         # 1. Multiple Reverb Injections
         has_tone_rev = any(t.reverb_send > 0 for t in tones)
-        has_mfx_rev = (eff.mfx_reverb_send > 0) and not eff.mfx_bypassed
-        has_cho_rev = (eff.chorus_to_reverb > 0) and (eff.chorus_type > 0) and (eff.chorus_level > 0)
+        has_mfx_rev = (mfx_rev > 0) and not mfx_bypassed
+        has_cho_rev = (cho_to_rev > 0) and (cho_type > 0) and (cho_level > 0)
 
         reverb_sources = 0
         sources_str = []
@@ -2229,8 +2231,8 @@ class PatchBridgeMixin(BridgeBaseMixin):
             })
 
         # 2. Mono Chorus-to-Reverb Collapsing
-        if eff.chorus_to_reverb in (1, 2) and eff.chorus_type > 0 and eff.chorus_level > 0:
-            if eff.chorus_to_reverb == 1:
+        if cho_to_rev in (1, 2) and cho_type > 0 and cho_level > 0:
+            if cho_to_rev == 1:
                 desc = "Chorus output is routed EXCLUSIVELY into Reverb in mono, bypassing stereo Main Out."
             else:
                 desc = "Chorus output feeds Main Out in stereo AND Reverb in mono. Note that the reverb feed is summed to mono."
@@ -2243,7 +2245,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
         # 3. Comb Filtering Risk (Parallel Direct Dry + MFX Output)
         any_direct = any(t.output_assign == 1 for t in tones)
-        if any_direct and eff.mfx_dry_send > 0 and not eff.mfx_bypassed:
+        if any_direct and mfx_dry > 0 and not mfx_bypassed:
             pitfalls.append({
                 "type": "COMB_FILTERING",
                 "severity": "caution",
@@ -2252,7 +2254,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
             })
 
         # 4. Double Modulation (MFX Chorus + Master Chorus)
-        if not eff.mfx_bypassed and eff.mfx_chorus_send > 0 and eff.chorus_type > 0 and eff.chorus_level > 0:
+        if not mfx_bypassed and mfx_cho > 0 and cho_type > 0 and cho_level > 0:
             pitfalls.append({
                 "type": "DOUBLE_MODULATION",
                 "severity": "info",
@@ -2262,132 +2264,95 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
         return pitfalls
 
+    # Curated routing topologies: (tone assign, tone chorus, tone reverb,
+    # mfx dry/chorus/reverb, chorus level, chorus->reverb, reverb level, needs FX units)
+    ROUTING_PRESETS: dict[str, tuple] = {
+        # Tones (all) -> MFX -> Chorus -> Reverb -> Out (pure serial chain)
+        "SERIAL_CHAIN": (0, 0, 0, 0, 127, 0, 80, 1, 60, True),
+        # Tones -> MFX (Insert) -> Out; MFX sends parallel to Chorus & Reverb
+        "STUDIO_AUX": (0, 0, 0, 127, 60, 60, 75, 0, 65, False),
+        # Tones -> Direct Out (L+R) + parallel Chorus & Reverb sends (MFX muted)
+        "VINTAGE_SYNTH": (1, 70, 50, 0, 0, 0, 80, 0, 60, False),
+        # Tones -> MFX -> Chorus (100% to Reverb) -> Reverb -> Out
+        "AMBIENT_WASH": (0, 0, 0, 30, 110, 40, 90, 1, 95, True),
+    }
+
     @pyqtSlot(str)
     def applyRoutingPreset(self, preset_name: str) -> None:
-        """Apply a curated routing topology algorithm across Tones, MFX, Chorus, and Reverb."""
+        """Apply a curated routing topology algorithm across Tones, MFX, Chorus, and Reverb.
+
+        Tone outputs always belong to the edited patch (the active part in
+        PERFORM). MFX sends, chorus and reverb go through the origin-resolved
+        setters so in PERFORM mode they reach the processor that actually
+        sounds, never the shared performance FX by accident.
+        """
         preset = preset_name.upper().replace(" ", "_")
         eff = self.patch_state.effects
-        tones = self.patch_state.tones
         juno = self.engine.juno if self.engine else None
 
-        if preset == "SERIAL_CHAIN":
-            # Tones (all) -> MFX -> Chorus -> Reverb -> Out
-            eff.routing_preset = "SERIAL_CHAIN"
-            eff.manual_routing_unlocked = False
-            for t in tones:
-                t.output_assign = 0  # MFX
-                t.output_level = 127
-                t.chorus_send = 0
-                t.reverb_send = 0
-                if juno:
-                    try:
-                        juno.set_tone_output(t.tone_index, output_assign=0, output_level=127, chorus_send=0, reverb_send=0)
-                    except Exception as e:
-                        logger.error(f"Error setting tone {t.tone_index} routing: {e}")
-            eff.mfx_dry_send = 0      # All MFX audio cascades to Chorus
-            eff.mfx_chorus_send = 127
-            eff.mfx_reverb_send = 0   # No direct MFX leak to Reverb
-            eff.chorus_level = 80
-            eff.chorus_to_reverb = 1  # REV only: pure serial chain (Chorus cascades exclusively into Reverb)
-            eff.reverb_level = 60
-            # dry=0 routing depends on live FX units to reach Main; ensure the
-            # chain has endpoints (a preset that plays no sound is a broken preset)
-            if eff.chorus_type == 0:
-                eff.chorus_type = 1
-            if eff.reverb_type == 0:
-                eff.reverb_type = 4
-
-        elif preset == "STUDIO_AUX":
-            # Tones -> MFX (Insert) -> Out; MFX sends parallel to Chorus & Reverb
-            eff.routing_preset = "STUDIO_AUX"
-            eff.manual_routing_unlocked = False
-            for t in tones:
-                t.output_assign = 0  # MFX
-                t.output_level = 127
-                t.chorus_send = 0
-                t.reverb_send = 0
-                if juno:
-                    try:
-                        juno.set_tone_output(t.tone_index, output_assign=0, output_level=127, chorus_send=0, reverb_send=0)
-                    except Exception as e:
-                        logger.error(f"Error setting tone {t.tone_index} routing: {e}")
-            eff.mfx_dry_send = 127     # MFX direct to main
-            eff.mfx_chorus_send = 60   # Parallel aux send
-            eff.mfx_reverb_send = 60   # Parallel aux send
-            eff.chorus_level = 75
-            eff.chorus_to_reverb = 0   # MAIN only: no leak into reverb
-            eff.reverb_level = 65
-
-        elif preset == "VINTAGE_SYNTH":
-            # Tones -> Direct Out (L+R) + Parallel Chorus & Reverb sends (MFX bypassed/muted)
-            eff.routing_preset = "VINTAGE_SYNTH"
-            eff.manual_routing_unlocked = False
-            for t in tones:
-                t.output_assign = 1  # DIRECT (L+R)
-                t.output_level = 127
-                t.chorus_send = 70
-                t.reverb_send = 50
-                if juno:
-                    try:
-                        juno.set_tone_output(t.tone_index, output_assign=1, output_level=127, chorus_send=70, reverb_send=50)
-                    except Exception as e:
-                        logger.error(f"Error setting tone {t.tone_index} routing: {e}")
-            eff.mfx_dry_send = 0
-            eff.mfx_chorus_send = 0
-            eff.mfx_reverb_send = 0
-            eff.chorus_level = 80
-            eff.chorus_to_reverb = 0   # MAIN only
-            eff.reverb_level = 60
-
-        elif preset == "AMBIENT_WASH":
-            # Tones -> MFX -> Chorus (100% to Reverb) -> Reverb -> Out
-            eff.routing_preset = "AMBIENT_WASH"
-            eff.manual_routing_unlocked = False
-            for t in tones:
-                t.output_assign = 0  # MFX
-                t.output_level = 127
-                t.chorus_send = 0
-                t.reverb_send = 0
-                if juno:
-                    try:
-                        juno.set_tone_output(t.tone_index, output_assign=0, output_level=127, chorus_send=0, reverb_send=0)
-                    except Exception as e:
-                        logger.error(f"Error setting tone {t.tone_index} routing: {e}")
-            eff.mfx_dry_send = 30
-            eff.mfx_chorus_send = 110
-            eff.mfx_reverb_send = 40
-            eff.chorus_level = 90
-            eff.chorus_to_reverb = 1   # REV only: chorus is entirely submerged in reverb
-            eff.reverb_level = 95
-            if eff.chorus_type == 0:
-                eff.chorus_type = 1
-            if eff.reverb_type == 0:
-                eff.reverb_type = 4
-
-        elif preset in ("CUSTOM", "MANUAL"):
+        if preset in ("CUSTOM", "MANUAL"):
             eff.routing_preset = "CUSTOM"
             eff.manual_routing_unlocked = True
+            self.routingChanged.emit()
+            return
+        spec = self.ROUTING_PRESETS.get(preset)
+        if spec is None:
+            return
+        (t_assign, t_cho, t_rev, m_dry, m_cho, m_rev,
+         cho_level, cho_to_rev, rev_level, needs_units) = spec
+        eff.routing_preset = preset
+        eff.manual_routing_unlocked = False
 
-        # Send MFX, Chorus, Reverb updates to synth
-        if juno:
-            try:
-                juno.set_mfx(
-                    eff.mfx_type,
-                    dry_send=eff.mfx_dry_send,
-                    chorus_send=eff.mfx_chorus_send,
-                    reverb_send=eff.mfx_reverb_send,
-                )
-                juno.set_chorus(
-                    eff.chorus_type,
-                    level=eff.chorus_level,
-                    output_select=eff.chorus_to_reverb,
-                )
-                juno.set_reverb(
-                    eff.reverb_type,
-                    level=eff.reverb_level,
-                )
-            except Exception as e:
-                logger.error(f"Error syncing effects routing on synth: {e}")
+        for t in self.patch_state.tones:
+            t.output_assign = t_assign
+            t.output_level = 127
+            t.chorus_send = t_cho
+            t.reverb_send = t_rev
+            if juno:
+                try:
+                    juno.set_tone_output(t.tone_index, output_assign=t_assign, output_level=127,
+                                         chorus_send=t_cho, reverb_send=t_rev)
+                except Exception as e:
+                    logger.error(f"Error setting tone {t.tone_index} routing: {e}")
+
+        # dry=0 routing depends on live FX units to reach Main; ensure the
+        # chain has endpoints (a preset that plays no sound is a broken preset)
+        cho_type = self._cho_view()[0]
+        rev_type = self._rev_view()[0]
+        if needs_units:
+            cho_type = cho_type or 1
+            rev_type = rev_type or 4
+
+        if self._in_perform():
+            for send, v in (("dry", m_dry), ("chorus", m_cho), ("reverb", m_rev)):
+                self.setMfxSend(send, v)
+            for param, v in (("type", cho_type), ("level", cho_level), ("toReverb", cho_to_rev)):
+                self.setChorusParam(param, v)
+            for param, v in (("type", rev_type), ("level", rev_level)):
+                self.setReverbParam(param, v)
+        else:
+            eff.mfx_dry_send, eff.mfx_chorus_send, eff.mfx_reverb_send = m_dry, m_cho, m_rev
+            eff.chorus_type, eff.chorus_level, eff.chorus_to_reverb = cho_type, cho_level, cho_to_rev
+            eff.reverb_type, eff.reverb_level = rev_type, rev_level
+            if juno:
+                try:
+                    juno.set_mfx(
+                        eff.mfx_type,
+                        dry_send=eff.mfx_dry_send,
+                        chorus_send=eff.mfx_chorus_send,
+                        reverb_send=eff.mfx_reverb_send,
+                    )
+                    juno.set_chorus(
+                        eff.chorus_type,
+                        level=eff.chorus_level,
+                        output_select=eff.chorus_to_reverb,
+                    )
+                    juno.set_reverb(
+                        eff.reverb_type,
+                        level=eff.reverb_level,
+                    )
+                except Exception as e:
+                    logger.error(f"Error syncing effects routing on synth: {e}")
 
         self.routingChanged.emit()
         self.mfxParamsChanged.emit()

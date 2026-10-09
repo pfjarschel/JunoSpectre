@@ -275,12 +275,14 @@ class VectorBridgeMixin(BridgeBaseMixin):
                 send = {"effects.mfx_dry_send": "dry", "effects.mfx_chorus_send": "chorus",
                         "effects.mfx_reverb_send": "reverb"}.get(key)
                 if send:
-                    juno.set_mfx_send(send, iv)
+                    juno.set_mfx(eff.mfx_type, **{f"{send}_send": iv})
         except Exception as e:
             logger.debug(f"macro effect push failed for {key}: {e}")
 
-    def _applyToneParam(self, tone_idx: int, param: str, iv: int) -> None:
-        ps = self.patch_state
+    def _applyToneParam(self, tone_idx: int, param: str, iv: int,
+                        ps=None, edited: bool = True) -> None:
+        """Tone macro write; edited=False for a non-edited part's mirror."""
+        ps = ps if ps is not None else self.patch_state
         t = ps.get_tone(tone_idx)
         juno = self.engine.juno
         if param == "tvf_cutoff":

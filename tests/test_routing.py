@@ -211,3 +211,42 @@ def test_bridge_routing_hardware_sysex_transmission(mock_midi_mgr):
     bridge.setReverbParam("level", 80)
     assert mock_midi_mgr.send_juno_sysex.call_count >= 1
 
+
+
+def _sent_addrs(mgr):
+    return [tuple(c[0][0][6:10]) for c in mgr.send_juno_sysex.call_args_list]
+
+
+def _fx_writes(client):
+    client.set_mfx(5, dry_send=10, chorus_send=20, reverb_send=30)
+    client.set_mfx_param(0, 1)
+    client.set_mfx_params_bulk([1, 2])
+    client.set_chorus(0, level=50, output_select=1)
+    client.set_chorus_param("rate", 40)
+    client.set_reverb(0, level=60)
+    client.set_reverb_param("time", 70)
+
+
+def test_patch_mode_fx_writes_mirror_to_perf_common(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+    _fx_writes(client)
+    addrs = _sent_addrs(mock_midi_mgr)
+    assert any(a[:3] == (0x10, 0x00, 0x02) for a in addrs)
+    assert any(a[:3] == (0x10, 0x00, 0x04) for a in addrs)
+    assert any(a[:3] == (0x10, 0x00, 0x06) for a in addrs)
+
+
+def test_perform_mode_part_fx_writes_leave_shared_fx_alone(mock_midi_mgr):
+    """Editing a part patch's FX must not overwrite the performance's shared
+    MFX1/chorus/reverb or flip the global chorus/reverb switches."""
+    from src.spectre.core.sysex import ADDR_SETUP_CHORUS_SWITCH, ADDR_SETUP_REVERB_SWITCH
+
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PERFORM
+    client.set_active_perf_part(3)
+    _fx_writes(client)
+    addrs = _sent_addrs(mock_midi_mgr)
+    assert addrs and all(a[0] == 0x11 for a in addrs), addrs
+    assert tuple(ADDR_SETUP_CHORUS_SWITCH) not in addrs
+    assert tuple(ADDR_SETUP_REVERB_SWITCH) not in addrs
