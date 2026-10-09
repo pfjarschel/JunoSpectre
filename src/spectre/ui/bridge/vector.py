@@ -145,7 +145,7 @@ class VectorBridgeMixin(BridgeBaseMixin):
             if key == "vector.speed":
                 return float(self.engine.motion.speed)
             if key == "vector.bpm":
-                return float(self.engine.motion.bpm)
+                return float(self.bpm)
         except (ValueError, AttributeError, IndexError):
             pass
         return 0.0
@@ -211,8 +211,7 @@ class VectorBridgeMixin(BridgeBaseMixin):
                 self.engine.motion.speed = max(0.25, min(4.0, val))
                 self.speedChanged.emit(self.engine.motion.speed)
             elif key == "vector.bpm":
-                self.engine.motion.bpm = max(20.0, min(300.0, val))
-                self.bpmChanged.emit(self.engine.motion.bpm)
+                self._apply_tempo(val)
             return
         iv = int(round(max(0, val))) if is_int else val
         try:
@@ -534,7 +533,20 @@ class VectorBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty(float, notify=bpmChanged)
     def bpm(self) -> float:
+        """The one global tempo, owned by the sequencer song (saved with songs/setlists)."""
+        if hasattr(self, "sequencer"):
+            return self.sequencer.bpm
         return self.engine.motion.bpm
+
+    def _apply_tempo(self, bpm_val: float) -> float:
+        """Set the global tempo: sequencer clock and vector motion follow the same value."""
+        bpm_val = max(20.0, min(300.0, float(bpm_val)))
+        if hasattr(self, "sequencer"):
+            self.sequencer.set_bpm(bpm_val)
+            bpm_val = self.sequencer.bpm
+        self.engine.motion.bpm = bpm_val
+        self.bpmChanged.emit(bpm_val)
+        return bpm_val
 
     @pyqtProperty(str, notify=automatorChanged)
     def automator(self) -> str:
@@ -839,10 +851,9 @@ class VectorBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(float)
     def setBpm(self, bpm_val: float) -> None:
-        """Update tempo BPM."""
-        self.engine.motion.bpm = max(20.0, min(300.0, bpm_val))
-        self._rebaseDirect([("vector.bpm", self.engine.motion.bpm)])
-        self.bpmChanged.emit(self.engine.motion.bpm)
+        """Update the global tempo BPM."""
+        bpm_val = self._apply_tempo(bpm_val)
+        self._rebaseDirect([("vector.bpm", bpm_val)])
 
     @pyqtSlot()
     def panic(self) -> None:
@@ -894,29 +905,14 @@ class VectorBridgeMixin(BridgeBaseMixin):
             if v == "LIBRARIAN" and self._active_view != "LIBRARIAN":
                 self._view_before_librarian = self._active_view
                 self._capture_librarian_entry()
-            elif self._active_view not in ("SEQUENCER", "LIVE") and v in ("SEQUENCER", "LIVE"):
-                if hasattr(self, "patch_state") and hasattr(self.patch_state, "perf_parts"):
-                    self._perf_zone_switches_before_seq = [bool(p.zone_switch) for p in self.patch_state.perf_parts]
-            elif self._active_view in ("SEQUENCER", "LIVE") and v not in ("SEQUENCER", "LIVE"):
-                if getattr(self, "_perf_zone_switches_before_seq", None) is not None:
-                    saved = self._perf_zone_switches_before_seq
-                    self._perf_zone_switches_before_seq = None
-                    if hasattr(self, "setPartZoneSwitch"):
-                        for p_idx, sw in enumerate(saved, start=1):
-                            if hasattr(self, "_part_is_active") and self._part_is_active(p_idx):
-                                try:
-                                    self.setPartZoneSwitch(p_idx, sw)
-                                except Exception as e:
-                                    logger.debug(f"restore zone switch failed for part {p_idx}: {e}")
 
             self._active_view = v
             if v == "VECTOR":
                 self.setMorphMode("vector_2d")
             elif v == "WAVETABLE":
                 self.setMorphMode("wavetable_1d")
-            elif v in ("SEQUENCER", "LIVE"):
-                if hasattr(self, "_sync_keybed_routing"):
-                    self._sync_keybed_routing()
+            if hasattr(self, "recorder"):
+                self.recorder.audition_enabled = v == "SEQUENCER"
             self.activeViewChanged.emit(self._active_view)
             self._update_telemetry_polling()
 

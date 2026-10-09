@@ -78,41 +78,6 @@ Rectangle {
 
             Item { Layout.fillWidth: true }
 
-            // BPM display
-            Rectangle {
-                height: ScaleMetrics.dp(28)
-                width: ScaleMetrics.dp(90)
-                radius: 4
-                color: Theme.bgApp
-                border.color: Theme.borderCard
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(4)
-                    Text { text: "BPM"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-                    Text {
-                        text: Bridge.seqBpm ? Bridge.seqBpm.toFixed(1) : "120.0"
-                        font.family: Theme.fontMono
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(10)
-                        color: Theme.tone1
-                    }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    property real startY: 0
-                    property real startBpm: 120
-                    onPressed: (mouse) => { startY = mouse.y; startBpm = Bridge.seqBpm; }
-                    onPositionChanged: (mouse) => {
-                        if (pressed) {
-                            const dy = startY - mouse.y;
-                            Bridge.seqSetBpm(Math.max(40.0, Math.min(300.0, startBpm + dy * 0.5)));
-                        }
-                    }
-                }
-            }
-
             // Step Rec Toggle
             Rectangle {
                 height: ScaleMetrics.dp(28)
@@ -139,67 +104,6 @@ Rectangle {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: Bridge.seqToggleStepRecord(!Bridge.seqStepRecordEnabled)
-                }
-            }
-
-            // Live Rec Toggle
-            Rectangle {
-                height: ScaleMetrics.dp(28)
-                width: ScaleMetrics.dp(85)
-                radius: 4
-                color: Bridge.seqLiveRecordEnabled ? "#450a0a" : Theme.bgApp
-                border.color: Bridge.seqLiveRecordEnabled ? Theme.recording : Theme.borderCard
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(4)
-                    Rectangle {
-                        width: ScaleMetrics.dp(6); height: ScaleMetrics.dp(6); radius: 3
-                        color: Bridge.seqLiveRecordEnabled ? Theme.recording : Theme.textDim
-                    }
-                    Text {
-                        // Armed while the selected clip is still queued for the next bar
-                        text: Bridge.seqLiveRecordWaiting ? "WAIT BAR" : "OVERDUB"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Bridge.seqLiveRecordWaiting ? "#f59e0b"
-                               : (Bridge.seqLiveRecordEnabled ? Theme.recording : Theme.textDim)
-                    }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Bridge.seqToggleLiveRecord(!Bridge.seqLiveRecordEnabled)
-                }
-            }
-
-            // Play / Stop Button
-            Rectangle {
-                height: ScaleMetrics.dp(28)
-                width: ScaleMetrics.dp(95)
-                radius: 4
-                color: Bridge.seqIsPlaying ? "#064e3b" : Theme.bgCardActive
-                border.color: Bridge.seqIsPlaying ? "#10b981" : Theme.borderCard
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(6)
-                    Text {
-                        text: Bridge.seqIsPlaying ? "■" : "▶"
-                        font.pixelSize: ScaleMetrics.sp(10)
-                        color: Bridge.seqIsPlaying ? "#10b981" : Theme.textPrimary
-                    }
-                    Text {
-                        text: Bridge.seqIsPlaying ? "STOP" : "PLAY"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(9)
-                        color: Bridge.seqIsPlaying ? "#10b981" : Theme.textPrimary
-                    }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Bridge.seqTogglePlay()
                 }
             }
 
@@ -279,34 +183,6 @@ Rectangle {
                 onRequested: (i) => Bridge.seqSetTrackTargetPart(Bridge.seqActiveTrack, i + 1)
             }
 
-            // Roland Keybed Switch Toggle
-            Rectangle {
-                id: kbdBtnRect
-                height: ScaleMetrics.dp(26)
-                width: ScaleMetrics.dp(62)
-                radius: 3
-                readonly property bool isKbdOn: root.activeTrackData ? root.activeTrackData.keybedEnabled : true
-                color: kbdBtnRect.isKbdOn ? Qt.rgba(root.currentTrackColor.r, root.currentTrackColor.g, root.currentTrackColor.b, 0.2) : Theme.bgApp
-                border.color: kbdBtnRect.isKbdOn ? root.currentTrackColor : Theme.borderCard
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(3)
-                    Text { text: "KBD:"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: kbdBtnRect.isKbdOn ? root.currentTrackColor : Theme.textDim }
-                    Text {
-                        text: kbdBtnRect.isKbdOn ? "ON" : "OFF"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: kbdBtnRect.isKbdOn ? "#ffffff" : Theme.textDim
-                    }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Bridge.seqToggleTrackKeybed(Bridge.seqActiveTrack)
-                }
-            }
-
             // Clock Divider (ordered shortest -> longest step)
             SeqStepper {
                 readonly property var divs: ["1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4"]
@@ -359,6 +235,20 @@ Rectangle {
                             font.bold: Bridge.seqActiveClip === index
                             font.pixelSize: ScaleMetrics.sp(8)
                             color: Bridge.seqActiveClip === index ? root.currentTrackColor : Theme.textDim
+                        }
+                        // Playing (green) / queued (amber) marker for this track's clips
+                        Rectangle {
+                            readonly property bool playing: Bridge.seqIsPlaying && root.activeTrackData
+                                                            && root.activeTrackData.activeClipIdx === index
+                            readonly property bool queued: root.activeTrackData && root.activeTrackData.queuedClipIdx === index
+                            visible: playing || queued
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.margins: ScaleMetrics.dp(3)
+                            width: ScaleMetrics.dp(5)
+                            height: width
+                            radius: width / 2
+                            color: playing ? "#10b981" : "#f59e0b"
                         }
                         MouseArea {
                             anchors.fill: parent

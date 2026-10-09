@@ -30,10 +30,13 @@ def bridge():
 
 def test_sequencer_transport_properties_and_slots(bridge):
     assert bridge.seqIsPlaying is False
-    assert bridge.seqBpm == 120.0
+    assert bridge.bpm == 120.0
 
-    bridge.seqSetBpm(132.0)
-    assert bridge.seqBpm == 132.0
+    # One global tempo: sequencer clock and vector motion follow it
+    bridge.setBpm(132.0)
+    assert bridge.bpm == 132.0
+    assert bridge.sequencer.clock.bpm == 132.0
+    assert bridge.engine.motion.bpm == 132.0
 
     bridge.seqPlay()
     assert bridge.seqIsPlaying is True
@@ -217,23 +220,23 @@ def test_sequencer_operational_fixes(bridge):
     bridge.seqNudgeStepPitch(3, -200)
     assert bridge.seqActiveClipSteps[3]["primaryPitch"] == 0
 
-    # 3. Track target part & KBD routing
+    # 3. Track target part
     bridge.seqSetTrackTargetPart(0, 5)
     assert bridge.seqTracks[0]["targetPart"] == 5
     assert bridge.seqTracks[0]["targetParts"] == [5]
-
-    bridge.seqToggleTrackKeybed(0)
-    assert bridge.seqTracks[0]["keybedEnabled"] is False
-    bridge.seqToggleTrackKeybed(0)
-    bridge.seqSelectTrack(0)
-    assert bridge.seqTracks[0]["keybedEnabled"] is True
 
     # 4. Recorder UI notifications & MIDI Audition
     events = []
     bridge.recorder.subscribe_ui(lambda ev, data: events.append((ev, data)))
 
-    # Audition note with step record off
+    # Audition only edits the cursor step while the step editor is on screen
+    bridge.setActiveView("PATCH EDIT")
     bridge.recorder.cursor_step = 4
+    bridge.recorder.handle_midi_message(mido.Message("note_on", note=65, velocity=90))
+    assert bridge.seqActiveClipSteps[4]["isActive"] is False
+    assert not any(ev == "pitch_set" for ev, _ in events)
+
+    bridge.setActiveView("SEQUENCER")
     bridge.recorder.handle_midi_message(mido.Message("note_on", note=65, velocity=90))
     assert ("pitch_set", 65) in events
     assert bridge.seqActiveClipSteps[4]["primaryPitch"] == 65
@@ -273,3 +276,66 @@ def test_sequencer_uses_part_receive_channel(bridge):
     bridge.patch_state.perf_parts[2].rx_channel = 5
     assert bridge._part_rx_channel(3) == 5
     assert bridge._part_rx_channel(4) == 3
+
+
+def test_each_track_keeps_its_own_selected_clip(bridge):
+    bridge.seqSelectTrack(0)
+    bridge.seqSelectClip(3)
+    bridge.seqToggleStepNote(0, 60, 100)
+
+    # Switching track must not carry clip 3 over
+    bridge.seqSelectTrack(1)
+    assert bridge.seqActiveClip == 0
+    assert bridge.seqActiveClipSteps[0]["isActive"] is False
+    bridge.seqSelectClip(5)
+
+    bridge.seqSelectTrack(0)
+    assert bridge.seqActiveClip == 3
+    assert bridge.seqActiveClipSteps[0]["isActive"] is True
+    assert bridge.recorder.active_clip_idx == 3
+
+    assert [t["selectedClipIdx"] for t in bridge.seqTracks] == [3, 5, 0, 0, 0]
+
+
+def test_play_from_stop_starts_each_tracks_selected_clip(bridge):
+    bridge.seqSelectTrack(0)
+    bridge.seqSelectClip(2)
+    bridge.seqSelectTrack(4)
+    bridge.seqSelectClip(6)
+    bridge.seqStopTrack(1)  # queued stop survives into Play
+
+    bridge.seqPlay()
+    try:
+        assert [t["activeClipIdx"] for t in bridge.seqTracks] == [2, -1, 0, 0, 6]
+    finally:
+        bridge.seqStop()
+
+
+def test_launches_move_the_selection(bridge):
+    bridge.seqSelectTrack(2)
+    bridge.seqLaunchScene(4)
+    assert all(t["selectedClipIdx"] == 4 for t in bridge.seqTracks)
+    assert bridge.seqActiveClip == 4
+    assert bridge.recorder.active_clip_idx == 4
+
+    bridge.seqLaunchClip(0, 7)
+    assert bridge.seqTracks[0]["selectedClipIdx"] == 7
+    assert bridge.seqActiveClip == 4  # active track (2) unaffected
+
+
+def test_loading_a_song_file_applies_its_sequence_and_tempo(bridge, tmp_path):
+    from src.spectre.core.patch_state import PatchState
+    from src.spectre.core.spectre_format import save_song
+    from src.spectre.sequencer.models import default_sequencer_song
+
+    song = default_sequencer_song()
+    song.bpm = 97.0
+    song.tracks[1].selected_clip_idx = 4
+    path = tmp_path / "song.spectre"
+    save_song(path, patch_state=PatchState.create_init_patch(), sequencer_song=song, meta={"name": "S"})
+
+    assert bridge.loadSpectreFile(str(path)) is True
+    assert bridge.sequencer.song.tracks[1].selected_clip_idx == 4
+    assert bridge.bpm == 97.0
+    assert bridge.sequencer.clock.bpm == 97.0
+    assert bridge.engine.motion.bpm == 97.0

@@ -88,6 +88,16 @@ class SequencerEngine:
         self.clock.set_bpm(self.song.bpm)
 
     def play(self) -> None:
+        """Start (or resume) the transport. From a full stop, every track
+        starts on its selected clip, except tracks queued to stop."""
+        if self.clock.is_stopped:
+            with self._lock:
+                for track in self.song.tracks:
+                    if track.queued_clip_idx == -2:
+                        track.active_clip_idx = -1
+                    else:
+                        track.active_clip_idx = track.selected_clip_idx
+                    track.queued_clip_idx = -1
         self.clock.start()
 
     @property
@@ -118,12 +128,14 @@ class SequencerEngine:
             track = self.song.tracks[track_idx]
             if 0 <= clip_idx < len(track.clips):
                 track.queued_clip_idx = clip_idx
+                track.selected_clip_idx = clip_idx
 
     def launch_scene(self, scene_idx: int) -> None:
         """Simultaneously queue all 5 tracks to the designated scene row."""
         for t in self.song.tracks:
             if 0 <= scene_idx < len(t.clips):
                 t.queued_clip_idx = scene_idx
+                t.selected_clip_idx = scene_idx
 
     def stop_track(self, track_idx: int) -> None:
         """Queue a track to stop at the next measure boundary."""

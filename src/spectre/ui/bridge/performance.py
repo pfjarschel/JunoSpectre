@@ -1517,9 +1517,11 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         if kind == "song":
             try:
                 from ...core.spectre_format import load_song
-                song = load_song(path)
-                if hasattr(self, "sequencer"):
+                song = load_song(path).get("sequencer_song")
+                if hasattr(self, "sequencer") and song is not None:
+                    self.sequencer.stop()
                     self.sequencer.song = song
+                    self._apply_tempo(song.bpm)
                     self.seqTracksChanged.emit()
                     self.seqActiveClipChanged.emit()
                     self.seqStateChanged.emit()

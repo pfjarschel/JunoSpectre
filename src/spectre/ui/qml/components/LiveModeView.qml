@@ -42,51 +42,6 @@ Rectangle {
 
             Item { Layout.fillWidth: true }
 
-            // BPM / Tempo Button
-            Rectangle {
-                height: ScaleMetrics.dp(28)
-                width: ScaleMetrics.dp(90)
-                radius: 4
-                color: Theme.bgApp
-                border.color: Theme.borderCard
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(4)
-                    Text {
-                        text: "BPM"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.textDim
-                    }
-                    Text {
-                        text: Bridge.seqBpm ? Bridge.seqBpm.toFixed(1) : "120.0"
-                        font.family: Theme.fontMono
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(10)
-                        color: Theme.tone1
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    property real startY: 0
-                    property real startBpm: 120
-                    onPressed: (mouse) => {
-                        startY = mouse.y;
-                        startBpm = Bridge.seqBpm;
-                    }
-                    onPositionChanged: (mouse) => {
-                        if (pressed) {
-                            const dy = startY - mouse.y;
-                            const newBpm = Math.max(40.0, Math.min(300.0, startBpm + dy * 0.5));
-                            Bridge.seqSetBpm(newBpm);
-                        }
-                    }
-                }
-            }
-
             // Master Resync Selector
             Rectangle {
                 height: ScaleMetrics.dp(28)
@@ -124,71 +79,6 @@ Rectangle {
                     }
                 }
             }
-
-            // Live Overdub Toggle
-            Rectangle {
-                height: ScaleMetrics.dp(28)
-                width: ScaleMetrics.dp(85)
-                radius: 4
-                color: Bridge.seqLiveRecordEnabled ? "#450a0a" : Theme.bgApp
-                border.color: Bridge.seqLiveRecordEnabled ? Theme.recording : Theme.borderCard
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(4)
-                    Rectangle {
-                        width: ScaleMetrics.dp(6)
-                        height: ScaleMetrics.dp(6)
-                        radius: 3
-                        color: Bridge.seqLiveRecordEnabled ? Theme.recording : Theme.textDim
-                    }
-                    Text {
-                        text: "OVERDUB"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Bridge.seqLiveRecordEnabled ? Theme.recording : Theme.textDim
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Bridge.seqToggleLiveRecord(!Bridge.seqLiveRecordEnabled)
-                }
-            }
-
-            // Play / Stop Transport Button
-            Rectangle {
-                height: ScaleMetrics.dp(28)
-                width: ScaleMetrics.dp(95)
-                radius: 4
-                color: Bridge.seqIsPlaying ? "#064e3b" : Theme.bgCardActive
-                border.color: Bridge.seqIsPlaying ? "#10b981" : Theme.borderCard
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(6)
-                    Text {
-                        text: Bridge.seqIsPlaying ? "■" : "▶"
-                        font.pixelSize: ScaleMetrics.sp(10)
-                        color: Bridge.seqIsPlaying ? "#10b981" : Theme.textPrimary
-                    }
-                    Text {
-                        text: Bridge.seqIsPlaying ? "STOP" : "PLAY"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(9)
-                        color: Bridge.seqIsPlaying ? "#10b981" : Theme.textPrimary
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Bridge.seqTogglePlay()
-                }
-            }
-
-            Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard }
 
             // Switch to Step Editor
             Rectangle {
@@ -521,31 +411,6 @@ Rectangle {
                         }
                     }
 
-                    // Keybed Trigger Switch
-                    Rectangle {
-                        id: kbdSwRect
-                        width: ScaleMetrics.dp(26)
-                        height: ScaleMetrics.dp(16)
-                        radius: 2
-                        readonly property bool isKbdOn: colRoot.trackData ? colRoot.trackData.keybedEnabled : true
-                        color: kbdSwRect.isKbdOn ? Qt.rgba(colRoot.trackColor.r, colRoot.trackColor.g, colRoot.trackColor.b, 0.25) : Theme.bgApp
-                        border.color: kbdSwRect.isKbdOn ? colRoot.trackColor : Theme.borderCard
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "KBD"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(6)
-                            color: kbdSwRect.isKbdOn ? "#ffffff" : Theme.textDim
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Bridge.seqToggleTrackKeybed(colRoot.trackIdx)
-                        }
-                    }
-
                     // Step playhead display
                     Text {
                         visible: Bridge.seqIsPlaying && colRoot.trackData && colRoot.trackData.activeClipIdx >= 0
@@ -617,7 +482,7 @@ Rectangle {
         readonly property bool hasNotes: clipData ? clipData.hasNotes : false
         readonly property bool isPlaying: trackData ? (trackData.activeClipIdx === clipIndex && Bridge.seqIsPlaying) : false
         readonly property bool isQueued: trackData ? (trackData.queuedClipIdx === clipIndex) : false
-        readonly property bool isSelected: Bridge.seqActiveTrack === trackIndex && Bridge.seqActiveClip === clipIndex
+        readonly property bool isSelected: trackData ? trackData.selectedClipIdx === clipIndex : false
 
         radius: ScaleMetrics.dp(4)
         color: isPlaying ? Qt.rgba(trackColor.r, trackColor.g, trackColor.b, 0.25)

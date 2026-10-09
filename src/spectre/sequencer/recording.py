@@ -20,6 +20,9 @@ class SequencerRecorder:
         self.engine = engine
         self.step_record_enabled: bool = False
         self.live_record_enabled: bool = False
+        # Keys set the cursor step's pitch while stopped only when the step editor
+        # is on screen; elsewhere the keyboard is just played.
+        self.audition_enabled: bool = False
 
         self.active_track_idx: int = 0
         self.active_clip_idx: int = 0
@@ -117,18 +120,9 @@ class SequencerRecorder:
                 s.tie = False
             self._notify_ui("clear_clip")
 
-    def _is_active_track_keybed_enabled(self) -> bool:
-        if hasattr(self.engine, "song") and 0 <= self.active_track_idx < len(self.engine.song.tracks):
-            return getattr(self.engine.song.tracks[self.active_track_idx], "keybed_enabled", True)
-        return True
-
     def handle_midi_message(self, msg: mido.Message) -> None:
         """Process incoming MIDI note from keyboard or external controller."""
         if msg.type not in ("note_on", "note_off"):
-            return
-
-        # Filter: ignore keyboard input if KBD is disabled on active track
-        if not self._is_active_track_keybed_enabled():
             return
 
         pitch = msg.note
@@ -140,7 +134,8 @@ class SequencerRecorder:
             return
 
         # 2. Audition / keyboard pitch change on active step (when stopped and step rec is off)
-        if not self.engine.is_playing and not self.step_record_enabled and msg.type == "note_on" and vel > 0:
+        if (self.audition_enabled and not self.engine.is_playing and not self.step_record_enabled
+                and msg.type == "note_on" and vel > 0):
             clip = self._get_active_clip()
             if clip and 0 <= self.cursor_step < len(clip.steps):
                 step = clip.steps[self.cursor_step]

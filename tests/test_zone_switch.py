@@ -58,7 +58,8 @@ def test_midi_input_demuxer_routes_notes_and_sysex():
     assert any(m.type == "sysex" for m in sysex_items)
 
 
-def test_sync_keybed_routing_avoids_inactive_parts():
+def test_sequencer_never_touches_kbd_switches():
+    """Kbd switches are plain performance settings: sequencer navigation leaves them alone."""
     from src.spectre.ui.bridge import SpectreBridge
     from src.spectre.vector.engine import VectorEngine
 
@@ -73,91 +74,21 @@ def test_sync_keybed_routing_avoids_inactive_parts():
     engine = VectorEngine()
     engine.juno = DummyJuno()
     bridge = SpectreBridge(engine)
-
-    # In default PatchState: Part 1 vol=110, Part 2 vol=85, Parts 3..16 vol=0 (inactive)
-    assert bridge._part_is_active(1) is True
-    assert bridge._part_is_active(2) is True
-    assert bridge._part_is_active(3) is False
-    assert bridge._part_is_active(4) is False
-
-    called_parts = []
-    def track_zone_switch(part_idx, enabled):
-        called_parts.append((part_idx, enabled))
-
-    bridge.setPartZoneSwitch = MagicMock(side_effect=track_zone_switch)
-
-    # 1. Select Track 0 (target Part 1, keybed_enabled=True)
-    called_parts.clear()
-    bridge.seqSelectTrack(0)
-
-    # Part 1 should be armed, Part 2 disarmed. Inactive parts (3..16) must NEVER be called!
-    assert (1, True) in called_parts
-    assert (2, False) in called_parts
-    for p in range(3, 17):
-        assert not any(call[0] == p for call in called_parts)
-
-    # 2. Select Track 2 (default target Part 3, which is inactive)
-    called_parts.clear()
-    bridge.seqSelectTrack(2)
-
-    # Part 1 and Part 2 must be disarmed (or kept False).
-    # Part 3 and parts 4..16 must NEVER receive SysEx/zone calls!
-    for p in range(3, 17):
-        assert not any(call[0] == p for call in called_parts)
-
-    # 3. Retarget Track 2 to active Part 2 and test keybed switch
-    bridge.sequencer.song.tracks[2].keybed_enabled = False
-    called_parts.clear()
-    bridge.seqSetTrackTargetPart(2, 2)
-    assert bridge.sequencer.song.tracks[2].keybed_enabled is False
-    # Since keybed_enabled is False, Part 2 should NOT be armed
-    assert not any(call[0] == 2 and call[1] is True for call in called_parts)
-
-    # 4. Turn KBD ON for Track 2
-    called_parts.clear()
-    bridge.seqToggleTrackKeybed(2)
-    assert bridge.sequencer.song.tracks[2].keybed_enabled is True
-    assert (2, True) in called_parts
-    assert (1, False) in called_parts
-
-
-def test_view_transition_syncs_and_restores_zones():
-    from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
-
-    class DummyJuno:
-        def __init__(self):
-            self.midi = MagicMock()
-            self.midi.juno_out.closed = False
-            self.midi.is_juno_connected = True
-            self.set_perf_zone = MagicMock()
-            self.set_perf_zone_switch = MagicMock()
-
-    engine = VectorEngine()
-    engine.juno = DummyJuno()
-    bridge = SpectreBridge(engine)
-
-    # Start in PERFORMANCE view with Part 1 and Part 2 ON
-    bridge._active_view = "PERFORMANCE"
+    bridge.setPartZoneSwitch = MagicMock()
     bridge.patch_state.perf_parts[0].zone_switch = True
     bridge.patch_state.perf_parts[1].zone_switch = True
 
-    # Transition to SEQUENCER
     bridge.setActiveView("SEQUENCER")
-    assert bridge.activeView == "SEQUENCER"
-
-    # In SEQUENCER, Track 0 is focused (target Part 1), so Part 1 is ON, Part 2 is OFF
-    assert bridge.patch_state.perf_parts[0].zone_switch is True
-    assert bridge.patch_state.perf_parts[1].zone_switch is False
-
-    # Transition back to PERFORMANCE
+    for t in range(5):
+        bridge.seqSelectTrack(t)
+    bridge.seqSetTrackTargetPart(0, 2)
+    bridge.setActiveView("LIVE")
     bridge.setActiveView("PERFORMANCE")
-    assert bridge.activeView == "PERFORMANCE"
 
-    # Both Part 1 and Part 2 should be restored to True
+    bridge.setPartZoneSwitch.assert_not_called()
+    engine.juno.set_perf_zone_switch.assert_not_called()
     assert bridge.patch_state.perf_parts[0].zone_switch is True
     assert bridge.patch_state.perf_parts[1].zone_switch is True
-
 
 
 def test_midi_input_demuxer_keeps_only_sysex_and_is_bounded():

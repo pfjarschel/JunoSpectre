@@ -295,3 +295,19 @@ def test_selecting_another_clip_while_armed_launches_it():
     assert song.tracks[1].queued_clip_idx == -1  # already playing, nothing to do
     recorder.set_target(track_idx=1, clip_idx=5)
     assert song.tracks[1].queued_clip_idx == 5
+
+
+def test_track_selected_clip_round_trip_and_legacy_default():
+    from src.spectre.sequencer.models import Track
+
+    t = Track(selected_clip_idx=5)
+    assert Track.from_dict(t.to_dict()).selected_clip_idx == 5
+
+    # Songs saved before per-track selection start on the clip that was playing
+    legacy = t.to_dict()
+    legacy.pop("selected_clip_idx")
+    legacy["active_clip_idx"] = 3
+    legacy["keybed_enabled"] = False  # old key is ignored
+    assert Track.from_dict(legacy).selected_clip_idx == 3
+
+    assert Track(selected_clip_idx=99).selected_clip_idx == 7

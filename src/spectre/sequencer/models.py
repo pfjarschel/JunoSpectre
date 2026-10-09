@@ -145,27 +145,28 @@ class Track:
     track_id: int = 1                   # 1..5
     name: str = "Track"
     target_parts: List[int] = dataclasses.field(default_factory=lambda: [1])
-    keybed_enabled: bool = True         # Physical Roland keybed input active for this track
     clock_divider: str = "1/16"         # "1/32", "1/16", "1/8", "1/4", "1/8T", "1/16T"
     swing: float = 0.50                 # 0.50 (neutral) .. 0.75 (max swing)
     active_clip_idx: int = 0            # Current playing clip index (or -1 if stopped)
     queued_clip_idx: int = -1           # Staged clip for next measure (-1 if none)
+    selected_clip_idx: int = 0          # Clip being edited; what Play starts from a stop
     clips: List[Clip] = dataclasses.field(default_factory=list)
 
     def __post_init__(self):
         if not self.clips:
             self.clips = [Clip(name=f"Pattern {i+1}", length=16) for i in range(8)]
+        self.selected_clip_idx = max(0, min(len(self.clips) - 1, int(self.selected_clip_idx)))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "track_id": int(self.track_id),
             "name": self.name,
             "target_parts": list(self.target_parts),
-            "keybed_enabled": bool(self.keybed_enabled),
             "clock_divider": self.clock_divider,
             "swing": float(self.swing),
             "active_clip_idx": int(self.active_clip_idx),
             "queued_clip_idx": int(self.queued_clip_idx),
+            "selected_clip_idx": int(self.selected_clip_idx),
             "clips": [c.to_dict() for c in self.clips],
         }
 
@@ -177,11 +178,12 @@ class Track:
             track_id=max(1, min(5, int(d.get("track_id", 1)))),
             name=str(d.get("name", "Track")),
             target_parts=[int(p) for p in d.get("target_parts", [1])] or [1],
-            keybed_enabled=bool(d.get("keybed_enabled", True)),
             clock_divider=str(d.get("clock_divider", "1/16")),
             swing=max(0.50, min(0.75, float(d.get("swing", 0.50)))),
             active_clip_idx=int(d.get("active_clip_idx", 0)),
             queued_clip_idx=int(d.get("queued_clip_idx", -1)),
+            # Older songs have no selection: start from the clip that was playing
+            selected_clip_idx=max(0, int(d.get("selected_clip_idx", d.get("active_clip_idx", 0)))),
             clips=clips,
         )
 
@@ -234,7 +236,6 @@ def default_tracks() -> List[Track]:
     """Build the standard 5 tracks: Tracks 1-4 for Synth Parts 1-4, Track 5 for Drums Part 10."""
     track_names = ["Track 1 (Lead)", "Track 2 (Poly)", "Track 3 (Bass)", "Track 4 (Pad)", "Track 5 (Drums)"]
     target_parts = [[1], [2], [3], [4], [10]]
-    kbd_enabled = [True, True, True, True, True]
 
     tracks = []
     for i in range(5):
@@ -242,7 +243,6 @@ def default_tracks() -> List[Track]:
             track_id=i + 1,
             name=track_names[i],
             target_parts=target_parts[i],
-            keybed_enabled=kbd_enabled[i],
             clock_divider="1/16",
             swing=0.50,
             active_clip_idx=0,

@@ -50,6 +50,11 @@ class SequencerClock:
         return self._running and not self._paused
 
     @property
+    def is_stopped(self) -> bool:
+        """Fully stopped (not merely paused)."""
+        return not self._running
+
+    @property
     def current_tick(self) -> int:
         return self._tick_counter
 

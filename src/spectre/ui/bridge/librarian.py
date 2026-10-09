@@ -149,8 +149,8 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         except Exception:
             pass
         try:
-            extras["motion"] = {"bpm": float(self.engine.motion.bpm),
-                                "speed": float(self.engine.motion.speed)}
+            # Tempo is global (owned by the song), so patches don't carry it
+            extras["motion"] = {"speed": float(self.engine.motion.speed)}
         except Exception:
             pass
         return extras

@@ -261,10 +261,9 @@ class SetlistBridgeMixin(BridgeBaseMixin):
         if hasattr(self, "sequencer"):
             if new_seq_song is not None:
                 self.sequencer.song = new_seq_song
-                self.sequencer.set_bpm(new_seq_song.bpm)
+                self._apply_tempo(new_seq_song.bpm)
             else:
-                bpm = float(entry.get("bpm") or 120.0)
-                self.sequencer.set_bpm(bpm)
+                self._apply_tempo(float(entry.get("bpm") or 120.0))
             self.sequencer.stop()
 
         # 6. Apply macro values

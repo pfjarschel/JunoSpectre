@@ -274,13 +274,13 @@ Rectangle {
             }
         }
 
-        // BPM Display
+        // BPM (the one global tempo)
         Rectangle {
             height: ScaleMetrics.dp(38)
             width: ScaleMetrics.dp(70)
             radius: ScaleMetrics.dp(4)
             color: Theme.bgApp
-            border.color: Theme.borderCard
+            border.color: bpmArea.pressed ? Theme.tone3 : Theme.borderCard
             border.width: 1
 
             RowLayout {
@@ -299,6 +299,84 @@ Rectangle {
                     font.pixelSize: ScaleMetrics.sp(12)
                     color: Theme.tone3
                 }
+            }
+
+            // Global tempo (sequencer + vector motion): drag right/up or left/down, 1 BPM per 4px
+            MouseArea {
+                id: bpmArea
+                anchors.fill: parent
+                preventStealing: true
+                property real startX: 0
+                property real startY: 0
+                property real startBpm: 120
+                onPressed: (mouse) => { startX = mouse.x; startY = mouse.y; startBpm = Math.round(Bridge.bpm); }
+                onPositionChanged: (mouse) => {
+                    // Right/up increases: at the top edge the horizontal axis is always free
+                    const d = (mouse.x - startX) + (startY - mouse.y);
+                    const next = Math.max(20, Math.min(300, startBpm + Math.round(d / ScaleMetrics.dp(4))));
+                    if (next !== Math.round(Bridge.bpm)) Bridge.setBpm(next);
+                }
+            }
+        }
+
+        // Master Transport: sequencer overdub arm (doubles as the REC indicator on
+        // every screen, naming the track it records into) and Play/Stop.
+        Rectangle {
+            id: recBtn
+            readonly property bool armed: Bridge.seqLiveRecordEnabled
+            height: ScaleMetrics.dp(38)
+            width: ScaleMetrics.dp(54)
+            radius: ScaleMetrics.dp(4)
+            color: armed ? "#450a0a" : (recArea.pressed ? Theme.bgCardActive : Theme.bgApp)
+            border.color: armed ? Theme.recording : Theme.borderCard
+            border.width: 1
+
+            ColumnLayout {
+                anchors.centerIn: parent
+                spacing: 0
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: "● REC"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(9)
+                    color: recBtn.armed ? Theme.recording : Theme.textDim
+                }
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: recBtn.armed
+                    text: Bridge.seqLiveRecordWaiting ? "WAIT" : "T" + (Bridge.seqActiveTrack + 1)
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Bridge.seqLiveRecordWaiting ? "#f59e0b" : Theme.textPrimary
+                }
+            }
+
+            MouseArea {
+                id: recArea
+                anchors.fill: parent
+                onClicked: Bridge.seqToggleLiveRecord(!Bridge.seqLiveRecordEnabled)
+            }
+        }
+
+        Rectangle {
+            height: ScaleMetrics.dp(38)
+            width: ScaleMetrics.dp(46)
+            radius: ScaleMetrics.dp(4)
+            color: Bridge.seqIsPlaying ? "#064e3b" : (playArea.pressed ? Theme.bgCardActive : Theme.bgApp)
+            border.color: Bridge.seqIsPlaying ? "#10b981" : Theme.borderCard
+            border.width: 1
+
+            Text {
+                anchors.centerIn: parent
+                text: Bridge.seqIsPlaying ? "■" : "▶"
+                font.pixelSize: ScaleMetrics.sp(14)
+                color: Bridge.seqIsPlaying ? "#10b981" : Theme.textPrimary
+            }
+
+            MouseArea {
+                id: playArea
+                anchors.fill: parent
+                onClicked: Bridge.seqTogglePlay()
             }
         }
 
