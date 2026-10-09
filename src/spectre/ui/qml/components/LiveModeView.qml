@@ -46,10 +46,11 @@ Rectangle {
             // Keyboard plays a different part than the active track sends to
             KbdPartHint {}
 
-            // Master Resync Selector
+            // Realign: every N bars all tracks restart from step 1 together
+            // (pulls polymetric / triplet tracks back in line)
             Rectangle {
                 height: ScaleMetrics.dp(28)
-                width: ScaleMetrics.dp(85)
+                width: ScaleMetrics.dp(112)
                 radius: 4
                 color: Theme.bgApp
                 border.color: Theme.borderCard
@@ -59,7 +60,7 @@ Rectangle {
                     anchors.centerIn: parent
                     spacing: ScaleMetrics.dp(4)
                     Text {
-                        text: "SYNC"
+                        text: "REALIGN"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
                         color: Theme.textDim
@@ -75,7 +76,7 @@ Rectangle {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        const options = [0, 1, 2, 4, 8];
+                        const options = [0, 1, 2, 4, 8, 16, 32];
                         const curr = Bridge.seqMasterResync;
                         const idx = options.indexOf(curr);
                         const next = options[(idx + 1) % options.length];

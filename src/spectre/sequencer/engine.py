@@ -131,7 +131,7 @@ class SequencerEngine:
                 track.selected_clip_idx = clip_idx
 
     def launch_scene(self, scene_idx: int) -> None:
-        """Simultaneously queue all 5 tracks to the designated scene row."""
+        """Queue every track to the designated scene row."""
         for t in self.song.tracks:
             if 0 <= scene_idx < len(t.clips):
                 t.queued_clip_idx = scene_idx
@@ -148,7 +148,7 @@ class SequencerEngine:
             # 1. Process scheduled NoteOff events
             self._process_note_offs(total_ticks)
 
-            # 2. Master Resync check (e.g. at 4, 8, 16 bars)
+            # 2. Realign: every N bars all tracks restart from step 1 together
             is_bar_downbeat = (tick_in_bar == 0)
             if self.song.master_resync_bars > 0 and is_bar_downbeat:
                 bar_ticks = self.clock.ppqn * 4 * self.song.master_resync_bars

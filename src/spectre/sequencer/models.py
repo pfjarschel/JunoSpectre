@@ -204,7 +204,7 @@ class Track:
 class SequencerSong:
     """Complete 8-track sequencer state container."""
     bpm: float = 120.0
-    master_resync_bars: int = 0         # 0 = Off, 1, 2, 4, 8, 16, 32
+    master_resync_bars: int = 0         # Realign period: 0 = Off, 1, 2, 4, 8, 16, 32 bars
     tracks: List[Track] = dataclasses.field(default_factory=list)
 
     def __post_init__(self):
