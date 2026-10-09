@@ -995,7 +995,7 @@ Rectangle {
             }
 
             // Note Grid: 3 x 4, sorted low to high (left-right, top-bottom).
-            // Tap a note to edit it, double-tap to delete it, tap a free cell to add one.
+            // Tap a note to edit it, double-tap to delete it; on the selected pad, tap a free cell to add one.
             GridLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -1048,8 +1048,10 @@ Rectangle {
                                     root.selectNote(stepOffset, cell.note.pitch);
                                     return;
                                 }
+                                // The first tap only selects the pad; free cells add notes once it's selected
+                                const wasSelected = stepRoot.isSelected;
                                 root.selectNote(stepOffset, -1);
-                                if (!Bridge.seqStepRecordEnabled) {
+                                if (wasSelected && !Bridge.seqStepRecordEnabled) {
                                     const p = Bridge.seqAddStepNote(stepOffset);
                                     if (p >= 0) {
                                         root.selectedNotePitch = p;
