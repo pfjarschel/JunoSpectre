@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -661,3 +662,96 @@ class PerformanceProtocolMixin:
         """Read a part's sounding image from its temp buffer (no part switch)."""
         part = self._check_part(part_index)
         return self.read_patch_at(temp_perf_patch_base(part), f"Part {part}", timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # User performances (MSB 85 LSB 0, 001..128) at 20 nn 00 00: same block
+    # layout as the temporary performance (MIDI Implementation p.19), so a
+    # save copies the sounding performance block by block. Part blocks only
+    # reference patches by Bank/PC: Pi-only part images are not carried.
+    # ------------------------------------------------------------------
+
+    USER_PERF_MSB = 85
+    USER_PERF_LSB = 0
+
+    #: (offset, size) of every block in a performance (MIDI Implementation p.20-27).
+    PERF_BLOCKS = (
+        [((0x00, 0x00, 0x00, 0x00), 0x38),    # Common
+         ((0x00, 0x00, 0x02, 0x00), 0x91),    # MFX1
+         ((0x00, 0x00, 0x04, 0x00), 0x54),    # Chorus
+         ((0x00, 0x00, 0x06, 0x00), 0x53),    # Reverb
+         ((0x00, 0x00, 0x08, 0x00), 0x91),    # MFX2
+         ((0x00, 0x00, 0x0A, 0x00), 0x91)]    # MFX3
+        + [((0x00, 0x00, 0x10 + ch, 0x00), 0x0C) for ch in range(16)]  # MIDI
+        + [((0x00, 0x00, 0x20 + pt, 0x00), 0x31) for pt in range(16)]  # Part
+        + [((0x00, 0x00, 0x50 + ch, 0x00), 0x1B) for ch in range(16)]  # Zone
+        + [((0x00, 0x00, 0x60, 0x00), 0x5A)]  # Controller
+    )
+
+    @staticmethod
+    def user_perf_base(number: int) -> tuple:
+        """Base address of user performance 1..128."""
+        n = int(number)
+        if not 1 <= n <= 128:
+            raise ValueError(f"User performance must be 1..128, got {number}")
+        return (0x20, n - 1, 0x00, 0x00)
+
+    def read_performance_image(self, base=ADDR_TEMP_PERFORMANCE,
+                               timeout: float = 1.0) -> list:
+        """Read every block of a performance as [(offset, bytes)]."""
+        image = []
+        for offset, size in self.PERF_BLOCKS:
+            res = self.request_data(add_address(base, offset), self._rq_size(size), timeout=timeout)
+            if res is None or len(res) < size:
+                raise TimeoutError(f"Timed out reading performance block {offset[2]:02X}.")
+            image.append((offset, bytes(res[:size])))
+        return image
+
+    def encode_performance_sysex(self, image: list, base) -> bytes:
+        """Encode a performance image as .syx DT1 messages (slot backups)."""
+        blob = bytearray()
+        for offset, data in image:
+            blob += bytes([0xF0] + self.sysex.build_dt1(add_address(base, offset), data) + [0xF7])
+        return bytes(blob)
+
+    def read_user_perf_name(self, number: int, timeout: float = 1.0) -> str:
+        res = self.request_data(add_address(self.user_perf_base(number), PERF_COMMON_NAME),
+                                (0x00, 0x00, 0x00, PERF_COMMON_NAME_SIZE), timeout=timeout)
+        if res is None or len(res) < PERF_COMMON_NAME_SIZE:
+            raise TimeoutError(f"Timed out reading user performance {number} name.")
+        return bytes(res[:PERF_COMMON_NAME_SIZE]).decode("latin1", errors="replace").strip()
+
+    def write_user_performance(self, number: int, name: str, timeout: float = 1.5,
+                               write_gap: float = 0.02, retries: int = 3) -> list[str]:
+        """Copy the sounding (temporary) performance into user performance 1..128.
+
+        Returns mismatch labels ([] = stored + verified).
+        """
+        base = self.user_perf_base(number)
+        image = self.read_performance_image(timeout=timeout)
+        common = bytearray(image[0][1])
+        common[0:PERF_COMMON_NAME_SIZE] = (
+            str(name).encode("ascii", errors="replace")[:PERF_COMMON_NAME_SIZE]
+            .ljust(PERF_COMMON_NAME_SIZE, b" "))
+        image[0] = (image[0][0], bytes(common))
+        failures = 0
+        with self.paced_init_writes(write_gap):
+            for offset, data in image:
+                try:
+                    self.send_data(add_address(base, offset), data)
+                except Exception as e:
+                    failures += 1
+                    logger.warning(f"User performance write failed at {offset}: {e}")
+        if failures:
+            return [f"{failures} DT1 send failures"]
+        time.sleep(self.FLASH_SETTLE_S)
+        last_err = ""
+        for _ in range(max(1, retries)):
+            try:
+                actual = self.read_performance_image(base, timeout=timeout)
+                break
+            except Exception as e:
+                last_err = str(e)
+                time.sleep(0.4)
+        else:
+            return [f"unreadable after write: {last_err}"]
+        return [f"block {off[2]:02X}" for (off, want), (_, got) in zip(image, actual) if want != got]

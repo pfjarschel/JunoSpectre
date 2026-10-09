@@ -1223,3 +1223,70 @@ def test_write_back_updates_file_and_slot(tmp_path):
     snaps = load_spectre(out)["spectre"]["part_snapshots"]
     assert snaps["6"]["common"]["name"].strip() == "FACTEDIT"
     assert "4" not in snaps
+
+
+# --- save performance to keyboard ----------------------------------------------
+
+def _seed_temp_performance(juno, name=b"SOUNDING"):
+    from src.spectre.core.sysex import add_address
+    for i, (offset, size) in enumerate(JunoClient.PERF_BLOCKS):
+        data = bytearray([i % 100] * size)
+        if i == 0:
+            data[0:12] = name.ljust(12)
+        juno._store[add_address(ADDR_TEMP_PERFORMANCE, offset)] = bytes(data)
+
+
+def test_user_perf_layout():
+    assert JunoClient.user_perf_base(1) == (0x20, 0x00, 0x00, 0x00)
+    assert JunoClient.user_perf_base(128) == (0x20, 0x7F, 0x00, 0x00)
+    with pytest.raises(ValueError):
+        JunoClient.user_perf_base(0)
+    assert len(JunoClient.PERF_BLOCKS) == 55
+    assert JunoClient.PERF_BLOCKS[-1] == ((0x00, 0x00, 0x60, 0x00), 0x5A)
+
+
+def test_write_user_performance_copies_temp(tmp_path, monkeypatch):
+    from src.spectre.core.sysex import add_address
+    _, juno, _ = _bridge_rig(tmp_path)
+    monkeypatch.setattr(JunoClient, "FLASH_SETTLE_S", 0.0)
+    _seed_temp_performance(juno)
+    assert juno.write_user_performance(5, "GIG SONG") == []
+    base = JunoClient.user_perf_base(5)
+    assert juno.read_user_perf_name(5) == "GIG SONG"
+    part3 = add_address(base, (0x00, 0x00, 0x22, 0x00))
+    assert juno._store[part3] == juno._store[add_address(ADDR_TEMP_PERFORMANCE, (0, 0, 0x22, 0))]
+
+
+def test_keyboard_blockers(tmp_path):
+    bridge, _, _ = _edited_part_rig(tmp_path)
+    assert bridge.perfKeyboardBlockers(False) == "P2 Pi file · P4 edited · P6 Pi-only sound"
+    # Writing back first fixes the user-slot part only.
+    assert bridge.perfKeyboardBlockers(True) == "P2 Pi file · P6 Pi-only sound"
+    assert bridge.savePerfToDevice(3, "NOPE").startswith("no keyboard equivalent for: P2")
+
+
+def test_save_perf_to_keyboard(tmp_path, monkeypatch):
+    bridge, juno, repo = _bridge_rig(tmp_path)
+    monkeypatch.setattr(JunoClient, "FLASH_SETTLE_S", 0.0)
+    bridge.setSoundMode("PERFORM")
+    _seed_temp_performance(juno)
+    # Slot 7 holds an older performance: backed up, then dropped once verified.
+    juno.write_user_performance(7, "OLD ONE")
+    bridge._user_perf_slots = [{"number": 7, "msb": 85, "lsb": 0, "pc": 6,
+                                "name": "OLD ONE", "free": False}]
+    assert bridge.savePerfToDevice(7, "NEW ONE") == ""
+    assert juno.read_user_perf_name(7) == "NEW ONE"
+    assert bridge.getUserPerfSlots()[0]["name"] == "NEW ONE"
+    assert not list(repo.user_dir.glob("BACKUP_PERF_*"))
+
+
+def test_refresh_user_perf_names(tmp_path):
+    from src.spectre.core.sysex import add_address
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    for n in range(1, 129):
+        juno._store[add_address(JunoClient.user_perf_base(n), (0, 0, 0, 0))] = (
+            b"INIT PERFORM" if n > 1 else b"MY SONG     ")
+    assert bridge.refreshUserPerfNames() == 128
+    slots = bridge.getUserPerfSlots()
+    assert (slots[0]["name"], slots[0]["free"]) == ("MY SONG", False)
+    assert slots[1]["free"] is True

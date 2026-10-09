@@ -382,6 +382,99 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
             self._set_current_slot_ref(msb, lsb, pc, "patch")
         return err
 
+    # -- user performances (keyboard) ------------------------------------
+
+    @pyqtSlot(result="QVariantList")
+    def getUserPerfSlots(self) -> list:
+        """Cached keyboard user performance list (read by refreshUserPerfNames)."""
+        return [dict(s) for s in (getattr(self, "_user_perf_slots", None) or [])]
+
+    @pyqtSlot(result=int)
+    def refreshUserPerfNames(self) -> int:
+        """Read the 128 user performance names from the keyboard. -1 = offline."""
+        juno = self.juno
+        if juno is None or not hasattr(juno, "read_user_perf_name"):
+            return -1
+        slots, fails = [], 0
+        for n in range(1, 129):
+            try:
+                name = juno.read_user_perf_name(n)
+                fails = 0
+            except Exception:
+                fails += 1
+                if fails >= 5:
+                    logger.warning("refreshUserPerfNames: aborting after 5 failures")
+                    break
+                continue
+            slots.append({"number": n, "msb": 85, "lsb": 0, "pc": n - 1, "name": name,
+                          "free": name.strip().upper().startswith("INIT") or not name.strip()})
+        self._user_perf_slots = slots
+        return len(slots)
+
+    @pyqtSlot(bool, result=str)
+    def perfKeyboardBlockers(self, assume_write_back: bool = False) -> str:
+        """Why this performance can't be saved to the keyboard ('' = it can).
+
+        A keyboard performance only references patches by Bank/PC, so every
+        part must sound an unedited keyboard patch. With assume_write_back,
+        edited user-slot parts count as fixed (the save writes them first).
+        """
+        reasons = []
+        for p in self.patch_state.perf_parts:
+            if p.patch_file:
+                reasons.append(f"P{p.part_index} Pi file")
+            elif p.modified:
+                if self._part_write_target(p)[0] == "slot":
+                    if not assume_write_back:
+                        reasons.append(f"P{p.part_index} edited")
+                else:
+                    reasons.append(f"P{p.part_index} Pi-only sound")
+        return " · ".join(reasons)
+
+    @pyqtSlot(int, str, result=str)
+    def savePerfToDevice(self, number: int, name: str) -> str:
+        """Store the sounding performance in keyboard user performance 1..128.
+
+        Returns '' on success. An occupied slot is backed up to a BACKUP_*.syx
+        file first (deleted once the write verifies, kept if it fails).
+        """
+        repo = self._librarian()
+        juno = self.juno
+        if repo is None:
+            return "librarian unavailable"
+        if juno is None or not hasattr(juno, "write_user_performance"):
+            return "no synthesizer connected"
+        blockers = self.perfKeyboardBlockers(False)
+        if blockers:
+            return f"no keyboard equivalent for: {blockers}"
+        try:
+            base = juno.user_perf_base(int(number))
+        except ValueError as e:
+            return str(e)
+        backup_path = None
+        try:
+            try:
+                old_name = juno.read_user_perf_name(int(number))
+                if not (old_name.strip().upper().startswith("INIT") or not old_name.strip()):
+                    blob = juno.encode_performance_sysex(juno.read_performance_image(base), base)
+                    safe = "".join(c if c.isalnum() or c in "-_ " else "_" for c in old_name).strip()
+                    backup_path = repo.user_dir / f"BACKUP_PERF_{int(number):03d}_{safe}.syx"
+                    backup_path.write_bytes(blob)
+            except Exception as e:
+                return f"backup failed, aborting: {e}"
+            mismatches = juno.write_user_performance(int(number), name or self._patch_name)
+            if mismatches:
+                kept = f" (slot backup kept at {backup_path.name})" if backup_path else ""
+                return "verify failed: " + ", ".join(mismatches) + kept
+            self._drop_backup(backup_path)
+            for slot in getattr(self, "_user_perf_slots", None) or []:
+                if slot["number"] == int(number):
+                    slot["name"], slot["free"] = str(name or self._patch_name)[:12], False
+            return ""
+        except Exception as e:
+            logger.warning(f"savePerfToDevice failed: {e}")
+            return str(e)
+
     def _write_user_slot(self, state, msb: int, lsb: int, pc: int) -> str:
         """Write + verify a sound into a user slot. Returns '' on success.
 

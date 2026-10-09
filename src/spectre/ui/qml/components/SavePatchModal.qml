@@ -27,6 +27,11 @@ Rectangle {
     // PERFORM: edited parts ({part, name, target, label}) and the write-back choice
     property var editedParts: []
     property bool updateSources: false
+    readonly property bool isPerf: Bridge.soundMode === "PERFORM"
+    // Why the performance can't go to the keyboard ("" = it can); edited
+    // user-slot parts count as fixed when they're being written back first.
+    property string perfBlockers: (visible && isPerf) ? Bridge.perfKeyboardBlockers(updateSources) : ""
+    onPerfBlockersChanged: if (perfBlockers !== "") { saveToDevice = false; disarm() }
 
     function writableCount() {
         var n = 0
@@ -51,8 +56,6 @@ Rectangle {
         category = Bridge.currentCategoryCode()
         tagsText = ""
         favorite = false
-        // No hardware saves for performances: Pi files only (touch has no tooltips,
-        // so the device option is hidden outright, not explained).
         saveToDevice = Bridge.soundMode === "PERFORM" ? false : Bridge.currentIsUserSlot
         editedParts = Bridge.soundMode === "PERFORM" ? (Bridge.perfEditedParts() || []) : []
         updateSources = false
@@ -73,18 +76,18 @@ Rectangle {
 
     function loadSlots() {
         var list = []
-        try { list = Bridge.getUserSlotIndex() || [] } catch (e) { list = [] }
+        try { list = (isPerf ? Bridge.getUserPerfSlots() : Bridge.getUserSlotIndex()) || [] } catch (e) { list = [] }
         root.slotList = list
         // Self-healing: a machine that never ran the dump has an empty
         // index — pull the names live from the keyboard instead.
-        if (list.length < 256 && !root.readingSlots) {
+        if (list.length < (isPerf ? 128 : 256) && !root.readingSlots) {
             root.readingSlots = true
             slotRefreshTimer.start()
             return
         }
         // Default: current slot when overwriting, else first free slot.
         var defIdx = -1
-        if (Bridge.currentIsUserSlot) {
+        if (!isPerf && Bridge.currentIsUserSlot) {
             for (var i = 0; i < list.length; i++) {
                 if (list[i].msb === Bridge.currentMsb && list[i].lsb === Bridge.currentLsb && list[i].pc === Bridge.currentPc) {
                     defIdx = i
@@ -120,7 +123,7 @@ Rectangle {
 
     function slotIsOrigin() {
         var s = selectedSlot()
-        return s !== null && Bridge.currentIsUserSlot && s.msb === Bridge.currentMsb && s.lsb === Bridge.currentLsb && s.pc === Bridge.currentPc
+        return s !== null && !isPerf && Bridge.currentIsUserSlot && s.msb === Bridge.currentMsb && s.lsb === Bridge.currentLsb && s.pc === Bridge.currentPc
     }
 
     function disarm() { confirmArmed = false }
@@ -362,12 +365,12 @@ Rectangle {
                 elide: Text.ElideRight
             }
 
-            // Device checkbox (hidden for performances: Pi-only saves)
+            // Device checkbox (performances: only when every part has a keyboard equivalent)
             Rectangle {
-                visible: Bridge.soundMode !== "PERFORM"
                 Layout.fillWidth: true
-                Layout.preferredHeight: Bridge.soundMode !== "PERFORM" ? ScaleMetrics.dp(30) : 0
+                Layout.preferredHeight: ScaleMetrics.dp(30)
                 height: ScaleMetrics.dp(30)
+                opacity: root.perfBlockers === "" ? 1.0 : 0.45
                 radius: ScaleMetrics.dp(4)
                 color: devArea.pressed ? Theme.bgCardActive : "#10141d"
                 border.color: root.saveToDevice ? "#fbbf24" : Theme.borderCard
@@ -385,7 +388,7 @@ Rectangle {
                         Text { anchors.centerIn: parent; text: "✓"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: "#000000"; visible: root.saveToDevice }
                     }
                     Text {
-                        text: "Also save to keyboard (user slot)"
+                        text: root.isPerf ? "Also save to keyboard (user performance)" : "Also save to keyboard (user slot)"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(9)
                         color: root.saveToDevice ? "#fbbf24" : Theme.textSecondary
@@ -395,12 +398,23 @@ Rectangle {
                     id: devArea
                     anchors.fill: parent
                     onClicked: {
-                        if (root.busy) return
+                        if (root.busy || root.perfBlockers !== "") return
                         root.saveToDevice = !root.saveToDevice
                         root.disarm()
                         if (root.saveToDevice && root.slotList.length === 0) root.loadSlots()
                     }
                 }
+            }
+
+            Text {
+                visible: root.perfBlockers !== ""
+                Layout.fillWidth: true
+                text: "Keyboard save needs every part on an unedited keyboard patch. Not possible for: " + root.perfBlockers
+                font.pixelSize: ScaleMetrics.sp(8)
+                color: Theme.textDim
+                wrapMode: Text.Wrap
+                maximumLineCount: 3
+                elide: Text.ElideRight
             }
 
             // Slot list header: count + manual refresh from keyboard
@@ -409,7 +423,8 @@ Rectangle {
                 spacing: ScaleMetrics.dp(8)
                 visible: root.saveToDevice
                 Text {
-                    text: "USER SLOT" + (root.slotList.length > 0 ? (" (" + root.slotList.length + "/256)") : "")
+                    text: (root.isPerf ? "USER PERFORMANCE" : "USER SLOT")
+                          + (root.slotList.length > 0 ? (" (" + root.slotList.length + (root.isPerf ? "/128)" : "/256)")) : "")
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(9)
                     color: Theme.textDim
@@ -629,7 +644,7 @@ Rectangle {
             running: false
             onTriggered: {
                 var n = -1
-                try { n = Bridge.refreshUserSlotNames() } catch (e) { n = -1 }
+                try { n = root.isPerf ? Bridge.refreshUserPerfNames() : Bridge.refreshUserSlotNames() } catch (e) { n = -1 }
                 root.readingSlots = false
                 if (n < 0) {
                     root.errorText = "No synthesizer connected — slot names unavailable."
@@ -663,7 +678,8 @@ Rectangle {
                 }
                 if (root.saveToDevice) {
                     var s = root.selectedSlot()
-                    var err = Bridge.saveCurrentToDevice(s.msb, s.lsb, s.pc, root.patchName)
+                    var err = root.isPerf ? Bridge.savePerfToDevice(s.number, root.patchName)
+                                          : Bridge.saveCurrentToDevice(s.msb, s.lsb, s.pc, root.patchName)
                     root.busy = false
                     if (err !== "") { root.errorText = err; root.disarm(); return }
                 } else {
