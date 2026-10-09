@@ -6,6 +6,10 @@ Target key taxonomy (all continuous numerics; enums excluded):
   tone.<i>.<param>           Per-tone i=1..4 (tvf_*, tva_*, pitch, lfo, sends)
   tone.all.<param>           Fan-out alias: same delta applied to each tone's own base
   vector.<param>             x, y (0..1), speed, bpm
+  part.<param>               Performance mixer (level, pan, sends)
+
+In PERFORM mode common/tone/part targets act on the parts each link picks
+(MacroLink.parts); effects targets act on the assigned FX processors.
 
 Each entry: {key, title, category, min, max, span}.
 span = full-scale delta for macro=+1 @ depth=1 (sounding = base + pol*depth*span*value).
@@ -45,10 +49,17 @@ def build_macro_catalog() -> list[dict]:
         _trio("effects.reverb_predelay", "Reverb PreDelay", "FX", 0, 127, 127),
         _trio("effects.reverb_diffusion", "Reverb Diffusion", "FX", 0, 127, 127),
         _trio("effects.reverb_tone", "Reverb Tone", "FX", 0, 127, 127),
-        _trio("effects.mfx_dry_send", "MFX Dry Send", "FX", 0, 127, 127),
-        _trio("effects.mfx_chorus_send", "MFX Chorus Send", "FX", 0, 127, 127),
-        _trio("effects.mfx_reverb_send", "MFX Reverb Send", "FX", 0, 127, 127),
+        _trio("effects.mfx_dry_send", "MFX1 Dry Send", "FX", 0, 127, 127),
+        _trio("effects.mfx_chorus_send", "MFX1 Chorus Send", "FX", 0, 127, 127),
+        _trio("effects.mfx_reverb_send", "MFX1 Reverb Send", "FX", 0, 127, 127),
     ]
+    # Performance MFX2/3 (PERFORM only; no-op in PATCH mode)
+    for n in (2, 3):
+        cat += [
+            _trio(f"effects.mfx{n}_dry_send", f"MFX{n} Dry Send", "FX", 0, 127, 127),
+            _trio(f"effects.mfx{n}_chorus_send", f"MFX{n} Chorus Send", "FX", 0, 127, 127),
+            _trio(f"effects.mfx{n}_reverb_send", f"MFX{n} Reverb Send", "FX", 0, 127, 127),
+        ]
     # --- PER-TONE + ALL ---
     per_tone = [
         ("tvf_cutoff", "Cutoff", "FILTER", 0, 127, 127),
@@ -95,16 +106,13 @@ def build_macro_catalog() -> list[dict]:
         _trio("vector.speed", "Motion Speed", "MORPH", 0.25, 4.0, 1.75),
         _trio("vector.bpm", "Tempo BPM", "MORPH", 20.0, 300.0, 140.0),
     ]
-    # --- PERFORMANCE (Parts 1..16 mixer & offsets) ---
-    for p in range(1, 17):
-        cat += [
-            _trio(f"perf.part.{p}.level", f"Part {p} Level", "PERFORMANCE", 0, 127, 127),
-            _trio(f"perf.part.{p}.pan", f"Part {p} Pan", "PERFORMANCE", 0, 127, 63),
-            _trio(f"perf.part.{p}.chorus_send", f"Part {p} Chorus Send", "PERFORMANCE", 0, 127, 127),
-            _trio(f"perf.part.{p}.reverb_send", f"Part {p} Reverb Send", "PERFORMANCE", 0, 127, 127),
-            _trio(f"perf.part.{p}.cutoff_offset", f"Part {p} Cutoff", "PERFORMANCE", 1, 127, 63),
-            _trio(f"perf.part.{p}.resonance_offset", f"Part {p} Resonance", "PERFORMANCE", 1, 127, 63),
-        ]
+    # --- PART (performance mixer; PERFORM only, parts picked per link) ---
+    cat += [
+        _trio("part.level", "Part Level", "PART", 0, 127, 127),
+        _trio("part.pan", "Part Pan", "PART", 0, 127, 63),
+        _trio("part.chorus_send", "Part Chorus Send", "PART", 0, 127, 127),
+        _trio("part.reverb_send", "Part Reverb Send", "PART", 0, 127, 127),
+    ]
     return cat
 
 
@@ -119,7 +127,7 @@ def get_macro_catalog() -> list[dict]:
 
 
 def get_macro_categories() -> list[str]:
-    return ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PERFORMANCE"]
+    return ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART"]
 
 
 def filter_macro_targets(category: str = "ALL", query: str = "") -> list[dict]:

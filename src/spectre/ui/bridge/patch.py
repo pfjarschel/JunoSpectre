@@ -1792,6 +1792,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                         juno.set_perf_chorus_param(param, clamped)
                 except Exception as e:
                     logger.error(f"Error setting perf chorus on synth: {e}")
+            self._rebasePerfFx("chorus", param, clamped)
             self.chorusParamsChanged.emit()
             self.routingChanged.emit()
             try:
@@ -1817,6 +1818,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                             juno.set_part_patch_chorus_param(n, param, clamped)
                     except Exception as e:
                         logger.error(f"Error setting part {n} chorus on synth: {e}")
+                self._rebasePerfFx("chorus", param, clamped)
                 self.chorusParamsChanged.emit()
                 self.routingChanged.emit()
                 return
@@ -1859,6 +1861,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                         juno.set_perf_reverb_param(param, clamped)
                 except Exception as e:
                     logger.error(f"Error setting perf reverb on synth: {e}")
+            self._rebasePerfFx("reverb", param, clamped)
             self.reverbParamsChanged.emit()
             self.routingChanged.emit()
             try:
@@ -1884,6 +1887,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                             juno.set_part_patch_reverb_param(n, param, clamped)
                     except Exception as e:
                         logger.error(f"Error setting part {n} reverb on synth: {e}")
+                self._rebasePerfFx("reverb", param, clamped)
                 self.reverbParamsChanged.emit()
                 self.routingChanged.emit()
                 return
@@ -2138,6 +2142,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                                           reverb_send=int(holder.reverb_send))
                 except Exception as e:
                     logger.error(f"Error setting perf MFX sends on synth: {e}")
+            self._rebasePerfFx(f"mfx{tgt[1]}", send_type, clamped)
             self.mfxParamsChanged.emit()
             self.routingChanged.emit()
             try:
@@ -2167,6 +2172,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                                                     reverb_send=int(m["reverb"]))
                     except Exception as e:
                         logger.error(f"Error setting part MFX sends on synth: {e}")
+                self._rebasePerfFx(f"mfx{self.editingPerfMfx}", send_type, clamped)
                 self.mfxParamsChanged.emit()
                 self.routingChanged.emit()
                 return
@@ -2683,6 +2689,8 @@ class PatchBridgeMixin(BridgeBaseMixin):
                     juno.set_perf_part_level(part_index, int(vol))
                 except Exception as e:
                     logger.debug(f"setPartVolume: synth write failed: {e}")
+            self._rebaseDirect([(f"part.level@{part_index}",
+                                 self.patch_state.perf_parts[part_index - 1].volume)])
             self.perfPartsChanged.emit()
 
     @pyqtSlot(int, int)
@@ -2696,6 +2704,8 @@ class PatchBridgeMixin(BridgeBaseMixin):
                     juno.set_perf_part_pan(part_index, int(pan))
                 except Exception as e:
                     logger.debug(f"setPartPan: synth write failed: {e}")
+            self._rebaseDirect([(f"part.pan@{part_index}",
+                                 self.patch_state.perf_parts[part_index - 1].pan)])
             self.perfPartsChanged.emit()
 
     @pyqtSlot()
@@ -2724,7 +2734,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                             kept_macros = self.patch_state.macros
                             self.patch_state = state
                             self.patch_state.macros = kept_macros
-                            self.patch_state.macro_bases = {}
+                            self._resetMacroBases()
                             self.patch_state.effects.routing_preset = ""  # No algorithm preset selected on hardware sync
                             self._patch_name = state.common.name
                             self._sound_mode = state.sound_mode

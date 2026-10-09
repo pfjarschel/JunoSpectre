@@ -496,11 +496,19 @@ class MacroLink:
     target_key: str = ""
     polarity: int = 1          # +1 | -1
     depth: float = 0.5         # 0..1 (stepped 25/50/75/100 in UI)
+    # PERFORM only, for patch/part targets: [] = the edited part,
+    # [0] = all sounding parts, else part numbers 1..16.
+    parts: list[int] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.polarity not in (1, -1):
             self.polarity = 1 if self.polarity >= 0 else -1
         self.depth = max(0.0, min(1.0, float(self.depth)))
+        try:
+            nums = sorted({int(p) for p in (self.parts or []) if 0 <= int(p) <= 16})
+        except (TypeError, ValueError):
+            nums = []
+        self.parts = [0] if 0 in nums else nums
 
 
 @dataclass

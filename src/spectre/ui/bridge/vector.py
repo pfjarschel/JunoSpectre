@@ -14,7 +14,7 @@ from ...core.macro_targets import (
     macro_delta,
     resolve_sounding,
 )
-from ...core.patch_state import ToneState
+from ...core.patch_state import PatchState, ToneState
 from ...vector.engine import MorphMode, VectorState
 from ...vector.math import CrossfadeCurve
 from ...vector.motion import AutomatorType, LoopMode, RecorderState, WavetableSweepMode
@@ -92,7 +92,53 @@ class VectorBridgeMixin(BridgeBaseMixin):
     def _macroEntry(cls, key: str) -> dict | None:
         if cls._macro_catalog_by_key is None:
             cls._macro_catalog_by_key = {e["key"]: e for e in get_macro_catalog()}
-        return cls._macro_catalog_by_key.get(key)
+        return cls._macro_catalog_by_key.get(cls._splitPart(key)[0])
+
+    # Targets that live in a part (patch params + performance mixer). In
+    # PERFORM mode their concrete keys carry the part: "tone.1.tvf_cutoff@3".
+    _PART_SCOPED_PREFIXES = ("common.", "tone.", "part.")
+
+    @staticmethod
+    def _splitPart(key: str) -> tuple[str, int]:
+        """"tone.1.tvf_cutoff@3" -> ("tone.1.tvf_cutoff", 3); no suffix -> (key, 0)."""
+        base, sep, part = key.partition("@")
+        if sep:
+            try:
+                return base, max(1, min(16, int(part)))
+            except ValueError:
+                pass
+        return base, 0
+
+    def _editedPart(self) -> int:
+        return max(1, min(16, int(getattr(self.patch_state, "active_perf_part", 1) or 1)))
+
+    def _linkParts(self, link, key: str) -> list[int]:
+        """Parts a link drives in PERFORM: [] = edited part, [0] = sounding parts."""
+        parts = list(getattr(link, "parts", []) or [])
+        if not parts:
+            return [self._editedPart()]
+        if 0 in parts:
+            # Sounding = unmuted with level > 0 (a level macro may take a part
+            # to 0, so level targets only skip muted parts)
+            return [p.part_index for p in self.patch_state.perf_parts[:16]
+                    if not p.muted and (p.volume > 0 or key == "part.level")]
+        return [n for n in parts if 1 <= n <= 16]
+
+    def _concreteKeys(self, link) -> list[str]:
+        """Concrete keys a link drives right now (tone.all fan-out + parts)."""
+        key = link.target_key
+        keys = self._expandKey(key)
+        if not key.startswith(self._PART_SCOPED_PREFIXES):
+            return keys
+        if not self._in_perform():
+            return [] if key.startswith("part.") else keys
+        return [f"{k}@{n}" for n in self._linkParts(link, key) for k in keys]
+
+    def _scopedKey(self, key: str) -> str:
+        """Direct edits of the edited part's params rebase that part's key in PERFORM."""
+        if "@" in key or not key.startswith(("common.", "tone.")) or not self._in_perform():
+            return key
+        return f"{key}@{self._editedPart()}"
 
     @staticmethod
     def _expandKey(key: str) -> list[str]:
@@ -106,12 +152,20 @@ class VectorBridgeMixin(BridgeBaseMixin):
         out = []
         for mi, slot in enumerate(self.patch_state.macros):
             for link in slot.links:
-                if key in self._expandKey(link.target_key):
+                if key in self._concreteKeys(link):
                     out.append((mi, link))
         return out
 
     def _readAbsolute(self, key: str) -> float:
         ps = self.patch_state
+        key, part = self._splitPart(key)
+        if part:
+            if key.startswith("part."):
+                p = ps.perf_parts[part - 1]
+                return float({"level": p.volume, "pan": p.pan, "chorus_send": p.chorus_send,
+                              "reverb_send": p.reverb_send}.get(key[5:], 0))
+            if part != self._editedPart():
+                ps = self._macroPartState(part)
         try:
             if key == "common.level":
                 return float(ps.common.level)
@@ -130,6 +184,8 @@ class VectorBridgeMixin(BridgeBaseMixin):
             if key == "common.analog_feel":
                 return float(ps.common.analog_feel)
             if key.startswith("effects."):
+                if key in self._PERF_FX_MACROS and self._in_perform():
+                    return float(self._perfFxMacroValue(key))
                 return float(getattr(ps.effects, key.split(".", 1)[1], 0.0))
             if key.startswith("tone."):
                 _, idx, param = key.split(".", 2)
@@ -195,8 +251,11 @@ class VectorBridgeMixin(BridgeBaseMixin):
 
     def _applyAbsolute(self, key: str, sounding: float) -> None:
         """Write sounding value to patch_state + synth. Never touches bases."""
+        base_key, part = self._splitPart(key)
+        if part:
+            self._applyPartKey(base_key, part, int(round(max(0, sounding))))
+            return
         ps = self.patch_state
-        juno = self.engine.juno
         is_int = not key.startswith("vector.")
         val = sounding
         if key.startswith("vector."):
@@ -213,6 +272,111 @@ class VectorBridgeMixin(BridgeBaseMixin):
                 self._apply_tempo(val)
             return
         iv = int(round(max(0, val))) if is_int else val
+        if key in self._PERF_FX_MACROS and self._in_perform():
+            self._pushPerfFxMacro(key, max(0, min(127, iv)))
+            return
+        if key.startswith("effects."):
+            field = key.split(".", 1)[1]
+            if hasattr(ps.effects, field):
+                setattr(ps.effects, field, max(0, min(127, iv)))
+                self._pushEffect(key, iv)
+            return
+        self._applyPatchKey(key, iv, ps)
+
+    def _applyPartKey(self, key: str, part: int, iv: int) -> None:
+        """PERFORM: write a part-scoped macro value to performance part `part`."""
+        if key.startswith("part."):
+            self._applyMixerMacro(key[5:], part, iv)
+            return
+        if part == self._editedPart():
+            self._applyPatchKey(key, iv, self.patch_state)
+            return
+        # Another part: its own mirrored state, synth writes aimed at its buffer
+        st = self._macroPartState(part)
+        juno = self.engine.juno
+        if juno is None:
+            self._applyPatchKey(key, iv, st, edited=False)
+            return
+        with juno.part_scope(part):
+            self._applyPatchKey(key, iv, st, edited=False)
+
+    def _applyMixerMacro(self, param: str, part: int, iv: int) -> None:
+        p = self.patch_state.perf_parts[part - 1]
+        v = max(0, min(127, iv))
+        juno = self.engine.juno
+        try:
+            if param == "level":
+                p.volume = v
+                if juno:
+                    juno.set_perf_part_level(part, v)
+            elif param == "pan":
+                p.pan = v
+                if juno:
+                    juno.set_perf_part_pan(part, v)
+            elif param == "chorus_send":
+                p.chorus_send = v
+                if juno:
+                    juno.set_perf_part_fx(part, chorus=v)
+            elif param == "reverb_send":
+                p.reverb_send = v
+                if juno:
+                    juno.set_perf_part_fx(part, reverb=v)
+        except Exception as e:
+            logger.debug(f"macro mixer push failed for part {part} {param}: {e}")
+        self.perfPartsChanged.emit()
+
+    def _macroPartState(self, part: int):
+        """Mirror of a non-edited part's patch for macro bases and writes.
+
+        Read once from the part's temp buffer; falls back to its saved
+        snapshot, then to defaults. Dropped by _forgetMacroPart / resets.
+        """
+        cache = self.__dict__.setdefault("_macro_part_states", {})
+        st = cache.get(part)
+        if st is not None:
+            return st
+        juno = self.engine.juno
+        if juno is not None:
+            try:
+                with juno.part_scope(part):
+                    common = juno.read_patch_common(timeout=1.0)
+                    tones = juno.read_all_tones(timeout=1.0)
+                if common is not None and tones:
+                    st = PatchState()
+                    st.common = common
+                    st.tones = list(tones)
+            except Exception as e:
+                logger.debug(f"macro: reading part {part} failed: {e}")
+                st = None
+        if st is None:
+            snap = (getattr(self, "_part_snapshots", None) or {}).get(str(part))
+            if isinstance(snap, dict):
+                try:
+                    from ...core.spectre_format import patch_state_from_dict
+                    st = patch_state_from_dict(snap)
+                except Exception:
+                    st = None
+        if st is None:
+            st = PatchState()
+        cache[part] = st
+        return st
+
+    def _forgetMacroPart(self, part: int) -> None:
+        """A part's sound changed: drop its mirror and its macro bases."""
+        self.__dict__.setdefault("_macro_part_states", {}).pop(int(part), None)
+        suffix = f"@{int(part)}"
+        bases = self.patch_state.macro_bases
+        for k in [k for k in bases if k.endswith(suffix) and not k.startswith("part.")]:
+            del bases[k]
+
+    def _resetMacroBases(self) -> None:
+        """Re-capture every macro base from the synth (e.g. after a mode switch)."""
+        self.patch_state.macro_bases = {}
+        self._macro_part_states = {}
+
+    def _applyPatchKey(self, key: str, iv: int, ps, edited: bool = True) -> None:
+        """Common/tone macro write into `ps` + the synth's current patch base."""
+        juno = self.engine.juno
         try:
             if key == "common.level":
                 ps.common.level = max(0, min(127, iv))
@@ -246,16 +410,72 @@ class VectorBridgeMixin(BridgeBaseMixin):
                 ps.common.analog_feel = max(0, min(127, iv))
                 if juno:
                     juno.set_patch_analog_feel(ps.common.analog_feel)
-            elif key.startswith("effects."):
-                field = key.split(".", 1)[1]
-                if hasattr(ps.effects, field):
-                    setattr(ps.effects, field, max(0, min(127, iv)))
-                    self._pushEffect(key, iv)
             elif key.startswith("tone."):
                 _, idx, param = key.split(".", 2)
-                self._applyToneParam(int(idx), param, iv)
+                self._applyToneParam(int(idx), param, iv, ps=ps, edited=edited)
         except (ValueError, AttributeError, IndexError) as e:
             logger.debug(f"macro apply failed for {key}: {e}")
+
+    # FX macro key -> (block, param). In PERFORM mode these act on the
+    # assigned processor (perf FX or source part); MFX keys pick a fixed slot.
+    _PERF_FX_MACROS: dict[str, tuple[str, str]] = {
+        "effects.chorus_level": ("chorus", "level"),
+        "effects.chorus_rate": ("chorus", "rate"),
+        "effects.chorus_depth": ("chorus", "depth"),
+        "effects.chorus_predelay": ("chorus", "preDelay"),
+        "effects.chorus_feedback": ("chorus", "feedback"),
+        "effects.reverb_level": ("reverb", "level"),
+        "effects.reverb_predelay": ("reverb", "preDelay"),
+        "effects.reverb_time": ("reverb", "time"),
+        "effects.reverb_damp": ("reverb", "damp"),
+        "effects.reverb_diffusion": ("reverb", "diffusion"),
+        "effects.reverb_tone": ("reverb", "tone"),
+        **{f"effects.mfx{'' if n == 1 else n}_{send}_send": (f"mfx{n}", send)
+           for n in (1, 2, 3) for send in ("dry", "chorus", "reverb")},
+    }
+    _PERF_FX_KEYS: dict[tuple[str, str], str] = {v: k for k, v in _PERF_FX_MACROS.items()}
+    # Index of each param in the _cho_view / _rev_view tuples
+    _CHO_VIEW_IDX = {"level": 1, "rate": 3, "depth": 4, "preDelay": 5, "feedback": 6}
+    _REV_VIEW_IDX = {"level": 1, "preDelay": 2, "time": 3, "damp": 4, "diffusion": 5, "tone": 6}
+
+    def _perfFxMacroValue(self, key: str) -> int:
+        block, param = self._PERF_FX_MACROS[key]
+        if block == "chorus":
+            return int(self._cho_view()[self._CHO_VIEW_IDX[param]])
+        if block == "reverb":
+            return int(self._rev_view()[self._REV_VIEW_IDX[param]])
+        entry = self._rail_mfx_entry(int(block[3]))
+        return int(entry[{"dry": "drySend", "chorus": "chorusSend", "reverb": "reverbSend"}[param]])
+
+    def _pushPerfFxMacro(self, key: str, iv: int) -> None:
+        """Write a macro value to the assigned processor (never the part patch FX)."""
+        block, param = self._PERF_FX_MACROS[key]
+        self._macro_pushing = True
+        try:
+            if block.startswith("mfx"):
+                self.setPerfMfxSlotSend(int(block[3]), param, iv)
+                return
+            target = self._cho_target() if block == "chorus" else self._rev_target()
+            if target[0] == "part":
+                # Without the source part's FX cached the setters would fall back
+                # to the edited part's patch FX; skip instead.
+                self._ensure_part_fx_cache(target[1])
+                if self._part_cached(target[1]) is None:
+                    return
+            if block == "chorus":
+                self.setChorusParam(param, iv)
+            else:
+                self.setReverbParam(param, iv)
+        finally:
+            self._macro_pushing = False
+
+    def _rebasePerfFx(self, block: str, param: str, value: int) -> None:
+        """Manual PERFORM FX edit = new macro base (skipped for macro-driven writes)."""
+        if getattr(self, "_macro_pushing", False):
+            return
+        key = self._PERF_FX_KEYS.get((block, param))
+        if key:
+            self._rebaseDirect([(key, value)])
 
     def _pushEffect(self, key: str, iv: int) -> None:
         juno = self.engine.juno
@@ -303,7 +523,8 @@ class VectorBridgeMixin(BridgeBaseMixin):
         elif param == "tva_level":
             t.level = max(0, min(127, iv))
             if not t.muted:
-                self.engine.set_tone_level(tone_idx, t.level)
+                if edited:
+                    self.engine.set_tone_level(tone_idx, t.level)
                 if juno:
                     juno.set_tone_level(tone_idx, t.level)
         elif param == "tva_pan":
@@ -362,6 +583,7 @@ class VectorBridgeMixin(BridgeBaseMixin):
         """Treat direct edits as new bases (semantics ii). No-op for unlinked keys."""
         touched: set[str] = set()
         for key, new_base in keys_bases:
+            key = self._scopedKey(key)
             if not self._macroLinksFor(key):
                 continue
             entry = self._macroEntry(key)
@@ -412,6 +634,9 @@ class VectorBridgeMixin(BridgeBaseMixin):
             self._rebaseDirect([(key, base)])
 
     def _emitForMacroKeys(self, keys: set[str]) -> None:
+        # Editors only show the edited part; other parts need no refresh
+        edited = self._editedPart()
+        keys = {b for b, n in map(self._splitPart, keys) if n in (0, edited)}
         if any(k.startswith("tone.") and ".tvf_" in k or k.startswith("common.cutoff") or k.startswith("common.resonance") for k in keys):
             try:
                 self.masterCutoffChanged.emit(self.masterCutoff)
@@ -612,21 +837,25 @@ class VectorBridgeMixin(BridgeBaseMixin):
         out = []
         for pos, link in enumerate(self.patch_state.macros[index - 1].links):
             entry = self._macroEntry(link.target_key)
-            for concrete in self._expandKey(link.target_key):
-                out.append({
-                    "pos": pos,
-                    "key": link.target_key,
-                    "concrete": concrete,
-                    "title": entry["title"] if entry else link.target_key,
-                    "category": entry["category"] if entry else "",
-                    "polarity": link.polarity,
-                    "depth": link.depth,
-                    "span": float(entry["span"]) if entry else 127.0,
-                    "min": float(entry["min"]) if entry else 0.0,
-                    "max": float(entry["max"]) if entry else 127.0,
-                    "liveValue": self._readAbsolute(concrete),
-                })
-                break  # one row per link (all-variant shows first live value)
+            # One row per link; tone.all / multi-part links show the first live value
+            concretes = self._concreteKeys(link)
+            concrete = concretes[0] if concretes else link.target_key
+            out.append({
+                "pos": pos,
+                "key": link.target_key,
+                "concrete": concrete,
+                "title": entry["title"] if entry else link.target_key,
+                "category": entry["category"] if entry else "",
+                "polarity": link.polarity,
+                "depth": link.depth,
+                "span": float(entry["span"]) if entry else 127.0,
+                "min": float(entry["min"]) if entry else 0.0,
+                "max": float(entry["max"]) if entry else 127.0,
+                "liveValue": self._readAbsolute(concrete) if concretes else 0.0,
+                "partScoped": link.target_key.startswith(self._PART_SCOPED_PREFIXES),
+                "perfOnly": link.target_key.startswith(("part.", "effects.mfx2_", "effects.mfx3_")),
+                "parts": list(link.parts),
+            })
         return out
 
     @pyqtSlot(str, str, result="QVariantList")
@@ -657,7 +886,7 @@ class VectorBridgeMixin(BridgeBaseMixin):
         from ...core.patch_state import MacroLink
 
         slot.links.append(MacroLink(key, 1, 0.5))
-        for concrete in self._expandKey(key):
+        for concrete in self._concreteKeys(slot.links[-1]):
             self._ensureBase(concrete)
         self._recomputeForMacro(index - 1)
         self.macrosChanged.emit()
@@ -667,8 +896,50 @@ class VectorBridgeMixin(BridgeBaseMixin):
         if 1 <= index <= len(self.patch_state.macros):
             slot = self.patch_state.macros[index - 1]
             if 0 <= pos < len(slot.links):
+                dropped = self._concreteKeys(slot.links[pos])
                 slot.links.pop(pos)
+                self._releaseKeys(dropped)
                 self.macrosChanged.emit()
+
+    def _releaseKeys(self, keys: list[str]) -> None:
+        """Params a link stopped driving go back to base + remaining macros."""
+        for key in keys:
+            if key in self.patch_state.macro_bases:
+                self._recomputeTarget(key)
+        if keys:
+            self._emitForMacroKeys(set(keys))
+
+    def _setLinkParts(self, index: int, pos: int, parts: list[int]) -> None:
+        if not 1 <= index <= len(self.patch_state.macros):
+            return
+        slot = self.patch_state.macros[index - 1]
+        if not 0 <= pos < len(slot.links):
+            return
+        link = slot.links[pos]
+        before = self._concreteKeys(link)
+        link.parts = parts
+        link.__post_init__()  # normalize
+        after = set(self._concreteKeys(link))
+        self._releaseKeys([k for k in before if k not in after])
+        self._recomputeForMacro(index - 1)
+        self.macrosChanged.emit()
+
+    @pyqtSlot(int, int, str)
+    def setMacroLinkPartMode(self, index: int, pos: int, mode: str) -> None:
+        """Part target of a link: "edit" (edited part) or "all" (sounding parts)."""
+        self._setLinkParts(index, pos, [0] if str(mode).lower() == "all" else [])
+
+    @pyqtSlot(int, int, int)
+    def toggleMacroLinkPart(self, index: int, pos: int, part: int) -> None:
+        """Toggle one fixed part (1..16); none left falls back to the edited part."""
+        if not 1 <= index <= len(self.patch_state.macros):
+            return
+        links = self.patch_state.macros[index - 1].links
+        if not 0 <= pos < len(links) or not 1 <= int(part) <= 16:
+            return
+        current = [p for p in links[pos].parts if p != 0]
+        n = int(part)
+        self._setLinkParts(index, pos, [p for p in current if p != n] if n in current else current + [n])
 
     @pyqtSlot(int, int, int, float)
     def setMacroLink(self, index: int, pos: int, polarity: int, depth: float) -> None:
@@ -694,7 +965,7 @@ class VectorBridgeMixin(BridgeBaseMixin):
     def _recomputeForMacro(self, macro_idx: int) -> None:
         touched: set[str] = set()
         for link in self.patch_state.macros[macro_idx].links:
-            for concrete in self._expandKey(link.target_key):
+            for concrete in self._concreteKeys(link):
                 self._ensureBase(concrete)
                 self._recomputeTarget(concrete)
                 touched.add(concrete)

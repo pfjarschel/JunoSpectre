@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import enum
 import logging
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -85,6 +86,8 @@ class BaseProtocolMixin:
         self._cached_patch_part: Optional[int] = None
         self._cached_sound_mode: Optional[SoundMode] = None
         self._active_perf_part: int = 1
+        # Per-thread override of the patch base (see part_scope)
+        self._part_scope = threading.local()
         self._min_send_interval_s: float = 0.0
         self._last_send_time: float = 0.0
         # Called with the part index (1..16) for every DT1 into a performance
@@ -127,6 +130,20 @@ class BaseProtocolMixin:
         if self._cached_patch_part != self._active_perf_part:
             self._cached_patch_base = None
             self._cached_patch_part = self._active_perf_part
+
+    @contextmanager
+    def part_scope(self, part: int):
+        """Aim patch-level reads/writes at performance part `part` (PERFORM only).
+
+        Thread-local and leaves the edited part alone, so macros can drive
+        parts other than the one the editors target.
+        """
+        previous = getattr(self._part_scope, "part", None)
+        self._part_scope.part = max(1, min(16, int(part)))
+        try:
+            yield self
+        finally:
+            self._part_scope.part = previous
 
     @contextmanager
     def paced_init_writes(self, gap: float = INIT_WRITE_GAP_S):
@@ -252,6 +269,9 @@ class BaseProtocolMixin:
         PATCH mode -> 1F 00 00 00. PERFORM mode -> 11 00 00 00 +
         (active_perf_part - 1) * 0x20, so deep edits target the selected part.
         """
+        scoped = getattr(self._part_scope, "part", None)
+        if scoped is not None:
+            return temp_perf_patch_base(scoped)
         if (not force_refresh and self._cached_patch_base is not None
                 and self._cached_patch_part == self._active_perf_part):
             return self._cached_patch_base

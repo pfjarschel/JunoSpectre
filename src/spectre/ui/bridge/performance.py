@@ -577,6 +577,9 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                     juno.set_perf_part_fx(int(part_index), **kwargs)
             except Exception as e:
                 logger.debug(f"setPartFx: synth write failed: {e}")
+        if int(which) in (1, 2):
+            send = "chorus_send" if int(which) == 1 else "reverb_send"
+            self._rebaseDirect([(f"part.{send}@{int(part_index)}", v)])
         self.perfPartsChanged.emit()
 
     @pyqtSlot(int, int, int)
@@ -710,6 +713,9 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     def editPerfPart(self, part_index: int) -> None:
         """Select which performance part patch editors target (deep edit)."""
         if 1 <= part_index <= 16:
+            # The part we leave may have been edited: macros re-read it when needed
+            self.__dict__.setdefault("_macro_part_states", {}).pop(
+                int(self.patch_state.active_perf_part), None)
             self.patch_state.active_perf_part = part_index
             juno = self.juno
             if juno is not None:
@@ -898,6 +904,9 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 juno.set_sound_mode(SoundMode[m])
             except Exception as e:
                 logger.debug(f"setSoundMode: synth write failed: {e}")
+        if m != str(getattr(self, "_sound_mode", "")).upper():
+            # Bases belong to one mode's sounds; re-capture them in the new one
+            self._resetMacroBases()
         self._sound_mode = m
         self.patch_state.sound_mode = m
         self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
@@ -995,6 +1004,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                                                 chorus_send=m["chorus"], reverb_send=m["reverb"])
                     except Exception as e:
                         logger.debug(f"setPerfMfx: part synth write failed: {e}")
+                for send in ("dry", "chorus", "reverb"):
+                    self._rebasePerfFx(f"mfx{s}", send, m[send])
                 self._emit_fx_editor_signals()
                 return
         if holder is not None:
@@ -1009,10 +1020,42 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                                       chorus_send=int(chorus), reverb_send=int(reverb))
             except Exception as e:
                 logger.debug(f"setPerfMfx: synth write failed: {e}")
+        if holder is not None:
+            for send in ("dry", "chorus", "reverb"):
+                self._rebasePerfFx(f"mfx{s}", send, getattr(holder, f"{send}_send"))
         try:
             self.perfFxChanged.emit(); self.mfxParamsChanged.emit(); self.routingChanged.emit()
         except Exception:
             pass
+
+    def setPerfMfxSlotSend(self, slot: int, send: str, val: int) -> None:
+        """One send (dry/chorus/reverb) of MFX slot 1..3, origin-resolved (macros)."""
+        s = max(1, min(3, int(slot)))
+        if send not in ("dry", "chorus", "reverb"):
+            return
+        v = max(0, min(127, int(val)))
+        holder = self._perf_slot(s)
+        if holder is None:
+            return
+        origin = int(getattr(holder, "source", 0))
+        juno = self.juno
+        try:
+            if origin != 0:
+                self._ensure_part_fx_cache(origin)
+                cached = self._part_cached(origin)
+                if cached is None:
+                    return
+                cached["mfx"][send] = v
+                if juno is not None:
+                    juno.set_part_patch_mfx(origin, **{f"{send}_send": v})
+            else:
+                setattr(holder, f"{send}_send", v)
+                if juno is not None:
+                    juno.set_perf_mfx(s, **{f"{send}_send": v})
+        except Exception as e:
+            logger.debug(f"setPerfMfxSlotSend: synth write failed: {e}")
+        self._rebasePerfFx(f"mfx{s}", send, v)
+        self._emit_fx_editor_signals()
 
     @pyqtSlot(str)
     def copyOriginToPerform(self, which: str) -> bool:
@@ -1250,7 +1293,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 if not self._apply_playlist_state(patch_state_to_dict(state), INIT_PERF_NAME, snaps):
                     return
                 self.patch_state.macros = state.macros
-                self.patch_state.macro_bases = {}
+                self._resetMacroBases()
                 self._push_perf_fx_details()
                 self._reset_engine_to_patch_state()
         finally:
@@ -1396,6 +1439,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         except Exception as e:
             logger.warning(f"pickPartPatch failed: {e}")
             return False
+        self._forgetMacroPart(target)
         # A freshly assigned sound should answer the keyboard (Kbd switch on).
         if not part.zone_switch:
             self.setPartZoneSwitch(target, True)
@@ -1426,6 +1470,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         kept_macros = self.patch_state.macros
         state.macros = kept_macros if kept_macros else state.macros
         self.patch_state = state
+        self._macro_part_states = {}
         self.patch_state.sound_mode = "PERFORM"
         self._sound_mode = "PERFORM"
         self._patch_name = getattr(state, "perf_name", "") or entry_name or self._patch_name

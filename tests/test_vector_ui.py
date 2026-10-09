@@ -1361,3 +1361,22 @@ def test_bridge_qml_cutoff_and_mode_bindings():
     assert bridge.soundMode == "PATCH"
 
 
+
+
+def test_fx_macro_follows_assigned_processor_in_perform():
+    """PERFORM: FX macros read and write the assigned processor, not the part patch FX."""
+    from src.spectre.core.patch_state import MacroLink, MacroSlot
+
+    engine = VectorEngine()
+    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    ps = bridge.patch_state
+    bridge._sound_mode = "PERFORM"
+    ps.perf_fx.chorus_source = 0
+    ps.perf_fx.chorus_level = 50
+    ps.effects.chorus_level = 10
+    ps.macro_bases = {}
+    ps.macros[0] = MacroSlot(name="CHO", links=[MacroLink("effects.chorus_level", 1, 0.5)])
+
+    bridge.setMacro(1, 0.2)  # +0.2 * 0.5 * 127 = +12.7
+    assert ps.perf_fx.chorus_level == pytest.approx(63, abs=1)
+    assert ps.effects.chorus_level == 10

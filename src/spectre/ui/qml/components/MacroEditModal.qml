@@ -18,6 +18,7 @@ Rectangle {
     property var linkList: []
     property bool keyboardVisible: false
     readonly property var depthSteps: [0.25, 0.5, 0.75, 1.0]
+    readonly property bool perform: Bridge.soundMode === "PERFORM"
 
     function open(macroIndex) {
         targetMacro = Math.max(1, Math.min(8, macroIndex));
@@ -33,6 +34,32 @@ Rectangle {
         visible = false;
         keyboardVisible = false;
         picker.close();
+        partPicker.close();
+    }
+
+    // Part target label: [] = edited part, [0] = sounding parts, else P1 P3 / P2–P5
+    function partsLabel(parts) {
+        if (!parts || parts.length === 0) return "EDIT";
+        if (parts.indexOf(0) >= 0) return "ALL";
+        const out = [];
+        let i = 0;
+        while (i < parts.length) {
+            let j = i;
+            while (j + 1 < parts.length && parts[j + 1] === parts[j] + 1) j++;
+            if (j - i >= 2) {
+                out.push("P" + parts[i] + "–P" + parts[j]);
+            } else {
+                for (let k = i; k <= j; k++) out.push("P" + parts[k]);
+            }
+            i = j + 1;
+        }
+        return out.join(" ");
+    }
+
+    function linkAt(pos) {
+        for (let i = 0; i < linkList.length; i++)
+            if (linkList[i].pos === pos) return linkList[i];
+        return null;
     }
 
     function refreshLinks() {
@@ -219,6 +246,15 @@ Rectangle {
 
                 Item { Layout.fillWidth: true }
                 Text {
+                    visible: root.perform
+                    Layout.preferredWidth: ScaleMetrics.dp(96)
+                    text: "PARTS"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Theme.textDim
+                    horizontalAlignment: Text.AlignHCenter
+                }
+                Text {
                     Layout.preferredWidth: ScaleMetrics.dp(36)
                     text: "DIR"
                     font.bold: true
@@ -279,10 +315,54 @@ Rectangle {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: modelData.category + " • live " + root.fmtParam(modelData.liveValue, modelData.max)
-                                      + " • " + root.sweepRange(modelData)
+                                text: (!root.perform && modelData.perfOnly)
+                                      ? modelData.category + " • performance mode only"
+                                      : modelData.category + " • live " + root.fmtParam(modelData.liveValue, modelData.max)
+                                        + " • " + root.sweepRange(modelData)
                                 font.pixelSize: ScaleMetrics.sp(8)
                                 font.family: Theme.fontMono
+                                color: Theme.textDim
+                            }
+                        }
+
+                        // Part target (PERFORM, part params only): EDIT / ALL / fixed parts
+                        Item {
+                            visible: root.perform
+                            Layout.preferredWidth: ScaleMetrics.dp(96)
+                            Layout.preferredHeight: ScaleMetrics.dp(28)
+                            Rectangle {
+                                id: partChip
+                                anchors.fill: parent
+                                visible: modelData.partScoped
+                                radius: ScaleMetrics.dp(4)
+                                readonly property bool fixed: modelData.parts.length > 0
+                                color: Theme.bgSurface
+                                border.color: fixed || (partPicker.visible && partPicker.linkPos === modelData.pos)
+                                              ? root.macroColor : Theme.borderCard
+                                border.width: 1
+                                Text {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: ScaleMetrics.dp(4)
+                                    anchors.rightMargin: ScaleMetrics.dp(4)
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: root.partsLabel(modelData.parts)
+                                    elide: Text.ElideRight
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(9)
+                                    font.family: Theme.fontMono
+                                    color: partChip.fixed ? root.macroColor : Theme.textSecondary
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: partPicker.open(modelData.pos, partChip)
+                                }
+                            }
+                            Text {
+                                anchors.centerIn: parent
+                                visible: !modelData.partScoped
+                                text: "—"
+                                font.pixelSize: ScaleMetrics.sp(10)
                                 color: Theme.textDim
                             }
                         }
@@ -447,6 +527,138 @@ Rectangle {
                         color: "#000000"
                     }
                     MouseArea { anchors.fill: parent; onClicked: root.close() }
+                }
+            }
+        }
+
+        // Part target picker (opened from a link's PARTS chip)
+        Item {
+            id: partPicker
+            anchors.fill: parent
+            visible: false
+            z: 60
+
+            property int linkPos: -1
+            readonly property var parts: {
+                const l = root.linkAt(linkPos);
+                return l ? l.parts : [];
+            }
+            readonly property bool editMode: parts.length === 0
+            readonly property bool allMode: parts.indexOf(0) >= 0
+
+            // Open below anchorItem (above it if there's no room), kept inside the card
+            function open(pos, anchorItem) {
+                linkPos = pos;
+                const margin = ScaleMetrics.dp(8);
+                const below = anchorItem.mapToItem(partPicker, 0, anchorItem.height + ScaleMetrics.dp(4));
+                partPanel.x = Math.max(margin, Math.min(below.x + anchorItem.width - partPanel.width,
+                                                        partPicker.width - partPanel.width - margin));
+                const y = (below.y + partPanel.height <= partPicker.height - margin)
+                          ? below.y
+                          : anchorItem.mapToItem(partPicker, 0, 0).y - partPanel.height - ScaleMetrics.dp(4);
+                partPanel.y = Math.max(margin, Math.min(y, partPicker.height - partPanel.height - margin));
+                visible = true;
+            }
+
+            function close() {
+                visible = false;
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: partPicker.close()
+            }
+
+            Rectangle {
+                id: partPanel
+                width: ScaleMetrics.dp(8 * 34 + 16)
+                height: partCol.implicitHeight + ScaleMetrics.dp(16)
+                radius: ScaleMetrics.dp(6)
+                color: Theme.bgSurface
+                border.color: root.macroColor
+                border.width: 1
+
+                MouseArea { anchors.fill: parent }  // swallow taps between buttons
+
+                ColumnLayout {
+                    id: partCol
+                    anchors.fill: parent
+                    anchors.margins: ScaleMetrics.dp(8)
+                    spacing: ScaleMetrics.dp(6)
+
+                    // EDIT = follows the edited part; ALL = every sounding part
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(4)
+                        Repeater {
+                            model: [ { key: "edit", label: "EDIT PART" }, { key: "all", label: "ALL SOUNDING" } ]
+                            delegate: Rectangle {
+                                readonly property bool active: modelData.key === "edit" ? partPicker.editMode
+                                                                                        : partPicker.allMode
+                                Layout.fillWidth: true
+                                height: ScaleMetrics.dp(26)
+                                radius: 3
+                                color: active ? root.macroColor : Theme.bgApp
+                                border.color: active ? root.macroColor : Theme.borderCard
+                                border.width: 1
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: parent.active ? Theme.bgApp : Theme.textSecondary
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        Bridge.setMacroLinkPartMode(root.targetMacro, partPicker.linkPos, modelData.key);
+                                        root.refreshLinks();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "OR FIXED PARTS"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        font.letterSpacing: 1.0
+                        color: Theme.textDim
+                    }
+
+                    GridLayout {
+                        columns: 8
+                        rowSpacing: ScaleMetrics.dp(4)
+                        columnSpacing: ScaleMetrics.dp(4)
+                        Repeater {
+                            model: 16
+                            delegate: Rectangle {
+                                readonly property int part: index + 1
+                                readonly property bool isOn: partPicker.parts.indexOf(part) >= 0
+                                width: ScaleMetrics.dp(30)
+                                height: ScaleMetrics.dp(30)
+                                radius: 3
+                                color: isOn ? root.macroColor : Theme.bgApp
+                                border.color: isOn ? root.macroColor : Theme.borderCard
+                                border.width: 1
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "P" + parent.part
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: parent.isOn ? Theme.bgApp : Theme.textSecondary
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        Bridge.toggleMacroLinkPart(root.targetMacro, partPicker.linkPos, parent.part);
+                                        root.refreshLinks();
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
