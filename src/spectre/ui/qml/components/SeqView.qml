@@ -837,7 +837,7 @@ Rectangle {
                             Item { Layout.fillHeight: true }
                             Text {
                                 Layout.alignment: Qt.AlignHCenter
-                                text: "✕ CLEAR"
+                                text: "CLEAR"
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(14)
                                 color: Theme.recording
