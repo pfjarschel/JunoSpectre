@@ -1322,3 +1322,79 @@ def test_entering_patch_pushes_edited_part_sound(tmp_path):
     pushed.clear()
     bridge.setSoundMode("PATCH")  # already there: nothing pushed
     assert pushed == []
+
+
+def _patch_round_trip_rig(tmp_path):
+    """PERFORM bridge editing part 2, whose temp buffer holds a real image."""
+    from src.spectre.core.sysex import ADDR_TEMP_PATCH_PART_1
+    bridge, juno = _perform_bridge(tmp_path)
+    image = juno.read_patch_at(ADDR_TEMP_PATCH_PART_1, "seed")
+    juno.push_patch_to_perf_part(image, 2)
+    bridge.patch_state.active_perf_part = 2
+    for p in bridge.patch_state.perf_parts:
+        p.modified = False
+    return bridge, juno
+
+
+def _edit_temp_patch_common(juno, offset, value):
+    from src.spectre.core.sysex import ADDR_TEMP_PATCH_PART_1
+    from src.spectre.core.sysex import add_address
+    addr = tuple(add_address(ADDR_TEMP_PATCH_PART_1, juno.USER_REGION_OFFSETS["common"]))
+    raw = bytearray(juno._store[addr])
+    raw[offset] = value
+    juno.send_data(addr, bytes(raw))
+
+
+def _wait_push(bridge):
+    import time
+    t0 = time.time()
+    while float(bridge._perf_push_progress) >= 0.0 and time.time() - t0 < 5:
+        time.sleep(0.01)
+
+
+def test_patch_mode_edits_follow_back_to_part(tmp_path):
+    from src.spectre.core.sysex import add_address, temp_perf_patch_base
+    bridge, juno = _patch_round_trip_rig(tmp_path)
+    bridge.setSoundMode("PATCH")
+    _edit_temp_patch_common(juno, 0x20, 33)
+    bridge.setSoundMode("PERFORM")
+    _wait_push(bridge)
+    assert bridge.patch_state.perf_parts[1].modified is True
+    assert "2" in bridge._part_snapshots
+    part_common = tuple(add_address(temp_perf_patch_base(2), juno.USER_REGION_OFFSETS["common"]))
+    assert juno._store[part_common][0x20] == 33
+
+
+def test_patch_mode_round_trip_without_edits_keeps_part_clean(tmp_path):
+    bridge, juno = _patch_round_trip_rig(tmp_path)
+    bridge.setSoundMode("PATCH")
+    bridge.setSoundMode("PERFORM")
+    assert bridge.patch_state.perf_parts[1].modified is False
+
+
+def test_loading_another_sound_in_patch_mode_drops_the_link(tmp_path):
+    bridge, juno = _patch_round_trip_rig(tmp_path)
+    bridge.setSoundMode("PATCH")
+    bridge._apply_patch_state_to_editors(_raw_image_state("OTHER"), 2)  # a load replaces common
+    _edit_temp_patch_common(juno, 0x20, 33)
+    bridge.setSoundMode("PERFORM")
+    assert bridge.patch_state.perf_parts[1].modified is False
+
+
+def test_selecting_a_library_performance_replaces_the_app_performance(tmp_path):
+    """Mode switches push the app's performance: a loaded one must not keep stale parts."""
+    bridge, juno = _perform_bridge(tmp_path)
+    stale = bridge.patch_state.perf_parts[1]
+    stale.patch_msb, stale.patch_lsb, stale.patch_pc = 87, 70, 103
+    stale.patch_name, stale.modified = "GRAND PIANO", True
+    bridge._part_snapshots = {"2": {"stale": True}}
+    blk = bytearray(0x31)
+    blk[0x01], blk[0x04], blk[0x05], blk[0x06], blk[0x07], blk[0x08] = 1, 87, 64, 5, 90, 64
+    juno._store[(0x10, 0x00, 0x21, 0x00)] = bytes(blk)
+    juno.midi.juno_out.closed = False  # online path (Bank/PC select)
+    assert bridge.selectLibraryPerformance(85, 0, 3, "Stage Set") is True
+    p2 = bridge.patch_state.perf_parts[1]
+    assert (p2.patch_msb, p2.patch_lsb, p2.patch_pc, p2.volume) == (87, 64, 5, 90)
+    assert p2.patch_name != "GRAND PIANO"
+    assert p2.modified is False
+    assert bridge._part_snapshots == {}

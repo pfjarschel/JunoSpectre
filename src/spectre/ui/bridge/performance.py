@@ -906,6 +906,10 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         prev = str(getattr(self, "_sound_mode", "")).upper()
         juno = self.juno
         if juno is not None:
+            origin = getattr(self, "_patch_origin", None)
+            self._patch_origin = None
+            if prev == "PATCH" and m == "PERFORM" and origin is not None:
+                self._fold_patch_edits_into_part(juno, origin)
             edited_image = None
             if prev == "PERFORM" and m == "PATCH":
                 if any(p.modified for p in self.patch_state.perf_parts):
@@ -930,6 +934,10 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                     logger.debug(f"setSoundMode: patch push failed: {e}")
                 # Editors show exactly what PATCH mode now sounds
                 self._apply_patch_state_to_editors(edited_image, self.activePerfPart)
+                # Edits made in PATCH mode follow the sound back to this part,
+                # unless another sound is loaded meanwhile (state/common replaced).
+                self._patch_origin = (self.activePerfPart, edited_image,
+                                      self.patch_state, self.patch_state.common)
             if m == "PERFORM" and prev != "PERFORM":
                 try:
                     self._queue_push_jobs(self._push_perf_to_synth(juno))
@@ -946,6 +954,29 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             self._emit_fx_editor_signals()
         except Exception:
             pass
+
+    def _fold_patch_edits_into_part(self, juno, origin) -> None:
+        """PATCH -> PERFORM: an edited PATCH-mode sound becomes its part's edited sound.
+
+        Only when the PATCH-mode sound still descends from the part (no load
+        replaced the app's state). Compares the synth's temp patch with the
+        image pushed on entry, so panel edits count too. The performance push
+        that follows sends the new snapshot into the part.
+        """
+        part_index, image, state_obj, common_obj = origin
+        if self.patch_state is not state_obj or self.patch_state.common is not common_obj:
+            return
+        try:
+            from ...core.spectre_format import patch_state_to_dict
+            from ...core.sysex import ADDR_TEMP_PATCH_PART_1
+            current = juno.read_patch_at(ADDR_TEMP_PATCH_PART_1, "Patch")
+            if not juno.patch_image_mismatches(image, current.raw_regions):
+                return
+            self._part_snapshots[str(part_index)] = patch_state_to_dict(current)
+            self.patch_state.perf_parts[int(part_index) - 1].modified = True
+            logger.info(f"PATCH-mode edits carried into part {part_index}")
+        except Exception as e:
+            logger.debug(f"fold patch edits: {e}")
 
     @pyqtSlot(int)
     def setEditingPerfMfx(self, slot: int) -> None:

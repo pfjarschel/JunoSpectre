@@ -266,6 +266,27 @@ class FlashProtocolMixin:
 
     _write_patch_regions = write_patch_regions
 
+    @staticmethod
+    def patch_image_mismatches(state: PatchState, actual: dict) -> list[str]:
+        """Compare a PatchState image with raw regions read back. [] = same sound."""
+        mismatches: list[str] = []
+        common = bytearray(state.raw_regions["common"][0][:80])
+        raw_name = state.common.name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
+        common[0:12] = raw_name
+        if bytes(actual.get("common", [b""])[0][:80]) != bytes(common):
+            mismatches.append("common")
+        for key in ("mfx", "chorus", "reverb", "tmt"):
+            for i, chunk in enumerate(state.raw_regions.get(key, [])):
+                got = actual.get(key, [])
+                if i >= len(got) or bytes(got[i]) != bytes(chunk):
+                    mismatches.append(f"{key}[{i}]")
+        for idx in range(1, 5):
+            for i, chunk in enumerate(state.raw_regions.get(f"tone_{idx}", [])):
+                got = actual.get(f"tone_{idx}", [])
+                if i >= len(got) or bytes(got[i]) != bytes(chunk):
+                    mismatches.append(f"tone_{idx}[{i}]")
+        return mismatches
+
     def verify_patch_regions(self, state: PatchState,
                               base: Tuple[int, int, int, int],
                               timeout: float = 1.5, retries: int = 3) -> list[str]:
@@ -285,23 +306,7 @@ class FlashProtocolMixin:
                 time.sleep(0.4)
         else:
             return [f"unreadable after write: {last_err}"]
-        mismatches: list[str] = []
-        common = bytearray(state.raw_regions["common"][0][:80])
-        raw_name = state.common.name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
-        common[0:12] = raw_name
-        if bytes(actual.get("common", [b""])[0][:80]) != bytes(common):
-            mismatches.append("common")
-        for key in ("mfx", "chorus", "reverb", "tmt"):
-            for i, chunk in enumerate(state.raw_regions.get(key, [])):
-                got = actual.get(key, [])
-                if i >= len(got) or bytes(got[i]) != bytes(chunk):
-                    mismatches.append(f"{key}[{i}]")
-        for idx in range(1, 5):
-            for i, chunk in enumerate(state.raw_regions.get(f"tone_{idx}", [])):
-                got = actual.get(f"tone_{idx}", [])
-                if i >= len(got) or bytes(got[i]) != bytes(chunk):
-                    mismatches.append(f"tone_{idx}[{i}]")
-        return mismatches
+        return self.patch_image_mismatches(state, actual)
 
     _verify_patch_regions = verify_patch_regions
 

@@ -2869,6 +2869,16 @@ class PatchBridgeMixin(BridgeBaseMixin):
             # Synth truth wins; library row name is the offline/fallback.
             self._patch_name = (heard or str(name or ""))[:12] or self._patch_name
             self.patch_state.perf_name = str(self._patch_name)[:12]
+            # The app's performance is what mode switches push back: take the
+            # loaded one whole. Nothing of the previous one survives (sounds,
+            # names, edits).
+            self._part_snapshots = {}
+            for p in self.patch_state.perf_parts:
+                p.patch_name, p.name = "", f"Part {p.part_index}"
+            try:
+                self.syncPerformanceFromSynth(async_mode=False)
+            except Exception as e:
+                logger.warning(f"selectLibraryPerformance: performance read failed: {e}")
             self._apply_performance_selected(int(msb), int(lsb), int(pc))
             return True
         except Exception as e:
