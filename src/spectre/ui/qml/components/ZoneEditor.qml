@@ -1,3 +1,4 @@
+pragma ValueTypeBehavior: Copy
 import QtQuick
 import QtQuick.Layouts
 import JunoSpectre
@@ -88,7 +89,8 @@ ColumnLayout {
     }
     property bool pushBusyRef: Bridge.perfPushProgress >= 0
 
-    // All-parts coverage lane (128 notes, equal slices)
+    // All-parts coverage lane (128 notes, equal slices). One canvas pass
+    // per change; it repaints only while visible.
     Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: ScaleMetrics.dp(14)
@@ -96,16 +98,24 @@ ColumnLayout {
         color: "#0f172a"
         border.color: Theme.borderCard
         border.width: 1
-        RowLayout {
+        Canvas {
+            id: coverLane
             anchors.fill: parent
             anchors.margins: ScaleMetrics.dp(2)
-            spacing: 0
-            Repeater {
-                model: 128
-                delegate: Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    color: root.coverColor(index)
+            property var parts: root.allParts
+            onPartsChanged: requestPaint()
+            onWidthChanged: requestPaint()
+            onVisibleChanged: if (visible) requestPaint()
+            onPaint: {
+                var ctx = getContext("2d");
+                ctx.clearRect(0, 0, width, height);
+                if (!visible || !parts) return;
+                var slice = width / 128;
+                for (var n = 0; n < 128; ++n) {
+                    var c = root.coverColor(n);
+                    if (c === "#0f172a") continue;
+                    ctx.fillStyle = c;
+                    ctx.fillRect(Math.floor(n * slice), 0, Math.ceil(slice), height);
                 }
             }
         }

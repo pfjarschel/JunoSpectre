@@ -1,3 +1,4 @@
+pragma ValueTypeBehavior: Copy
 import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
