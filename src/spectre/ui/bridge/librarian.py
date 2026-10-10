@@ -422,13 +422,15 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         reasons = []
         for p in self.patch_state.perf_parts:
             if p.patch_file:
-                reasons.append(f"P{p.part_index} Pi file")
+                reasons.append(f"P{p.part_index} Spectre file")
             elif p.modified:
-                if self._part_write_target(p)[0] == "slot":
+                if getattr(p, "memory_only", False):
+                    reasons.append(f"P{p.part_index} memory only")
+                elif self._part_write_target(p)[0] == "slot":
                     if not assume_write_back:
                         reasons.append(f"P{p.part_index} edited")
                 else:
-                    reasons.append(f"P{p.part_index} Pi-only sound")
+                    reasons.append(f"P{p.part_index} edited factory sound")
         return " · ".join(reasons)
 
     @pyqtSlot(int, str, result=str)

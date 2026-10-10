@@ -327,6 +327,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             if Path(link).is_file():
                 return "file", f"file {Path(link).stem}"
             return "", "file missing, stays in the song"
+        if getattr(part, "memory_only", False):
+            return "", "memory only, stays in the song"
         from ...core.protocol import JunoClient
         try:
             JunoClient.user_slot_base(part.patch_msb, part.patch_lsb, part.patch_pc)
@@ -1334,6 +1336,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 # Sounds from the template image pushed below, not from a slot
                 p.patch_name = state.common.name
                 p.modified = True
+                p.memory_only = True
             elif i in (INIT_PERF_PIANO_PART, INIT_PERF_DRUM_PART):
                 ref = INIT_PERF_PIANO if i == INIT_PERF_PIANO_PART else INIT_PERF_DRUMS
                 p.patch_msb, p.patch_lsb, p.patch_pc, p.patch_name = ref
@@ -1341,6 +1344,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 o = old_parts[i - 1]
                 p.patch_msb, p.patch_lsb, p.patch_pc = o.patch_msb, o.patch_lsb, o.patch_pc
                 p.patch_name, p.patch_file, p.modified = o.patch_name, o.patch_file, o.modified
+                p.memory_only = o.memory_only
                 if (p.patch_file or p.modified) and isinstance(old_snaps.get(str(i)), dict):
                     snaps[str(i)] = old_snaps[str(i)]
             parts.append(p)
@@ -1465,6 +1469,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 part.patch_name = display
                 part.patch_file = file_path if is_file else ""
                 part.modified = False
+                part.memory_only = False
                 self._part_snapshots.pop(str(target), None)
                 if juno is not None:
                     try:
@@ -1496,6 +1501,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 part.patch_name = display
                 part.patch_file = file_path
                 part.modified = False
+                part.memory_only = False
             else:
                 return False
         except Exception as e:

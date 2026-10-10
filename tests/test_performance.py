@@ -1260,9 +1260,11 @@ def test_write_user_performance_copies_temp(tmp_path, monkeypatch):
 
 def test_keyboard_blockers(tmp_path):
     bridge, _, _ = _edited_part_rig(tmp_path)
-    assert bridge.perfKeyboardBlockers(False) == "P2 Pi file · P4 edited · P6 Pi-only sound"
+    assert bridge.perfKeyboardBlockers(False) == "P2 Spectre file · P4 edited · P6 edited factory sound"
     # Writing back first fixes the user-slot part only.
-    assert bridge.perfKeyboardBlockers(True) == "P2 Pi file · P6 Pi-only sound"
+    assert bridge.perfKeyboardBlockers(True) == "P2 Spectre file · P6 edited factory sound"
+    bridge.patch_state.perf_parts[5].memory_only = True
+    assert bridge.perfKeyboardBlockers(True) == "P2 Spectre file · P6 memory only"
     assert bridge.savePerfToDevice(3, "NOPE").startswith("no keyboard equivalent for: P2")
 
 
@@ -1398,3 +1400,12 @@ def test_selecting_a_library_performance_replaces_the_app_performance(tmp_path):
     assert p2.patch_name != "GRAND PIANO"
     assert p2.modified is False
     assert bridge._part_snapshots == {}
+
+
+def test_init_perf_template_part_is_memory_only(tmp_path):
+    bridge, _, _ = _bridge_rig(tmp_path)
+    bridge.initPerformance()
+    p1 = bridge.patch_state.perf_parts[0]
+    assert p1.modified and p1.memory_only
+    assert "P1 memory only" in bridge.perfKeyboardBlockers(True)
+    assert bridge._part_write_target(p1)[0] == ""

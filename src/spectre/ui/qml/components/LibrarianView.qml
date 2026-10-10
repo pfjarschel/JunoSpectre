@@ -582,6 +582,10 @@ Rectangle {
                                     } else if (kind !== undefined && kind === "playlist") {
                                         ok = Bridge.loadPlaylist(path)
                                         root.statusText = ok ? "Playlist loaded — see PERFORMANCE setlist." : "Playlist load failed."
+                                    } else if (kind !== undefined && kind === "performance"
+                                               && path !== undefined && String(path).slice(-8) === ".spectre") {
+                                        // Pi file: the whole song (parts, snapshots, sequence)
+                                        ok = Bridge.loadSpectreFile(path)
                                     } else if (kind !== undefined && kind === "performance") {
                                         ok = Bridge.selectLibraryPerformance(msb, lsb, pc, name)
                                     } else if (msb !== undefined && msb >= 0) {
