@@ -48,6 +48,7 @@ def perf_bridge():
     ps.common.cutoff_offset = 64
     ps.macro_bases = {}
     bridge._macro_part_states = {}
+    bridge._macro_async_parts = False  # async loading has its own test
     yield bridge, juno
     del app, qml_engine  # keep the Qt objects alive until the test is done
 
@@ -171,3 +172,38 @@ def test_macro_link_parts_roundtrip():
     back = patch_state_from_dict(patch_state_to_dict(ps))
     assert back.macros[0].links[0].parts == [2, 6]
     assert MacroLink("common.level", 1, 0.5, [3, 0]).parts == [0]
+
+
+def test_all_parts_load_off_thread_then_join(perf_bridge):
+    """Picking ALL must not block on reading every part: parts whose mirror
+    is still loading are skipped, then join when it arrives."""
+    import threading
+    import time
+
+    bridge, juno = perf_bridge
+    bridge._macro_async_parts = True
+    release = threading.Event()
+    reads = []
+
+    def slow_common(timeout=1.0):
+        reads.append(threading.current_thread().name)
+        release.wait(2.0)
+        return PatchCommonState(cutoff_offset=50)
+
+    juno.read_patch_common.side_effect = slow_common
+    _link(bridge, "common.cutoff_offset", parts=[1, 3])
+    bridge.setMacro(1, 0.5)
+    # Edited part 1 moved at once; part 3 is still loading, nothing written for it
+    assert bridge.patch_state.common.cutoff_offset > 64
+    assert all(scope != 3 for scope, _ in juno.writes)
+
+    release.set()
+    app = __import__("PyQt6.QtWidgets", fromlist=["QApplication"]).QApplication.instance() \
+        or __import__("PyQt6.QtGui", fromlist=["QGuiApplication"]).QGuiApplication.instance()
+    end = time.time() + 3
+    while time.time() < end and not any(scope == 3 for scope, _ in juno.writes):
+        app.processEvents()
+        time.sleep(0.01)
+    assert reads and all(name == "macro-parts" for name in reads)
+    assert any(scope == 3 for scope, _ in juno.writes)
+    assert bridge.patch_state.macro_bases["common.cutoff_offset@3"] == 50

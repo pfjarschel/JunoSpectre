@@ -214,6 +214,9 @@ def main() -> int:
         timer.timeout.connect(app.quit)
         timer.start(int(args.exit_after * 1000))
 
+    from src.spectre.ui.stall_watchdog import maybe_start as _start_stall_log
+    _stall_log = _start_stall_log(app)  # noqa: F841 (kept alive with the app)
+
     logger.info("Juno Spectre UI started successfully.")
     try:
         return app.exec()

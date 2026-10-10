@@ -545,7 +545,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty("QVariantList", notify=routingGraphChanged)
     def routingPitfalls(self) -> list:
-        return self.detectRoutingPitfalls()
+        return self._sorted_notes(self._cached_routing_graph())
 
     @pyqtProperty(str, notify=mfxParamsChanged)
     def mfxAlgoName(self) -> str:
@@ -2288,11 +2288,19 @@ class PatchBridgeMixin(BridgeBaseMixin):
         return g
 
     def _emit_routing_graph(self, *_args) -> None:
+        self._routing_graph_cache = None
         self.routingGraphChanged.emit()
+
+    def _cached_routing_graph(self) -> dict:
+        # Built once per change; QML reads it from several bindings
+        g = getattr(self, "_routing_graph_cache", None)
+        if g is None:
+            g = self._routing_graph_cache = self._build_routing_graph()
+        return g
 
     @pyqtProperty("QVariantMap", notify=routingGraphChanged)
     def routingGraph(self) -> dict:
-        return self._build_routing_graph()
+        return self._cached_routing_graph()
 
     @pyqtProperty(int, notify=routingGraphChanged)
     def patchOutputAssign(self) -> int:
@@ -2301,8 +2309,12 @@ class PatchBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(result="QVariantList")
     def detectRoutingPitfalls(self) -> list:
         """Routing notes (warnings first) for the sound as it plays now."""
+        return self._sorted_notes(self._build_routing_graph())
+
+    @staticmethod
+    def _sorted_notes(graph: dict) -> list:
         order = {"warning": 0, "caution": 1, "info": 2}
-        return sorted(self._build_routing_graph()["notes"], key=lambda n: order.get(n["severity"], 3))
+        return sorted(graph["notes"], key=lambda n: order.get(n["severity"], 3))
 
     # Presets. Each tone gets (assign, chorus send, reverb send); sends go to
     # the pair the new route uses. mfx: (dry, chorus, reverb) or None = keep.

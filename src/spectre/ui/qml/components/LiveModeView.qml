@@ -11,6 +11,9 @@ Rectangle {
     border.width: 1
 
     readonly property var trackColors: Theme.trackColors
+    // Read once per change; every track column uses it (each Bridge read
+    // rebuilds and converts all 16 parts)
+    readonly property var perfParts: Bridge.perfParts
     // Track headers and the scene column's STOP ALL share this height (keeps rows aligned)
     readonly property real trackHeaderHeight: ScaleMetrics.dp(40)
 
@@ -301,8 +304,8 @@ Rectangle {
         readonly property color trackColor: root.trackColors[trackIdx % root.trackColors.length]
         readonly property int mainPart: (trackData && trackData.targetPart) ? trackData.targetPart : (trackIdx + 1)
         readonly property int layerCount: (trackData && trackData.layerParts) ? trackData.layerParts.length : 0
-        readonly property bool kbdOn: (Bridge.perfParts && Bridge.perfParts.length >= mainPart)
-                                      ? Bridge.perfParts[mainPart - 1].zoneOn : false
+        readonly property bool kbdOn: (root.perfParts && root.perfParts.length >= mainPart)
+                                      ? root.perfParts[mainPart - 1].zoneOn : false
 
         radius: ScaleMetrics.dp(4)
         color: Theme.bgCard

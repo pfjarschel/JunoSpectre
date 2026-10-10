@@ -6,6 +6,7 @@ import enum
 import logging
 import threading
 import time
+from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
@@ -97,6 +98,16 @@ class BaseProtocolMixin:
         # part's temp patch buffer, except image pushes (quiet_part_writes).
         self.on_perf_part_write = None
         self._quiet_part_writes: int = 0
+        # Coalesced writes (see coalesced_writes): address -> latest data,
+        # drained in order by one writer thread. _io_lock serializes the
+        # wire (pacing + send) and request/reply reads across threads.
+        self._write_scope = threading.local()
+        self._pending_writes: "OrderedDict[tuple, bytes]" = OrderedDict()
+        self._pending_lock = threading.Lock()
+        self._pending_event = threading.Event()
+        self._writer_thread: Optional[threading.Thread] = None
+        self._writer_busy = False  # popped, not yet on the wire
+        self._io_lock = threading.RLock()
 
     def invalidate_cache(self) -> None:
         """Clear cached state (call when changing synth patches or modes)."""
@@ -198,7 +209,15 @@ class BaseProtocolMixin:
         size: Sequence[int],
         timeout: float = 1.0,
     ) -> Optional[bytes]:
-        """Send RQ1 data request and await matching DT1 response."""
+        """Send RQ1 data request and await matching DT1 response.
+
+        One reader at a time: a concurrent reader would drain (and drop)
+        the other's reply.
+        """
+        with self._io_lock:
+            return self._request_data_locked(address, size, timeout)
+
+    def _request_data_locked(self, address, size, timeout) -> Optional[bytes]:
         packet = self.sysex.build_rq1(address, size)
         self.midi.send_juno_sysex(packet)
 
@@ -218,21 +237,88 @@ class BaseProtocolMixin:
         return None
 
     def send_data(self, address: Sequence[int], data: Sequence[int]) -> None:
-        """Send DT1 data set message directly to the synth."""
-        if self._min_send_interval_s > 0.0:
-            wait = self._min_send_interval_s - (time.monotonic() - self._last_send_time)
-            if wait > 0.0:
-                time.sleep(wait)
-        packet = self.sysex.build_dt1(address, data)
-        try:
-            self.midi.send_juno_sysex(packet)
-        except (ConnectionError, OSError, RuntimeError):
-            if self.ensure_connected(force_reconnect=True):
+        """Send DT1 data set message directly to the synth.
+
+        Inside coalesced_writes() the write is queued instead (latest value
+        per address wins). A direct write drops any queued value for the
+        same address so it can't be overwritten by an older one.
+        """
+        addr = tuple(int(a) for a in address)
+        if getattr(self._write_scope, "coalesce", 0):
+            with self._pending_lock:
+                self._pending_writes[addr] = bytes(int(b) for b in data)
+            self._ensure_writer()
+            self._pending_event.set()
+        else:
+            with self._pending_lock:
+                self._pending_writes.pop(addr, None)
+            self._send_now(addr, data)
+        self._notify_part_write(addr)
+
+    def _send_now(self, address: Sequence[int], data: Sequence[int]) -> None:
+        with self._io_lock:
+            if self._min_send_interval_s > 0.0:
+                wait = self._min_send_interval_s - (time.monotonic() - self._last_send_time)
+                if wait > 0.0:
+                    time.sleep(wait)
+            packet = self.sysex.build_dt1(address, data)
+            try:
                 self.midi.send_juno_sysex(packet)
-            else:
-                raise
-        self._last_send_time = time.monotonic()
-        self._notify_part_write(address)
+            except (ConnectionError, OSError, RuntimeError):
+                if self.ensure_connected(force_reconnect=True):
+                    self.midi.send_juno_sysex(packet)
+                else:
+                    raise
+            self._last_send_time = time.monotonic()
+
+    @contextmanager
+    def coalesced_writes(self):
+        """Queue this thread's DT1 writes for the writer thread.
+
+        For high-rate continuous controls (macro knobs fanning out to many
+        parts): the caller never waits on MIDI pacing, and a value that
+        changes again before it was sent is only sent once.
+        """
+        scope = self.__dict__.setdefault("_write_scope", threading.local())
+        scope.coalesce = getattr(scope, "coalesce", 0) + 1
+        try:
+            yield self
+        finally:
+            scope.coalesce -= 1
+
+    def _ensure_writer(self) -> None:
+        t = self._writer_thread
+        if t is None or not t.is_alive():
+            self._writer_thread = threading.Thread(target=self._writer_loop,
+                                                   name="juno-writer", daemon=True)
+            self._writer_thread.start()
+
+    def _writer_loop(self) -> None:
+        while True:
+            self._pending_event.wait()
+            with self._pending_lock:
+                if not self._pending_writes:
+                    self._pending_event.clear()
+                    continue
+                addr, data = self._pending_writes.popitem(last=False)
+                self._writer_busy = True
+            try:
+                self._send_now(addr, data)
+            except Exception as e:
+                logger.debug(f"coalesced write {addr} failed: {e}")
+            finally:
+                with self._pending_lock:
+                    self._writer_busy = False
+
+    def flush_writes(self, timeout: float = 2.0) -> bool:
+        """Wait until queued coalesced writes are sent. True when drained."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            with self._pending_lock:
+                if not self._pending_writes and not self._writer_busy:
+                    return True
+            time.sleep(0.002)
+        return False
 
     def _notify_part_write(self, address: Sequence[int]) -> None:
         """Report a DT1 into a part's temp patch buffer (11 00 00 00..14 7F 7F 7F)."""

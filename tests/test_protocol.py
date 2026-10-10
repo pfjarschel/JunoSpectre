@@ -853,3 +853,37 @@ def test_juno_client_sync_reads_full_patch_parity_with_template(mock_midi_mgr):
     assert full.raw_regions["chorus"][0][40:] == region_bytes("chorus")[40:]
     assert full.raw_regions["tone_1"][0][0x7E:0x9A] == region_bytes("tone_1", 0)[0x7E:0x9A]
     assert set(expected.raw_regions.keys()) == set(payload["regions"].keys())
+
+
+def test_coalesced_writes_send_latest_value_once():
+    """Macro writes go through a writer thread: per address only the latest
+    value is sent, and a direct write supersedes a queued one."""
+    import threading
+    from unittest.mock import MagicMock
+
+    from src.spectre.core.midi import MidiDeviceManager
+    from src.spectre.core.protocol import JunoClient
+
+    mgr = MagicMock(spec=MidiDeviceManager)
+    client = JunoClient(mgr)
+    gate = threading.Event()
+    mgr.send_juno_sysex.side_effect = lambda pkt: gate.wait(1.0)
+
+    with client.coalesced_writes():
+        client.send_data((0x11, 0, 0x20, 0x0C), [10])   # writer picks this, blocks on gate
+        import time; time.sleep(0.05)
+        for v in (20, 30, 40):
+            client.send_data((0x11, 0, 0x20, 0x0D), [v])
+        client.send_data((0x11, 0, 0x22, 0x0D), [99])
+    client._pending_lock.acquire(); queued = dict(client._pending_writes); client._pending_lock.release()
+    assert queued == {(0x11, 0, 0x20, 0x0D): bytes([40]), (0x11, 0, 0x22, 0x0D): bytes([99])}
+
+    gate.set()
+    # A direct write drops the queued value for its address
+    mgr.send_juno_sysex.side_effect = None
+    client.send_data((0x11, 0, 0x22, 0x0D), [5])
+    assert client.flush_writes()
+    sent = [(tuple(c[0][0][6:10]), c[0][0][10]) for c in mgr.send_juno_sysex.call_args_list]
+    assert sent.count(((0x11, 0, 0x20, 0x0D), 40)) == 1
+    assert ((0x11, 0, 0x20, 0x0D), 20) not in sent and ((0x11, 0, 0x22, 0x0D), 99) not in sent
+    assert sent[-1] != ((0x11, 0, 0x22, 0x0D), 99)

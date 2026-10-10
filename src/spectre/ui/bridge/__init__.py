@@ -150,6 +150,10 @@ class SpectreBridge(
                     self.toneMutesChanged, self.toneLevelsChanged):
             sig.connect(self._emit_routing_graph)
 
+        # Macro part mirrors load off-thread; join them on the UI thread
+        self.macroPartLoaded.connect(self._onMacroPartLoaded)
+        self.partStateRead.connect(self._on_part_state_read)
+
         # Subscribe to engine state updates
         self.engine.subscribe(self._on_engine_state_changed)
 

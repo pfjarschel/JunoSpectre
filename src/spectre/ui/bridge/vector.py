@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from contextlib import contextmanager
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
@@ -28,6 +30,8 @@ class VectorBridgeMixin(BridgeBaseMixin):
     """Vector pad coordinates, playback transport, automator loops, and macros."""
 
     coordinatesChanged = pyqtSignal(float, float)
+    # A non-edited part's macro mirror finished loading (emitted off-thread)
+    macroPartLoaded = pyqtSignal(int)
     attractorChanged = pyqtSignal(float, float)
     wavetablePosChanged = pyqtSignal(float)
     wavetableSweepModeChanged = pyqtSignal(str)
@@ -328,6 +332,11 @@ class VectorBridgeMixin(BridgeBaseMixin):
             logger.debug(f"macro mixer push failed for part {part} {param}: {e}")
         self.perfPartsChanged.emit()
 
+    # Non-edited parts' patches are read from the synth off the UI thread:
+    # a macro on ALL may need 15 parts (~9 reads each). Until a part's
+    # mirror arrives its keys are skipped; it joins on macroPartLoaded.
+    _macro_async_parts = True
+
     def _macroPartState(self, part: int):
         """Mirror of a non-edited part's patch for macro bases and writes.
 
@@ -336,8 +345,12 @@ class VectorBridgeMixin(BridgeBaseMixin):
         """
         cache = self.__dict__.setdefault("_macro_part_states", {})
         st = cache.get(part)
-        if st is not None:
-            return st
+        if st is None:
+            st = cache[part] = self._readMacroPart(part)
+        return st
+
+    def _readMacroPart(self, part: int):
+        st = None
         juno = self.engine.juno
         if juno is not None:
             try:
@@ -359,10 +372,74 @@ class VectorBridgeMixin(BridgeBaseMixin):
                     st = patch_state_from_dict(snap)
                 except Exception:
                     st = None
-        if st is None:
-            st = PatchState()
-        cache[part] = st
-        return st
+        return st if st is not None else PatchState()
+
+    def _macroKeyReady(self, key: str) -> bool:
+        """False while a non-edited part's mirror is still loading."""
+        base_key, part = self._splitPart(key)
+        if not part or base_key.startswith("part.") or part == self._editedPart():
+            return True
+        if part in self.__dict__.setdefault("_macro_part_states", {}):
+            return True
+        if not self._macro_async_parts or self.engine.juno is None:
+            self._macroPartState(part)
+            return True
+        self._queueMacroPartLoad(part)
+        return False
+
+    def _queueMacroPartLoad(self, part: int) -> None:
+        lock = self.__dict__.setdefault("_macro_load_lock", threading.Lock())
+        with lock:
+            pending = self.__dict__.setdefault("_macro_part_pending", set())
+            pending.add(int(part))
+            t = self.__dict__.get("_macro_loader")
+            if t is not None and t.is_alive():
+                return
+            t = threading.Thread(target=self._macroPartLoader, name="macro-parts", daemon=True)
+            self._macro_loader = t
+            t.start()
+
+    def _macroPartLoader(self) -> None:
+        lock = self._macro_load_lock
+        cache = self.__dict__.setdefault("_macro_part_states", {})
+        while True:
+            with lock:
+                pending = self._macro_part_pending
+                pending.difference_update(cache.keys())
+                if not pending:
+                    return
+                part = min(pending)
+            cache[part] = self._readMacroPart(part)
+            with lock:
+                self._macro_part_pending.discard(part)
+            try:
+                self.macroPartLoaded.emit(part)
+            except RuntimeError:
+                return  # bridge gone
+
+    @pyqtSlot(int)
+    def _onMacroPartLoaded(self, part: int) -> None:
+        """A part's mirror arrived: bring it into every macro that targets it."""
+        suffix = f"@{int(part)}"
+        hit = False
+        with self._macroWrites():
+            for mi, slot in enumerate(self.patch_state.macros):
+                if any(k.endswith(suffix) for link in slot.links for k in self._concreteKeys(link)):
+                    self._recomputeForMacro(mi)
+                    hit = True
+        if hit:
+            self.macrosChanged.emit()
+
+    @contextmanager
+    def _macroWrites(self):
+        """Macro synth writes go through the coalescing writer (no UI waits)."""
+        juno = self.engine.juno
+        cw = getattr(juno, "coalesced_writes", None) if juno is not None else None
+        if cw is None:
+            yield
+            return
+        with cw():
+            yield
 
     def _forgetMacroPart(self, part: int) -> None:
         """A part's sound changed: drop its mirror and its macro bases."""
@@ -887,9 +964,11 @@ class VectorBridgeMixin(BridgeBaseMixin):
         from ...core.patch_state import MacroLink
 
         slot.links.append(MacroLink(key, 1, 0.5))
-        for concrete in self._concreteKeys(slot.links[-1]):
-            self._ensureBase(concrete)
-        self._recomputeForMacro(index - 1)
+        with self._macroWrites():
+            for concrete in self._concreteKeys(slot.links[-1]):
+                if self._macroKeyReady(concrete):
+                    self._ensureBase(concrete)
+            self._recomputeForMacro(index - 1)
         self.macrosChanged.emit()
 
     @pyqtSlot(int, int)
@@ -899,7 +978,8 @@ class VectorBridgeMixin(BridgeBaseMixin):
             if 0 <= pos < len(slot.links):
                 dropped = self._concreteKeys(slot.links[pos])
                 slot.links.pop(pos)
-                self._releaseKeys(dropped)
+                with self._macroWrites():
+                    self._releaseKeys(dropped)
                 self.macrosChanged.emit()
 
     def _releaseKeys(self, keys: list[str]) -> None:
@@ -921,8 +1001,9 @@ class VectorBridgeMixin(BridgeBaseMixin):
         link.parts = parts
         link.__post_init__()  # normalize
         after = set(self._concreteKeys(link))
-        self._releaseKeys([k for k in before if k not in after])
-        self._recomputeForMacro(index - 1)
+        with self._macroWrites():
+            self._releaseKeys([k for k in before if k not in after])
+            self._recomputeForMacro(index - 1)
         self.macrosChanged.emit()
 
     @pyqtSlot(int, int, str)
@@ -960,13 +1041,16 @@ class VectorBridgeMixin(BridgeBaseMixin):
             return
         slot = self.patch_state.macros[index - 1]
         slot.value = max(-1.0, min(1.0, float(value)))
-        self._recomputeForMacro(index - 1)
+        with self._macroWrites():
+            self._recomputeForMacro(index - 1)
         self.macrosChanged.emit()
 
     def _recomputeForMacro(self, macro_idx: int) -> None:
         touched: set[str] = set()
         for link in self.patch_state.macros[macro_idx].links:
             for concrete in self._concreteKeys(link):
+                if not self._macroKeyReady(concrete):
+                    continue
                 self._ensureBase(concrete)
                 self._recomputeTarget(concrete)
                 touched.add(concrete)

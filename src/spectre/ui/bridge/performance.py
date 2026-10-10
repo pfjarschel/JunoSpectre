@@ -28,6 +28,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     playlistChanged = pyqtSignal()
     librarianPickChanged = pyqtSignal()
     perfPushChanged = pyqtSignal(float)
+    # Background part read finished: (part index, PatchState) -> UI thread
+    partStateRead = pyqtSignal(int, object)
     partFileStatusChanged = pyqtSignal()
 
     @pyqtProperty("QVariantList", notify=perfPartsChanged)
@@ -657,6 +659,11 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             logger.debug(f"_emit_all_state_signals error: {e}")
         self.perfPartsChanged.emit()
 
+    def _on_part_state_read(self, part_index: int, state) -> None:
+        # Guard against the user switching part while reading
+        if getattr(self.patch_state, "active_perf_part", 1) == int(part_index):
+            self._apply_patch_state_to_editors(state, int(part_index))
+
     def _refresh_editors_for_part(self, part_index: int, async_mode: bool = True) -> None:
         """Reload tones/effects for the newly selected part.
 
@@ -696,13 +703,26 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         if juno is None or not hasattr(juno, "read_full_patch"):
             return
 
+        shown = cached_state
+
         def _worker():
             try:
                 state = juno.read_full_patch(timeout=1.5)
-                if state is not None:
-                    # Guard against user switching part while reading
-                    if getattr(self.patch_state, "active_perf_part", 1) == p_idx:
-                        self._apply_patch_state_to_editors(state, p_idx)
+                if state is None:
+                    return
+                # Same sound as the snapshot already shown: skip a second
+                # full editor refresh (the costly part on a Pi)
+                if shown is not None and getattr(shown, "raw_regions", None) \
+                        and state.raw_regions and hasattr(juno, "patch_image_mismatches"):
+                    try:
+                        if not juno.patch_image_mismatches(state, shown.raw_regions):
+                            return
+                    except Exception:
+                        pass
+                if async_mode:
+                    self.partStateRead.emit(p_idx, state)  # applied on the UI thread
+                else:
+                    self._on_part_state_read(p_idx, state)
             except Exception as e:
                 logger.debug(f"_refresh_editors_for_part worker failed: {e}")
 

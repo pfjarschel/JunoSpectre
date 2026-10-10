@@ -197,7 +197,7 @@ Rectangle {
                 RowLayout {
                     id: categoryRow
                     spacing: ScaleMetrics.dp(4)
-                    readonly property var categories: ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH"]
+                    readonly property var categories: ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART"]
 
                     Repeater {
                         model: categoryRow.categories
