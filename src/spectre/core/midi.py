@@ -229,8 +229,13 @@ class MidiDeviceManager:
             self.close_juno()
             raise ConnectionError(f"Error sending CC to Juno: {e}") from e
 
-    def send_all_notes_off(self, include_reset: bool = True) -> int:
-        """Panic: All Notes Off (CC 123) + Reset All Controllers (CC 121) on all 16 channels.
+    def send_all_notes_off(self, include_reset: bool = True, cut_sound: bool = False) -> int:
+        """Panic: All Notes Off (CC 123) on all 16 channels.
+
+        include_reset adds Reset All Controllers (CC 121) first, which also
+        releases Hold 1 / Sostenuto so the note-offs are not held. cut_sound
+        adds All Sound Off (CC 120), which kills release tails immediately
+        (verified on the JUNO-DS; CC 123 alone lets the release ring).
 
         Returns number of messages actually sent. No-op (with warning) when
         the Juno output port is not connected, so the UI panic button is
@@ -239,22 +244,18 @@ class MidiDeviceManager:
         if not self.juno_out or getattr(self.juno_out, "closed", False):
             logger.warning("PANIC ignored: JUNO-DS output port is not connected.")
             return 0
+        controls = ([121] if include_reset else []) + ([120] if cut_sound else []) + [123]
         sent = 0
-        for channel in range(16):
-            try:
-                self.juno_out.send(
-                    mido.Message("control_change", channel=channel, control=123, value=0)
-                )
-                sent += 1
-                if include_reset:
+        try:
+            for channel in range(16):
+                for control in controls:
                     self.juno_out.send(
-                        mido.Message("control_change", channel=channel, control=121, value=0)
+                        mido.Message("control_change", channel=channel, control=control, value=0)
                     )
                     sent += 1
-            except Exception as e:
-                logger.warning(f"PANIC send failed on ch {channel}: {e}")
-                break
-        logger.info(f"PANIC: Sent All Notes Off (+Reset) on 16 channels ({sent} msgs)")
+        except Exception as e:
+            logger.warning(f"PANIC send failed on ch {channel}: {e}")
+        logger.info(f"PANIC: Sent CC {controls} on 16 channels ({sent} msgs)")
         return sent
 
     def add_note_listener(self, listener: Callable[[mido.Message], None]) -> None:

@@ -874,6 +874,7 @@ def test_part_origin_routes_to_part_patch(tmp_path):
         "reverb": {"type": 3, "level": 71, "predelay": 1, "time": 2,
                    "damp": 3, "diffusion": 4, "tone": 5},
     }
+    juno._store.clear()  # entering PERFORM pushed the shared FX; only edits count
     bridge.setPerfSource("mfx1", 3)
     assert bridge.mfxEditTargetLabel == "MFX1\u00b7P3"
     assert bridge.mfxAlgoId == 20
@@ -1290,3 +1291,34 @@ def test_refresh_user_perf_names(tmp_path):
     slots = bridge.getUserPerfSlots()
     assert (slots[0]["name"], slots[0]["free"]) == ("MY SONG", False)
     assert slots[1]["free"] is True
+
+
+def test_entering_perform_pushes_app_performance(tmp_path):
+    """The synth may reload its panel performance on a mode switch: the app re-sends its own."""
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PATCH")
+    bridge.patch_state.perf_parts[2].zone_switch = True
+    bridge.patch_state.perf_parts[2].volume = 77
+    juno._store.clear()
+    bridge.setSoundMode("PERFORM")
+    from src.spectre.core.protocol import ADDR_SETUP
+    assert juno._store[tuple(ADDR_SETUP)] == bytes([1])
+    assert len(juno._store) > 1  # mixer/zone/FX writes followed the mode switch
+    juno._store.clear()
+    bridge.setSoundMode("PERFORM")  # already there: no re-push
+    assert len(juno._store) <= 1
+
+
+def test_entering_patch_pushes_edited_part_sound(tmp_path):
+    """PATCH mode sounds what the editors show: the edited part's image lands in the temp patch."""
+    from src.spectre.core.sysex import ADDR_TEMP_PATCH_PART_1
+    bridge, juno = _perform_bridge(tmp_path)
+    image = _raw_image_state("EDITED")
+    pushed = []
+    bridge._read_part_image = lambda idx: image if idx == bridge.activePerfPart else None
+    juno.write_patch_regions = lambda state, base, **kw: pushed.append((state, tuple(base))) or 0
+    bridge.setSoundMode("PATCH")
+    assert pushed == [(image, tuple(ADDR_TEMP_PATCH_PART_1))]
+    pushed.clear()
+    bridge.setSoundMode("PATCH")  # already there: nothing pushed
+    assert pushed == []

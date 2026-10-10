@@ -109,6 +109,12 @@ def test_send_all_notes_off_panic():
     assert sent == 32  # 16 channels * (CC 123 + CC 121)
     assert mock_out.send.call_count == 32
 
+    mock_out.reset_mock()
+    sent = mgr.send_all_notes_off(include_reset=True, cut_sound=True)
+    assert sent == 48  # 16 channels * (CC 121 + CC 120 + CC 123)
+    first_three = [c.args[0].control for c in mock_out.send.call_args_list[:3]]
+    assert first_three == [121, 120, 123]  # release Hold before the note-offs
+
 
 def test_juno_client_auto_reconnect():
     mgr = MagicMock(spec=MidiDeviceManager)

@@ -98,12 +98,13 @@ Rectangle {
             }
         }
 
-        // Synth Mode Badge
+        // Synth Mode toggle (tap: PATCH <-> PERFORM)
         Rectangle {
             height: ScaleMetrics.dp(32)
             width: ScaleMetrics.dp(60)
             radius: ScaleMetrics.dp(4)
-            color: Bridge.soundMode === "PATCH" ? "#1e293b" : "#2d1b4e"
+            color: modeArea.pressed ? Theme.bgCardActive
+                                    : (Bridge.soundMode === "PATCH" ? "#1e293b" : "#2d1b4e")
             border.color: Bridge.soundMode === "PATCH" ? Theme.primary : Theme.tone2
             border.width: 1
 
@@ -113,6 +114,11 @@ Rectangle {
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(10)
                 color: Bridge.soundMode === "PATCH" ? Theme.primary : Theme.tone2
+            }
+            MouseArea {
+                id: modeArea
+                anchors.fill: parent
+                onClicked: Bridge.setSoundMode(Bridge.soundMode === "PERFORM" ? "PATCH" : "PERFORM")
             }
         }
 

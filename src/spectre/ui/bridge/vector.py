@@ -1129,10 +1129,12 @@ class VectorBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot()
     def panic(self) -> None:
-        """Send All Notes Off / Reset all controllers."""
+        """Stop the sequencer and send All Notes Off / Reset All Controllers."""
+        if hasattr(self, "sequencer") and self.sequencer.is_playing:
+            self.seqStop()
         try:
             if self.engine.juno and self.engine.juno.midi:
-                self.engine.juno.midi.send_all_notes_off()
+                self.engine.juno.midi.send_all_notes_off(include_reset=True)
             else:
                 logger.warning("PANIC ignored: synth not connected (mock/no MIDI).")
         except Exception as e:

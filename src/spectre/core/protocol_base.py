@@ -23,6 +23,9 @@ from .sysex import (
 logger = logging.getLogger(__name__)
 
 INIT_WRITE_GAP_S = 0.012
+# Floor between any two DT1 writes. Measured on a JUNO-DS: 112 back-to-back
+# writes lost up to 54 (whole parts' mixer/zone settings); a 2 ms gap lost none.
+MIN_DT1_GAP_S = 0.004
 INIT_MAX_VERIFY_REPAIRS = 1
 
 class SoundMode(enum.IntEnum):
@@ -88,7 +91,7 @@ class BaseProtocolMixin:
         self._active_perf_part: int = 1
         # Per-thread override of the patch base (see part_scope)
         self._part_scope = threading.local()
-        self._min_send_interval_s: float = 0.0
+        self._min_send_interval_s: float = MIN_DT1_GAP_S
         self._last_send_time: float = 0.0
         # Called with the part index (1..16) for every DT1 into a performance
         # part's temp patch buffer, except image pushes (quiet_part_writes).
@@ -149,7 +152,7 @@ class BaseProtocolMixin:
     def paced_init_writes(self, gap: float = INIT_WRITE_GAP_S):
         """Temporarily enforce a minimum interval between outgoing DT1 writes."""
         previous_gap = self._min_send_interval_s
-        self._min_send_interval_s = max(0.0, float(gap))
+        self._min_send_interval_s = max(MIN_DT1_GAP_S, float(gap))
         try:
             yield self
         finally:

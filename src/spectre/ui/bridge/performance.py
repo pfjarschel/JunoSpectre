@@ -893,17 +893,48 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(str)
     def setSoundMode(self, mode: str) -> None:
-        """Switch synth sound mode PATCH/PERFORM (Setup 01 00 00 00)."""
+        """Switch synth sound mode PATCH/PERFORM (Setup 01 00 00 00).
+
+        The synth keeps separate patch and performance memories, so the app is
+        the truth for both: entering PERFORM pushes the app's performance, and
+        entering PATCH pushes the sound the editors show (the edited part).
+        Edited parts are read back before leaving PERFORM.
+        """
         m = str(mode or "").upper()
         if m not in ("PATCH", "PERFORM"):
             return
+        prev = str(getattr(self, "_sound_mode", "")).upper()
         juno = self.juno
         if juno is not None:
+            edited_image = None
+            if prev == "PERFORM" and m == "PATCH":
+                if any(p.modified for p in self.patch_state.perf_parts):
+                    try:
+                        self._part_snapshots = self._capture_part_snapshots()
+                    except Exception as e:
+                        logger.debug(f"setSoundMode: part snapshot failed: {e}")
+                from ...core.patch_state import PatchState
+                edited_image = self._read_part_image(self.activePerfPart)
+                if not isinstance(edited_image, PatchState):
+                    edited_image = None
             try:
                 from ...core.protocol import SoundMode
                 juno.set_sound_mode(SoundMode[m])
             except Exception as e:
                 logger.debug(f"setSoundMode: synth write failed: {e}")
+            if edited_image is not None:
+                try:
+                    from ...core.sysex import ADDR_TEMP_PATCH_PART_1
+                    juno.write_patch_regions(edited_image, ADDR_TEMP_PATCH_PART_1)
+                except Exception as e:
+                    logger.debug(f"setSoundMode: patch push failed: {e}")
+                # Editors show exactly what PATCH mode now sounds
+                self._apply_patch_state_to_editors(edited_image, self.activePerfPart)
+            if m == "PERFORM" and prev != "PERFORM":
+                try:
+                    self._queue_push_jobs(self._push_perf_to_synth(juno))
+                except Exception as e:
+                    logger.debug(f"setSoundMode: performance push failed: {e}")
         if m != str(getattr(self, "_sound_mode", "")).upper():
             # Bases belong to one mode's sounds; re-capture them in the new one
             self._resetMacroBases()
@@ -1453,6 +1484,92 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         self._pending_view = "PERFORMANCE"
         return True
 
+    def _push_perf_to_synth(self, juno) -> list:
+        """Send the app's performance (mixer, zones, shared FX, solo) to the synth.
+
+        Returns the part image jobs (Pi-only/edited parts) for _queue_push_jobs.
+        """
+        image_jobs = []
+        for p in self.patch_state.perf_parts:
+            try:
+                juno.set_perf_part_patch(p.part_index, p.patch_msb, p.patch_lsb, p.patch_pc)
+                juno.set_perf_part_level(p.part_index, p.volume)
+                juno.set_perf_part_pan(p.part_index, p.pan)
+                juno.set_perf_part_mute(p.part_index, p.muted)
+                if hasattr(juno, "set_perf_part_fx"):
+                    try:
+                        juno.set_perf_part_fx(p.part_index, dry=int(getattr(p, "dry_send", 127)),
+                                              chorus=int(getattr(p, "chorus_send", 0)),
+                                              reverb=int(getattr(p, "reverb_send", 0)))
+                    except Exception as e:
+                        logger.debug(f"perf push: part {p.part_index} fx push failed: {e}")
+                if hasattr(juno, "set_perf_part_output"):
+                    try:
+                        juno.set_perf_part_output(p.part_index,
+                                                  assign=int(getattr(p, "output_assign", 13)),
+                                                  mfx_select=int(getattr(p, "mfx_select", 0)))
+                    except Exception as e:
+                        logger.debug(f"perf push: part {p.part_index} output push failed: {e}")
+                juno.set_perf_zone(p.part_index,
+                                   p.key_low, p.key_high, p.zone_switch, p.zone_octave)
+            except Exception as e:
+                logger.debug(f"perf push: part {p.part_index} push failed: {e}")
+                break
+            image = self._part_restore_image(p, self._part_snapshots)
+            if image is not None:
+                image_jobs.append(("image", p.part_index, image))
+        try:
+            fx = getattr(self.patch_state, "perf_fx", None)
+            if fx is not None:
+                if hasattr(juno, "set_perf_source"):
+                    for _w, _o in (("mfx1", int(fx.mfx1.source)), ("mfx2", int(fx.mfx2.source)),
+                                   ("mfx3", int(fx.mfx3.source)), ("chorus", int(fx.chorus_source)),
+                                   ("reverb", int(fx.reverb_source))):
+                        try:
+                            juno.set_perf_source(_w, _o)
+                        except Exception as e:
+                            logger.debug(f"perf push: source {_w} push failed: {e}")
+                if hasattr(juno, "set_perf_structure"):
+                    try:
+                        juno.set_perf_structure(int(fx.mfx_structure))
+                    except Exception as e:
+                        logger.debug(f"perf push: structure push failed: {e}")
+                if hasattr(juno, "set_perf_mfx"):
+                    for _s, _h in ((1, fx.mfx1), (2, fx.mfx2), (3, fx.mfx3)):
+                        try:
+                            juno.set_perf_mfx(_s, mfx_type=int(_h.mfx_type),
+                                              dry_send=int(_h.dry_send),
+                                              chorus_send=int(_h.chorus_send),
+                                              reverb_send=int(_h.reverb_send))
+                        except Exception as e:
+                            logger.debug(f"perf push: mfx{_s} push failed: {e}")
+                        if int(_h.source) == 0 and hasattr(juno, "set_perf_mfx_param"):
+                            try:
+                                for _pi, _pv in enumerate(list(getattr(_h, "params", []) or [])[:32]):
+                                    if int(_pv) != 0:
+                                        juno.set_perf_mfx_param(_s, _pi, int(_pv))
+                            except Exception as e:
+                                logger.debug(f"perf push: mfx{_s} params push failed: {e}")
+                if hasattr(juno, "set_perf_chorus"):
+                    try:
+                        juno.set_perf_chorus(int(fx.chorus_type), level=int(fx.chorus_level),
+                                             output_select=int(fx.chorus_to_reverb))
+                    except Exception as e:
+                        logger.debug(f"perf push: chorus push failed: {e}")
+                if hasattr(juno, "set_perf_reverb"):
+                    try:
+                        juno.set_perf_reverb(int(fx.reverb_type), level=int(fx.reverb_level))
+                    except Exception as e:
+                        logger.debug(f"perf push: reverb push failed: {e}")
+        except Exception as e:
+            logger.debug(f"perf push: perf fx push failed: {e}")
+        try:
+            solos = [p.part_index for p in self.patch_state.perf_parts if p.solo]
+            juno.set_perf_solo(solos[-1] if solos else 0)
+        except Exception as e:
+            logger.debug(f"perf push: solo push failed: {e}")
+        return image_jobs
+
     def _apply_playlist_state(self, patch_dict: dict, entry_name: str = "",
                               part_snapshots: dict | None = None) -> bool:
         """Swap in a cached/loaded performance image and push the mixer live.
@@ -1478,91 +1595,13 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             self._part_snapshots = {str(k): v for k, v in part_snapshots.items()
                                     if isinstance(v, dict)}
         juno = self.juno
-        image_jobs = []
         if juno is not None:
             try:
                 from ...core.protocol import SoundMode
                 juno.set_sound_mode(SoundMode.PERFORM)
             except Exception as e:
                 logger.debug(f"playlist load: mode switch failed: {e}")
-            for p in self.patch_state.perf_parts:
-                try:
-                    juno.set_perf_part_patch(p.part_index, p.patch_msb, p.patch_lsb, p.patch_pc)
-                    juno.set_perf_part_level(p.part_index, p.volume)
-                    juno.set_perf_part_pan(p.part_index, p.pan)
-                    juno.set_perf_part_mute(p.part_index, p.muted)
-                    if hasattr(juno, "set_perf_part_fx"):
-                        try:
-                            juno.set_perf_part_fx(p.part_index, dry=int(getattr(p, "dry_send", 127)),
-                                                  chorus=int(getattr(p, "chorus_send", 0)),
-                                                  reverb=int(getattr(p, "reverb_send", 0)))
-                        except Exception as e:
-                            logger.debug(f"playlist load: part {p.part_index} fx push failed: {e}")
-                    if hasattr(juno, "set_perf_part_output"):
-                        try:
-                            juno.set_perf_part_output(p.part_index,
-                                                      assign=int(getattr(p, "output_assign", 13)),
-                                                      mfx_select=int(getattr(p, "mfx_select", 0)))
-                        except Exception as e:
-                            logger.debug(f"playlist load: part {p.part_index} output push failed: {e}")
-                    juno.set_perf_zone(p.part_index,
-                                       p.key_low, p.key_high, p.zone_switch, p.zone_octave)
-                except Exception as e:
-                    logger.debug(f"playlist load: part {p.part_index} push failed: {e}")
-                    break
-                image = self._part_restore_image(p, self._part_snapshots)
-                if image is not None:
-                    image_jobs.append(("image", p.part_index, image))
-            try:
-                fx = getattr(self.patch_state, "perf_fx", None)
-                if fx is not None:
-                    if hasattr(juno, "set_perf_source"):
-                        for _w, _o in (("mfx1", int(fx.mfx1.source)), ("mfx2", int(fx.mfx2.source)),
-                                       ("mfx3", int(fx.mfx3.source)), ("chorus", int(fx.chorus_source)),
-                                       ("reverb", int(fx.reverb_source))):
-                            try:
-                                juno.set_perf_source(_w, _o)
-                            except Exception as e:
-                                logger.debug(f"playlist load: source {_w} push failed: {e}")
-                    if hasattr(juno, "set_perf_structure"):
-                        try:
-                            juno.set_perf_structure(int(fx.mfx_structure))
-                        except Exception as e:
-                            logger.debug(f"playlist load: structure push failed: {e}")
-                    if hasattr(juno, "set_perf_mfx"):
-                        for _s, _h in ((1, fx.mfx1), (2, fx.mfx2), (3, fx.mfx3)):
-                            try:
-                                juno.set_perf_mfx(_s, mfx_type=int(_h.mfx_type),
-                                                  dry_send=int(_h.dry_send),
-                                                  chorus_send=int(_h.chorus_send),
-                                                  reverb_send=int(_h.reverb_send))
-                            except Exception as e:
-                                logger.debug(f"playlist load: mfx{_s} push failed: {e}")
-                            if int(_h.source) == 0 and hasattr(juno, "set_perf_mfx_param"):
-                                try:
-                                    for _pi, _pv in enumerate(list(getattr(_h, "params", []) or [])[:32]):
-                                        if int(_pv) != 0:
-                                            juno.set_perf_mfx_param(_s, _pi, int(_pv))
-                                except Exception as e:
-                                    logger.debug(f"playlist load: mfx{_s} params push failed: {e}")
-                    if hasattr(juno, "set_perf_chorus"):
-                        try:
-                            juno.set_perf_chorus(int(fx.chorus_type), level=int(fx.chorus_level),
-                                                 output_select=int(fx.chorus_to_reverb))
-                        except Exception as e:
-                            logger.debug(f"playlist load: chorus push failed: {e}")
-                    if hasattr(juno, "set_perf_reverb"):
-                        try:
-                            juno.set_perf_reverb(int(fx.reverb_type), level=int(fx.reverb_level))
-                        except Exception as e:
-                            logger.debug(f"playlist load: reverb push failed: {e}")
-            except Exception as e:
-                logger.debug(f"playlist load: perf fx push failed: {e}")
-            try:
-                solos = [p.part_index for p in self.patch_state.perf_parts if p.solo]
-                juno.set_perf_solo(solos[-1] if solos else 0)
-            except Exception as e:
-                logger.debug(f"playlist load: solo push failed: {e}")
+            image_jobs = self._push_perf_to_synth(juno)
             if getattr(state, "raw_regions", None):
                 try:
                     active = max(1, min(16, int(getattr(state, "active_perf_part", 1))))
