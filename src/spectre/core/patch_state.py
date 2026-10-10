@@ -69,10 +69,12 @@ class ToneState:
     muted: bool = False
 
     # Tone Routing & Sends
-    output_assign: int = 0       # 0: MFX, 1: DIRECT (L+R), 2: L, 3: R
+    output_assign: int = 0       # 0: MFX, 1: L+R, 5: L, 6: R (see core.routing)
     output_level: int = 127      # 0..127 (Tone Dry Send)
-    chorus_send: int = 0         # 0..127
-    reverb_send: int = 0         # 0..127
+    chorus_send: int = 0         # 0..127, used while the sound goes into the MFX
+    reverb_send: int = 0         # 0..127, used while the sound goes into the MFX
+    chorus_send_direct: int = 0  # 0..127, used while the sound goes direct (0x0F)
+    reverb_send_direct: int = 0  # 0..127, used while the sound goes direct (0x10)
 
     # TVF (Filter)
     tvf_filter_type: int = 1     # 0..6 (OFF, LPF, BPF, HPF, PKG, LPF2, LPF3)
@@ -428,7 +430,9 @@ class PatchCommonState:
     legato_switch: bool = False
     mono_poly: int = 1           # 0=MONO, 1=POLY
     analog_feel: int = 0         # 0..127
-    patch_output_assign: int = 13 # 0: MFX, 1: L+R, 2: L, 3: R, ... 13: TONE (respect per-tone assign)
+    patch_output_assign: int = 13 # 0: MFX, 1: L+R, 5: L, 6: R, 13: TONE (respect per-tone assign)
+    structure_12: int = 0        # TMT 0x00, 0..9 = TYPE1..10 (2..10 merge tone 1 into tone 2)
+    structure_34: int = 0        # TMT 0x02, 0..9 = TYPE1..10 (2..10 merge tone 3 into tone 4)
     matrix_ctrls: list[MatrixCtrlState] = field(default_factory=lambda: [
         # Raw values captured from the user template patch (preserved as-is):
         MatrixCtrlState(source=98, dest1=9, sens1=74),
@@ -827,6 +831,16 @@ class PatchState:
         """Decode a 4-nibble parameter value and remove the 32768 bias."""
         return unpack_4nibbles(block[offset:offset + 4]) - 32768
 
+    @staticmethod
+    def apply_tmt(tmt: bytes, common: PatchCommonState, tones: list) -> None:
+        """TMT bytes -> structure types (0x00/0x02) and tone mutes (switches)."""
+        if len(tmt) > 0x02:
+            common.structure_12 = int(tmt[0x00])
+            common.structure_34 = int(tmt[0x02])
+        for tone, off in zip(tones, (0x05, 0x0E, 0x17, 0x20)):
+            if len(tmt) > off:
+                tone.muted = (tmt[off] == 0)
+
     @classmethod
     def _decode_common(cls, b: bytes) -> PatchCommonState:
         matrices = []
@@ -868,6 +882,8 @@ class PatchState:
             output_level=a[0x0C],
             chorus_send=a[0x0D],
             reverb_send=a[0x0E],
+            chorus_send_direct=a[0x0F],
+            reverb_send_direct=a[0x10],
             output_assign=a[0x11],
             matrix_switches=[
                 list(a[0x17:0x1B]),
@@ -986,10 +1002,7 @@ class PatchState:
             cls._region_bytes(regions["reverb"])[0],
         )
 
-        # TMT tone switches -> mute state
-        tmt = cls._region_bytes(regions["tmt"])[0]
-        for idx, sw in enumerate((tmt[0x05], tmt[0x0E], tmt[0x17], tmt[0x20]), start=1):
-            tones[idx - 1].muted = (sw == 0)
+        cls.apply_tmt(cls._region_bytes(regions["tmt"])[0], common, tones)
 
         state = cls(common=common, tones=tones, effects=effects)
         state.sound_mode = "PATCH"

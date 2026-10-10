@@ -39,14 +39,21 @@ def test_juno_client_set_patch_output_assign(mock_midi_mgr):
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PATCH
 
-    # Set Patch Output Assign to TONE (4)
-    client.set_patch_output_assign(4)
+    client.set_patch_output_assign(13)  # TONE
 
     assert mock_midi_mgr.send_juno_sysex.call_count == 1
     packet = mock_midi_mgr.send_juno_sysex.call_args[0][0]
-    # Addr: 1F 00 00 27, Data: 04
     assert packet[6:10] == [0x1F, 0x00, 0x00, 0x27]
-    assert packet[10] == 4
+    assert packet[10] == 13
+
+
+def test_juno_client_writes_direct_send_pair(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+    client.set_tone_output(2, chorus_send_direct=30, reverb_send_direct=40)
+    sent = [c[0][0] for c in mock_midi_mgr.send_juno_sysex.call_args_list]
+    assert [(p[6:10], p[10]) for p in sent] == [
+        ([0x1F, 0x00, 0x22, 0x0F], 30), ([0x1F, 0x00, 0x22, 0x10], 40)]
 
 
 def test_patch_state_routing_defaults():
@@ -57,91 +64,208 @@ def test_patch_state_routing_defaults():
         assert t.output_level == 127
         assert t.chorus_send == 0
         assert t.reverb_send == 0
+        assert t.chorus_send_direct == 0
+        assert t.reverb_send_direct == 0
+    assert state.common.patch_output_assign == 13
+    assert (state.common.structure_12, state.common.structure_34) == (0, 0)
     assert state.effects.routing_preset == ""
-    assert state.effects.manual_routing_unlocked is False
 
 
-def test_bridge_routing_presets_and_pitfalls():
+def test_decode_reads_both_send_pairs_and_structure():
+    a = bytearray(154)
+    a[0x0C:0x12] = bytes([127, 50, 60, 30, 40, 5])
+    t = PatchState._decode_tone(bytes(a), bytes(26), 1)
+    assert (t.chorus_send, t.reverb_send, t.chorus_send_direct, t.reverb_send_direct) == (50, 60, 30, 40)
+    assert t.output_assign == 5
+    tmt = bytearray(41)
+    tmt[0x00], tmt[0x02], tmt[0x05], tmt[0x0E] = 3, 0, 1, 0
+    state = PatchState()
+    PatchState.apply_tmt(bytes(tmt), state.common, state.tones)
+    assert (state.common.structure_12, state.common.structure_34) == (3, 0)
+    assert [t.muted for t in state.tones][:2] == [False, True]
+
+
+# --- core.routing: follow the sound -----------------------------------------
+
+from src.spectre.core import routing as R  # noqa: E402
+
+_MFX = {"type": 15, "dry": 127, "cho": 0, "rev": 0}
+_CHO = {"type": 1, "level": 100, "toReverb": 0}
+_REV = {"type": 4, "level": 100}
+
+
+def _graph(state, mfx=None, cho=None, rev=None, part=None):
+    return R.build_graph(state, mfx=mfx or _MFX, chorus=cho or _CHO, reverb=rev or _REV, part=part)
+
+
+def _active(g):
+    return {k for k, e in g["edges"].items() if e["active"]}
+
+
+def test_graph_tones_into_mfx_dry_only():
+    g = _graph(PatchState())
+    assert _active(g) == {"in->mfx", "mfx->out"}
+    assert g["edges"]["in->mfx"]["tones"] == [1, 2, 3, 4]
+    assert not g["nodes"]["cho"]["hasInput"]
+
+
+def test_graph_mfx_sends_only_light_when_mfx_has_input():
+    state = PatchState()
+    for t in state.tones:
+        t.output_assign = R.ASSIGN_LR
+    g = _graph(state, mfx={"type": 15, "dry": 127, "cho": 90, "rev": 90})
+    assert _active(g) == {"in->out"}
+
+
+def test_graph_direct_tone_uses_direct_send_pair():
+    state = PatchState()
+    t = state.tones[0]
+    t.output_assign = R.ASSIGN_LR
+    t.chorus_send, t.chorus_send_direct = 0, 80   # MFX pair silent, direct pair live
+    g = _graph(state)
+    assert g["edges"]["in->cho"]["tones"] == [1]
+    assert "cho->out" in _active(g)
+    # Back into the MFX: the MFX pair (0) applies, chorus goes quiet
+    t.output_assign = R.ASSIGN_MFX
+    assert "in->cho" not in _active(_graph(state))
+
+
+def test_graph_patch_assign_overrides_tones():
+    state = PatchState()
+    state.tones[0].output_assign = R.ASSIGN_LR
+    state.common.patch_output_assign = R.ASSIGN_MFX
+    g = _graph(state)
+    assert "in->out" not in _active(g)
+    assert g["tones"][0]["lockedBy"] == "patch"
+    assert any(n["type"] == "PATCH_OVERRIDE" for n in g["notes"])
+
+
+def test_graph_structure_tone1_follows_tone2():
+    state = PatchState()
+    state.common.structure_12 = 2
+    state.tones[0].output_assign = R.ASSIGN_LR    # ignored: tone 2 decides
+    g = _graph(state)
+    assert g["tones"][0]["owner"] == 2 and g["tones"][0]["route"] == R.ASSIGN_MFX
+    assert "in->out" not in _active(g)
+    assert any(n["type"] == "STRUCTURE" for n in g["notes"])
+
+
+def test_graph_mfx_thru_still_passes():
+    g = _graph(PatchState(), mfx={"type": 0, "dry": 127, "cho": 0, "rev": 0})
+    assert "mfx->out" in _active(g)
+    assert g["nodes"]["mfx"]["thru"]
+
+
+def test_graph_chorus_off_flags_dead_sends():
+    state = PatchState()
+    g = _graph(state, mfx={"type": 15, "dry": 127, "cho": 80, "rev": 0},
+               cho={"type": 0, "level": 100, "toReverb": 0})
+    assert "mfx->cho" in _active(g) and "cho->out" not in _active(g)
+    assert any(n["type"] == "CHORUS_OFF" for n in g["notes"])
+
+
+def test_graph_chorus_output_select_and_reverb_stack():
+    state = PatchState()
+    g = _graph(state, mfx={"type": 15, "dry": 0, "cho": 127, "rev": 60},
+               cho={"type": 1, "level": 80, "toReverb": 2})
+    assert {"cho->out", "cho->rev", "rev->out"} <= _active(g)
+    types = {n["type"] for n in g["notes"]}
+    assert {"REVERB_STACK", "CHORUS_MONO_SUM"} <= types
+
+
+def test_graph_muted_tones_and_no_output():
+    state = PatchState()
+    for t in state.tones[1:]:
+        t.muted = True
+    g = _graph(state, mfx={"type": 15, "dry": 0, "cho": 0, "rev": 0})
+    assert g["edges"]["in->mfx"]["tones"] == [1]
+    assert any(n["type"] == "NO_OUTPUT" for n in g["notes"])
+
+
+def test_graph_part_layer():
+    from src.spectre.core.patch_state import PerfPartState
+    state = PatchState()
+    state.tones[0].reverb_send = 70
+    part = PerfPartState(part_index=3)
+    g = _graph(state, part=part)
+    # PATCH assign: the patch routes, part sends (0) don't gate tone sends
+    assert {"in->part", "in->mfx", "in->rev"} <= _active(g)
+    part.output_assign, part.reverb_send = R.ASSIGN_LR, 0
+    g = _graph(state, part=part)
+    assert "in->out" in _active(g) and "in->mfx" not in _active(g)
+    assert "in->rev" not in _active(g)            # part sends replace tone sends
+    assert g["tones"][0]["lockedBy"] == "part"
+    part.muted = True
+    assert not ({"in->out", "in->mfx"} & _active(_graph(state, part=part)))
+
+
+def test_mfx_chain_follows_structure():
+    assert R.mfx_chain(1, 0) == [1]
+    assert R.mfx_chain(1, 10) == [1, 2, 3]       # TYPE11
+    assert R.mfx_chain(2, 7) == [2, 3]           # TYPE08
+    assert R.mfx_chain(3, 15) == [3, 2, 1]       # TYPE16
+
+
+# --- bridge ------------------------------------------------------------------
+
+def test_bridge_routing_presets():
     from src.spectre.ui.bridge import SpectreBridge
     from src.spectre.vector.engine import VectorEngine
 
-    engine = VectorEngine()
-    bridge = SpectreBridge(engine)
-    assert bridge.routingPreset == ""  # Initially no preset selected
+    bridge = SpectreBridge(VectorEngine())
+    assert bridge.routingPreset == ""
 
-    # 1. Apply SERIAL_CHAIN preset
+    bridge.setPatchOutputAssign(0)
     bridge.applyRoutingPreset("SERIAL_CHAIN")
     assert bridge.routingPreset == "SERIAL_CHAIN"
-    assert bridge.manualRoutingUnlocked is False
+    assert bridge.patchOutputAssign == 13          # presets route per tone
     assert bridge.toneOutputAssigns == [0, 0, 0, 0]
-    assert bridge.toneOutputLevels == [127, 127, 127, 127]
-    assert bridge.toneChorusSends == [0, 0, 0, 0]
-    assert bridge.toneReverbSends == [0, 0, 0, 0]
-    assert bridge.mfxDrySend == 0
-    assert bridge.mfxChorusSend == 127
-    assert bridge.mfxReverbSend == 0
-    assert bridge.chorusToReverb == 1  # REV only (pure serial cascade)
+    assert (bridge.mfxDrySend, bridge.mfxChorusSend, bridge.mfxReverbSend) == (0, 127, 0)
+    assert bridge.chorusToReverb == 1
+    g = bridge.routingGraph
+    assert g["edges"]["mfx->cho"]["active"] and g["edges"]["cho->rev"]["active"]
+    assert g["edges"]["rev->out"]["active"] and not g["edges"]["mfx->out"]["active"]
 
-    # In SERIAL_CHAIN, no duplicate reverb sends exist
-    pitfalls = bridge.detectRoutingPitfalls()
-    # It will only have info note that chorus is sending to reverb in mono
-    reverb_overloads = [p for p in pitfalls if p["type"] == "REVERB_OVERLOAD"]
-    assert len(reverb_overloads) == 0
-
-    # 2. Trigger REVERB_OVERLOAD intentionally
-    bridge.setToneRoutingParam(1, "reverbSend", 80)
-    bridge.setMfxSend("reverb", 75)
-    pitfalls = bridge.detectRoutingPitfalls()
-    reverb_overloads = [p for p in pitfalls if p["type"] == "REVERB_OVERLOAD"]
-    assert len(reverb_overloads) == 1
-    assert "Tones" in reverb_overloads[0]["description"]
-    assert "MFX" in reverb_overloads[0]["description"]
-
-    # 3. Apply STUDIO_AUX preset
-    bridge.applyRoutingPreset("STUDIO_AUX")
-    assert bridge.routingPreset == "STUDIO_AUX"
-    assert bridge.mfxDrySend == 127
-    assert bridge.mfxChorusSend == 60
-    assert bridge.mfxReverbSend == 60
-    assert bridge.chorusToReverb == 0  # MAIN only
-
-    pitfalls = bridge.detectRoutingPitfalls()
-    warnings = [p for p in pitfalls if p["severity"] == "warning"]
-    assert len(warnings) == 0  # No dangerous parallel overload warnings
-
-    # 4. Apply VINTAGE_SYNTH preset
     bridge.applyRoutingPreset("VINTAGE_SYNTH")
-    assert bridge.routingPreset == "VINTAGE_SYNTH"
-    assert bridge.toneOutputAssigns == [1, 1, 1, 1]  # DIRECT L+R
-    assert bridge.mfxDrySend == 0
-    assert bridge.mfxChorusSend == 0
-    assert bridge.mfxReverbSend == 0
+    assert bridge.toneOutputAssigns == [1, 1, 1, 1]
+    assert bridge.toneChorusSends == [70] * 4      # the direct pair, the one that plays
+    assert [t.chorus_send_direct for t in bridge.patch_state.tones] == [70] * 4
+    assert [t.chorus_send for t in bridge.patch_state.tones] == [0] * 4
+    g = bridge.routingGraph
+    assert g["edges"]["in->out"]["active"] and g["edges"]["in->cho"]["active"]
+    assert not g["edges"]["in->mfx"]["active"]
 
-    # 5. Apply AMBIENT_WASH preset
+    bridge.applyRoutingPreset("SPLIT_PATH")
+    g = bridge.routingGraph
+    assert g["edges"]["in->mfx"]["tones"] == [1, 2]
+    assert g["edges"]["in->out"]["tones"] == [3, 4]
+
+    bridge.applyRoutingPreset("CLEAN_DIRECT")
+    g = bridge.routingGraph
+    assert {k for k, e in g["edges"].items() if e["active"]} == {"in->out"}
+
+    # Presets that need chorus/reverb turn them on
+    bridge.setChorusParam("type", 0)
+    bridge.setReverbParam("type", 0)
     bridge.applyRoutingPreset("AMBIENT_WASH")
-    assert bridge.routingPreset == "AMBIENT_WASH"
-    assert bridge.chorusToReverb == 1  # REV only
+    assert bridge.chorusTypeName != "OFF" and bridge.reverbTypeName != "OFF"
 
-    # 6. Test Ganged Tone Parameter Update (tone_idx = 0) and BOTH assign (mode 2)
     bridge.setToneRoutingParam(0, "level", 95)
     assert bridge.toneOutputLevels == [95, 95, 95, 95]
     assert bridge.routingPreset == "CUSTOM"
 
-    bridge.setMfxSend("dry", 0)
-    bridge.setToneRoutingParam(1, "assign", 2)
-    assert bridge.toneOutputAssigns[0] == 2
-    assert bridge.mfxDrySend == 0  # Setting tone assign to BOTH does not alter MFX main out level
 
-    # 7. Test Name Properties
-    assert isinstance(bridge.mfxAlgoName, str)
-    assert isinstance(bridge.chorusTypeName, str)
-    assert isinstance(bridge.reverbTypeName, str)
+def test_bridge_tone_assign_rejects_fake_values():
+    from src.spectre.ui.bridge import SpectreBridge
+    from src.spectre.vector.engine import VectorEngine
 
-    # 8. Test Manual Unlock Toggle
-    bridge.setManualRoutingUnlocked(True)
-    assert bridge.manualRoutingUnlocked is True
-    bridge.setManualRoutingUnlocked(False)
-    assert bridge.manualRoutingUnlocked is False
+    bridge = SpectreBridge(VectorEngine())
+    bridge.setToneRoutingParam(1, "assign", 2)     # old fake "BOTH"
+    assert bridge.toneOutputAssigns[0] == 0
+    bridge.setToneRoutingParam(1, "assign", 6)     # R
+    assert bridge.toneOutputAssigns[0] == 6
+    bridge.setPatchOutputAssign(4)                 # unused wire value
+    assert bridge.patchOutputAssign == 13
 
 
 def test_bridge_routing_hardware_sysex_transmission(mock_midi_mgr):
@@ -153,64 +277,82 @@ def test_bridge_routing_hardware_sysex_transmission(mock_midi_mgr):
     engine = VectorEngine(juno_client=client)
     bridge = SpectreBridge(engine)
 
-    # 1. Preset application sends DT1 to synth
     mock_midi_mgr.send_juno_sysex.reset_mock()
     bridge.applyRoutingPreset("SERIAL_CHAIN")
     assert mock_midi_mgr.send_juno_sysex.call_count > 0
 
-    # 2. Tone Routing controls send DT1 to synth
+    def last():
+        pkt = mock_midi_mgr.send_juno_sysex.call_args[0][0]
+        return pkt[6:10], pkt[10]
+
     mock_midi_mgr.send_juno_sysex.reset_mock()
-    bridge.setToneRoutingParam(1, "assign", 0)  # MFX
+    bridge.setToneRoutingParam(1, "assign", 0)
     assert mock_midi_mgr.send_juno_sysex.call_count == 1
-    pkt = mock_midi_mgr.send_juno_sysex.call_args[0][0]
-    # Tone 1 base is 1F 00 20 00, offset 0x0011 -> 1F 00 20 11
-    assert pkt[6:10] == [0x1F, 0x00, 0x20, 0x11]
-    assert pkt[10] == 0
+    assert last() == ([0x1F, 0x00, 0x20, 0x11], 0)
 
     mock_midi_mgr.send_juno_sysex.reset_mock()
     bridge.setToneRoutingParam(2, "level", 110)
-    assert mock_midi_mgr.send_juno_sysex.call_count == 1
-    pkt = mock_midi_mgr.send_juno_sysex.call_args[0][0]
-    # Tone 2 base is 1F 00 22 00, offset 0x000C -> 1F 00 22 0C
-    assert pkt[6:10] == [0x1F, 0x00, 0x22, 0x0C]
-    assert pkt[10] == 110
+    assert last() == ([0x1F, 0x00, 0x22, 0x0C], 110)
 
+    # Tone 3 goes into the MFX: its chorus send is the MFX pair (0x0D)
     mock_midi_mgr.send_juno_sysex.reset_mock()
     bridge.setToneRoutingParam(3, "chorusSend", 75)
     assert mock_midi_mgr.send_juno_sysex.call_count == 1
-    pkt = mock_midi_mgr.send_juno_sysex.call_args[0][0]
-    # Tone 3 base is 1F 00 24 00, offset 0x000D -> 1F 00 24 0D
-    assert pkt[6:10] == [0x1F, 0x00, 0x24, 0x0D]
-    assert pkt[10] == 75
+    assert last() == ([0x1F, 0x00, 0x24, 0x0D], 75)
 
+    # Tone 4 goes direct: its reverb send is the direct pair (0x10)
+    bridge.setToneRoutingParam(4, "assign", 1)
     mock_midi_mgr.send_juno_sysex.reset_mock()
     bridge.setToneRoutingParam(4, "reverbSend", 90)
-    assert mock_midi_mgr.send_juno_sysex.call_count == 1
-    pkt = mock_midi_mgr.send_juno_sysex.call_args[0][0]
-    # Tone 4 base is 1F 00 26 00, offset 0x000E -> 1F 00 26 0E
-    assert pkt[6:10] == [0x1F, 0x00, 0x26, 0x0E]
-    assert pkt[10] == 90
+    assert last() == ([0x1F, 0x00, 0x26, 0x10], 90)
 
-    # 3. MFX send controls send DT1 to synth
+    # Patch assign override: tone 3 now plays direct, so the direct pair
+    bridge.setPatchOutputAssign(1)
+    assert last() == ([0x1F, 0x00, 0x00, 0x27], 1)
+    bridge.setToneRoutingParam(3, "chorusSend", 33)
+    assert last() == ([0x1F, 0x00, 0x24, 0x0F], 33)
+
     mock_midi_mgr.send_juno_sysex.reset_mock()
     bridge.setMfxSend("dry", 85)
-    # Sends to Patch Common MFX + mirrors to Perf Common MFX1
     assert mock_midi_mgr.send_juno_sysex.call_count >= 2
-
-    # 4. Chorus controls send DT1 to synth
     mock_midi_mgr.send_juno_sysex.reset_mock()
-    bridge.setChorusParam("level", 64)
+    bridge.setChorusParam("toReverb", 2)
     assert mock_midi_mgr.send_juno_sysex.call_count >= 1
-
-    mock_midi_mgr.send_juno_sysex.reset_mock()
-    bridge.setChorusParam("toReverb", 2)  # MAIN+REV
-    assert mock_midi_mgr.send_juno_sysex.call_count >= 1
-
-    # 5. Reverb controls send DT1 to synth
     mock_midi_mgr.send_juno_sysex.reset_mock()
     bridge.setReverbParam("level", 80)
     assert mock_midi_mgr.send_juno_sysex.call_count >= 1
 
+
+def test_bridge_perform_routing_part_stage(tmp_path):
+    from tests.test_performance import _perform_bridge
+
+    bridge, juno = _perform_bridge(tmp_path)
+    g = bridge.routingGraph
+    assert g["perform"] and g["part"]["index"] == bridge.activePerfPart
+    assert g["edges"]["in->part"]["active"]
+
+    bridge.setRoutingPartParam("mfxSelect", 2)
+    part = bridge.patch_state.perf_parts[bridge.activePerfPart - 1]
+    assert part.mfx_select == 1
+    g = bridge.routingGraph
+    assert g["nodes"]["mfx"]["label"] == "MFX2"
+    assert g["mfxMismatch"]                       # radio still on MFX1
+    bridge.editRoutedMfx()
+    assert bridge.editingPerfMfx == 2 and not bridge.routingGraph["mfxMismatch"]
+
+    bridge.setPerfStructure(10)                   # TYPE11: MFX1 -> MFX2 -> MFX3
+    assert bridge.routingGraph["nodes"]["mfx"]["label"] == "MFX2→MFX3"
+
+    bridge.setRoutingPartParam("assign", 1)
+    assert part.output_assign == 1
+    g = bridge.routingGraph
+    assert g["edges"]["in->out"]["active"] and not g["edges"]["in->mfx"]["active"]
+    bridge.setRoutingPartParam("reverbSend", 50)
+    assert part.reverb_send == 50 and bridge.routingGraph["edges"]["in->rev"]["active"]
+
+    # Presets hand routing back to the patch
+    bridge.applyRoutingPreset("STUDIO_AUX")
+    assert part.output_assign == 13
 
 
 def _sent_addrs(mgr):
@@ -250,3 +392,24 @@ def test_perform_mode_part_fx_writes_leave_shared_fx_alone(mock_midi_mgr):
     assert addrs and all(a[0] == 0x11 for a in addrs), addrs
     assert tuple(ADDR_SETUP_CHORUS_SWITCH) not in addrs
     assert tuple(ADDR_SETUP_REVERB_SWITCH) not in addrs
+
+
+def test_old_snapshots_get_routing_from_their_image():
+    """Snapshots saved before the routing model carry structure + direct sends
+    only in the raw image."""
+    from src.spectre.core.spectre_format import patch_state_from_dict
+
+    tone = bytearray(154)
+    tone[0x0F], tone[0x10] = 33, 44
+    tmt = bytearray(41)
+    tmt[0x00], tmt[0x02] = 2, 1
+    d = {"common": {"name": "OLD"}, "tones": [{"chorus_send": 5}] * 4,
+         "raw_regions": {"tmt": [list(tmt)], "tone_1": [list(tone), [0] * 26]}}
+    st = patch_state_from_dict(d)
+    assert (st.common.structure_12, st.common.structure_34) == (2, 1)
+    assert (st.tones[0].chorus_send_direct, st.tones[0].reverb_send_direct) == (33, 44)
+    # Saved values win over the image once the fields exist
+    d["common"]["structure_12"] = 0
+    d["tones"] = [{"chorus_send_direct": 7}] * 4
+    st = patch_state_from_dict(d)
+    assert st.common.structure_12 == 0 and st.tones[0].chorus_send_direct == 7

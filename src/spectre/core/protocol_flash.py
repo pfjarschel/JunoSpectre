@@ -40,10 +40,6 @@ from .sysex import (
     PATCH_PARAM_NAME,
     REVERB_PARAM_LEVEL,
     REVERB_PARAM_TYPE,
-    TMT_PARAM_TONE1_SWITCH,
-    TMT_PARAM_TONE2_SWITCH,
-    TMT_PARAM_TONE3_SWITCH,
-    TMT_PARAM_TONE4_SWITCH,
     TONE_PARAM_WAVE_GROUP_TYPE,
     RolandSysEx,
     add_address,
@@ -197,12 +193,7 @@ class FlashProtocolMixin:
             if len(main_raw) < 154 or len(lfo_raw) < 26:
                 raise ValueError(f"{label} tone {idx}: short image")
             tones.append(PatchState._decode_tone(bytes(main_raw[:154]), bytes(lfo_raw[:26]), idx))
-        tmt_raw = raw_regions["tmt"][0]
-        for tone, sw in zip(tones, (
-            tmt_raw[TMT_PARAM_TONE1_SWITCH], tmt_raw[TMT_PARAM_TONE2_SWITCH],
-            tmt_raw[TMT_PARAM_TONE3_SWITCH], tmt_raw[TMT_PARAM_TONE4_SWITCH],
-        )):
-            tone.muted = (sw == 0)
+        PatchState.apply_tmt(bytes(raw_regions["tmt"][0]), common, tones)
         mfx_raw = raw_regions["mfx"][0]
         mfx_params = [0] * 32
         if len(mfx_raw) >= 0x11 + 4:
@@ -861,6 +852,8 @@ class FlashProtocolMixin:
                 output_level=t.output_level,
                 chorus_send=t.chorus_send,
                 reverb_send=t.reverb_send,
+                chorus_send_direct=t.chorus_send_direct,
+                reverb_send_direct=t.reverb_send_direct,
             )
             _try(
                 f"tone{idx}_tvf",

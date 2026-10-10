@@ -91,6 +91,22 @@ def _safe_construct(cls: Any, data: Any, default: Any) -> Any:
         return copy.deepcopy(default)
 
 
+def _fill_routing_from_image(out: PatchState, d: Dict[str, Any]) -> None:
+    """Snapshots older than the routing model lack the structure types and
+    the direct send pair; their raw image has them (TMT 0x00/0x02, tone 0x0F/0x10)."""
+    raw = out.raw_regions or {}
+    common = d.get("common") if isinstance(d.get("common"), dict) else {}
+    tmt = (raw.get("tmt") or [b""])[0]
+    if "structure_12" not in common and len(tmt) > 0x02:
+        out.common.structure_12, out.common.structure_34 = int(tmt[0x00]), int(tmt[0x02])
+    raw_tones = d.get("tones") if isinstance(d.get("tones"), list) else []
+    for i, tone in enumerate(out.tones, start=1):
+        td = raw_tones[i - 1] if i - 1 < len(raw_tones) and isinstance(raw_tones[i - 1], dict) else {}
+        main = (raw.get(f"tone_{i}") or [b""])[0]
+        if "chorus_send_direct" not in td and len(main) > 0x10:
+            tone.chorus_send_direct, tone.reverb_send_direct = int(main[0x0F]), int(main[0x10])
+
+
 def patch_state_from_dict(d: Dict[str, Any]) -> PatchState:
     """Tolerant decode: unknown keys ignored, missing keys fall back to defaults."""
     from .patch_state import (
@@ -206,6 +222,7 @@ def patch_state_from_dict(d: Dict[str, Any]) -> PatchState:
             except Exception:
                 out.macro_bases = {}
         out.raw_regions = _raw_regions_from_json(d.get("raw_regions"))
+        _fill_routing_from_image(out, d)
         return out
     except Exception:
         return base

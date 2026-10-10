@@ -68,6 +68,7 @@ from .sysex import (
     TMT_PARAM_TONE3_SWITCH,
     TMT_PARAM_TONE4_SWITCH,
     TONE_PARAM_CHORUS_SEND,
+    TONE_PARAM_CHORUS_SEND_DIRECT,
     TONE_PARAM_COARSE_TUNE,
     TONE_PARAM_DRY_SEND,
     TONE_PARAM_ENV_MODE,
@@ -109,6 +110,7 @@ from .sysex import (
     TONE_PARAM_PITCH_ENV_TIME_KEYFOLLOW,
     TONE_PARAM_PITCH_ENV_VEL_SENS,
     TONE_PARAM_REVERB_SEND,
+    TONE_PARAM_REVERB_SEND_DIRECT,
     TONE_PARAM_TVA_BIAS_LEVEL,
     TONE_PARAM_TVA_ENV_L2,
     TONE_PARAM_TVA_ENV_T1,
@@ -420,8 +422,11 @@ class PatchProtocolMixin:
         output_level: Optional[int] = None,
         chorus_send: Optional[int] = None,
         reverb_send: Optional[int] = None,
+        chorus_send_direct: Optional[int] = None,
+        reverb_send_direct: Optional[int] = None,
     ) -> None:
-        """Set Tone Output routing (Assign, Dry Level, Chorus Send, Reverb Send)."""
+        """Set Tone Output routing: assign (0 MFX, 1 L+R, 5 L, 6 R), dry level,
+        and both send pairs (chorus/reverb_send: into MFX; *_direct: direct)."""
         if tone_index not in (1, 2, 3, 4):
             raise ValueError(f"Tone index must be 1..4, got {tone_index}")
         if output_assign is not None:
@@ -432,9 +437,13 @@ class PatchProtocolMixin:
             self.set_tone_param(tone_index, TONE_PARAM_CHORUS_SEND, max(0, min(127, int(chorus_send))))
         if reverb_send is not None:
             self.set_tone_param(tone_index, TONE_PARAM_REVERB_SEND, max(0, min(127, int(reverb_send))))
+        if chorus_send_direct is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_CHORUS_SEND_DIRECT, max(0, min(127, int(chorus_send_direct))))
+        if reverb_send_direct is not None:
+            self.set_tone_param(tone_index, TONE_PARAM_REVERB_SEND_DIRECT, max(0, min(127, int(reverb_send_direct))))
 
     def set_patch_output_assign(self, output_assign: int) -> None:
-        """Set Patch Common Output Assign (0: MFX, 1: L+R, 2: L, 3: R, 4: TONE)."""
+        """Set Patch Common Output Assign (0: MFX, 1: L+R, 5: L, 6: R, 13: TONE)."""
         base = self.get_active_patch_base()
         common_base = add_address(base, OFFSET_PATCH_COMMON)
         self.send_data(add_address(common_base, PATCH_PARAM_OUTPUT_ASSIGN), [max(0, min(13, int(output_assign)))])
@@ -1086,6 +1095,8 @@ class PatchProtocolMixin:
         output_level = res1[0x0C] if len(res1) > 0x0C else 127
         chorus_send = res1[0x0D] if len(res1) > 0x0D else 0
         reverb_send = res1[0x0E] if len(res1) > 0x0E else 0
+        chorus_send_direct = res1[0x0F] if len(res1) > 0x0F else 0
+        reverb_send_direct = res1[0x10] if len(res1) > 0x10 else 0
         output_assign = res1[0x11] if len(res1) > 0x11 else 0
         matrix_switches = [
             list(res1[0x17:0x1B]),
@@ -1195,6 +1206,8 @@ class PatchProtocolMixin:
             output_level=output_level,
             chorus_send=chorus_send,
             reverb_send=reverb_send,
+            chorus_send_direct=chorus_send_direct,
+            reverb_send_direct=reverb_send_direct,
             output_assign=output_assign,
             tva_velo_sens=tva_vel,
             tva_env_t1_vel_sens=tva_env_t1_vel,
@@ -1388,16 +1401,7 @@ class PatchProtocolMixin:
         try:
             tmt_raw = self._read_tmt_raw(base, timeout=timeout)
             raw_regions["tmt"] = [bytes(tmt_raw)]
-            for tone, sw in zip(
-                tones,
-                (
-                    tmt_raw[TMT_PARAM_TONE1_SWITCH],
-                    tmt_raw[TMT_PARAM_TONE2_SWITCH],
-                    tmt_raw[TMT_PARAM_TONE3_SWITCH],
-                    tmt_raw[TMT_PARAM_TONE4_SWITCH],
-                ),
-            ):
-                tone.muted = (sw == 0)
+            PatchState.apply_tmt(bytes(tmt_raw), common, tones)
         except Exception as e:
             logger.warning(f"Could not read TMT mutes: {e}")
 

@@ -23,6 +23,16 @@ from ...core.patch_state import (
     PatchState,
     ToneState,
 )
+from ...core.routing import (
+    ASSIGN_DEFER,
+    TONE_ASSIGNS,
+    TONE_SEND_ATTRS,
+    build_graph,
+    is_direct,
+    mfx_chain,
+    tone_send_attrs,
+    tone_sends,
+)
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -70,6 +80,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
     stepLfoChanged = pyqtSignal()
     vaParamsChanged = pyqtSignal()
     routingChanged = pyqtSignal()
+    routingGraphChanged = pyqtSignal()
     masterCutoffChanged = pyqtSignal(int)
     masterResoChanged = pyqtSignal(int)
     masterAttackChanged = pyqtSignal(int)
@@ -525,13 +536,14 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty("QVariantList", notify=routingChanged)
     def toneChorusSends(self) -> list:
-        return [t.chorus_send for t in self.patch_state.tones]
+        """Chorus sends in effect (the pair each tone's route uses)."""
+        return [tone_sends(self.patch_state.common, t)[0] for t in self.patch_state.tones]
 
     @pyqtProperty("QVariantList", notify=routingChanged)
     def toneReverbSends(self) -> list:
-        return [t.reverb_send for t in self.patch_state.tones]
+        return [tone_sends(self.patch_state.common, t)[1] for t in self.patch_state.tones]
 
-    @pyqtProperty("QVariantList", notify=routingChanged)
+    @pyqtProperty("QVariantList", notify=routingGraphChanged)
     def routingPitfalls(self) -> list:
         return self.detectRoutingPitfalls()
 
@@ -545,15 +557,11 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty(str, notify=chorusParamsChanged)
     def chorusTypeName(self) -> str:
-        names = ["OFF", "CHORUS", "DELAY", "GM2 CHORUS"]
-        idx = self._cho_view()[0]
-        return names[idx] if 0 <= idx < len(names) else "OFF"
+        return self._name_of(self._CHORUS_NAMES, self._cho_view()[0])
 
     @pyqtProperty(str, notify=reverbParamsChanged)
     def reverbTypeName(self) -> str:
-        names = ["OFF", "REVERB", "ROOM", "HALL", "PLATE", "GM2"]
-        idx = self._rev_view()[0]
-        return names[idx] if 0 <= idx < len(names) else "OFF"
+        return self._name_of(self._REVERB_NAMES, self._rev_view()[0])
 
     def _build_matrix_ctrl_dict(self, ctrl_idx: int) -> dict:
         """Helper to build dict representation of a matrix controller including tone switches."""
@@ -2202,163 +2210,192 @@ class PatchBridgeMixin(BridgeBaseMixin):
         self.mfxParamsChanged.emit()
         self.routingChanged.emit()
 
+    # ------------------------------------------------------------------
+    # Routing (model: core.routing; the schematic draws routingGraph)
+    # ------------------------------------------------------------------
+
+    _CHORUS_NAMES = ["OFF", "CHORUS", "DELAY", "GM2 CHORUS"]
+    _REVERB_NAMES = ["OFF", "REVERB", "ROOM", "HALL", "PLATE", "GM2"]
+
+    @staticmethod
+    def _name_of(names: list, idx: int) -> str:
+        return names[idx] if 0 <= idx < len(names) else "OFF"
+
+    def _routing_mfx_slot(self) -> int:
+        """PERFORM: the MFX whose outputs the edited part reaches (end of chain)."""
+        part = self.patch_state.perf_parts[self.activePerfPart - 1]
+        fx = self.patch_state.perf_fx
+        return mfx_chain(int(part.mfx_select) + 1, int(getattr(fx, "mfx_structure", 0)))[-1]
+
+    def _routing_inputs(self) -> dict:
+        if self._in_perform():
+            part = self.patch_state.perf_parts[self.activePerfPart - 1]
+            fx = self.patch_state.perf_fx
+            chain = mfx_chain(int(part.mfx_select) + 1, int(getattr(fx, "mfx_structure", 0)))
+            m = self._rail_mfx_entry(chain[-1])
+            c, r = self._rail_cho_entry(), self._rail_rev_entry()
+            return {
+                "part": part, "chain": chain, "mfxSource": int(m["source"]),
+                "choSource": int(c["source"]), "revSource": int(r["source"]),
+                "mfx": {"type": int(m["type"]), "dry": int(m["drySend"]),
+                        "cho": int(m["chorusSend"]), "rev": int(m["reverbSend"])},
+                "chorus": {"type": int(c["type"]), "level": int(c["level"]), "toReverb": int(c["toReverb"])},
+                "reverb": {"type": int(r["type"]), "level": int(r["level"])},
+            }
+        shown, bypassed, dry, cho, rev, _ = self._mfx_view()
+        c, r = self._cho_view(), self._rev_view()
+        return {
+            "part": None, "chain": [1], "mfxSource": 0, "choSource": 0, "revSource": 0,
+            "mfx": {"type": 0 if bypassed else int(shown), "dry": dry, "cho": cho, "rev": rev},
+            "chorus": {"type": c[0], "level": c[1], "toReverb": c[2]},
+            "reverb": {"type": r[0], "level": r[1]},
+        }
+
+    def _build_routing_graph(self) -> dict:
+        inp = self._routing_inputs()
+        perform = inp["part"] is not None
+        label = "→".join(f"MFX{n}" for n in inp["chain"]) if perform else "MFX"
+        g = build_graph(self.patch_state, mfx=inp["mfx"], chorus=inp["chorus"],
+                        reverb=inp["reverb"], part=inp["part"], mfx_label=label)
+        mtype = inp["mfx"]["type"]
+        algo = get_mfx_algo(mtype) if mtype > 0 else None
+        g["nodes"]["mfx"]["sub"] = (algo.get("name", f"MFX #{mtype}") if algo else "THRU")
+        g["nodes"]["cho"]["sub"] = self._name_of(self._CHORUS_NAMES, inp["chorus"]["type"])
+        g["nodes"]["rev"]["sub"] = self._name_of(self._REVERB_NAMES, inp["reverb"]["type"])
+        for key, src in (("mfx", "mfxSource"), ("cho", "choSource"), ("rev", "revSource")):
+            g["nodes"][key]["source"] = self._origin_text(inp[src]) if perform else ""
+        if perform:
+            part = inp["part"]
+            g["part"] = {"index": int(part.part_index), "assign": int(part.output_assign),
+                         "mfxSelect": int(part.mfx_select) + 1, "level": int(part.dry_send),
+                         "chorusSend": int(part.chorus_send), "reverbSend": int(part.reverb_send),
+                         "muted": bool(part.muted), "volume": int(part.volume)}
+            editing = self.editingPerfMfx
+            g["editingMfx"] = editing
+            g["mfxEnd"] = inp["chain"][-1]
+            g["mfxMismatch"] = editing not in inp["chain"] and g["edges"]["in->mfx"]["active"]
+            if g["mfxMismatch"]:
+                g["notes"].insert(0, {
+                    "type": "MFX_MISMATCH", "severity": "info",
+                    "title": f"Editing MFX{editing}",
+                    "description": f"Part {part.part_index} plays through {label}; "
+                                   f"the MFX controls below edit MFX{editing}."})
+        else:
+            g["part"] = None
+            g["editingMfx"] = 1
+            g["mfxEnd"] = 1
+            g["mfxMismatch"] = False
+        return g
+
+    def _emit_routing_graph(self, *_args) -> None:
+        self.routingGraphChanged.emit()
+
+    @pyqtProperty("QVariantMap", notify=routingGraphChanged)
+    def routingGraph(self) -> dict:
+        return self._build_routing_graph()
+
+    @pyqtProperty(int, notify=routingGraphChanged)
+    def patchOutputAssign(self) -> int:
+        return int(self.patch_state.common.patch_output_assign)
+
     @pyqtSlot(result="QVariantList")
     def detectRoutingPitfalls(self) -> list:
-        """Detect potential parallel routing pitfalls, phase cancellation, or reverb overloading."""
-        # Origin-resolved: in PERFORM these are the processors that sound
-        _, mfx_bypassed, mfx_dry, mfx_cho, mfx_rev, _ = self._mfx_view()
-        cho_type, cho_level, cho_to_rev = self._cho_view()[:3]
-        tones = self.patch_state.tones
-        pitfalls = []
+        """Routing notes (warnings first) for the sound as it plays now."""
+        order = {"warning": 0, "caution": 1, "info": 2}
+        return sorted(self._build_routing_graph()["notes"], key=lambda n: order.get(n["severity"], 3))
 
-        # 1. Multiple Reverb Injections
-        has_tone_rev = any(t.reverb_send > 0 for t in tones)
-        has_mfx_rev = (mfx_rev > 0) and not mfx_bypassed
-        has_cho_rev = (cho_to_rev > 0) and (cho_type > 0) and (cho_level > 0)
-
-        reverb_sources = 0
-        sources_str = []
-        if has_tone_rev:
-            reverb_sources += 1
-            sources_str.append("Tones")
-        if has_mfx_rev:
-            reverb_sources += 1
-            sources_str.append("MFX")
-        if has_cho_rev:
-            reverb_sources += 1
-            sources_str.append("Chorus")
-
-        if reverb_sources >= 2:
-            pitfalls.append({
-                "type": "REVERB_OVERLOAD",
-                "severity": "warning",
-                "title": "Multiple Reverb Injections Active",
-                "description": f"Reverb is receiving parallel audio feeds simultaneously from: {', '.join(sources_str)}. This can create an uncontrolled muddy reverb wash and phase smear."
-            })
-
-        # 2. Mono Chorus-to-Reverb Collapsing
-        if cho_to_rev in (1, 2) and cho_type > 0 and cho_level > 0:
-            if cho_to_rev == 1:
-                desc = "Chorus output is routed EXCLUSIVELY into Reverb in mono, bypassing stereo Main Out."
-            else:
-                desc = "Chorus output feeds Main Out in stereo AND Reverb in mono. Note that the reverb feed is summed to mono."
-            pitfalls.append({
-                "type": "CHORUS_MONO_SUM",
-                "severity": "info",
-                "title": "Chorus Sent to Reverb (Mono Summed)",
-                "description": desc
-            })
-
-        # 3. Comb Filtering Risk (Parallel Direct Dry + MFX Output)
-        any_direct = any(t.output_assign == 1 for t in tones)
-        if any_direct and mfx_dry > 0 and not mfx_bypassed:
-            pitfalls.append({
-                "type": "COMB_FILTERING",
-                "severity": "caution",
-                "title": "Parallel Direct & MFX Summing",
-                "description": "Some tones are routed directly to Main Out while MFX also outputs dry signal to Main Out. This can cause phase cancellation or comb filtering."
-            })
-
-        # 4. Double Modulation (MFX Chorus + Master Chorus)
-        if not mfx_bypassed and mfx_cho > 0 and cho_type > 0 and cho_level > 0:
-            pitfalls.append({
-                "type": "DOUBLE_MODULATION",
-                "severity": "info",
-                "title": "Double Modulation / Cascaded Chorus",
-                "description": "MFX output is feeding Master Chorus. If MFX is also an active delay/flanger/chorus, multiple modulation delays will overlap."
-            })
-
-        return pitfalls
-
-    # Curated routing topologies: (tone assign, tone chorus, tone reverb,
-    # mfx dry/chorus/reverb, chorus level, chorus->reverb, reverb level, needs FX units)
-    ROUTING_PRESETS: dict[str, tuple] = {
-        # Tones (all) -> MFX -> Chorus -> Reverb -> Out (pure serial chain)
-        "SERIAL_CHAIN": (0, 0, 0, 0, 127, 0, 80, 1, 60, True),
-        # Tones -> MFX (Insert) -> Out; MFX sends parallel to Chorus & Reverb
-        "STUDIO_AUX": (0, 0, 0, 127, 60, 60, 75, 0, 65, False),
-        # Tones -> Direct Out (L+R) + parallel Chorus & Reverb sends (MFX muted)
-        "VINTAGE_SYNTH": (1, 70, 50, 0, 0, 0, 80, 0, 60, False),
-        # Tones -> MFX -> Chorus (100% to Reverb) -> Reverb -> Out
-        "AMBIENT_WASH": (0, 0, 0, 30, 110, 40, 90, 1, 95, True),
+    # Presets. Each tone gets (assign, chorus send, reverb send); sends go to
+    # the pair the new route uses. mfx: (dry, chorus, reverb) or None = keep.
+    # chorus: (level, output select) or None; reverb: level or None. A preset
+    # that sends to chorus/reverb turns the unit on when it is OFF.
+    ROUTING_PRESETS: dict[str, dict] = {
+        # Tones -> MFX -> Chorus -> Reverb -> Out (fully wet serial chain)
+        "SERIAL_CHAIN": {"tones": [(0, 0, 0)] * 4, "mfx": (0, 127, 0),
+                         "chorus": (80, 1), "reverb": 60},
+        # Tones -> MFX insert -> Out, MFX feeds chorus & reverb in parallel
+        "STUDIO_AUX": {"tones": [(0, 0, 0)] * 4, "mfx": (127, 60, 60),
+                       "chorus": (75, 0), "reverb": 65},
+        # Tones direct to Out with their own chorus & reverb sends; MFX unused
+        "VINTAGE_SYNTH": {"tones": [(1, 70, 50)] * 4, "mfx": None,
+                          "chorus": (80, 0), "reverb": 60},
+        # Tones -> MFX (mostly wet) -> Chorus entirely into a big Reverb
+        "AMBIENT_WASH": {"tones": [(0, 0, 0)] * 4, "mfx": (30, 110, 40),
+                         "chorus": (90, 1), "reverb": 95},
+        # Tones 1-2 through MFX, tones 3-4 direct with chorus & reverb
+        "SPLIT_PATH": {"tones": [(0, 0, 0), (0, 0, 0), (1, 40, 60), (1, 40, 60)],
+                       "mfx": (127, 0, 0), "chorus": (80, 0), "reverb": 70},
+        # Tones direct, no sends: the bare sound, no effects at all
+        "CLEAN_DIRECT": {"tones": [(1, 0, 0)] * 4, "mfx": None,
+                         "chorus": None, "reverb": None},
     }
+
+    def _write_tone_routing(self, t, assign: int, cho: int, rev: int) -> None:
+        """Assign + level 127 + the send pair that assign uses (state + SysEx)."""
+        t.output_assign = assign
+        t.output_level = 127
+        cho_attr, rev_attr = TONE_SEND_ATTRS[is_direct(assign)]
+        setattr(t, cho_attr, cho)
+        setattr(t, rev_attr, rev)
+        juno = self.juno
+        if juno:
+            try:
+                juno.set_tone_output(t.tone_index, output_assign=assign, output_level=127,
+                                     **{cho_attr: cho, rev_attr: rev})
+            except Exception as e:
+                logger.error(f"Error setting tone {t.tone_index} routing: {e}")
 
     @pyqtSlot(str)
     def applyRoutingPreset(self, preset_name: str) -> None:
-        """Apply a curated routing topology algorithm across Tones, MFX, Chorus, and Reverb.
+        """Apply a routing preset to the edited sound.
 
-        Tone outputs always belong to the edited patch (the active part in
-        PERFORM). MFX sends, chorus and reverb go through the origin-resolved
-        setters so in PERFORM mode they reach the processor that actually
-        sounds, never the shared performance FX by accident.
+        Sets the patch output to TONE (and, in PERFORM, the part output to
+        PATCH) so the per-tone routes are the ones that play. MFX sends go
+        to the MFX the sound actually reaches; chorus and reverb go through
+        the origin-resolved setters.
         """
         preset = preset_name.upper().replace(" ", "_")
-        eff = self.patch_state.effects
-        juno = self.engine.juno if self.engine else None
-
-        if preset in ("CUSTOM", "MANUAL"):
-            eff.routing_preset = "CUSTOM"
-            eff.manual_routing_unlocked = True
-            self.routingChanged.emit()
-            return
         spec = self.ROUTING_PRESETS.get(preset)
         if spec is None:
             return
-        (t_assign, t_cho, t_rev, m_dry, m_cho, m_rev,
-         cho_level, cho_to_rev, rev_level, needs_units) = spec
+        eff = self.patch_state.effects
         eff.routing_preset = preset
-        eff.manual_routing_unlocked = False
+        juno = self.juno
 
-        for t in self.patch_state.tones:
-            t.output_assign = t_assign
-            t.output_level = 127
-            t.chorus_send = t_cho
-            t.reverb_send = t_rev
-            if juno:
-                try:
-                    juno.set_tone_output(t.tone_index, output_assign=t_assign, output_level=127,
-                                         chorus_send=t_cho, reverb_send=t_rev)
-                except Exception as e:
-                    logger.error(f"Error setting tone {t.tone_index} routing: {e}")
-
-        # dry=0 routing depends on live FX units to reach Main; ensure the
-        # chain has endpoints (a preset that plays no sound is a broken preset)
-        cho_type = self._cho_view()[0]
-        rev_type = self._rev_view()[0]
-        if needs_units:
-            cho_type = cho_type or 1
-            rev_type = rev_type or 4
-
+        self._set_patch_assign(ASSIGN_DEFER)
         if self._in_perform():
-            for send, v in (("dry", m_dry), ("chorus", m_cho), ("reverb", m_rev)):
-                self.setMfxSend(send, v)
-            for param, v in (("type", cho_type), ("level", cho_level), ("toReverb", cho_to_rev)):
-                self.setChorusParam(param, v)
-            for param, v in (("type", rev_type), ("level", rev_level)):
-                self.setReverbParam(param, v)
-        else:
-            eff.mfx_dry_send, eff.mfx_chorus_send, eff.mfx_reverb_send = m_dry, m_cho, m_rev
-            eff.chorus_type, eff.chorus_level, eff.chorus_to_reverb = cho_type, cho_level, cho_to_rev
-            eff.reverb_type, eff.reverb_level = rev_type, rev_level
-            if juno:
+            part = self.patch_state.perf_parts[self.activePerfPart - 1]
+            if int(part.output_assign) != ASSIGN_DEFER:
+                self.setPartOutput(part.part_index, ASSIGN_DEFER, part.mfx_select)
+        for t, (assign, cho, rev) in zip(self.patch_state.tones, spec["tones"]):
+            self._write_tone_routing(t, assign, cho, rev)
+
+        if spec["mfx"] is not None:
+            dry, m_cho, m_rev = spec["mfx"]
+            if self._in_perform():
+                saved = self._editing_perf_mfx
+                self._editing_perf_mfx = self._routing_mfx_slot()
                 try:
-                    juno.set_mfx(
-                        eff.mfx_type,
-                        dry_send=eff.mfx_dry_send,
-                        chorus_send=eff.mfx_chorus_send,
-                        reverb_send=eff.mfx_reverb_send,
-                    )
-                    juno.set_chorus(
-                        eff.chorus_type,
-                        level=eff.chorus_level,
-                        output_select=eff.chorus_to_reverb,
-                    )
-                    juno.set_reverb(
-                        eff.reverb_type,
-                        level=eff.reverb_level,
-                    )
-                except Exception as e:
-                    logger.error(f"Error syncing effects routing on synth: {e}")
+                    for send, v in (("dry", dry), ("chorus", m_cho), ("reverb", m_rev)):
+                        self.setMfxSend(send, v)
+                finally:
+                    self._editing_perf_mfx = saved
+            else:
+                eff.mfx_dry_send, eff.mfx_chorus_send, eff.mfx_reverb_send = dry, m_cho, m_rev
+                if juno:
+                    try:
+                        juno.set_mfx(eff.mfx_type, dry_send=dry, chorus_send=m_cho, reverb_send=m_rev)
+                    except Exception as e:
+                        logger.error(f"Error setting MFX sends on synth: {e}")
+        if spec["chorus"] is not None:
+            level, sel = spec["chorus"]
+            if self._cho_view()[0] == 0:
+                self.setChorusParam("type", 1)
+            self.setChorusParam("level", level)
+            self.setChorusParam("toReverb", sel)
+        if spec["reverb"] is not None:
+            if self._rev_view()[0] == 0:
+                self.setReverbParam("type", 4)
+            self.setReverbParam("level", spec["reverb"])
 
         self.routingChanged.emit()
         self.mfxParamsChanged.emit()
@@ -2368,28 +2405,51 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(bool)
     def setManualRoutingUnlocked(self, unlocked: bool) -> None:
-        """Unlock or lock manual sliders editing."""
+        """Kept for old layouts; routing controls are always editable now."""
         self.patch_state.effects.manual_routing_unlocked = bool(unlocked)
-        if unlocked and self.patch_state.effects.routing_preset != "CUSTOM":
-            self.patch_state.effects.routing_preset = "CUSTOM"
+        self.routingChanged.emit()
+
+    def _set_patch_assign(self, value: int) -> None:
+        common = self.patch_state.common
+        if int(common.patch_output_assign) == int(value):
+            return
+        common.patch_output_assign = int(value)
+        if self.juno:
+            try:
+                self.juno.set_patch_output_assign(int(value))
+            except Exception as e:
+                logger.error(f"Error setting patch output assign: {e}")
+
+    @pyqtSlot(int)
+    def setPatchOutputAssign(self, value: int) -> None:
+        """Patch output: 13 TONE (per-tone routes), 0 MFX, 1 L+R, 5 L, 6 R."""
+        v = int(value)
+        if v != ASSIGN_DEFER and v not in TONE_ASSIGNS:
+            return
+        self.patch_state.effects.routing_preset = "CUSTOM"
+        self._set_patch_assign(v)
         self.routingChanged.emit()
 
     @pyqtSlot(int, str, int)
     def setToneRoutingParam(self, tone_idx: int, param: str, val: int) -> None:
-        """Set tone routing parameter. tone_idx: 1..4 (or 0 for all 4 tones)."""
-        tones = self.patch_state.tones if tone_idx == 0 else [self.patch_state.tones[tone_idx - 1]]
-        juno = self.engine.juno if self.engine else None
+        """Tone routing: assign (0 MFX, 1 L+R, 5 L, 6 R), level, chorusSend, reverbSend.
 
+        tone_idx 1..4, or 0 for all four. Sends edit the pair the tone's
+        current route uses, like the Juno panel.
+        """
+        tones = self.patch_state.tones if tone_idx == 0 else [self.patch_state.tones[tone_idx - 1]]
+        juno = self.juno
+        common = self.patch_state.common
+        if param == "assign" and int(val) not in TONE_ASSIGNS:
+            return
         self.patch_state.effects.routing_preset = "CUSTOM"
 
         for t in tones:
             if param == "assign":
-                val_int = max(0, min(2, int(val)))
-                t.output_assign = val_int
-                hw_assign = 0 if val_int in (0, 2) else 1
+                t.output_assign = int(val)
                 if juno:
                     try:
-                        juno.set_tone_output(t.tone_index, output_assign=hw_assign)
+                        juno.set_tone_output(t.tone_index, output_assign=t.output_assign)
                     except Exception as e:
                         logger.error(f"Error setting tone output assign: {e}")
             elif param == "level":
@@ -2400,24 +2460,45 @@ class PatchBridgeMixin(BridgeBaseMixin):
                     except Exception as e:
                         logger.error(f"Error setting tone output level: {e}")
                 self._rebaseDirect([(f"tone.{t.tone_index}.output_level", t.output_level)])
-            elif param == "chorusSend":
-                t.chorus_send = max(0, min(127, int(val)))
+            elif param in ("chorusSend", "reverbSend"):
+                v = max(0, min(127, int(val)))
+                cho_attr, rev_attr = tone_send_attrs(common, t)
+                attr = cho_attr if param == "chorusSend" else rev_attr
+                setattr(t, attr, v)
                 if juno:
                     try:
-                        juno.set_tone_output(t.tone_index, chorus_send=t.chorus_send)
+                        juno.set_tone_output(t.tone_index, **{attr: v})
                     except Exception as e:
-                        logger.error(f"Error setting tone chorus send: {e}")
-                self._rebaseDirect([(f"tone.{t.tone_index}.chorus_send", t.chorus_send)])
-            elif param == "reverbSend":
-                t.reverb_send = max(0, min(127, int(val)))
-                if juno:
-                    try:
-                        juno.set_tone_output(t.tone_index, reverb_send=t.reverb_send)
-                    except Exception as e:
-                        logger.error(f"Error setting tone reverb send: {e}")
-                self._rebaseDirect([(f"tone.{t.tone_index}.reverb_send", t.reverb_send)])
+                        logger.error(f"Error setting tone {param}: {e}")
+                key = "chorus_send" if param == "chorusSend" else "reverb_send"
+                self._rebaseDirect([(f"tone.{t.tone_index}.{key}", v)])
 
         self.routingChanged.emit()
+
+    @pyqtSlot(str, int)
+    def setRoutingPartParam(self, param: str, val: int) -> None:
+        """PERFORM: edited part's output (assign 13 PATCH/0/1/5/6, mfx 1..3,
+        level, chorus, reverb)."""
+        if not self._in_perform():
+            return
+        part = self.patch_state.perf_parts[self.activePerfPart - 1]
+        v = int(val)
+        if param == "assign":
+            if v != ASSIGN_DEFER and v not in TONE_ASSIGNS:
+                return
+            self.setPartOutput(part.part_index, v, part.mfx_select)
+        elif param == "mfxSelect":
+            self.setPartOutput(part.part_index, part.output_assign, max(1, min(3, v)) - 1)
+        elif param in ("level", "chorusSend", "reverbSend"):
+            which = {"level": 0, "chorusSend": 1, "reverbSend": 2}[param]
+            self.setPartFx(part.part_index, which, v)
+        self.routingChanged.emit()
+
+    @pyqtSlot()
+    def editRoutedMfx(self) -> None:
+        """PERFORM: point the MFX editing radio at the MFX the part reaches."""
+        if self._in_perform():
+            self.setEditingPerfMfx(self._routing_mfx_slot())
 
     @pyqtSlot(int, str, int)
     def setMatrixCtrlParam(self, ctrl_index: int, param: str, val: int) -> None:

@@ -15,6 +15,7 @@ from ...core.macro_targets import (
     resolve_sounding,
 )
 from ...core.patch_state import PatchState, ToneState
+from ...core.routing import tone_send_attrs, tone_sends
 from ...vector.engine import MorphMode, VectorState
 from ...vector.math import CrossfadeCurve
 from ...vector.motion import AutomatorType, LoopMode, RecorderState, WavetableSweepMode
@@ -190,6 +191,9 @@ class VectorBridgeMixin(BridgeBaseMixin):
             if key.startswith("tone."):
                 _, idx, param = key.split(".", 2)
                 t = ps.get_tone(int(idx))
+                if param in ("chorus_send", "reverb_send"):
+                    # The pair the tone's route uses (core.routing)
+                    return float(tone_sends(ps.common, t)[param == "reverb_send"])
                 return float(self._toneParam(t, param))
             if key == "vector.x":
                 return float(self.engine.x)
@@ -220,7 +224,6 @@ class VectorBridgeMixin(BridgeBaseMixin):
             "lfo1_pan_depth": t.lfo1_pan_depth, "lfo2_rate": t.lfo2_rate,
             "lfo2_pitch_depth": t.lfo2_pitch_depth, "lfo2_tvf_depth": t.lfo2_tvf_depth,
             "lfo2_tva_depth": t.lfo2_tva_depth, "lfo2_pan_depth": t.lfo2_pan_depth,
-            "chorus_send": t.chorus_send, "reverb_send": t.reverb_send,
             "output_level": t.output_level,
         }
         return float(mapping.get(param, 0.0))
@@ -546,14 +549,12 @@ class VectorBridgeMixin(BridgeBaseMixin):
                 juno.set_tone_pitch(tone_idx, fine=t.fine_tune)
         elif param.startswith("lfo1_") or param.startswith("lfo2_"):
             self._applyLfoParam(t, param, iv)
-        elif param == "chorus_send":
-            t.chorus_send = max(0, min(127, iv))
+        elif param in ("chorus_send", "reverb_send"):
+            # Write the pair the tone's route uses, like the Juno panel
+            attr = tone_send_attrs(ps.common, t)[param == "reverb_send"]
+            setattr(t, attr, max(0, min(127, iv)))
             if juno:
-                juno.set_tone_param(tone_idx, 0x000D, t.chorus_send)
-        elif param == "reverb_send":
-            t.reverb_send = max(0, min(127, iv))
-            if juno:
-                juno.set_tone_param(tone_idx, 0x000E, t.reverb_send)
+                juno.set_tone_output(tone_idx, **{attr: getattr(t, attr)})
         elif param == "output_level":
             t.output_level = max(0, min(127, iv))
             if juno:

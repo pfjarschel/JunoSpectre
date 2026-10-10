@@ -143,6 +143,13 @@ class SpectreBridge(
         self._last_tone_levels: tuple[int, int, int, int] = self.engine.tone_levels
         self._last_transport: str = self.engine.motion.state.value
 
+        # Routing schematic: anything that changes the signal path redraws it
+        for sig in (self.routingChanged, self.perfPartsChanged, self.perfFxChanged,
+                    self.mfxParamsChanged, self.chorusParamsChanged,
+                    self.reverbParamsChanged, self.patchInfoChanged,
+                    self.toneMutesChanged, self.toneLevelsChanged):
+            sig.connect(self._emit_routing_graph)
+
         # Subscribe to engine state updates
         self.engine.subscribe(self._on_engine_state_changed)
 
