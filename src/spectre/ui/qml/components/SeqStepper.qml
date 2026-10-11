@@ -15,6 +15,7 @@ Rectangle {
     property int index: 0
     property int count: 1
     property real pxPerStep: ScaleMetrics.dp(12)
+    property real textPx: ScaleMetrics.sp(8)
     signal requested(int newIndex)
 
     height: ScaleMetrics.dp(30)
@@ -40,7 +41,7 @@ Rectangle {
     component Arrow: Rectangle {
         id: arrow
         property int dir: 1
-        Layout.preferredWidth: ScaleMetrics.dp(26)
+        Layout.preferredWidth: Math.max(ScaleMetrics.dp(26), st.height - ScaleMetrics.dp(4))
         Layout.fillHeight: true
         radius: 3
         color: arrowMouse.pressed ? Qt.rgba(st.valueColor.r, st.valueColor.g, st.valueColor.b, 0.25) : "transparent"
@@ -48,7 +49,7 @@ Rectangle {
         Text {
             anchors.centerIn: parent
             text: arrow.dir < 0 ? "◀" : "▶"
-            font.pixelSize: ScaleMetrics.sp(9)
+            font.pixelSize: st.textPx + 1
             color: Theme.textDim
         }
         MouseArea {
@@ -78,8 +79,8 @@ Rectangle {
             RowLayout {
                 anchors.centerIn: parent
                 spacing: ScaleMetrics.dp(3)
-                Text { text: st.label; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-                Text { text: st.valueText; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: st.valueColor }
+                Text { text: st.label; font.bold: true; font.pixelSize: st.textPx; color: Theme.textDim }
+                Text { text: st.valueText; font.bold: true; font.pixelSize: st.textPx; color: st.valueColor }
             }
             MouseArea {
                 id: centreMouse

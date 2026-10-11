@@ -5,8 +5,8 @@ import JunoSpectre
 import ".."
 
 // JUNO-DS arpeggiator: the synth's own arp (global Setup settings; the app
-// saves them with patches and performances). Style browser on the left,
-// motif / grid / duration and the numeric settings on the right.
+// saves them with patches and performances). Three panels: style browser,
+// pattern (motif, grid), feel (duration and the numeric settings).
 Rectangle {
     id: root
     color: Theme.bgCard
@@ -21,7 +21,7 @@ Rectangle {
 
     // Style categories (Parameter Guide p.86): [title, first, last]
     readonly property var categories: [["BASIC", 0, 5], ["SEQ PTN", 6, 65], ["BASSLINE", 66, 106],
-                                       ["SLICED", 107, 116], ["GTR / KEYS / TRG", 117, 127]]
+                                       ["SLICED", 107, 116], ["GTR/KEYS", 117, 127]]
     // Browsed category: follows the style when it changes (knob, file load)
     property int category: 0
     property int followedStyle: -1
@@ -52,8 +52,8 @@ Rectangle {
         property color tint: root.accent
         signal clicked()
         Layout.fillWidth: true
-        Layout.preferredHeight: ScaleMetrics.dp(26)
-        radius: 3
+        Layout.preferredHeight: ScaleMetrics.dp(36)
+        radius: 4
         color: selected ? Qt.rgba(tint.r, tint.g, tint.b, 0.22) : (chipMouse.pressed ? Theme.bgCardActive : Theme.bgApp)
         border.color: selected ? tint : Theme.borderCard
         border.width: 1
@@ -63,7 +63,7 @@ Rectangle {
             anchors.rightMargin: ScaleMetrics.dp(3)
             text: chip.text
             font.bold: true
-            font.pixelSize: ScaleMetrics.sp(8)
+            font.pixelSize: ScaleMetrics.sp(10)
             color: chip.selected ? chip.tint : Theme.textSecondary
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
@@ -74,7 +74,7 @@ Rectangle {
 
     component SectionLabel: Text {
         font.bold: true
-        font.pixelSize: ScaleMetrics.sp(8)
+        font.pixelSize: ScaleMetrics.sp(9)
         font.letterSpacing: 1.0
         color: Theme.textDim
     }
@@ -125,7 +125,7 @@ Rectangle {
                 visible: root.perform
                 text: "PART: SET ON THE JUNO'S ARPEGGIO SCREEN"
                 font.bold: true
-                font.pixelSize: ScaleMetrics.sp(8)
+                font.pixelSize: ScaleMetrics.sp(9)
                 color: Theme.textDim
             }
 
@@ -152,45 +152,49 @@ Rectangle {
         }
 
         RowLayout {
+            id: body
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: ScaleMetrics.dp(8)
+            readonly property real share: width - 2 * spacing
 
-            // Style browser
-            Rectangle {
-                Layout.fillWidth: true
+            component Panel: Rectangle {
                 Layout.fillHeight: true
                 radius: ScaleMetrics.dp(6)
                 color: Theme.bgApp
                 border.color: Theme.borderCard
                 border.width: 1
+            }
+
+            // 1. Style browser
+            Panel {
+                Layout.preferredWidth: body.share * 0.38
 
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: ScaleMetrics.dp(8)
                     spacing: ScaleMetrics.dp(6)
 
-                    RowLayout {
+                    SectionLabel { text: "STYLE" }
+                    Text {
                         Layout.fillWidth: true
-                        spacing: ScaleMetrics.dp(4)
-                        SectionLabel { text: "STYLE" }
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.arp.styleText
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(9)
-                            color: root.accent
-                            elide: Text.ElideRight
-                        }
+                        text: root.arp.styleText
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(13)
+                        color: root.accent
+                        elide: Text.ElideRight
                     }
 
-                    RowLayout {
+                    GridLayout {
                         Layout.fillWidth: true
-                        spacing: ScaleMetrics.dp(4)
+                        columns: 3
+                        rowSpacing: ScaleMetrics.dp(4)
+                        columnSpacing: ScaleMetrics.dp(4)
                         Repeater {
                             model: root.categories.length
                             delegate: Chip {
                                 required property int index
+                                Layout.preferredHeight: ScaleMetrics.dp(32)
                                 text: root.categories[index][0]
                                 selected: root.category === index
                                 onClicked: root.category = index
@@ -203,8 +207,8 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
-                        cellWidth: width / Math.max(1, Math.floor(width / ScaleMetrics.dp(118)))
-                        cellHeight: ScaleMetrics.dp(34)
+                        cellWidth: width / 3
+                        cellHeight: ScaleMetrics.dp(40)
                         model: root.categoryStyles
                         delegate: Item {
                             id: cell
@@ -216,16 +220,18 @@ Rectangle {
                             Rectangle {
                                 anchors.fill: parent
                                 anchors.margins: ScaleMetrics.dp(2)
-                                radius: 3
+                                radius: 4
                                 color: cell.current ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.22)
                                                     : (tileMouse.pressed ? Theme.bgCardActive : Theme.bgCard)
                                 border.color: cell.current ? root.accent : Theme.borderCard
                                 border.width: 1
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: ScaleMetrics.dp(5)
-                                    anchors.rightMargin: ScaleMetrics.dp(5)
-                                    spacing: ScaleMetrics.dp(4)
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.leftMargin: ScaleMetrics.dp(6)
+                                    anchors.rightMargin: ScaleMetrics.dp(4)
+                                    spacing: 0
                                     Text {
                                         text: cell.label.substring(0, 3)
                                         font.family: Theme.fontMono
@@ -233,10 +239,10 @@ Rectangle {
                                         color: Theme.textDim
                                     }
                                     Text {
-                                        Layout.fillWidth: true
+                                        width: parent.width
                                         text: cell.label.substring(4)
                                         font.bold: true
-                                        font.pixelSize: ScaleMetrics.sp(8)
+                                        font.pixelSize: ScaleMetrics.sp(9)
                                         color: cell.current ? root.accent : Theme.textPrimary
                                         elide: Text.ElideRight
                                     }
@@ -252,134 +258,143 @@ Rectangle {
 
                     SectionLabel {
                         Layout.fillWidth: true
-                        text: "(n) KEYS TO HOLD · (a) ANY · (p) ONE KEY WITH MOTIF PHRASE"
+                        text: "(n) KEYS TO HOLD · (a) ANY · (p) ONE KEY, MOTIF PHRASE"
+                        font.pixelSize: ScaleMetrics.sp(8)
                         elide: Text.ElideRight
                     }
                 }
             }
 
-            // Settings
-            Rectangle {
-                Layout.preferredWidth: ScaleMetrics.dp(330)
-                Layout.fillHeight: true
-                radius: ScaleMetrics.dp(6)
-                color: Theme.bgApp
-                border.color: Theme.borderCard
-                border.width: 1
+            // 2. Pattern: motif and grid
+            Panel {
+                Layout.preferredWidth: body.share * 0.34
 
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: ScaleMetrics.dp(8)
-                    spacing: ScaleMetrics.dp(5)
+                    spacing: ScaleMetrics.dp(6)
 
                     SectionLabel { text: "MOTIF" }
                     GridLayout {
                         Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.preferredHeight: 4
                         columns: 3
-                        rowSpacing: ScaleMetrics.dp(3)
-                        columnSpacing: ScaleMetrics.dp(3)
+                        rowSpacing: ScaleMetrics.dp(4)
+                        columnSpacing: ScaleMetrics.dp(4)
                         Repeater {
                             model: root.lists.motifs
                             delegate: Chip {
                                 required property int index
                                 required property string modelData
                                 text: modelData
+                                Layout.fillHeight: true
+                                Layout.maximumHeight: ScaleMetrics.dp(64)
                                 selected: root.arp.motif === index
                                 onClicked: Bridge.setArpField("motif", index)
                             }
                         }
                     }
 
-                    SectionLabel { text: "GRID (SHARED WITH RHYTHM PATTERNS)" }
+                    SectionLabel { text: "GRID · SHARED WITH RHYTHM PATTERNS" }
                     GridLayout {
                         Layout.fillWidth: true
-                        columns: 5
-                        rowSpacing: ScaleMetrics.dp(3)
-                        columnSpacing: ScaleMetrics.dp(3)
+                        Layout.fillHeight: true
+                        Layout.preferredHeight: 3
+                        columns: 3
+                        rowSpacing: ScaleMetrics.dp(4)
+                        columnSpacing: ScaleMetrics.dp(4)
                         Repeater {
                             model: root.lists.grids
                             delegate: Chip {
                                 required property int index
                                 required property string modelData
                                 text: modelData
+                                Layout.fillHeight: true
+                                Layout.maximumHeight: ScaleMetrics.dp(64)
                                 selected: root.arp.grid === index
                                 onClicked: Bridge.setArpField("grid", index)
                             }
                         }
                     }
+                }
+            }
+
+            // 3. Feel: duration and the numeric settings
+            Panel {
+                Layout.fillWidth: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: ScaleMetrics.dp(8)
+                    spacing: ScaleMetrics.dp(6)
 
                     SectionLabel { text: "DURATION" }
                     GridLayout {
                         Layout.fillWidth: true
+                        Layout.fillHeight: true
                         columns: 5
-                        rowSpacing: ScaleMetrics.dp(3)
-                        columnSpacing: ScaleMetrics.dp(3)
+                        rowSpacing: ScaleMetrics.dp(4)
+                        columnSpacing: ScaleMetrics.dp(4)
                         Repeater {
                             model: root.lists.durations
                             delegate: Chip {
                                 required property int index
                                 required property string modelData
                                 text: modelData
+                                Layout.fillHeight: true
+                                Layout.maximumHeight: ScaleMetrics.dp(64)
                                 selected: root.arp.duration === index
                                 onClicked: Bridge.setArpField("duration", index)
                             }
                         }
                     }
 
-                    GridLayout {
+                    component Stepper: SeqStepper {
                         Layout.fillWidth: true
-                        Layout.topMargin: ScaleMetrics.dp(3)
-                        columns: 2
-                        rowSpacing: ScaleMetrics.dp(4)
-                        columnSpacing: ScaleMetrics.dp(4)
-                        SeqStepper {
-                            Layout.fillWidth: true
-                            label: "OCT:"
-                            count: 7
-                            index: root.arp.octave + 3
-                            valueText: root.arp.octaveText
-                            valueColor: root.accent
-                            pxPerStep: ScaleMetrics.dp(16)
-                            onRequested: (i) => Bridge.setArpField("octave", i - 3)
-                        }
-                        SeqStepper {
-                            Layout.fillWidth: true
-                            label: "ACCENT:"
-                            count: 101
-                            index: root.arp.accent
-                            valueText: root.arp.accentText
-                            valueColor: root.accent
-                            pxPerStep: ScaleMetrics.dp(3)
-                            onRequested: (i) => Bridge.setArpField("accent", i)
-                        }
-                        SeqStepper {
-                            Layout.fillWidth: true
-                            label: "VEL:"
-                            count: 128
-                            index: root.arp.velocity
-                            valueText: root.arp.velocityText
-                            valueColor: root.accent
-                            pxPerStep: ScaleMetrics.dp(3)
-                            onRequested: (i) => Bridge.setArpField("velocity", i)
-                        }
-                        SeqStepper {
-                            Layout.fillWidth: true
-                            label: "STEP:"
-                            count: 33
-                            index: root.arp.step
-                            valueText: root.arp.stepText
-                            valueColor: root.accent
-                            pxPerStep: ScaleMetrics.dp(8)
-                            onRequested: (i) => Bridge.setArpField("step", i)
-                        }
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: ScaleMetrics.dp(42)
+                        Layout.maximumHeight: ScaleMetrics.dp(56)
+                        textPx: ScaleMetrics.sp(11)
+                        valueColor: root.accent
                     }
-
-                    Item { Layout.fillHeight: true }
+                    Stepper {
+                        label: "OCT RANGE:"
+                        count: 7
+                        index: root.arp.octave + 3
+                        valueText: root.arp.octaveText
+                        pxPerStep: ScaleMetrics.dp(20)
+                        onRequested: (i) => Bridge.setArpField("octave", i - 3)
+                    }
+                    Stepper {
+                        label: "ACCENT:"
+                        count: 101
+                        index: root.arp.accent
+                        valueText: root.arp.accentText
+                        pxPerStep: ScaleMetrics.dp(3)
+                        onRequested: (i) => Bridge.setArpField("accent", i)
+                    }
+                    Stepper {
+                        label: "VELOCITY:"
+                        count: 128
+                        index: root.arp.velocity
+                        valueText: root.arp.velocityText
+                        pxPerStep: ScaleMetrics.dp(3)
+                        onRequested: (i) => Bridge.setArpField("velocity", i)
+                    }
+                    Stepper {
+                        label: "STEP:"
+                        count: 33
+                        index: root.arp.step
+                        valueText: root.arp.stepText
+                        pxPerStep: ScaleMetrics.dp(8)
+                        onRequested: (i) => Bridge.setArpField("step", i)
+                    }
 
                     Text {
                         Layout.fillWidth: true
                         visible: Bridge.midiClockOut
-                        text: "Arp follows the app tempo when the Juno is on SYSTEM › SYNC/TEMPO › Sync Mode SLAVE, Clock Source USB."
+                        text: "Follows the app tempo with the Juno on SYSTEM › SYNC/TEMPO › Sync Mode SLAVE, Clock Source USB."
                         wrapMode: Text.WordWrap
                         font.pixelSize: ScaleMetrics.sp(8)
                         color: Theme.textMuted
