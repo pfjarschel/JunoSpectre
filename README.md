@@ -26,7 +26,7 @@ The idea for this came to me one day when I saw a picture of a D-50 and the asso
 | **4-OSC Virtual Analog** | A classic analog-style console with a ganged master filter and envelopes, per-oscillator detune and level. |
 | **Motion recorder** | Record touch gestures for vector wave morphing, 0.25×–4× speed and forward/ping-pong/reverse loops. Includes circle, Lissajous and Brownian automators. |
 | **Waveform catalog** | 2,382+ Roland waveforms indexed and tagged (Analog, Keys, Bass, Strings, Brass, Perc, FX), with a touch keyboard for fast search. |
-| **MIDI Learn & smooth scaling** | Hardware profiles for common controllers, plus jump-free "proportional catch-up" knob scaling. |
+| **MIDI controllers** | Learn any knob, fader or button to any macro target, macro or action; per-page and mixer-layer scopes, pickup / smooth scaling, knob position feedback. Launch Control XL3 surface with names, values and LED colours. |
 | **Effects & modulation** | MFX Studio (80 algorithms), Master FX, Mod Matrix, Step LFO, Advanced Pitch/TVA/TVF Envelope editors, Routing view and Analog Feel controls. |
 | **Appliance-ready** | Boots straight into the Qt UI via KMS/DRM (`eglfs`), with system tools such as brightness, Wi-Fi and an updater. |
 
@@ -154,7 +154,6 @@ You can also add this to a `systemd` service to boot straight into Spectre.
 |--------|---------|
 | `scripts/start_spectre.sh` | Production launch wrapper with display/platform detection |
 | `scripts/spectre_vector.py` | Main touch UI launcher (`juno-spectre` command) |
-| `scripts/spectre_control.py` | Hardware profile inspector and MIDI learn CLI |
 | `scripts/spectre_probe.py` | SysEx device probe and identity verification |
 
 ### Developer & Data Tools (`tools/`)
@@ -182,12 +181,12 @@ pytest
 ```text
 JunoSpectre/
 ├── config/
-│   └── hardware_profiles/     # JSON maps for MIDI controllers
+│   └── controller_presets/    # MIDI controller binding presets (e.g. Launch Control XL3)
 ├── scripts/                   # Production launchers and runtime scripts
 ├── tools/                     # Offline data dumpers and asset compilers
 ├── src/spectre/
 │   ├── core/                  # SysEx, protocol, MIDI, patch state, MFX, waves, updater
-│   ├── control/               # Hardware profiles, MIDI learn, smooth scaler
+│   ├── control/               # Controller bindings and surface drivers
 │   ├── vector/                # Vector maths, motion, engine
 │   ├── librarian/             # SQLite patch indexing, repository, tagging
 │   ├── ui/                    # Qt Quick app, modular Python↔QML bridge, QML views
