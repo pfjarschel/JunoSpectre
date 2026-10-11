@@ -65,15 +65,32 @@ ACTIONS: list[dict] = (
     + [_action("playlist.next", "Playlist Next"), _action("playlist.prev", "Playlist Previous"),
        _action("panic", "Panic (All Notes Off)"),
        _action("view.next", "Next Page"), _action("view.prev", "Previous Page"),
-       _action("select.next", "Next Tone / Part"), _action("select.prev", "Previous Tone / Part")]
+       _action("select.next", "Next Tone / Part"), _action("select.prev", "Previous Tone / Part"),
+       _action("bank.next", "Part Bank 9-16"), _action("bank.prev", "Part Bank 1-8")]
 )
-_ACTION_TITLES = {a["key"]: a["title"] for a in ACTIONS}
+_PAGE_TITLES = {"JUNO PCM": "PCM Editor", "PERFORMANCE": "Perf Mixer", "LIVE": "Live Mode",
+                "SETLIST": "Set List", "MACROS": "Macro Deck", "MSEG ENVELOPES": "Envelopes",
+                "MFX": "MFX Studio"}
 
 # Learn scopes offered in the UI
 CONTEXT_TITLES = {"": "EVERYWHERE", "MODE:PATCH": "PATCH MODE", "MODE:PERFORM": "PERFORM MODE"}
+_TOKEN_TITLES = {"LAYER:MIXER": "MIXER", "BANK:1": "PARTS 1-8", "BANK:2": "PARTS 9-16"}
+
+
+def context_title(context: str) -> str:
+    """"LAYER:MIXER&MODE:PERFORM&BANK:2" -> "MIXER · PERFORM MODE · PARTS 9-16"."""
+    if not context:
+        return CONTEXT_TITLES[""]
+    return " · ".join(CONTEXT_TITLES.get(t, _TOKEN_TITLES.get(t, t)) for t in context.split("&"))
+
+
 # App pages a binding can belong to (activeView keys)
 CONTEXT_PAGES = ["JUNO PCM", "VECTOR", "WAVETABLE", "VA", "MOD MATRIX", "STEP LFO", "MSEG ENVELOPES",
                  "ROUTING", "MFX", "MASTER FX", "LIVE", "SEQUENCER", "SETLIST", "PERFORMANCE", "MACROS"]
+ACTIONS += [_action(f"view.goto.{v}", "Go to " + _PAGE_TITLES.get(v, v.title()))
+            for v in CONTEXT_PAGES]
+_ACTION_TITLES = {a["key"]: a["title"] for a in ACTIONS}
+
 
 
 def default_controller_port(key: str) -> bool:
@@ -99,6 +116,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         self._ctl_learn_target = ""
         self._ctl_learn_context = ""
         self._ctl_activity = ""
+        # Surface layer ("MIXER" while the LCXL3 is in DAW Mixer mode) and part bank (1 or 2)
+        self._ctl_layer = ""
+        self._ctl_bank = 1
         self._ctl_names: dict[str, dict] = {}       # port key -> {"cc:13": "Knob A1"}
         # Device setups from presets: [{match, listen, feedback, on_connect, on_quit}]
         self._ctl_devices: list[dict] = [dict(d) for d in cfg.get("devices", []) if isinstance(d, dict)]
@@ -111,6 +131,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         self._ctl_fb_timer.setInterval(FEEDBACK_MS)
         self._ctl_fb_timer.timeout.connect(self._ctl_feedback_tick)
         self._ctlPending.connect(self._ctl_schedule_drain)
+        # Which bindings are active depends on the page and the sound mode
+        self.activeViewChanged.connect(self._ctl_context_changed)
+        self.patchInfoChanged.connect(self._ctl_context_changed)
         self._ctl_load_names()
 
     def _ctl_save(self) -> None:
@@ -196,6 +219,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             logger.info(f"Controller setup: {client}")
             for k in [k for k in self.__dict__.get("_surface_state", {}) if k.split(":")[0] == client]:
                 del self._surface_state[k]
+            self._ctl_layer, self._ctl_bank = "", 1    # on_connect starts the device fresh
             self._ctl_device_messages(client, self._ctl_devices[i].get("on_connect", []))
         self._ctl_connected_devices = live
 
@@ -308,16 +332,23 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     def _ctl_mode(self) -> str:
         return "PERFORM" if self._in_perform() else "PATCH"
 
+    def _ctl_state(self) -> dict:
+        """What binding contexts are matched against right now."""
+        return {"PAGE": str(getattr(self, "_active_view", "")), "MODE": self._ctl_mode(),
+                "LAYER": self._ctl_layer, "BANK": str(self._ctl_bank)}
+
     def _ctl_pick(self, port, ch, kind, num) -> list:
-        return pick_bindings(self._ctl_bindings, port, ch, kind, num,
-                             str(getattr(self, "_active_view", "")), self._ctl_mode())
+        return pick_bindings(self._ctl_bindings, port, ch, kind, num, self._ctl_state())
 
     # -- events --------------------------------------------------------------
 
     def _ctl_handle(self, ev: tuple) -> None:
         port, ch, kind, num, raw = ev
         if ch == 6 and any(p == port for p, _ in self._surfaces()):
-            return      # LCXL3 feature channel: mode reports, not controls
+            # LCXL3 feature channel: mode reports, not controls. DAW Mixer = mixer layer.
+            if kind == "cc" and num == 30:
+                self._ctl_set_layer("MIXER" if raw == 1 else "")
+            return
         self._ctl_moved[(port, ch, kind, num)] = (raw, time.monotonic())
         if self._ctl_learn_target:
             if raw == 0:
@@ -464,13 +495,13 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     def _ctl_feedback_tick(self) -> None:
         """Send each absolute knob its target's value, so it never jumps (endless knobs)."""
         now = time.monotonic()
-        view, mode = str(getattr(self, "_active_view", "")), self._ctl_mode()
+        state = self._ctl_state()
         for b in self._ctl_bindings:
             if (b.kind != "cc" or b.behavior != "absolute" or b.target.startswith("action.")
                     or b.port not in self._ctl_open or not self._ctl_feedback_on(b.port)):
                 continue
             ctl = (b.port, b.channel, b.kind, b.number)
-            if b not in pick_bindings(self._ctl_bindings, *ctl, view, mode):
+            if b not in pick_bindings(self._ctl_bindings, *ctl, state):
                 continue        # another context owns this control right now
             moved = self._ctl_moved.get(ctl)
             if moved and now - moved[1] < FEEDBACK_HOLD_S:
@@ -506,8 +537,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     def _surface_binding(self, port: str, number: int):
         ch = 0 if number in lcxl3.BUTTONS or number > 100 else 15
-        view, mode = str(getattr(self, "_active_view", "")), self._ctl_mode()
-        hits = pick_bindings(self._ctl_bindings, port, ch, "cc", number, view, mode)
+        hits = pick_bindings(self._ctl_bindings, port, ch, "cc", number, self._ctl_state())
         return hits[0] if hits else None
 
     def _surface_button_rgb(self, b) -> tuple:
@@ -531,6 +561,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             on, color = bool(getattr(self.sequencer, "is_playing", False)), (0, 127, 0)
         elif t == "action.seq.live_record":
             on, color = bool(self.seqLiveRecordEnabled), (127, 0, 0)
+        elif t.startswith("action.view.goto."):
+            on, color = str(getattr(self, "_active_view", "")) == t[len("action.view.goto."):], (110, 110, 127)
         elif t.startswith("action.seq.scene."):
             color = (0, 127, 0)
         elif t.startswith("action.seq.stop_track."):
@@ -546,6 +578,16 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                                               (60, 60, 60))
             on = cur is not None and cur >= 0.5
         return color if on else lcxl3.dim(color)
+
+    def _ctl_context_changed(self, *_args) -> None:
+        self.controllersChanged.emit()
+
+    def _ctl_set_layer(self, layer: str) -> None:
+        if layer == self._ctl_layer:
+            return
+        self._ctl_layer = layer
+        self._ctl_fb_sent.clear()       # the newly active bindings send their positions
+        self.controllersChanged.emit()
 
     def _surface_tick(self, moved: set | None = None) -> None:
         """Bring each surface's screen and LEDs up to date (only diffs are sent)."""
@@ -601,8 +643,11 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                         st["leds"][num] = rgb
                 sel = (f"PART {self._editedPart()}" if self._in_perform()
                        else f"TONE {int(self._selected_tone)}")
-                stat = (str(getattr(self, "_patch_name", "") or "JUNO SPECTRE"),
-                        str(getattr(self, "_active_view", "")), f"{self._ctl_mode()} · {sel}")
+                page = str(getattr(self, "_active_view", ""))
+                if self._ctl_layer == "MIXER":
+                    page = "MIXER " + ("9-16" if self._ctl_bank == 2 else "1-8") if self._in_perform() else "MIXER"
+                stat = (str(getattr(self, "_patch_name", "") or "JUNO SPECTRE"), page,
+                        f"{self._ctl_mode()} · {sel}")
                 if st["stat"] != stat:
                     if st["stat"] is None:
                         msgs.append(lcxl3.display_config(lcxl3.STATIONARY, stationary=True))
@@ -650,11 +695,17 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self.prevPlaylistEntry()
             elif action == "panic":
                 self.panic()
+            elif action.startswith("view.goto."):
+                self.setActiveView(action[len("view.goto."):])
             elif action in ("view.next", "view.prev"):
                 view = str(getattr(self, "_active_view", ""))
                 i = CONTEXT_PAGES.index(view) if view in CONTEXT_PAGES else -1
                 step = 1 if action == "view.next" else -1
                 self.setActiveView(CONTEXT_PAGES[(i + step) % len(CONTEXT_PAGES)])
+            elif action in ("bank.next", "bank.prev"):
+                self._ctl_bank = 2 if action == "bank.next" else 1
+                self._ctl_fb_sent.clear()
+                self.controllersChanged.emit()
             elif action in ("select.next", "select.prev"):
                 step = 1 if action == "select.next" else -1
                 if self._in_perform():
@@ -735,15 +786,18 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     @pyqtProperty("QVariantList", notify=controllersChanged)
     def controlBindings(self) -> list:
         out = []
+        state = self._ctl_state()
         for i, b in enumerate(self._ctl_bindings):
+            active = b in pick_bindings(self._ctl_bindings, b.port, b.channel, b.kind, b.number, state)
             out.append({
+                "active": active,
                 "index": i, "control": self._ctl_control_label(b.port, b.channel, b.kind, b.number),
                 "port": b.port or "ANY PORT", "online": (not b.port) or b.port in self._ctl_open,
                 "target": b.target, "title": self._ctl_target_title(b.target),
                 "macro": b.target.startswith("macro."),
                 "behavior": b.behavior, "takeover": b.takeover, "lo": b.lo, "hi": b.hi,
                 "action": b.target.startswith("action."),
-                "context": b.context, "contextTitle": CONTEXT_TITLES.get(b.context, b.context),
+                "context": b.context, "contextTitle": context_title(b.context),
             })
         return out
 

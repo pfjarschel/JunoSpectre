@@ -89,11 +89,20 @@ def test_most_specific_context_wins():
     every = _b(target="macro.1")
     perform = _b(target="part.level@1", context="MODE:PERFORM")
     seq = _b(target="action.seq.scene.1", context="SEQUENCER")
-    bs = [every, perform, seq]
-    assert pick_bindings(bs, PORT, 0, "cc", 13, "JUNO PCM", "PATCH") == [every]
-    assert pick_bindings(bs, PORT, 0, "cc", 13, "JUNO PCM", "PERFORM") == [perform]
-    assert pick_bindings(bs, PORT, 0, "cc", 13, "SEQUENCER", "PERFORM") == [seq]
-    assert pick_bindings([perform], PORT, 0, "cc", 13, "JUNO PCM", "PATCH") == []
+    mixer = _b(target="part.pan@1", context="LAYER:MIXER&MODE:PERFORM&BANK:1")
+    mixer2 = _b(target="part.pan@9", context="LAYER:MIXER&MODE:PERFORM&BANK:2")
+    bs = [every, perform, seq, mixer, mixer2]
+
+    def st(page, mode, layer="", bank=1):
+        return {"PAGE": page, "MODE": mode, "LAYER": layer, "BANK": str(bank)}
+
+    assert pick_bindings(bs, PORT, 0, "cc", 13, st("JUNO PCM", "PATCH")) == [every]
+    assert pick_bindings(bs, PORT, 0, "cc", 13, st("JUNO PCM", "PERFORM")) == [perform]
+    assert pick_bindings(bs, PORT, 0, "cc", 13, st("SEQUENCER", "PERFORM")) == [seq]
+    assert pick_bindings(bs, PORT, 0, "cc", 13, st("SEQUENCER", "PERFORM", "MIXER")) == [mixer]
+    assert pick_bindings(bs, PORT, 0, "cc", 13, st("SEQUENCER", "PERFORM", "MIXER", 2)) == [mixer2]
+    assert pick_bindings(bs, PORT, 0, "cc", 13, st("JUNO PCM", "PATCH", "MIXER")) == [every]
+    assert pick_bindings([perform], PORT, 0, "cc", 13, st("JUNO PCM", "PATCH")) == []
 
 
 # -- bridge -------------------------------------------------------------------
@@ -380,3 +389,56 @@ def test_screen_names_fit_for_every_target():
     for e in get_macro_catalog():
         title, name = screen_names(e["key"], e["title"], e["category"])
         assert len(title) <= 16 and len(name) <= 14, (e["key"], name)
+
+
+@pytest.mark.ui
+def test_mixer_layer_follows_the_device_and_banks_parts(ui):
+    app, bridge, _ = ui
+    bridge._ctl_open[DAW] = object()
+    bridge._ctl_send = lambda key, msg: None
+    bridge._hw_outputs = [PORT + " 36:0", DAW + " 36:1"]
+    bridge._ctl_sync_ports = lambda ins: None
+    assert bridge.loadControlPreset(str(SURFACE)) == ""
+    for b in bridge._ctl_bindings:
+        b.takeover = "jump"
+    bridge._in_perform = lambda: True
+    _send(app, bridge, _cc(30, 1, ch=6), port=DAW)          # device: DAW Mixer mode
+    assert bridge._ctl_layer == "MIXER"
+    _send(app, bridge, _cc(5, 90, ch=15), port=DAW)         # fader 1 = part 1 level
+    assert bridge.patch_state.perf_parts[0].volume == 90
+    _send(app, bridge, _cc(102, 127), _cc(102, 0), port=DAW)   # Track > = parts 9-16
+    _send(app, bridge, _cc(5, 33, ch=15), port=DAW)
+    assert bridge.patch_state.perf_parts[8].volume == 33
+    _send(app, bridge, _cc(30, 2, ch=6), port=DAW)          # back to DAW Control
+    assert bridge._ctl_layer == ""
+    assert any(b["contextTitle"] == "MIXER · PERFORM MODE · PARTS 9-16" for b in bridge.controlBindings)
+
+
+def _sweep(r, b, start_raw, end_raw, cur):
+    """Move a control step by step; the target follows what the resolver sends."""
+    step = 1 if end_raw > start_raw else -1
+    trace = []
+    for raw in range(start_raw, end_raw + step, step):
+        t = r.resolve(b, raw, cur)
+        if t is not None:
+            cur = t
+        trace.append((raw, cur))
+    return cur, trace
+
+
+def test_scale_takeover_converges_at_the_end_of_travel():
+    r, b = Resolver(), _b(takeover="scale")
+    cur, trace = _sweep(r, b, 25, 127, 0.6)            # fader 20% -> top, value at 60%
+    assert cur == pytest.approx(1.0)
+    values = [v for _, v in trace]
+    assert all(b >= a - 0.5 / 127 for a, b in zip(values, values[1:]))   # never steps back
+    mid = dict(trace)[76]                              # fader at ~60%: value about 80%
+    assert mid == pytest.approx(0.8, abs=0.03)
+    assert r.resolve(b, 100, cur) == pytest.approx(100 / 127)   # locked 1:1 now
+
+
+def test_scale_takeover_going_down():
+    r, b = Resolver(), _b(takeover="scale")
+    cur, trace = _sweep(r, b, 25, 0, 0.6)              # fader 20% -> bottom, value 60% -> 0
+    assert cur == pytest.approx(0.0)
+    assert dict(trace)[13] == pytest.approx(0.3, abs=0.04)      # half way down: value halved

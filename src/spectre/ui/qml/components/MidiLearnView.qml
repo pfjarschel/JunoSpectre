@@ -15,6 +15,14 @@ Rectangle {
     border.width: 1
 
     property var bindings: Bridge.controlBindings
+    property bool showAll: false
+    property var shown: {
+        if (root.showAll) return root.bindings
+        var out = []
+        for (var i = 0; i < root.bindings.length; i++)
+            if (root.bindings[i].active) out.push(root.bindings[i])
+        return out
+    }
     property string learnTitle: Bridge.controlLearnTitle
     property bool learning: Bridge.controlLearnTarget !== ""
     property var presets: []
@@ -73,11 +81,10 @@ Rectangle {
                 font.letterSpacing: 1.2
                 color: Theme.textPrimary
             }
-            Text {
-                text: root.bindings.length + " BINDINGS"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(9)
-                color: Theme.textDim
+            HeadButton {
+                text: root.showAll ? ("ALL " + root.bindings.length) : ("ACTIVE NOW " + root.shown.length + "/" + root.bindings.length)
+                tint: root.showAll ? Theme.textSecondary : Theme.tone2
+                onClicked: root.showAll = !root.showAll
             }
             Item { Layout.fillWidth: true }
             Text { text: "NEW:"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
@@ -178,18 +185,18 @@ Rectangle {
                 anchors.margins: ScaleMetrics.dp(6)
                 clip: true
                 spacing: 3
-                model: root.bindings
+                model: root.shown
                 boundsBehavior: Flickable.StopAtBounds
 
                 delegate: Rectangle {
                     id: row
                     required property var modelData
-                    required property int index
+                    property int index: modelData.index      // position in the full binding list
                     width: ListView.view.width
                     height: ScaleMetrics.dp(38)
                     radius: 3
                     color: index % 2 === 0 ? "#0a0d14" : "#10141d"
-                    opacity: modelData.online ? 1.0 : 0.5
+                    opacity: (modelData.online ? 1.0 : 0.5) * (modelData.active ? 1.0 : 0.6)
 
                     RowLayout {
                         anchors.fill: parent
@@ -233,9 +240,9 @@ Rectangle {
                         }
                         RowChip {
                             visible: !row.modelData.action && row.modelData.behavior === "absolute"
-                            text: row.modelData.takeover === "pickup" ? "PICKUP" : "JUMP"
+                            text: row.modelData.takeover.toUpperCase()
                             onClicked: Bridge.setControlBindingOption(row.index, "takeover",
-                                                                      row.modelData.takeover === "pickup" ? "jump" : "pickup")
+                                { pickup: "scale", scale: "jump", jump: "pickup" }[row.modelData.takeover])
                         }
                         RowChip {
                             visible: !row.modelData.action
@@ -253,10 +260,12 @@ Rectangle {
                 Text {
                     anchors.centerIn: parent
                     width: parent.width * 0.7
-                    visible: root.bindings.length === 0
+                    visible: root.shown.length === 0
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    text: "No bindings yet.\n+ ASSIGN picks a target, then move a control. PRESETS loads a ready layout."
+                    text: root.bindings.length === 0
+                          ? "No bindings yet.\n+ ASSIGN picks a target, then move a control. PRESETS loads a ready layout."
+                          : "No binding is active on this page and mode.\nTap ACTIVE NOW to show all."
                     font.pixelSize: ScaleMetrics.sp(10)
                     color: Theme.textDim
                 }

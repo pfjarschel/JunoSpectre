@@ -245,7 +245,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PATCH"
   },
   {
@@ -256,7 +256,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PATCH"
   },
   {
@@ -267,7 +267,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PATCH"
   },
   {
@@ -278,7 +278,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PATCH"
   },
   {
@@ -289,7 +289,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PATCH"
   },
   {
@@ -300,7 +300,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PATCH"
   },
   {
@@ -311,7 +311,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PATCH"
   },
   {
@@ -322,7 +322,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PATCH"
   },
   {
@@ -333,7 +333,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PERFORM"
   },
   {
@@ -344,7 +344,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PERFORM"
   },
   {
@@ -355,7 +355,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PERFORM"
   },
   {
@@ -366,7 +366,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PERFORM"
   },
   {
@@ -377,7 +377,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PERFORM"
   },
   {
@@ -388,7 +388,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PERFORM"
   },
   {
@@ -399,7 +399,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PERFORM"
   },
   {
@@ -410,7 +410,7 @@
    "lo": 0.0,
    "hi": 1.0,
    "behavior": "absolute",
-   "takeover": "pickup",
+   "takeover": "scale",
    "context": "MODE:PERFORM"
   },
   {

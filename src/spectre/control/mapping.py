@@ -12,12 +12,16 @@ Behaviors:
   latch      for buttons that latch on the device (127 on one press, 0 on
              the next): on -> hi, off -> lo; for actions every change is a press
 Context: "" applies everywhere; "MODE:PATCH" / "MODE:PERFORM" only in that
-sound mode; any other value is an app page (activeView, e.g. "SEQUENCER").
-For one control the most specific matching context wins: page, then
-mode, then everywhere (see pick_bindings).
+sound mode; "LAYER:MIXER" while a surface layer is on; "BANK:2" in part
+bank 2; a bare word is an app page (activeView, e.g. "SEQUENCER"). Tokens
+combine with "&". For one control the most specific active context wins
+(see context_rank).
 Takeover (absolute only):
   pickup     ignore the control until it reaches/crosses the target's
              current value, so moving a fader never jumps the sound
+  scale      move the target proportionally toward the end the control is
+             heading for, so both reach it together; 1:1 once they meet
+             (for faders, which can't be moved by the app)
   jump       apply immediately
 """
 
@@ -27,7 +31,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Optional
 
 BEHAVIORS = ("absolute", "momentary", "toggle", "latch")
-TAKEOVERS = ("pickup", "jump")
+TAKEOVERS = ("pickup", "scale", "jump")
 # A target that moved by more than this since our last write was changed
 # elsewhere (UI, macro, patch load): the control has to pick it up again.
 _MOVED = 1.5 / 127.0
@@ -77,23 +81,41 @@ class Binding:
         return b if b.target else None
 
 
-def context_rank(context: str, view: str, mode: str) -> int:
-    """How specifically a binding's context matches: 2 page, 1 mode, 0 everywhere, -1 no."""
+# Context tokens and how specific they are. A context is tokens joined by
+# "&" (e.g. "LAYER:MIXER&MODE:PERFORM&BANK:2"); a bare token is an app page.
+_TOKEN_WEIGHT = {"LAYER": 8, "BANK": 1, "MODE": 1}
+PAGE_WEIGHT = 2
+
+
+def context_rank(context: str, state: dict) -> int:
+    """Specificity of a context in `state` ({PAGE, MODE, LAYER, BANK}); -1 = not active.
+
+    Every token must hold. A layer (e.g. the LCXL3's DAW Mixer mode)
+    outranks everything else, so it takes over the controls it binds.
+    """
     if not context:
         return 0
-    if context.startswith("MODE:"):
-        return 1 if context[5:] == mode else -1
-    return 2 if context == view else -1
+    rank = 0
+    for token in context.split("&"):
+        kind, sep, value = token.partition(":")
+        if not sep:
+            if token != state.get("PAGE", ""):
+                return -1
+            rank += PAGE_WEIGHT
+        elif str(state.get(kind, "")) == value:
+            rank += _TOKEN_WEIGHT.get(kind, 1)
+        else:
+            return -1
+    return rank
 
 
-def pick_bindings(bindings, port: str, channel: int, kind: str, number: int,
-                  view: str, mode: str) -> list:
+def pick_bindings(bindings, port: str, channel: int, kind: str, number: int, state: dict) -> list:
     """The bindings a control drives right now (all of the most specific context)."""
     best, out = -1, []
     for b in bindings:
         if not b.matches(port, channel, kind, number):
             continue
-        r = context_rank(b.context, view, mode)
+        r = context_rank(b.context, state)
         if r > best:
             best, out = r, [b]
         elif r == best and r >= 0:
@@ -154,6 +176,8 @@ class Resolver:
             return st.last_sent
 
         t = b.lo + (b.hi - b.lo) * raw / 127.0
+        if b.takeover == "scale" and current is not None:
+            return self._scale(b, st, raw / 127.0, current)
         if b.takeover == "jump" or current is None:
             st.picked, st.prev_t, st.last_sent = True, t, t
             return t
@@ -168,6 +192,35 @@ class Resolver:
             return None
         st.last_sent = t
         return t
+
+    @staticmethod
+    def _scale(b: Binding, st: BindingState, u: float, current: float) -> Optional[float]:
+        """Smooth scaling, in control space u (0..1 along the control's travel)."""
+        span = b.hi - b.lo
+        if span == 0:
+            return None
+        cur_u = max(0.0, min(1.0, (current - b.lo) / span))
+        prev = st.prev_t
+        st.prev_t = u
+        if st.picked and st.last_sent is not None and abs(current - st.last_sent) > _MOVED:
+            st.picked = False          # moved elsewhere: converge again
+        # Lock 1:1 only where the control meets the value (never snap it back)
+        met = abs(u - cur_u) < 0.5 / 127.0 or (prev is not None and (prev - cur_u) * (u - cur_u) <= 0)
+        if not st.picked and met:
+            st.picked = True
+        if st.picked:
+            new_u = u
+        elif prev is None or u == prev:
+            return None                # need a direction first
+        elif u > prev:
+            new_u = cur_u + (1.0 - cur_u) * (u - prev) / max(1e-6, 1.0 - prev)
+        else:
+            new_u = cur_u - cur_u * (prev - u) / max(1e-6, prev)
+        new_u = max(0.0, min(1.0, new_u))
+        if abs(new_u - u) < 0.5 / 127.0:
+            st.picked = True
+        st.last_sent = b.lo + span * new_u
+        return st.last_sent
 
     def pending_pickup(self, b: Binding) -> bool:
         st = self.states.get(id(b))
