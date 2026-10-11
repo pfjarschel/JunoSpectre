@@ -124,7 +124,9 @@ class PatchRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.user_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Librarian data root: {self.db_path.parent} (db: {self.db_path.name})")
-        self._conn = sqlite3.connect(str(self.db_path))
+        # Shared with background jobs (saves, slot-name refresh): SQLite is
+        # built serialized (threadsafety 3), only Python's own check is off.
+        self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self.ensure_schema()
@@ -210,7 +212,7 @@ class PatchRepository:
                 logger.warning("No shipped factory catalog; factory search disabled.")
                 return
         try:
-            conn = sqlite3.connect(f"file:{cand}?mode=ro", uri=True)
+            conn = sqlite3.connect(f"file:{cand}?mode=ro", uri=True, check_same_thread=False)
             conn.row_factory = sqlite3.Row
             n = conn.execute("SELECT COUNT(*) AS n FROM patches").fetchone()["n"]
             self._factory = conn

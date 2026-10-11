@@ -587,10 +587,16 @@ Rectangle {
                                                && path !== undefined && String(path).slice(-8) === ".spectre") {
                                         // Pi file: the whole song (parts, snapshots, sequence)
                                         ok = Bridge.loadSpectreFile(path)
-                                    } else if (kind !== undefined && kind === "performance") {
-                                        ok = Bridge.selectLibraryPerformance(msb, lsb, pc, name)
                                     } else if (msb !== undefined && msb >= 0) {
-                                        ok = Bridge.selectLibraryPatch(msb, lsb, pc, name)
+                                        // Bank/PC audition + full read: a background job;
+                                        // the result lands in onJobFinished("load")
+                                        var isPerf = kind !== undefined && kind === "performance"
+                                        if (Bridge.startLibraryLoad(isPerf ? "performance" : "patch", msb, lsb, pc, name)) {
+                                            root.statusText = "Loading " + name + "…"
+                                            return
+                                        }
+                                        root.statusText = "Busy with another keyboard job — try again in a moment."
+                                        return
                                     } else if (path !== undefined && String(path).slice(-8) === ".spectre") {
                                         ok = Bridge.loadSpectreFile(path)
                                     } else {
@@ -683,14 +689,16 @@ Rectangle {
                         }
                     }
                     LibBtn {
-                        text: root.refreshingSlots ? "READING SLOTS…" : "REFRESH USER SLOTS"
+                        text: root.refreshingSlots
+                              ? (Bridge.jobProgress >= 0 ? "READING SLOTS… " + Math.round(Bridge.jobProgress * 100) + "%" : "READING SLOTS…")
+                              : "REFRESH USER SLOTS"
                         accent: Theme.tone1
                         onClicked: {
                             if (root.refreshingSlots) return
                             root.pendingAction = ""
-                            root.refreshingSlots = true
-                            root.statusText = "Reading 256 user slots from keyboard…"
-                            slotRefreshTimer.start()
+                            root.refreshingSlots = Bridge.startSlotNameRefresh("patch")
+                            root.statusText = root.refreshingSlots ? "Reading 256 user slots from keyboard…"
+                                                                   : "Busy with another keyboard job — try again in a moment."
                         }
                     }
 
@@ -726,22 +734,18 @@ Rectangle {
         }
     }
 
-    // Deferred slot refresh (blocking ~256 reads; lets the status paint first).
-    Timer {
-        id: slotRefreshTimer
-        interval: 80
-        repeat: false
-        running: false
-        onTriggered: {
-            var n = -1
-            try { n = Bridge.refreshUserSlotNames() } catch (e) { n = -1 }
-            root.refreshingSlots = false
-            if (n < 0) {
-                root.statusText = "No synthesizer connected."
-            } else {
-                root.statusText = n === 0 ? "User slots already up to date." : ("Updated " + n + " slot(s).")
+    // Background jobs started here report back through jobFinished.
+    Connections {
+        target: Bridge
+        function onJobFinished(name, result) {
+            if (name === "slotNames" && root.refreshingSlots) {
+                root.refreshingSlots = false
+                if (result < 0) root.statusText = "No synthesizer connected."
+                else root.statusText = result === 0 ? "User slots already up to date." : ("Updated " + result + " slot(s).")
+                root.applyFilter()
+            } else if (name === "load") {
+                root.statusText = result ? "" : "No synthesizer connected — browsing only."
             }
-            root.applyFilter()
         }
     }
 

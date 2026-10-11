@@ -397,5 +397,30 @@ Rectangle {
             }
         }
     }
-}
 
+    // Background keyboard job (slot reads, saves, library loads): a thin
+    // bar along the header's bottom edge, visible from every screen.
+    Rectangle {
+        visible: Bridge.jobBusy
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: ScaleMetrics.dp(3)
+        color: "#1e293b"
+        Rectangle {
+            id: jobFill
+            height: parent.height
+            color: Theme.tone1
+            width: Bridge.jobProgress >= 0 ? parent.width * Bridge.jobProgress : parent.width * 0.25
+            // Indeterminate: a segment sweeping back and forth
+            x: 0
+            SequentialAnimation on x {
+                running: Bridge.jobBusy && Bridge.jobProgress < 0
+                loops: Animation.Infinite
+                onRunningChanged: if (!running) jobFill.x = 0
+                NumberAnimation { from: 0; to: jobFill.parent.width * 0.75; duration: 900; easing.type: Easing.InOutQuad }
+                NumberAnimation { from: jobFill.parent.width * 0.75; to: 0; duration: 900; easing.type: Easing.InOutQuad }
+            }
+        }
+    }
+}

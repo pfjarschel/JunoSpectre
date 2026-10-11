@@ -15,6 +15,7 @@ from ...core.updater import GitUpdater, UpdaterError
 from ...core.waves import WaveCatalogManager
 from ...core.wifi import WifiManager, WifiStatus
 from ...vector.engine import VectorEngine
+from .jobs import JobsBridgeMixin
 from .librarian import LibrarianBridgeMixin
 from .patch import PatchBridgeMixin
 from .performance import PerformanceBridgeMixin
@@ -34,6 +35,7 @@ class SpectreBridge(
     PerformanceBridgeMixin,
     LibrarianBridgeMixin,
     PatchBridgeMixin,
+    JobsBridgeMixin,
     QObject,
 ):
     """Unified bridge exposing workstation engine, patch, performance and system state to QML."""
@@ -153,6 +155,7 @@ class SpectreBridge(
         # Macro part mirrors load off-thread; join them on the UI thread
         self.macroPartLoaded.connect(self._onMacroPartLoaded)
         self.partStateRead.connect(self._on_part_state_read)
+        self._init_jobs()
 
         # Subscribe to engine state updates
         self.engine.subscribe(self._on_engine_state_changed)

@@ -82,8 +82,7 @@ Rectangle {
         // Self-healing: a machine that never ran the dump has an empty
         // index — pull the names live from the keyboard instead.
         if (list.length < (isPerf ? 128 : 256) && !root.readingSlots) {
-            root.readingSlots = true
-            slotRefreshTimer.start()
+            root.readingSlots = Bridge.startSlotNameRefresh(isPerf ? "perf" : "patch")
             return
         }
         // Default: current slot when overwriting, else first free slot.
@@ -433,7 +432,7 @@ Rectangle {
                 }
                 Text {
                     visible: root.readingSlots
-                    text: "Reading slots…"
+                    text: Bridge.jobProgress >= 0 ? "Reading slots… " + Math.round(Bridge.jobProgress * 100) + "%" : "Reading slots…"
                     font.pixelSize: ScaleMetrics.sp(8)
                     font.italic: true
                     color: "#fbbf24"
@@ -449,8 +448,7 @@ Rectangle {
                         anchors.fill: parent
                         onClicked: {
                             if (root.readingSlots || root.busy) return
-                            root.readingSlots = true
-                            slotRefreshTimer.start()
+                            root.readingSlots = Bridge.startSlotNameRefresh(root.isPerf ? "perf" : "patch")
                         }
                     }
                 }
@@ -609,7 +607,7 @@ Rectangle {
                     border.width: 1
                     Text {
                         anchors.centerIn: parent
-                        text: root.busy ? "WRITING… DO NOT POWER OFF" : (root.confirmArmed ? "TAP AGAIN TO OVERWRITE" : "SAVE")
+                        text: root.busy ? (Bridge.jobText || "Saving…").toUpperCase() : (root.confirmArmed ? "TAP AGAIN TO OVERWRITE" : "SAVE")
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(9)
                         color: root.confirmArmed ? "#ef4444" : "#38bdf8"
@@ -628,65 +626,44 @@ Rectangle {
                                     return
                                 }
                             }
-                            root.busy = true
+                            var slot = root.saveToDevice ? root.selectedSlot() : null
                             root.errorText = ""
-                            saveTimer.start()
+                            root.busy = Bridge.startSave({
+                                name: root.patchName, category: root.category, tags: root.tagsText,
+                                favorite: root.favorite, updateSources: root.updateSources,
+                                toDevice: root.saveToDevice, isPerf: root.isPerf,
+                                number: slot ? slot.number : 0, msb: slot ? slot.msb : 0,
+                                lsb: slot ? slot.lsb : 0, pc: slot ? slot.pc : 0
+                            })
+                            if (!root.busy) root.errorText = "Busy with another keyboard job — try again in a moment."
                         }
                     }
                 }
             }
         }
 
-        // Deferred blocking save (lets the busy state paint first).
-        Timer {
-            id: slotRefreshTimer
-            interval: 80
-            repeat: false
-            running: false
-            onTriggered: {
-                var n = -1
-                try { n = root.isPerf ? Bridge.refreshUserPerfNames() : Bridge.refreshUserSlotNames() } catch (e) { n = -1 }
-                root.readingSlots = false
-                if (n < 0) {
-                    root.errorText = "No synthesizer connected — slot names unavailable."
-                }
-                root.loadSlots()
-            }
-        }
-
-        // Deferred blocking save (lets the busy state paint first).
-        Timer {
-            id: saveTimer
-            interval: 80
-            repeat: false
-            running: false
-            onTriggered: {
-                // Sources first, so the saved song references them clean.
-                var srcErr = root.updateSources ? Bridge.writeBackEditedParts() : ""
-                var piPath = Bridge.saveCurrentToFile(root.patchName, root.category, root.tagsText, root.favorite, "")
-                if (piPath === "") {
+        // Slot-name reads and the save run as background jobs (Bridge.start*);
+        // their results arrive in jobFinished.
+        Connections {
+            target: Bridge
+            function onJobFinished(name, result) {
+                if (name === "slotNames" && root.readingSlots) {
+                    root.readingSlots = false
+                    if (result < 0) root.errorText = "No synthesizer connected — slot names unavailable."
+                    root.loadSlots()
+                } else if (name === "save" && root.busy) {
                     root.busy = false
-                    root.errorText = "Pi save failed (no synth connected?)."
-                    return
+                    if (!result.saved) { root.errorText = result.error || "Save failed."; return }
+                    if (result.srcErr) {
+                        // The song is saved (edited sounds ride its snapshots); say what wasn't updated.
+                        root.updateSources = false
+                        root.editedParts = Bridge.perfEditedParts() || []
+                        root.errorText = "Saved. Not updated: " + result.srcErr
+                        return
+                    }
+                    if (result.error) { root.errorText = result.error; root.disarm(); return }
+                    root.close()
                 }
-                if (srcErr !== "") {
-                    // The song is saved (edited sounds ride its snapshots); say what wasn't updated.
-                    root.busy = false
-                    root.updateSources = false
-                    root.editedParts = Bridge.perfEditedParts() || []
-                    root.errorText = "Saved. Not updated: " + srcErr
-                    return
-                }
-                if (root.saveToDevice) {
-                    var s = root.selectedSlot()
-                    var err = root.isPerf ? Bridge.savePerfToDevice(s.number, root.patchName)
-                                          : Bridge.saveCurrentToDevice(s.msb, s.lsb, s.pc, root.patchName)
-                    root.busy = false
-                    if (err !== "") { root.errorText = err; root.disarm(); return }
-                } else {
-                    root.busy = false
-                }
-                root.close()
             }
         }
     }

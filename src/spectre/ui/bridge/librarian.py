@@ -215,7 +215,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         return slots
 
     @pyqtSlot(result=int)
-    def refreshUserSlotNames(self) -> int:
+    def refreshUserSlotNames(self, progress=None) -> int:
         """(Re)read all 256 user slot names+categories into the index.
 
         Only slots whose content changed are rewritten. Blocking (~10-15 s
@@ -231,6 +231,8 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
             return -1
         n = fails = 0
         for idx in range(256):
+            if progress is not None:
+                progress(idx / 256, f"Reading user slot {idx + 1}/256…")
             msb, lsb, pc = 87, (0 if idx < 128 else 1), idx % 128
             try:
                 raw = juno.request_data(
@@ -390,13 +392,15 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         return [dict(s) for s in (getattr(self, "_user_perf_slots", None) or [])]
 
     @pyqtSlot(result=int)
-    def refreshUserPerfNames(self) -> int:
+    def refreshUserPerfNames(self, progress=None) -> int:
         """Read the 128 user performance names from the keyboard. -1 = offline."""
         juno = self.juno
         if juno is None or not hasattr(juno, "read_user_perf_name"):
             return -1
         slots, fails = [], 0
         for n in range(1, 129):
+            if progress is not None:
+                progress((n - 1) / 128, f"Reading user performance {n}/128…")
             try:
                 name = juno.read_user_perf_name(n)
                 fails = 0
