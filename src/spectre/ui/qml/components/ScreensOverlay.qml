@@ -304,6 +304,15 @@ Rectangle {
                             glyph: "🎚"
                             accentColor: Theme.tone2
                         }
+
+                        AppTile {
+                            Layout.fillWidth: true
+                            viewKey: "ARPEGGIO"
+                            title: "ARPEGGIATOR"
+                            subtitle: "Juno arp styles, motifs & MIDI clock"
+                            glyph: "♫"
+                            accentColor: "#22d3ee"
+                        }
                     }
 
                     // =========================================================

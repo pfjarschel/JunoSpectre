@@ -69,6 +69,7 @@ Window {
                     case "MIDI LEARN": return 16;
                     case "HARDWARE": return 17;
                     case "SYSTEM": return 18;
+                    case "ARPEGGIO": return 19;
                     default: return 0;
                 }
             }
@@ -201,6 +202,12 @@ Window {
             SystemView {
                 id: systemView
                 objectName: "systemView"
+            }
+
+            // View 19: JUNO-DS Arpeggiator (synth arp + MIDI clock out)
+            ArpView {
+                id: arpView
+                objectName: "arpView"
             }
         }
     }

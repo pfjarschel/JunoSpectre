@@ -24,6 +24,7 @@ from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...control import lcxl3
 from ...control.mapping import BEHAVIORS, TAKEOVERS, Binding, Resolver, pick_bindings
+from ...core.arpeggio import FIELD_LABELS as ARP_FIELD_LABELS
 from ...core.macro_targets import filter_macro_targets, get_macro_categories
 from ...core.midi import port_key
 from .base import BridgeBaseMixin
@@ -66,11 +67,12 @@ ACTIONS: list[dict] = (
        _action("panic", "Panic (All Notes Off)"),
        _action("view.next", "Next Page"), _action("view.prev", "Previous Page"),
        _action("select.next", "Next Tone / Part"), _action("select.prev", "Previous Tone / Part"),
-       _action("bank.next", "Part Bank 9-16"), _action("bank.prev", "Part Bank 1-8")]
+       _action("bank.next", "Part Bank 9-16"), _action("bank.prev", "Part Bank 1-8"),
+       _action("arp.toggle", "Arpeggio On/Off"), _action("arp.hold", "Arp Hold On/Off")]
 )
 _PAGE_TITLES = {"JUNO PCM": "PCM Editor", "PERFORMANCE": "Perf Mixer", "LIVE": "Live Mode",
                 "SETLIST": "Set List", "MACROS": "Macro Deck", "MSEG ENVELOPES": "Envelopes",
-                "MFX": "MFX Studio"}
+                "MFX": "MFX Studio", "ARPEGGIO": "Arpeggiator"}
 
 # Learn scopes offered in the UI
 CONTEXT_TITLES = {"": "EVERYWHERE", "MODE:PATCH": "PATCH MODE", "MODE:PERFORM": "PERFORM MODE"}
@@ -86,7 +88,8 @@ def context_title(context: str) -> str:
 
 # App pages a binding can belong to (activeView keys)
 CONTEXT_PAGES = ["JUNO PCM", "VECTOR", "WAVETABLE", "VA", "MOD MATRIX", "STEP LFO", "MSEG ENVELOPES",
-                 "ROUTING", "MFX", "MASTER FX", "LIVE", "SEQUENCER", "SETLIST", "PERFORMANCE", "MACROS"]
+                 "ROUTING", "MFX", "MASTER FX", "LIVE", "SEQUENCER", "ARPEGGIO", "SETLIST", "PERFORMANCE",
+                 "MACROS"]
 # The 8 context knobs of each page (on-screen strip; controllers bind "context.N").
 # "" = unused. Keys are macro catalog targets, "macro.N", or the editor-following
 # and stepped targets below.
@@ -110,6 +113,8 @@ CONTEXT_KNOBS: dict[str, list[str]] = {
                   "effects.reverb_level", "effects.reverb_time", "effects.reverb_damp", "effects.reverb_predelay"],
     "LIVE": [f"part.level@{n}" for n in (1, 2, 3, 4, 5, 6, 7, 10)],
     "SEQUENCER": [f"seq.swing.{n}" for n in range(1, 9)],
+    "ARPEGGIO": [f"arp.{f}" for f in ("style", "motif", "grid", "duration", "octave", "accent",
+                                      "velocity", "step")],
     "PERFORMANCE": [f"part.level@{n}" for n in range(1, 9)],
     "MACROS": [f"macro.{n}" for n in range(1, 9)],
 }
@@ -121,6 +126,10 @@ STEPPED = {
     "step.sweep": ("Sweep Mode", ["manual", "sine", "triangle", "ramp", "random_step", "chaos"],
                    "wavetableSweepMode", "setWavetableSweepMode"),
 }
+# Arp knobs step through the synth's own value names (bridge/arpeggio.py)
+STEPPED.update({f"arp.{f}": ("Arp " + ("Oct Range" if f == "octave" else f.title()), labels,
+                             f"_arp_text_{f}", f"_set_arp_text_{f}")
+                for f, labels in ARP_FIELD_LABELS.items()})
 
 ACTIONS += [_action(f"view.goto.{v}", "Go to " + _PAGE_TITLES.get(v, v.title()))
             for v in CONTEXT_PAGES]
@@ -695,6 +704,10 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             on, color = self.engine.motion.state.value == "playing", (0, 127, 0)
         elif t == "action.motion.toggle_record":
             on, color = self.engine.motion.state.value == "recording", (127, 0, 0)
+        elif t == "action.arp.toggle":
+            on, color = self._arp.switch, (0, 100, 127)
+        elif t == "action.arp.hold":
+            on, color = self._arp.hold, (0, 100, 127)
         elif not t.startswith("action."):
             cur = self._ctl_current(t)
             entry = self._macroEntry(t)
@@ -743,7 +756,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             return ""
         if target in STEPPED:
             _, values, prop, _ = STEPPED[target]
-            return str(getattr(self, prop, "")).replace("_", " ").upper()
+            text = str(getattr(self, prop, ""))
+            # Arp values are the synth's own names: "Up (_)" keeps its underscore
+            return (text if target.startswith("arp.") else text.replace("_", " ")).upper()
         cur = self._ctl_current(target)
         if cur is None:
             return ""
@@ -915,6 +930,10 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self.prevPlaylistEntry()
             elif action == "panic":
                 self.panic()
+            elif action == "arp.toggle":
+                self.toggleArp()
+            elif action == "arp.hold":
+                self.toggleArpHold()
             elif action.startswith("view.goto."):
                 self.setActiveView(action[len("view.goto."):])
             elif action in ("view.next", "view.prev"):

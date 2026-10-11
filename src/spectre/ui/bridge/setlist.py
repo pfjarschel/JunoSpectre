@@ -146,6 +146,7 @@ class SetlistBridgeMixin(BridgeBaseMixin):
                 "sequencer": seq_dict,
                 "bpm": self.sequencer.bpm if hasattr(self, "sequencer") else 120.0,
                 "macros": [m.value for m in getattr(self.patch_state, "macros", [])],
+                **self._arp_extras(),
             }
             self._setlist_entries.append(entry)
             if self._setlist_index < 0:
@@ -219,10 +220,12 @@ class SetlistBridgeMixin(BridgeBaseMixin):
                 logger.info(f"activateSong: linked file unreadable, falling back to snapshot: {e}")
 
         if loaded_song is not None:
+            song_extras = loaded_song.get("spectre") or {}
             new_patch_state = loaded_song["patch_state"]
             new_seq_song = loaded_song.get("sequencer_song")
             part_snapshots = loaded_song["part_snapshots"]
         elif entry.get("cached") is not None:
+            song_extras = entry
             part_snapshots = entry.get("part_snapshots") or {}
             try:
                 new_patch_state = patch_state_from_dict(entry["cached"])
@@ -242,6 +245,7 @@ class SetlistBridgeMixin(BridgeBaseMixin):
                 part_snapshots if isinstance(part_snapshots, dict) else {}):
             return False
         self._patch_name = str(entry.get("name") or "Song")
+        self._apply_arp_extras(song_extras)
 
         # 5. Hydrate 5-track Sequencer State & reset playheads
         if hasattr(self, "sequencer"):

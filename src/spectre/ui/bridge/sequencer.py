@@ -268,6 +268,8 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     @pyqtSlot()
     def seqPlay(self) -> None:
         if hasattr(self, "sequencer"):
+            if self.sequencer.clock.is_stopped:
+                self._arp_resync_clock()
             self.sequencer.play()
             self.seqStateChanged.emit()
             self.seqTracksChanged.emit()

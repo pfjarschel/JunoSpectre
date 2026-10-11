@@ -15,6 +15,7 @@ from ...core.updater import GitUpdater, UpdaterError
 from ...core.waves import WaveCatalogManager
 from ...core.wifi import WifiManager, WifiStatus
 from ...vector.engine import VectorEngine
+from .arpeggio import ArpBridgeMixin
 from .controllers import ControllersBridgeMixin
 from .hardware import HardwareBridgeMixin
 from .jobs import JobsBridgeMixin
@@ -40,6 +41,7 @@ class SpectreBridge(
     JobsBridgeMixin,
     HardwareBridgeMixin,
     ControllersBridgeMixin,
+    ArpBridgeMixin,
     QObject,
 ):
     """Unified bridge exposing workstation engine, patch, performance and system state to QML."""
@@ -162,6 +164,7 @@ class SpectreBridge(
         self._init_jobs()
         self._init_hardware()
         self._init_controllers()
+        self._init_arp()
 
         # Subscribe to engine state updates
         self.engine.subscribe(self._on_engine_state_changed)

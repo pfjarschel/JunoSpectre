@@ -1306,6 +1306,8 @@ class VectorBridgeMixin(BridgeBaseMixin):
             v = "SETLIST"
         elif v in ("STEP EDITOR", "STEP-EDITOR", "STEP_EDITOR", "SEQ", "STEP SEQUENCER"):
             v = "SEQUENCER"
+        elif v in ("ARP", "ARPEGGIATOR"):
+            v = "ARPEGGIO"
 
         if self._active_view != v:
             if v == "LIBRARIAN" and self._active_view != "LIBRARIAN":

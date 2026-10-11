@@ -153,6 +153,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
             extras["motion"] = {"speed": float(self.engine.motion.speed)}
         except Exception:
             pass
+        extras.update(self._arp_extras())
         return extras
 
     @pyqtProperty(str, notify=libraryErrorChanged)

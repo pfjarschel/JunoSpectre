@@ -1708,12 +1708,14 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             return False
         entry = self._playlist[int(index)]
         patch_dict = None
+        extras = None
         path = str(entry.get("perf_path") or "")
         if path:
             try:
                 from ...core.spectre_format import load_spectre, patch_state_to_dict
                 loaded = load_spectre(path)
                 patch_dict = patch_state_to_dict(loaded["patch_state"])
+                extras = loaded.get("spectre")
             except Exception as e:
                 logger.info(f"playlist: linked file unreadable, using snapshot: {e}")
         if patch_dict is None:
@@ -1722,6 +1724,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             return False
         ok = self._apply_playlist_state(patch_dict, str(entry.get("name") or ""))
         if ok:
+            self._apply_arp_extras(extras)
             self._playlist_index = int(index)
             self.playlistChanged.emit()
         return ok
@@ -1956,6 +1959,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             seq_raw = spectre.get("sequencer")
             if isinstance(seq_raw, dict):
                 self._restore_song_sequence(seq_raw)
+            self._apply_arp_extras(spectre)
             self._set_current_file_ref(path, "performance")
             self._pending_view = "PERFORMANCE"
             return True
@@ -1974,6 +1978,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 juno.apply_sysex_blob(blob)
             except Exception as e:
                 logger.debug(f"loadSpectreFile: synth push failed: {e}")
+        self._apply_arp_extras(loaded.get("spectre"))
         try:
             self._tone_waves = [(t.wave_bank_l, t.wave_num_l) for t in self.patch_state.tones]
             self._cached_tone_wave_data = [
