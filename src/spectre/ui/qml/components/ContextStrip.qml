@@ -27,151 +27,27 @@ Rectangle {
         }
     }
 
-    // Individual Encoder Touch Card Component
+    // The page's 8 context knobs come from the bridge (CONTEXT_KNOBS in
+    // bridge/controllers.py); a controller's "Context Knob N" drives the same.
+    property var knobs: Bridge.contextKnobs
+
     component EncoderCard: Rectangle {
         id: card
         property int knobIndex: 1
-        readonly property string currentView: Bridge.activeView
-
-        // State property for mock FX and Mixer params
-        property real internalVal: 0.5
+        readonly property var knob: (root.knobs && root.knobs.length >= knobIndex) ? root.knobs[knobIndex - 1] : null
+        readonly property bool active: knob !== null && knob.active
+        readonly property string paramName: knob ? knob.title : "-"
+        readonly property real normValue: knob ? knob.norm : 0.0
+        readonly property string displayString: knob ? knob.text : ""
 
         radius: ScaleMetrics.dp(6)
         color: Theme.bgApp
         border.color: mouseArea.containsPress ? Theme.primary : Theme.borderCard
         border.width: 1
+        opacity: active ? 1.0 : 0.35
 
-        // Parameter Name based on active view and knob index
-        readonly property string paramName: {
-            if (currentView === "VECTOR") {
-                const names = ["X POS", "Y POS", "ATTR X", "ATTR Y", "SPEED", "MODE", "CURVE", "BPM"];
-                return names[knobIndex - 1] || "PARAM";
-            } else if (currentView === "WAVETABLE") {
-                const names = ["MORPH", "SPEED", "SWEEP", "CURVE", "T1 LVL", "T2 LVL", "T3 LVL", "T4 LVL"];
-                return names[knobIndex - 1] || "PARAM";
-            } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
-                if (Bridge.macroNames && Bridge.macroNames.length >= knobIndex)
-                    return Bridge.macroNames[knobIndex - 1];
-                return "M" + knobIndex;
-            } else if (currentView === "PERFORMANCE") {
-                return "P" + knobIndex + " VOL";
-            } else if (currentView === "EFFECTS") {
-                const names = ["MFX TYPE", "CTRL 1", "CTRL 2", "WET/DRY", "CHORUS", "REVERB", "REV TIME", "MAST EQ"];
-                return names[knobIndex - 1] || "FX";
-            }
-            return "ENC " + knobIndex;
-        }
-
-        // Normalized value (0.0 .. 1.0) with localized property tracking
-        readonly property real normValue: {
-            if (currentView === "VECTOR") {
-                switch (knobIndex) {
-                    case 1: return Bridge.vectorX;
-                    case 2: return Bridge.vectorY;
-                    case 3: return Bridge.attractorX;
-                    case 4: return Bridge.attractorY;
-                    case 5: return Math.max(0.0, Math.min(1.0, (Bridge.speed - 0.25) / 1.75));
-                    case 6: {
-                        const m = Bridge.automator;
-                        return m === "circle" ? 0.33 : m === "lissajous" ? 0.66 : m === "chaos" ? 1.0 : 0.0;
-                    }
-                    case 7: return Bridge.curve === "equal_power" ? 1.0 : 0.0;
-                    case 8: return Math.max(0.0, Math.min(1.0, (Bridge.bpm - 20) / 280));
-                }
-            } else if (currentView === "WAVETABLE") {
-                switch (knobIndex) {
-                    case 1: return Bridge.wavetablePos;
-                    case 2: return Math.max(0.0, Math.min(1.0, (Bridge.speed - 0.25) / 1.75));
-                    case 3: {
-                        const sm = Bridge.wavetableSweepMode;
-                        return sm === "sine" ? 0.2 : sm === "triangle" ? 0.4 : sm === "ramp" ? 0.6 : sm === "random_step" ? 0.8 : sm === "chaos" ? 1.0 : 0.0;
-                    }
-                    case 4: return Bridge.curve === "equal_power" ? 1.0 : 0.0;
-                    case 5: return Bridge.tone1Level / 127.0;
-                    case 6: return Bridge.tone2Level / 127.0;
-                    case 7: return Bridge.tone3Level / 127.0;
-                    case 8: return Bridge.tone4Level / 127.0;
-                }
-            } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
-                if (Bridge.macroValues && Bridge.macroValues.length >= knobIndex)
-                    return (Bridge.macroValues[knobIndex - 1] + 1.0) / 2.0;
-                return 0.5;
-            }
-            return card.internalVal;
-        }
-
-        // Display string for the readout
-        readonly property string displayString: {
-            if (currentView === "VECTOR") {
-                switch (knobIndex) {
-                    case 1: return Bridge.vectorX.toFixed(2);
-                    case 2: return Bridge.vectorY.toFixed(2);
-                    case 3: return Bridge.attractorX.toFixed(2);
-                    case 4: return Bridge.attractorY.toFixed(2);
-                    case 5: return Bridge.speed.toFixed(2) + "x";
-                    case 6: return Bridge.automator.toUpperCase();
-                    case 7: return Bridge.curve === "equal_power" ? "EQ-PWR" : "LINEAR";
-                    case 8: return Math.round(Bridge.bpm).toString();
-                }
-            } else if (currentView === "WAVETABLE") {
-                switch (knobIndex) {
-                    case 1: return Bridge.wavetablePos.toFixed(2);
-                    case 2: return Bridge.speed.toFixed(2) + "x";
-                    case 3: return Bridge.wavetableSweepMode.toUpperCase();
-                    case 4: return Bridge.curve === "equal_power" ? "EQ-PWR" : "LINEAR";
-                    case 5: return Bridge.tone1Level.toString();
-                    case 6: return Bridge.tone2Level.toString();
-                    case 7: return Bridge.tone3Level.toString();
-                    case 8: return Bridge.tone4Level.toString();
-                }
-            } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
-                if (Bridge.macroValues && Bridge.macroValues.length >= knobIndex) {
-                    const pct = Math.round(Bridge.macroValues[knobIndex - 1] * 100);
-                    return (pct > 0 ? "+" : "") + pct;
-                }
-                return "+0";
-            } else if (currentView === "PERFORMANCE") {
-                return Math.round(card.internalVal * 127).toString();
-            } else if (currentView === "EFFECTS") {
-                if (knobIndex === 1) return Math.round(1 + card.internalVal * 78).toString();
-                return Math.round(card.internalVal * 127).toString();
-            }
-            return "64";
-        }
-
-        // Apply updated normalized value (0.0 .. 1.0)
         function applyNormValue(nv: real) {
-            const clamped = Math.max(0.0, Math.min(1.0, nv));
-            card.internalVal = clamped;
-
-            if (currentView === "VECTOR") {
-                if (knobIndex === 1) Bridge.setCoordinates(clamped, Bridge.vectorY);
-                else if (knobIndex === 2) Bridge.setCoordinates(Bridge.vectorX, clamped);
-                else if (knobIndex === 3) Bridge.setOrbitAttractor(clamped, Bridge.attractorY);
-                else if (knobIndex === 4) Bridge.setOrbitAttractor(Bridge.attractorX, clamped);
-                else if (knobIndex === 5) Bridge.setSpeed(0.25 + clamped * 1.75);
-                else if (knobIndex === 6) {
-                    const autos = ["none", "circle", "lissajous", "chaos"];
-                    const idx = Math.min(3, Math.floor(clamped * 4));
-                    Bridge.setAutomator(autos[idx]);
-                }
-                else if (knobIndex === 7) Bridge.setCurve(clamped < 0.5 ? "linear" : "equal_power");
-                else if (knobIndex === 8) Bridge.setBpm(20 + clamped * 280);
-            } else if (currentView === "WAVETABLE") {
-                if (knobIndex === 1) Bridge.setWavetablePos(clamped);
-                else if (knobIndex === 2) Bridge.setSpeed(0.25 + clamped * 1.75);
-                else if (knobIndex === 3) {
-                    const sweeps = ["manual", "sine", "triangle", "ramp", "random_step", "chaos"];
-                    const idx = Math.min(5, Math.floor(clamped * 6));
-                    Bridge.setWavetableSweepMode(sweeps[idx]);
-                }
-                else if (knobIndex === 4) Bridge.setCurve(clamped < 0.5 ? "linear" : "equal_power");
-                else if (knobIndex >= 5 && knobIndex <= 8) {
-                    Bridge.setToneLevel(knobIndex - 4, Math.round(clamped * 127));
-                }
-            } else if (currentView === "MACROS" || currentView === "JUNO PCM" || currentView === "PATCH EDIT") {
-                Bridge.setMacro(knobIndex, clamped * 2.0 - 1.0);
-            }
+            if (card.active) Bridge.setContextKnob(card.knobIndex, Math.max(0.0, Math.min(1.0, nv)))
         }
 
         // Header: Knob tag + Param Name (Zero-overhead anchored positioning)
@@ -259,6 +135,7 @@ Rectangle {
         MouseArea {
             id: mouseArea
             anchors.fill: parent
+            enabled: card.active
             property real startX: 0
             property real startY: 0
             property real startNorm: 0

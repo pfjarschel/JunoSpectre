@@ -1,6 +1,6 @@
 {
  "name": "Launch Control XL3 \u00b7 Surface",
- "description": "DAW Control mode with screen names/values and LEDs. Knobs: macros, per-page row, sound row; faders: filter + amp envelopes; buttons: tone select/on, page jumps, playlist. Sequencer/Live pages: scenes + stop tracks. DAW Mixer button = mixer layer (levels, pans, sends, solo/mute; Track = part bank).",
+ "description": "DAW Control mode with screen names/values and LEDs. Knobs: macros, context knobs (row B), sound row; faders: filter + amp envelopes; buttons: tone select/on, page jumps, playlist. Sequencer/Live pages: scenes + stop tracks. DAW Mixer button = mixer layer (levels, pans, sends, solo/mute; Track = part bank).",
  "match": [
   "LCXL3"
  ],
@@ -2531,6 +2531,102 @@
    "behavior": "absolute",
    "takeover": "scale",
    "context": "LAYER:MIXER&MODE:PATCH",
+   "port_hint": "DAW In"
+  },
+  {
+   "channel": 15,
+   "kind": "cc",
+   "number": 21,
+   "target": "context.1",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": "",
+   "port_hint": "DAW In"
+  },
+  {
+   "channel": 15,
+   "kind": "cc",
+   "number": 22,
+   "target": "context.2",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": "",
+   "port_hint": "DAW In"
+  },
+  {
+   "channel": 15,
+   "kind": "cc",
+   "number": 23,
+   "target": "context.3",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": "",
+   "port_hint": "DAW In"
+  },
+  {
+   "channel": 15,
+   "kind": "cc",
+   "number": 24,
+   "target": "context.4",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": "",
+   "port_hint": "DAW In"
+  },
+  {
+   "channel": 15,
+   "kind": "cc",
+   "number": 25,
+   "target": "context.5",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": "",
+   "port_hint": "DAW In"
+  },
+  {
+   "channel": 15,
+   "kind": "cc",
+   "number": 26,
+   "target": "context.6",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": "",
+   "port_hint": "DAW In"
+  },
+  {
+   "channel": 15,
+   "kind": "cc",
+   "number": 27,
+   "target": "context.7",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": "",
+   "port_hint": "DAW In"
+  },
+  {
+   "channel": 15,
+   "kind": "cc",
+   "number": 28,
+   "target": "context.8",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": "",
    "port_hint": "DAW In"
   }
  ]

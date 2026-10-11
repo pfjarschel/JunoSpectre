@@ -100,7 +100,7 @@ def by_value(rgb: tuple[int, int, int], t: float | None) -> tuple[int, int, int]
 _SHORT = (("Filter Cutoff", "Cutoff"), ("Filter Reso", "Reso"), ("Filter Env Depth", "Flt Env Dep"),
           ("Filter ", "Flt "), (" Offset", " Ofs"), ("Resonance", "Reso"), (" Depth", " Dep"),
           ("Release Ofs", "Rel Ofs"), ("Wavetable", "Wtbl"), ("Portamento", "Porta"),
-          ("Chorus", "Cho"), ("Reverb", "Rev"))
+          ("Chorus", "Cho"), ("Reverb", "Rev"), ("Pitch Env", "PEnv"), ("Attractor", "Attr"))
 
 
 def short_title(title: str) -> str:
@@ -127,6 +127,11 @@ def screen_names(target: str, title: str, category: str) -> tuple[str, str]:
     m = re.match(r"tone\.(\d)\.", base)
     if m:
         return f"TONE {m.group(1)}", short_title(title.removeprefix(f"T{m.group(1)} "))
+    m = re.match(r"common\.matrix(\d)_sens(\d)", base)
+    if m:
+        return f"MATRIX CTRL {m.group(1)}", f"Dest {m.group(2)} Sens"
+    if base.startswith("seq.swing."):
+        return f"TRACK {base[10:]}", "Swing"
     if base.startswith("part."):
         if part:
             return f"PART {part}", short_title(title.replace(f"Part {part} ", "", 1))
@@ -145,6 +150,10 @@ def format_value(target: str, value: float, lo: float, hi: float) -> str:
     if target == "vector.speed":
         return f"x{value:.2f}"
     base = target.split("@")[0]
+    if base.startswith("seq.swing."):
+        return f"{value * 100:.0f}%"
+    if base.endswith("pitch_env_depth"):
+        return f"{int(round(value)) - 64:+d} st"
     if base.endswith("pan"):
         v = int(round(value)) - 64
         return "C" if v == 0 else (f"L{-v}" if v < 0 else f"R{v}")

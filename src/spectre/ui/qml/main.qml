@@ -32,13 +32,10 @@ Window {
             Layout.fillWidth: true
         }
 
-        // 2. 8-Encoder Context Strip (Hidden on System & Utility screens to maximize workspace)
+        // 2. 8-Encoder Context Strip (only on pages that define context knobs)
         ContextStrip {
             Layout.fillWidth: true
-            visible: Bridge.activeView !== "HARDWARE" &&
-                     Bridge.activeView !== "SYSTEM" &&
-                     Bridge.activeView !== "LIBRARIAN" &&
-                     Bridge.activeView !== "MIDI LEARN"
+            visible: Bridge.contextKnobsAvailable
         }
 
         // 3. Main Central Workspace (Self-Contained Full Canvas)

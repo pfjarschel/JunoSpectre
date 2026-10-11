@@ -67,6 +67,14 @@ def test_binding_round_trip_and_bad_data():
     assert Binding.from_dict({**b.to_dict(), "behavior": "weird"}).behavior == "absolute"
 
 
+def _valid_target(target, keys):
+    if target.startswith("tone.sel."):
+        return "tone.1." + target[9:] in keys
+    if target.startswith(("mfx.p.", "context.")):
+        return 1 <= int(target.rsplit(".", 1)[1]) <= 8
+    return target.split("@")[0] in keys or target.startswith("macro.")
+
+
 def test_bundled_lcxl3_preset_targets_exist():
     from src.spectre.core.macro_targets import get_macro_catalog
     from src.spectre.ui.bridge.controllers import ACTIONS
@@ -76,7 +84,7 @@ def test_bundled_lcxl3_preset_targets_exist():
     bindings = [Binding.from_dict(x) for x in d["bindings"]]
     assert all(bindings)
     for b in bindings:
-        assert b.target.split("@")[0] in keys or b.target.startswith("macro."), b.target
+        assert _valid_target(b.target, keys), b.target
     # One binding per control and scope
     seen = {(b.channel, b.number, b.context, x.get("port_hint", "")) for b, x in zip(bindings, d["bindings"])}
     assert len(seen) == len(bindings)
@@ -311,7 +319,7 @@ def test_surface_preset_targets_exist():
     assert d["device"]["surface"] == "lcxl3"
     for x in d["bindings"]:
         b = Binding.from_dict(x)
-        assert b.target.split("@")[0] in keys or b.target.startswith("macro."), b.target
+        assert _valid_target(b.target, keys), b.target
         assert x["port_hint"] == "DAW In"
         assert b.channel == (15 if 5 <= b.number <= 36 else 0)
 
@@ -346,7 +354,13 @@ def test_surface_shows_names_values_and_leds(ui):
     assert text(13, 1, "CUTOFF") in msgs
     assert text(13, 2, "+0%") in msgs
     assert lcxl3.led_rgb(13, lcxl3.by_value(lcxl3.CATEGORY_COLORS["MACRO"], 0.5)).hex() in msgs
-    assert lcxl3.led_rgb(21, lcxl3.OFF).hex() in msgs        # row B unassigned
+    assert text(21, 0, "TONE 1") in msgs                     # row B = context knobs: PCM page = edited tone
+    assert text(21, 1, "Cutoff") in msgs
+    bridge.setActiveView("SETLIST")
+    bridge._ctl_feedback_tick()
+    assert lcxl3.led_rgb(21, lcxl3.OFF).hex() in [m for _, m in sent]   # no context knobs there
+    bridge.setActiveView("JUNO PCM")
+    bridge._ctl_feedback_tick()
     # Moving a knob updates only its value
     sent.clear()
     bridge._ctl_bindings = [b for b in bridge._ctl_bindings]
@@ -442,3 +456,77 @@ def test_scale_takeover_going_down():
     cur, trace = _sweep(r, b, 25, 0, 0.6)              # fader 20% -> bottom, value 60% -> 0
     assert cur == pytest.approx(0.0)
     assert dict(trace)[13] == pytest.approx(0.3, abs=0.04)      # half way down: value halved
+
+
+
+@pytest.mark.ui
+def test_edited_tone_targets_follow_the_editor(ui):
+    app, bridge, _ = ui
+    bridge._ctl_bindings = [_b(number=21, target="tone.sel.tvf_cutoff", takeover="jump")]
+    bridge.setSelectedTone(3)
+    _send(app, bridge, _cc(21, 20))
+    assert [t.tvf_cutoff for t in bridge.patch_state.tones][2] == 20
+    assert bridge.patch_state.tones[0].tvf_cutoff != 20
+    assert bridge.controlBindings[0]["title"] == "Edited Tone Cutoff"
+
+
+@pytest.mark.ui
+def test_mfx_param_targets_use_the_edited_mfx(ui):
+    app, bridge, _ = ui
+    bridge.setMfxAlgoId(1)                                    # 01 EQUALIZER: P2 = LOW GAIN -15..15 dB
+    bridge._ctl_bindings = [_b(number=21, target="mfx.p.2", takeover="jump")]
+    assert bridge._ctl_target_title("mfx.p.2") == "MFX Low Gain"
+    _send(app, bridge, _cc(21, 127))
+    assert bridge.mfxParamValues[1] == 15
+    assert bridge._surface_value("mfx.p.2") == "15 dB"
+    assert bridge._surface_value("mfx.p.1") in ("200 Hz", "400 Hz")
+
+
+@pytest.mark.ui
+def test_new_catalog_targets(ui):
+    app, bridge, _ = ui
+    bridge._ctl_bindings = [_b(number=21, target="seq.swing.3", takeover="jump"),
+                            _b(number=22, target="vector.orbit_x", takeover="jump"),
+                            _b(number=23, target="common.matrix2_sens1", takeover="jump"),
+                            _b(number=24, target="tone.1.pitch_env_depth", takeover="jump")]
+    _send(app, bridge, _cc(21, 127), _cc(22, 0), _cc(23, 127), _cc(24, 0))
+    assert bridge.sequencer.song.tracks[2].swing == pytest.approx(0.75)
+    assert bridge.engine.motion.center_x == pytest.approx(0.0)
+    assert bridge.patch_state.common.matrix_ctrls[1].sens1 == 127
+    assert bridge.patch_state.tones[0].pitch_env_depth == 52
+
+
+
+@pytest.mark.ui
+def test_context_knobs_follow_the_page(ui):
+    app, bridge, _ = ui
+    bridge.setActiveView("VECTOR")
+    bridge._ctx_refresh()
+    titles = [k["title"] for k in bridge.contextKnobs]
+    assert titles[:2] == ["Morph X", "Morph Y"] and titles[5] == "Automator"
+    bridge.setContextKnob(1, 0.25)
+    assert bridge.engine.x == pytest.approx(0.25)
+    bridge.setContextKnob(6, 1.0)                              # stepped: last automator
+    assert bridge.automator == "chaos"
+    bridge._ctx_refresh()
+    assert bridge.contextKnobs[5]["text"] == "CHAOS"
+    bridge.setContextKnob(6, 0.0)                              # back to none (chaos moves X)
+    # A controller's context knob drives the same thing, and follows page changes
+    bridge._ctl_bindings = [_b(number=21, target="context.1", takeover="jump")]
+    _send(app, bridge, _cc(21, 127))
+    assert bridge.engine.x == pytest.approx(1.0)
+    bridge.setActiveView("MASTER FX")
+    _send(app, bridge, _cc(21, 0))
+    assert bridge.patch_state.effects.chorus_level == 0
+    bridge.setActiveView("SETLIST")
+    bridge._ctx_refresh()
+    assert not any(k["active"] for k in bridge.contextKnobs)
+    assert not bridge.contextKnobsAvailable
+    bridge.setActiveView("WAVETABLE")
+    assert bridge.contextKnobsAvailable
+    # A physical knob on a stepped target switches without pickup
+    bridge._ctl_bindings = [_b(number=21, target="context.3")]  # pickup binding
+    _send(app, bridge, _cc(21, 127))
+    assert bridge.wavetableSweepMode == "chaos"
+    _send(app, bridge, _cc(21, 40))
+    assert bridge.wavetableSweepMode == "triangle"

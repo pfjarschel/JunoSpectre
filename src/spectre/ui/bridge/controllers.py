@@ -87,6 +87,41 @@ def context_title(context: str) -> str:
 # App pages a binding can belong to (activeView keys)
 CONTEXT_PAGES = ["JUNO PCM", "VECTOR", "WAVETABLE", "VA", "MOD MATRIX", "STEP LFO", "MSEG ENVELOPES",
                  "ROUTING", "MFX", "MASTER FX", "LIVE", "SEQUENCER", "SETLIST", "PERFORMANCE", "MACROS"]
+# The 8 context knobs of each page (on-screen strip; controllers bind "context.N").
+# "" = unused. Keys are macro catalog targets, "macro.N", or the editor-following
+# and stepped targets below.
+_TONE_SEL = "tone.sel."
+CONTEXT_KNOBS: dict[str, list[str]] = {
+    "JUNO PCM": [_TONE_SEL + p for p in ("tvf_cutoff", "tvf_resonance", "tvf_env_depth", "tva_level",
+                                         "tva_pan", "pitch_coarse", "pitch_fine", "lfo1_rate")],
+    "VECTOR": ["vector.x", "vector.y", "vector.orbit_x", "vector.orbit_y", "vector.speed",
+               "step.automator", "step.curve", "vector.bpm"],
+    "WAVETABLE": ["vector.w", "vector.speed", "step.sweep", "step.curve"]
+                 + [f"tone.{i}.tva_level" for i in range(1, 5)],
+    "VA": [f"tone.{i}.tva_level" for i in range(1, 5)] + [f"tone.{i}.pitch_fine" for i in range(1, 5)],
+    "MOD MATRIX": [f"common.matrix{c}_sens{d}" for d in (1, 2) for c in range(1, 5)],
+    "STEP LFO": [_TONE_SEL + f"lfo{l}_{p}" for l in (1, 2) for p in ("rate", "pitch_depth", "tvf_depth", "tva_depth")],
+    "MSEG ENVELOPES": [_TONE_SEL + p for p in ("pitch_env_depth", "pitch_env_attack", "pitch_env_decay",
+                                               "pitch_env_release", "tvf_env_depth", "tvf_cutoff",
+                                               "tvf_resonance", "tva_level")],
+    "MFX": [f"mfx.p.{n}" for n in range(1, 9)],
+    "ROUTING": [f"tone.{i}.chorus_send" for i in range(1, 5)] + [f"tone.{i}.reverb_send" for i in range(1, 5)],
+    "MASTER FX": ["effects.chorus_level", "effects.chorus_rate", "effects.chorus_depth", "effects.chorus_feedback",
+                  "effects.reverb_level", "effects.reverb_time", "effects.reverb_damp", "effects.reverb_predelay"],
+    "LIVE": [f"part.level@{n}" for n in (1, 2, 3, 4, 5, 6, 7, 10)],
+    "SEQUENCER": [f"seq.swing.{n}" for n in range(1, 9)],
+    "PERFORMANCE": [f"part.level@{n}" for n in range(1, 9)],
+    "MACROS": [f"macro.{n}" for n in range(1, 9)],
+}
+
+# Stepped (enum) targets: key -> (title, values, bridge property, bridge setter)
+STEPPED = {
+    "step.automator": ("Automator", ["none", "circle", "lissajous", "spiral", "chaos"], "automator", "setAutomator"),
+    "step.curve": ("Crossfade Curve", ["linear", "equal_power", "normalized"], "curve", "setCurve"),
+    "step.sweep": ("Sweep Mode", ["manual", "sine", "triangle", "ramp", "random_step", "chaos"],
+                   "wavetableSweepMode", "setWavetableSweepMode"),
+}
+
 ACTIONS += [_action(f"view.goto.{v}", "Go to " + _PAGE_TITLES.get(v, v.title()))
             for v in CONTEXT_PAGES]
 _ACTION_TITLES = {a["key"]: a["title"] for a in ACTIONS}
@@ -101,6 +136,7 @@ def default_controller_port(key: str) -> bool:
 
 class ControllersBridgeMixin(BridgeBaseMixin):
     controllersChanged = pyqtSignal()
+    contextKnobsChanged = pyqtSignal()
     controlActivityChanged = pyqtSignal()
     _ctlPending = pyqtSignal()   # rtmidi thread -> UI thread
 
@@ -130,6 +166,14 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         self._ctl_fb_timer = QTimer(self)
         self._ctl_fb_timer.setInterval(FEEDBACK_MS)
         self._ctl_fb_timer.timeout.connect(self._ctl_feedback_tick)
+        # On-screen context strip: values change from many places (editors,
+        # macros, patch loads), so it is refreshed on a light timer
+        self._ctx_knobs: list = []
+        self._ctx_timer = QTimer(self)
+        self._ctx_timer.setInterval(FEEDBACK_MS)
+        self._ctx_timer.timeout.connect(self._ctx_refresh)
+        self._ctx_timer.start()
+        self.activeViewChanged.connect(self._ctx_refresh)
         self._ctlPending.connect(self._ctl_schedule_drain)
         # Which bindings are active depends on the page and the sound mode
         self.activeViewChanged.connect(self._ctl_context_changed)
@@ -371,13 +415,20 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                     self._ctl_set_activity(f"{label} → {self._ctl_target_title(b.target)}")
                 st.pressed = down
                 continue
-            t = self._ctl_resolver.resolve(b, raw, self._ctl_current(b.target))
-            title = self._ctl_target_title(b.target)
+            eff = self._ctl_resolve(b.target)
+            if not eff:
+                self._ctl_set_activity(f"{label} = {raw} → {self._ctl_target_title(b.target)}  (unused on this page)")
+                continue
+            # Stepped targets switch right away: their value is quantized, so
+            # pickup would always see it as "moved elsewhere"
+            current = None if eff in STEPPED else self._ctl_current(eff)
+            t = self._ctl_resolver.resolve(b, raw, current)
+            title = self._ctl_target_title(eff)
             if t is None:
                 if self._ctl_resolver.pending_pickup(b):
                     self._ctl_set_activity(f"{label} = {raw} → {title}  (move to pick up)")
                 continue
-            self._ctl_apply(b.target, t)
+            self._ctl_apply(eff, t)
             self._ctl_set_activity(f"{label} = {raw} → {title}")
 
     def _ctl_set_activity(self, text: str) -> None:
@@ -403,14 +454,52 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     # -- targets -------------------------------------------------------------
 
+    def _ctl_resolve(self, target: str) -> str:
+        """"context.N" -> the current page's knob N target ("" when unused)."""
+        if target.startswith("context."):
+            knobs = CONTEXT_KNOBS.get(str(getattr(self, "_active_view", "")), [])
+            try:
+                n = int(target[8:])
+            except ValueError:
+                return ""
+            return knobs[n - 1] if 1 <= n <= len(knobs) else ""
+        return target
+
+    def _ctl_entry(self, target: str):
+        """Catalog entry for a target (edited-tone targets use tone 1's)."""
+        target = self._ctl_resolve(target)
+        if target.startswith("tone.sel."):
+            target = "tone.1." + target[len("tone.sel."):]
+        return self._macroEntry(target)
+
+    def _ctl_mfx_param(self, target: str) -> dict | None:
+        """Definition of MFX parameter N ("mfx.p.N") of the MFX being edited."""
+        try:
+            from ...core.mfx_catalog import get_mfx_algo
+
+            algo = get_mfx_algo(int(self.mfxAlgoId)) or {}
+            idx = int(target[6:]) - 1
+            return next((p for p in algo.get("params", []) if p.get("idx") == idx), None)
+        except (ValueError, TypeError):
+            return None
+
     def _ctl_range(self, target: str) -> tuple[float, float]:
+        target = self._ctl_resolve(target)
+        if target in STEPPED:
+            return 0.0, float(len(STEPPED[target][1]) - 1)
         if target.startswith("macro."):
             return -1.0, 1.0
-        entry = self._macroEntry(target)
+        if target.startswith("mfx.p."):
+            p = self._ctl_mfx_param(target) or {}
+            return float(p.get("min", 0)), float(p.get("max", 127))
+        entry = self._ctl_entry(target)
         return (float(entry["min"]), float(entry["max"])) if entry else (0.0, 127.0)
 
     def _ctl_keys(self, target: str) -> list[str]:
         """Concrete keys a direct edit of `target` touches right now (edited part)."""
+        if target.startswith("tone.sel."):     # the tone(s) the editors are on
+            param = target[len("tone.sel."):]
+            return [self._scopedKey(f"tone.{t.tone_index}.{param}") for t in self._target_tones()]
         if "@" in target:      # a fixed part ("part.level@3"): PERFORM only
             return [target] if self._in_perform() else []
         out = []
@@ -423,12 +512,26 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         return out
 
     def _ctl_current(self, target: str) -> Optional[float]:
+        target = self._ctl_resolve(target)
+        if not target:
+            return None
         lo, hi = self._ctl_range(target)
+        if target in STEPPED:
+            _, values, prop, _ = STEPPED[target]
+            cur = str(getattr(self, prop, ""))
+            return values.index(cur) / (len(values) - 1) if cur in values else None
         if target.startswith("macro."):
             idx = int(target[6:]) - 1
             if not 0 <= idx < len(self.patch_state.macros):
                 return None
             v = self.patch_state.macros[idx].value
+        elif target.startswith("mfx.p."):
+            p = self._ctl_mfx_param(target)
+            vals = self.mfxParamValues
+            idx = int(target[6:]) - 1
+            if p is None or idx >= len(vals):
+                return None
+            v = vals[idx]
         else:
             keys = self._ctl_keys(target)
             if not keys:
@@ -439,8 +542,15 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         return max(0.0, min(1.0, (float(v) - lo) / ((hi - lo) or 1.0)))
 
     def _ctl_apply(self, target: str, t: float) -> None:
+        target = self._ctl_resolve(target)
+        if not target:
+            return
         lo, hi = self._ctl_range(target)
         value = lo + (hi - lo) * t
+        if target in STEPPED:
+            _, values, _, setter = STEPPED[target]
+            getattr(self, setter)(values[max(0, min(len(values) - 1, int(round(value))))])
+            return
         if target.startswith("macro."):
             if abs(value) <= 1.0 / 127.0:
                 value = 0.0      # 0..127 has no middle: CC 63/64 is the macro's center
@@ -448,6 +558,10 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self.setMacro(int(target[6:]), value)
             except ValueError:
                 pass
+            return
+        if target.startswith("mfx.p."):
+            if self._ctl_mfx_param(target) is not None:
+                self.setMfxParam(int(target[6:]) - 1, int(round(value)))
             return
         touched = set()
         for k in self._ctl_keys(target):
@@ -461,8 +575,18 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             self._emitForMacroKeys(touched)
 
     def _ctl_target_title(self, target: str) -> str:
+        if target.startswith("context."):
+            return f"Context Knob {target[8:]}"
+        if target in STEPPED:
+            return STEPPED[target][0]
         if target.startswith("action."):
             return _ACTION_TITLES.get(target, target)
+        if target.startswith("tone.sel."):
+            entry = self._ctl_entry(target)
+            return "Edited Tone " + (entry["title"][3:] if entry else target[9:])
+        if target.startswith("mfx.p."):
+            p = self._ctl_mfx_param(target)
+            return f"MFX {p['label'].title()}" if p else f"MFX Param {target[6:]}"
         if target.startswith("macro."):
             try:
                 idx = int(target[6:])
@@ -589,6 +713,45 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         self._ctl_fb_sent.clear()       # the newly active bindings send their positions
         self.controllersChanged.emit()
 
+    def _surface_names(self, target: str, title: str) -> tuple[str, str]:
+        if target.startswith("context."):
+            target = self._ctl_resolve(target)
+            if not target:
+                return "SPECTRE", "-"
+            title = self._ctl_target_title(target)
+        if target in STEPPED:
+            return "SPECTRE", STEPPED[target][0]
+        if target.startswith("tone.sel."):
+            tones = self._target_tones()
+            scope = f"TONE {tones[0].tone_index}" if len(tones) == 1 else "LINKED TONES"
+            return scope, lcxl3.short_title(title.removeprefix("Edited Tone "))
+        if target.startswith("mfx.p."):
+            p = self._ctl_mfx_param(target)
+            return "MFX", (str(p.get("label", "")).title() if p else "-")
+        entry = self._ctl_entry(target)
+        return lcxl3.screen_names(target, title, (entry or {}).get("category", ""))
+
+    def _surface_value(self, target: str) -> str:
+        target = self._ctl_resolve(target)
+        if not target or target.startswith("action."):
+            return ""
+        if target in STEPPED:
+            _, values, prop, _ = STEPPED[target]
+            return str(getattr(self, prop, "")).replace("_", " ").upper()
+        cur = self._ctl_current(target)
+        if cur is None:
+            return ""
+        lo, hi = self._ctl_range(target)
+        value = lo + (hi - lo) * cur
+        if target.startswith("mfx.p."):
+            p = self._ctl_mfx_param(target) or {}
+            v = int(round(value))
+            opts = p.get("options")
+            if opts and 0 <= v - int(p.get("min", 0)) < len(opts):
+                return f"{opts[v - int(p.get('min', 0))]} {p.get('unit', '')}".strip()
+            return f"{v} {p.get('unit', '')}".strip()
+        return lcxl3.format_value(target.replace("tone.sel.", "tone.1."), value, lo, hi)
+
     def _surface_tick(self, moved: set | None = None) -> None:
         """Bring each surface's screen and LEDs up to date (only diffs are sent)."""
         for port, st in self._surfaces():
@@ -598,24 +761,19 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 controls = [c for c in controls if (port, 15, "cc", c) in moved]
             for num in controls:
                 b = self._surface_binding(port, num)
-                if b is None:
+                eff = self._ctl_resolve(b.target) if b is not None else ""
+                if not eff:
                     names, value = ("SPECTRE", "-"), ""
                 else:
-                    if b.target.startswith("macro."):
-                        idx = b.target[6:]
+                    if eff.startswith("macro."):
+                        idx = eff[6:]
                         title = self.patch_state.macros[int(idx) - 1].name if idx.isdigit() else ""
-                    elif b.target.startswith("action."):
-                        title = lcxl3.short_title(self._ctl_target_title(b.target))
+                    elif eff.startswith("action."):
+                        title = lcxl3.short_title(self._ctl_target_title(eff))
                     else:
-                        title = self._ctl_target_title(b.target)
-                    entry = self._macroEntry(b.target)
-                    names = lcxl3.screen_names(b.target, title, (entry or {}).get("category", ""))
-                    value = ""
-                    if not b.target.startswith("action."):
-                        lo, hi = self._ctl_range(b.target)
-                        cur = self._ctl_current(b.target)
-                        if cur is not None:
-                            value = lcxl3.format_value(b.target, lo + (hi - lo) * cur, lo, hi)
+                        title = self._ctl_target_title(eff)
+                    names = self._surface_names(eff, title)
+                    value = self._surface_value(eff)
                 if st["names"].get(num) != names:
                     if num not in st["names"]:
                         msgs.append(lcxl3.display_config(num))
@@ -626,12 +784,14 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                     st["values"][num] = value
                 if num in lcxl3.KNOBS:
                     rgb = lcxl3.OFF
-                    if b is not None:
-                        entry = self._macroEntry(b.target)
-                        cat = lcxl3.led_category(b.target, (entry or {}).get("category", ""))
+                    eff = self._ctl_resolve(b.target) if b is not None else ""
+                    if eff:
+                        entry = self._ctl_entry(eff)
+                        cat = lcxl3.led_category(eff, "FX" if eff.startswith("mfx.p.")
+                                                 else ("MORPH" if eff in STEPPED else (entry or {}).get("category", "")))
                         rgb = lcxl3.CATEGORY_COLORS.get(cat, (60, 60, 60))
-                        if not b.target.startswith("action."):
-                            rgb = lcxl3.by_value(rgb, self._ctl_current(b.target))
+                        if not eff.startswith("action."):
+                            rgb = lcxl3.by_value(rgb, self._ctl_current(eff))
                     if st["leds"].get(num) != rgb:
                         msgs.append(lcxl3.led_rgb(num, rgb))
                         st["leds"][num] = rgb
@@ -656,6 +816,60 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                     st["stat"] = stat
             for m in msgs:
                 self._ctl_send(port, m)
+
+    # -- on-screen context strip ------------------------------------------------
+
+    @staticmethod
+    def _ctx_strip_title(scope: str, name: str) -> str:
+        """Compact label for a strip card: "T2 Cutoff", "P3 Level", "M1 Dest 1 Sens"."""
+        for prefix, short in (("TONE ", "T"), ("PART ", "P"), ("MATRIX CTRL ", "M"), ("TRACK ", "TRK")):
+            if scope.startswith(prefix):
+                return f"{short}{scope[len(prefix):]} {name}"
+        return name
+
+    def _ctx_compute(self) -> list:
+        out = []
+        knobs = CONTEXT_KNOBS.get(str(getattr(self, "_active_view", "")), [])
+        for n in range(1, 9):
+            target = knobs[n - 1] if n <= len(knobs) else ""
+            if not target:
+                out.append({"key": "", "title": "-", "text": "", "norm": 0.0, "active": False})
+                continue
+            if target.startswith("macro."):
+                title = self.patch_state.macros[int(target[6:]) - 1].name or f"M{target[6:]}"
+            else:
+                scope, name = self._surface_names(target, self._ctl_target_title(target))
+                title = self._ctx_strip_title(scope, name)
+            cur = self._ctl_current(target)
+            out.append({"key": target, "title": title, "text": self._surface_value(target),
+                        "norm": round(cur, 4) if cur is not None else 0.0, "active": cur is not None})
+        return out
+
+    def _ctx_refresh(self, *_args) -> None:
+        knobs = self._ctx_compute()
+        if knobs != self._ctx_knobs:
+            self._ctx_knobs = knobs
+            self.contextKnobsChanged.emit()
+
+    @pyqtProperty("QVariantList", notify=contextKnobsChanged)
+    def contextKnobs(self) -> list:
+        """The current page's 8 context knobs: [{key, title, text, norm, active}]."""
+        return self._ctx_knobs
+
+    @pyqtProperty(bool, notify=contextKnobsChanged)
+    def contextKnobsAvailable(self) -> bool:
+        """Whether the current page has context knobs (the strip is hidden otherwise)."""
+        return any(CONTEXT_KNOBS.get(str(getattr(self, "_active_view", "")), []))
+
+    @pyqtSlot(int, float)
+    def setContextKnob(self, index: int, norm: float) -> None:
+        """Touch drag on strip card `index` (1..8), norm 0..1."""
+        target = self._ctl_resolve(f"context.{int(index)}")
+        if not target:
+            return
+        with self._macroWrites():
+            self._ctl_apply(target, max(0.0, min(1.0, float(norm))))
+        self._ctx_refresh()
 
     def _ctl_run_action(self, action: str) -> None:
         parts = action.split(".")
@@ -835,6 +1049,26 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                     continue
                 macros.append({"key": f"macro.{i}", "title": title, "category": "MACRO",
                                "min": -1.0, "max": 1.0, "span": 2.0})
+        editor = []
+        if category in ("ALL", "EDITOR", ""):
+            for e in filter_macro_targets("ALL", ""):
+                if e["key"].startswith("tone.1."):
+                    key = "tone.sel." + e["key"][7:]
+                    title = "Edited Tone " + e["title"][3:]
+                    if not q or q in title.lower():
+                        editor.append({**e, "key": key, "title": title, "category": "EDITOR"})
+            for n in range(1, 9):
+                title = f"Context Knob {n} (follows the page)"
+                if not q or q in title.lower():
+                    editor.append({"key": f"context.{n}", "title": title, "category": "EDITOR",
+                                   "min": 0.0, "max": 1.0, "span": 1.0})
+            for n in range(1, 9):
+                title = f"MFX Param {n} (edited MFX)"
+                if not q or q in title.lower():
+                    editor.append({"key": f"mfx.p.{n}", "title": title, "category": "EDITOR",
+                                   "min": 0.0, "max": 127.0, "span": 127.0})
+        if category == "EDITOR":
+            return editor
         actions = []
         if category in ("ALL", "ACTION", ""):
             actions = [a for a in ACTIONS if not q or q in a["title"].lower() or q in a["key"]]
@@ -850,12 +1084,12 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                     title = e["title"].replace("Part", f"Part {n}", 1)
                     if not q or q in title.lower():
                         fixed.append({**e, "key": f"{e['key']}@{n}", "title": title})
-        return macros + filter_macro_targets(category, query) + fixed + actions
+        return macros + editor + filter_macro_targets(category, query) + fixed + actions
 
     @pyqtSlot(result="QVariantList")
     def getControlCategories(self) -> list:
         cats = get_macro_categories()
-        return cats[:1] + ["MACRO", "ACTION"] + cats[1:]
+        return cats[:1] + ["MACRO", "EDITOR", "ACTION"] + cats[1:]
 
     @pyqtSlot(int, str, str)
     def setControlBindingOption(self, index: int, option: str, value: str) -> None:

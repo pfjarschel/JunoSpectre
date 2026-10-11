@@ -860,7 +860,7 @@ def test_customizable_multitarget_macros():
     assert "tone.1.tvf_cutoff" in keys and "tone.all.tvf_cutoff" in keys
     assert bridge.getMacroTargets("ALL", "zzz-no-match") == []
     morph = bridge.getMacroTargets("MORPH", "")
-    assert {t["key"] for t in morph} == {"vector.x", "vector.y", "vector.w",
+    assert {t["key"] for t in morph} == {"vector.x", "vector.y", "vector.w", "vector.orbit_x", "vector.orbit_y",
                                          "vector.speed", "vector.bpm"}
     assert bridge.getMacroTargets("VECTOR", "") == []
 

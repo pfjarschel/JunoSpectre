@@ -188,6 +188,9 @@ class VectorBridgeMixin(BridgeBaseMixin):
                 return float(ps.common.portamento_time)
             if key == "common.analog_feel":
                 return float(ps.common.analog_feel)
+            if key.startswith("common.matrix"):
+                c, d = int(key[13]), int(key[-1])
+                return float(getattr(ps.common.matrix_ctrls[c - 1], f"sens{d}"))
             if key.startswith("effects."):
                 if key in self._PERF_FX_MACROS and self._in_perform():
                     return float(self._perfFxMacroValue(key))
@@ -205,6 +208,12 @@ class VectorBridgeMixin(BridgeBaseMixin):
                 return float(self.engine.y)
             if key == "vector.w":
                 return float(self.engine.w)
+            if key == "vector.orbit_x":
+                return float(self.engine.motion.center_x)
+            if key == "vector.orbit_y":
+                return float(self.engine.motion.center_y)
+            if key.startswith("seq.swing."):
+                return float(self.sequencer.song.tracks[int(key[10:]) - 1].swing)
             if key == "vector.speed":
                 return float(self.engine.motion.speed)
             if key == "vector.bpm":
@@ -229,6 +238,8 @@ class VectorBridgeMixin(BridgeBaseMixin):
             "lfo2_pitch_depth": t.lfo2_pitch_depth, "lfo2_tvf_depth": t.lfo2_tvf_depth,
             "lfo2_tva_depth": t.lfo2_tva_depth, "lfo2_pan_depth": t.lfo2_pan_depth,
             "output_level": t.output_level,
+            "pitch_env_depth": t.pitch_env_depth, "pitch_env_attack": t.pitch_env_t1,
+            "pitch_env_decay": t.pitch_env_t2, "pitch_env_release": t.pitch_env_t4,
         }
         return float(mapping.get(param, 0.0))
 
@@ -263,8 +274,18 @@ class VectorBridgeMixin(BridgeBaseMixin):
             self._applyPartKey(base_key, part, int(round(max(0, sounding))))
             return
         ps = self.patch_state
-        is_int = not key.startswith("vector.")
+        is_int = not key.startswith(("vector.", "seq."))
         val = sounding
+        if key.startswith("seq.swing."):
+            self.seqSetTrackSwing(int(key[10:]) - 1, val)
+            return
+        if key in ("vector.orbit_x", "vector.orbit_y"):
+            m = self.engine.motion
+            x = max(0.0, min(1.0, val)) if key == "vector.orbit_x" else m.center_x
+            y = max(0.0, min(1.0, val)) if key == "vector.orbit_y" else m.center_y
+            m.set_orbit_center(x, y)
+            self.attractorChanged.emit(m.center_x, m.center_y)
+            return
         if key.startswith("vector."):
             if key == "vector.x":
                 self.engine.set_coordinates(max(0.0, min(1.0, val)), self.engine.y)
@@ -490,6 +511,14 @@ class VectorBridgeMixin(BridgeBaseMixin):
                 ps.common.analog_feel = max(0, min(127, iv))
                 if juno:
                     juno.set_patch_analog_feel(ps.common.analog_feel)
+            elif key.startswith("common.matrix"):
+                c = ps.common.matrix_ctrls[int(key[13]) - 1]
+                setattr(c, f"sens{key[-1]}", max(1, min(127, iv)))
+                if juno:
+                    juno.set_matrix_control(
+                        int(key[13]), source=c.source,
+                        dest1=c.dest1, sens1=c.sens1, dest2=c.dest2, sens2=c.sens2,
+                        dest3=c.dest3, sens3=c.sens3, dest4=c.dest4, sens4=c.sens4)
             elif key.startswith("tone."):
                 _, idx, param = key.split(".", 2)
                 self._applyToneParam(int(idx), param, iv, ps=ps, edited=edited)
@@ -636,6 +665,13 @@ class VectorBridgeMixin(BridgeBaseMixin):
             t.output_level = max(0, min(127, iv))
             if juno:
                 juno.set_tone_param(tone_idx, 0x000C, t.output_level)
+        elif param.startswith("pitch_env_"):
+            attr = {"pitch_env_depth": "pitch_env_depth", "pitch_env_attack": "pitch_env_t1",
+                    "pitch_env_decay": "pitch_env_t2", "pitch_env_release": "pitch_env_t4"}.get(param)
+            if attr:
+                lo, hi = (52, 76) if param == "pitch_env_depth" else (0, 127)
+                setattr(t, attr, max(lo, min(hi, iv)))
+                self._push_pitch_env(t)
 
     def _applyLfoParam(self, t: ToneState, param: str, iv: int) -> None:
         juno = self.engine.juno
@@ -734,6 +770,11 @@ class VectorBridgeMixin(BridgeBaseMixin):
             self.portamentoTimeChanged.emit(self.portamentoTime)
         if "common.analog_feel" in keys:
             self.analogFeelChanged.emit(self.analogFeel)
+        if any(k.startswith("common.matrix") for k in keys):
+            self.matrixCtrlChanged.emit()
+        if any(".pitch_env_" in k for k in keys):
+            self.pitchEnvChanged.emit()
+            self.envShapeChanged.emit("PITCH")
         if any(k.startswith("effects.chorus") for k in keys):
             self.chorusParamsChanged.emit()
         if any(k.startswith("effects.reverb") for k in keys):

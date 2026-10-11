@@ -5,7 +5,9 @@ Target key taxonomy (all continuous numerics; enums excluded):
   effects.<param>            Chorus/Reverb/MFX sends + times/depths
   tone.<i>.<param>           Per-tone i=1..4 (tvf_*, tva_*, pitch, lfo, sends)
   tone.all.<param>           Fan-out alias: same delta applied to each tone's own base
-  vector.<param>             x, y (0..1), speed, bpm
+  vector.<param>             x, y (0..1), orbit_x/orbit_y (attractor), speed, bpm
+  seq.swing.<n>              Sequencer track n swing (0.50..0.75)
+  common.matrix<c>_sens<d>   Matrix controller c, destination d sensitivity
   part.<param>               Performance mixer (level, pan, sends)
 
 In PERFORM mode common/tone/part targets act on the parts each link picks
@@ -90,6 +92,10 @@ def build_macro_catalog() -> list[dict]:
         ("chorus_send", "Chorus Send", "FX", 0, 127, 127),
         ("reverb_send", "Reverb Send", "FX", 0, 127, 127),
         ("output_level", "Output Level", "AMP", 0, 127, 127),
+        ("pitch_env_depth", "Pitch Env Depth", "PITCH", 52, 76, 12),
+        ("pitch_env_attack", "Pitch Env Attack", "PITCH", 0, 127, 127),
+        ("pitch_env_decay", "Pitch Env Decay", "PITCH", 0, 127, 127),
+        ("pitch_env_release", "Pitch Env Release", "PITCH", 0, 127, 127),
     ]
     for i in range(1, 5):
         for param, title, category, lo, hi, span in per_tone:
@@ -102,6 +108,8 @@ def build_macro_catalog() -> list[dict]:
     cat += [
         _trio("vector.x", "Morph X", "MORPH", 0.0, 1.0, 1.0),
         _trio("vector.y", "Morph Y", "MORPH", 0.0, 1.0, 1.0),
+        _trio("vector.orbit_x", "Orbit Attractor X", "MORPH", 0.0, 1.0, 1.0),
+        _trio("vector.orbit_y", "Orbit Attractor Y", "MORPH", 0.0, 1.0, 1.0),
         _trio("vector.w", "Wavetable Pos", "MORPH", 0.0, 1.0, 1.0),
         _trio("vector.speed", "Motion Speed", "MORPH", 0.25, 4.0, 1.75),
         _trio("vector.bpm", "Tempo BPM", "MORPH", 20.0, 300.0, 140.0),
@@ -113,6 +121,11 @@ def build_macro_catalog() -> list[dict]:
         _trio("part.chorus_send", "Part Chorus Send", "PART", 0, 127, 127),
         _trio("part.reverb_send", "Part Reverb Send", "PART", 0, 127, 127),
     ]
+    # --- MATRIX (Matrix Control sensitivities, patch common) ---
+    cat += [_trio(f"common.matrix{c}_sens{d}", f"Matrix {c} Sens {d}", "MATRIX", 1, 127, 63)
+            for c in range(1, 5) for d in range(1, 5)]
+    # --- SEQ (sequencer tracks) ---
+    cat += [_trio(f"seq.swing.{n}", f"Track {n} Swing", "SEQ", 0.50, 0.75, 0.25) for n in range(1, 9)]
     return cat
 
 
@@ -127,7 +140,7 @@ def get_macro_catalog() -> list[dict]:
 
 
 def get_macro_categories() -> list[str]:
-    return ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART"]
+    return ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART", "MATRIX", "SEQ"]
 
 
 def filter_macro_targets(category: str = "ALL", query: str = "") -> list[dict]:

@@ -1,6 +1,6 @@
 {
  "name": "Launch Control XL3 \u00b7 Spectre",
- "description": "Custom mode 1. Knobs: row A macros 1-8, row B free (per-page), row C cutoff/reso/ADSR/LFO1. Faders: tone levels + FX (PATCH), part levels 1-8 (PERFORM). Buttons (latching): bottom tone mute 1-4 / select 1-4 (PATCH), top solo / bottom mute parts 1-8 (PERFORM), top scenes / bottom stop tracks (Sequencer page). Play/Record: sequencer.",
+ "description": "Custom mode 1. Knobs: row A macros 1-8, row B = the page's context knobs, row C cutoff/reso/ADSR/LFO1. Faders: tone levels + FX (PATCH), part levels 1-8 (PERFORM). Buttons (latching): bottom tone mute 1-4 / select 1-4 (PATCH), top solo / bottom mute parts 1-8 (PERFORM), top scenes / bottom stop tracks (Sequencer page). Play/Record: sequencer.",
  "match": [
   "LCXL3"
  ],
@@ -876,6 +876,94 @@
    "takeover": "pickup",
    "context": "",
    "port_hint": "DAW In"
+  },
+  {
+   "channel": 0,
+   "kind": "cc",
+   "number": 21,
+   "target": "context.1",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": ""
+  },
+  {
+   "channel": 0,
+   "kind": "cc",
+   "number": 22,
+   "target": "context.2",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": ""
+  },
+  {
+   "channel": 0,
+   "kind": "cc",
+   "number": 23,
+   "target": "context.3",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": ""
+  },
+  {
+   "channel": 0,
+   "kind": "cc",
+   "number": 24,
+   "target": "context.4",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": ""
+  },
+  {
+   "channel": 0,
+   "kind": "cc",
+   "number": 25,
+   "target": "context.5",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": ""
+  },
+  {
+   "channel": 0,
+   "kind": "cc",
+   "number": 26,
+   "target": "context.6",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": ""
+  },
+  {
+   "channel": 0,
+   "kind": "cc",
+   "number": 27,
+   "target": "context.7",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": ""
+  },
+  {
+   "channel": 0,
+   "kind": "cc",
+   "number": 28,
+   "target": "context.8",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "absolute",
+   "takeover": "pickup",
+   "context": ""
   }
  ],
  "device": {
