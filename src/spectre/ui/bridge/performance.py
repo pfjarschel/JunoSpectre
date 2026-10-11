@@ -654,26 +654,28 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             pass
 
         try:
-            self._emit_all_state_signals()
+            self._emit_all_state_signals()  # includes perfPartsChanged
         except Exception as e:
             logger.debug(f"_emit_all_state_signals error: {e}")
-        self.perfPartsChanged.emit()
+            self.perfPartsChanged.emit()
 
     def _on_part_state_read(self, part_index: int, state) -> None:
         # Guard against the user switching part while reading
         if getattr(self.patch_state, "active_perf_part", 1) == int(part_index):
             self._apply_patch_state_to_editors(state, int(part_index))
 
-    def _refresh_editors_for_part(self, part_index: int, async_mode: bool = True) -> None:
+    def _refresh_editors_for_part(self, part_index: int, async_mode: bool = True) -> bool:
         """Reload tones/effects for the newly selected part.
 
         1. Instantly loads from local snapshot/file if cached.
         2. Queries hardware temp patch buffer (11..14..) asynchronously.
         3. Updates wave and engine levels and emits _emit_all_state_signals so all QML editors update.
+
+        Returns True when a cached sound was applied (all signals already emitted).
         """
         p_idx = int(part_index)
         if not 1 <= p_idx <= 16:
-            return
+            return False
 
         # Fast-path: if we have a snapshot or linked file for this part, apply it immediately
         snap = (getattr(self, "_part_snapshots", None) or {}).get(str(p_idx))
@@ -701,7 +703,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
         juno = self.juno
         if juno is None or not hasattr(juno, "read_full_patch"):
-            return
+            return cached_state is not None
 
         shown = cached_state
 
@@ -730,6 +732,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             threading.Thread(target=_worker, daemon=True).start()
         else:
             _worker()
+        return cached_state is not None
 
     @pyqtSlot(int)
     def editPerfPart(self, part_index: int) -> None:
@@ -745,8 +748,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                     juno.set_active_perf_part(part_index)
                 except Exception as e:
                     logger.debug(f"editPerfPart: {e}")
-            self.perfPartsChanged.emit()
-            self._refresh_editors_for_part(int(part_index), async_mode=True)
+            if not self._refresh_editors_for_part(int(part_index), async_mode=True):
+                self.perfPartsChanged.emit()
 
     def _in_perform(self) -> bool:
         return str(getattr(self, "_sound_mode", "PATCH")).upper() == "PERFORM"

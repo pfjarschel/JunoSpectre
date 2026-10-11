@@ -6,7 +6,7 @@ import logging
 import threading
 from typing import Optional
 
-from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...core.env_presets import env_preset_names, get_env_preset
 from ...core.mfx_catalog import (
@@ -2288,7 +2288,15 @@ class PatchBridgeMixin(BridgeBaseMixin):
         return g
 
     def _emit_routing_graph(self, *_args) -> None:
+        # Many signals feed this and one part switch fires most of them:
+        # redraw once per event-loop pass (a redraw costs ~20 ms on the Pi)
         self._routing_graph_cache = None
+        if not getattr(self, "_routing_emit_pending", False):
+            self._routing_emit_pending = True
+            QTimer.singleShot(0, self._flush_routing_graph)
+
+    def _flush_routing_graph(self) -> None:
+        self._routing_emit_pending = False
         self.routingGraphChanged.emit()
 
     def _cached_routing_graph(self) -> dict:

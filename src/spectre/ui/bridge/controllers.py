@@ -704,6 +704,12 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         return color if on else lcxl3.dim(color)
 
     def _ctl_context_changed(self, *_args) -> None:
+        # patchInfoChanged also fires on every patch/part change; only a new
+        # page or mode changes which bindings are active
+        state = (str(getattr(self, "_active_view", "")), self._ctl_mode())
+        if state == getattr(self, "_ctl_last_context", None):
+            return
+        self._ctl_last_context = state
         self.controllersChanged.emit()
 
     def _ctl_set_layer(self, layer: str) -> None:
@@ -1001,10 +1007,18 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     def controlBindings(self) -> list:
         out = []
         state = self._ctl_state()
+        # Bucket by control (an any-port binding competes with every port's)
+        by_control: dict = {}
+        for b in self._ctl_bindings:
+            by_control.setdefault((b.channel, b.kind, b.number), []).append(b)
+        active_ids: set = set()
+        for (ch, kind, num), group in by_control.items():
+            for port in {b.port for b in group}:
+                active_ids.update(id(b) for b in pick_bindings(group, port, ch, kind, num, state)
+                                  if b.port == port)
         for i, b in enumerate(self._ctl_bindings):
-            active = b in pick_bindings(self._ctl_bindings, b.port, b.channel, b.kind, b.number, state)
             out.append({
-                "active": active,
+                "active": id(b) in active_ids,
                 "index": i, "control": self._ctl_control_label(b.port, b.channel, b.kind, b.number),
                 "port": b.port or "ANY PORT", "online": (not b.port) or b.port in self._ctl_open,
                 "target": b.target, "title": self._ctl_target_title(b.target),
