@@ -120,20 +120,13 @@ Rectangle {
                 onClicked: Bridge.toggleArpHold()
             }
 
-            // PERFORM: the one part the arp plays
-            SeqStepper {
+            // PERFORM: the part the arp plays can only be set on the Juno (no SysEx for it)
+            Text {
                 visible: root.perform
-                width: ScaleMetrics.dp(170)
-                label: "PART:"
-                count: 16
-                index: root.arp.part - 1
-                valueText: {
-                    const parts = Bridge.perfParts;
-                    const p = parts && parts.length >= root.arp.part ? parts[root.arp.part - 1] : null;
-                    return root.arp.part + (p && p.name ? " " + p.name : "");
-                }
-                valueColor: root.accent
-                onRequested: (i) => Bridge.setArpField("part", i + 1)
+                text: "PART: SET ON THE JUNO'S ARPEGGIO SCREEN"
+                font.bold: true
+                font.pixelSize: ScaleMetrics.sp(8)
+                color: Theme.textDim
             }
 
             Item { Layout.fillWidth: true }

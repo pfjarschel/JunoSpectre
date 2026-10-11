@@ -2,10 +2,13 @@
 
 The arpeggiator lives in the Setup block (01 00 00 17..33, MIDI
 Implementation p.21): it is global, and the keyboard can't save it
-("The arpeggio settings cannot be saved", owner's manual p.8). In PERFORM
-the part it plays is the performance's Arpeggio Zone Number
-(Performance Controller 10 00 60 18). The app keeps these settings in
-patch and performance files and pushes them on load.
+("The arpeggio settings cannot be saved", owner's manual p.8). The app
+keeps these settings in patch and performance files and pushes them on load.
+
+In PERFORM the part the arp plays is set on the Juno's ARPEGGIO screen only:
+no SysEx sets or reads it (tested 2026-10-11). The documented Arpeggio Zone
+Number (10 00 60 18) is never applied, not even on a performance load, and
+with Transmit Edit Data on the Juno sends nothing when Part changes.
 
 The arp runs on the Juno's tempo, which SysEx can't set. MidiClockOut
 sends 24 PPQN Timing Clock at the app's tempo; with the Juno's
@@ -25,7 +28,6 @@ logger = logging.getLogger(__name__)
 
 ADDR_SETUP_ARP = (0x01, 0x00, 0x00, 0x17)   # first arp byte (Grid)
 ARP_SETUP_SIZE = 0x33 - 0x17 + 1
-ADDR_PERF_ARP_ZONE = (0x10, 0x00, 0x60, 0x18)
 
 # Setup byte offset of each field (01 00 00 xx)
 SETUP_OFFSETS = {
@@ -66,7 +68,6 @@ class ArpSettings:
     accent: int = 100     # 0..100
     velocity: int = 0     # 0 = REAL, 1..127 fixed
     step: int = 0         # 0 = AUTO, 1..32
-    part: int = 1         # PERFORM: part 1..16 the arp plays
 
     def clamped(self) -> "ArpSettings":
         def c(v, lo, hi):
@@ -76,7 +77,7 @@ class ArpSettings:
             motif=c(self.motif, 0, len(MOTIFS) - 1), grid=c(self.grid, 0, len(GRIDS) - 1),
             duration=c(self.duration, 0, len(DURATIONS) - 1), octave=c(self.octave, -3, 3),
             hold=bool(self.hold), accent=c(self.accent, 0, 100), velocity=c(self.velocity, 0, 127),
-            step=c(self.step, 0, 32), part=c(self.part, 1, 16))
+            step=c(self.step, 0, 32))
 
     def to_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -103,13 +104,13 @@ class ArpSettings:
         return {off: self.setup_value(f) for f, off in SETUP_OFFSETS.items()}
 
     @classmethod
-    def from_setup(cls, data: bytes, part: int = 1) -> "ArpSettings":
+    def from_setup(cls, data: bytes) -> "ArpSettings":
         """Parse the Setup bytes read from 01 00 00 17 (ARP_SETUP_SIZE long)."""
         def b(field):
             return int(data[SETUP_OFFSETS[field] - 0x17])
         return cls(switch=bool(b("switch")), style=b("style"), motif=b("motif"), grid=b("grid"),
                    duration=b("duration"), octave=b("octave") - 64, hold=bool(b("hold")),
-                   accent=b("accent"), velocity=b("velocity"), step=b("step"), part=part).clamped()
+                   accent=b("accent"), velocity=b("velocity"), step=b("step")).clamped()
 
 
 # Value labels per field, for knobs and the LCXL3 screen
@@ -198,3 +199,4 @@ class MidiClockOut:
             self._next += 60.0 / (self._bpm * self.PPQN)
             if time.perf_counter() - self._next > 0.25:
                 self._next = time.perf_counter()   # stalled (suspend, port gone): don't burst
+

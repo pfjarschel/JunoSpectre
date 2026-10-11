@@ -30,22 +30,23 @@ def test_style_list_matches_the_parameter_guide():
 
 
 def test_settings_clamp_and_round_trip():
-    s = ArpSettings(style=300, octave=-9, accent=150, part=0, switch=1)
+    s = ArpSettings(style=300, octave=-9, accent=150, switch=1)
     c = s.clamped()
-    assert (c.style, c.octave, c.accent, c.part, c.switch) == (127, -3, 100, 1, True)
+    assert (c.style, c.octave, c.accent, c.switch) == (127, -3, 100, True)
     assert ArpSettings.from_dict(c.to_dict()) == c
     assert ArpSettings.from_dict({"style": 5, "bogus": 1}).style == 5
+    assert ArpSettings.from_dict({"style": 5, "part": 3}).style == 5   # v0.11 files
     assert ArpSettings.from_dict("nope") is None
 
 
 def test_setup_bytes_parse_back():
     s = ArpSettings(switch=True, style=70, motif=11, grid=3, duration=9, octave=-2,
-                    hold=True, accent=40, velocity=0, step=16, part=4)
+                    hold=True, accent=40, velocity=0, step=16)
     raw = bytearray(ARP_SETUP_SIZE)
     for off, v in s.setup_bytes().items():
         raw[off - 0x17] = v
     assert raw[0x1D - 0x17] == 62          # octave -2 -> 62
-    assert ArpSettings.from_setup(bytes(raw), part=4) == s
+    assert ArpSettings.from_setup(bytes(raw)) == s
 
 
 def test_labels():
@@ -73,27 +74,27 @@ def _sent(mgr):
 
 def test_write_arp_addresses(client):
     c, mgr = client
-    s = ArpSettings(switch=True, style=70, octave=1, part=3)
+    s = ArpSettings(switch=True, style=70, octave=1)
     c.write_arp_field(s, "style")
     c.write_arp_field(s, "octave")
-    c.write_arp_field(s, "part")
-    assert _sent(mgr) == [((0x01, 0, 0, 0x1B), 70), ((0x01, 0, 0, 0x1D), 65), ((0x10, 0, 0x60, 0x18), 2)]
+    assert _sent(mgr) == [((0x01, 0, 0, 0x1B), 70), ((0x01, 0, 0, 0x1D), 65)]
     mgr.send_juno_sysex.reset_mock()
     c.write_arp(s)
     sent = _sent(mgr)
-    assert len(sent) == 11
+    assert len(sent) == 10 and all(addr[0] == 0x01 for addr, _ in sent)   # Setup only
     assert sent[-1] == ((0x01, 0, 0, 0x19), 1)      # switch last
 
 
 def test_read_arp(client, monkeypatch):
     c, _ = client
-    want = ArpSettings(switch=True, style=9, grid=1, octave=3, part=7)
+    want = ArpSettings(switch=True, style=9, grid=1, octave=3)
     raw = bytearray(ARP_SETUP_SIZE)
     for off, v in want.setup_bytes().items():
         raw[off - 0x17] = v
 
     def fake_request(addr, size, timeout=1.0):
-        return bytes(raw) if tuple(addr) == (0x01, 0, 0, 0x17) else bytes([6])
+        assert tuple(addr) == (0x01, 0, 0, 0x17)
+        return bytes(raw)
 
     monkeypatch.setattr(c, "request_data", fake_request)
     assert c.read_arp() == want
@@ -162,3 +163,4 @@ def test_arp_knobs_and_actions(ui):
     assert bridge.arp["motifText"] == "Phrase"
     bridge._ctl_run_action("arp.toggle")
     assert bridge.arp["switch"] is True
+

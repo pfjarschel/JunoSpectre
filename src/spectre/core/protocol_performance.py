@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .patch_state import PatchState
 
-from .arpeggio import ADDR_PERF_ARP_ZONE, ADDR_SETUP_ARP, ARP_SETUP_SIZE, SETUP_OFFSETS, ArpSettings
+from .arpeggio import ADDR_SETUP_ARP, ARP_SETUP_SIZE, SETUP_OFFSETS, ArpSettings
 from .patch_state import PerfFxState, PerfPartState
 from .sysex import (
     ADDR_PERF_CHORUS,
@@ -758,26 +758,18 @@ class PerformanceProtocolMixin:
         return [f"block {off[2]:02X}" for (off, want), (_, got) in zip(image, actual) if want != got]
 
     # ------------------------------------------------------------------
-    # Arpeggiator: global Setup bytes + the performance's arp part
-    # (see core/arpeggio.py)
+    # Arpeggiator: global Setup bytes (see core/arpeggio.py)
     # ------------------------------------------------------------------
 
     def read_arp(self, timeout: float = 1.0) -> ArpSettings:
-        """Read the arp settings (and, in PERFORM, the part it plays)."""
+        """Read the arp settings."""
         res = self.request_data(ADDR_SETUP_ARP, self._rq_size(ARP_SETUP_SIZE), timeout=timeout)
         if res is None or len(res) < ARP_SETUP_SIZE:
             raise TimeoutError("Timed out reading the arpeggio settings.")
-        part = 1
-        zone = self.request_data(ADDR_PERF_ARP_ZONE, self._rq_size(1), timeout=timeout)
-        if zone:
-            part = int(zone[0]) + 1
-        return ArpSettings.from_setup(bytes(res[:ARP_SETUP_SIZE]), part=part)
+        return ArpSettings.from_setup(bytes(res[:ARP_SETUP_SIZE]))
 
     def write_arp_field(self, settings: ArpSettings, field: str) -> None:
-        """Send one arp field ("part" = the performance's arp part)."""
-        if field == "part":
-            self.send_data(ADDR_PERF_ARP_ZONE, [int(settings.part) - 1])
-            return
+        """Send one arp field."""
         off = SETUP_OFFSETS[field]
         self.send_data((0x01, 0x00, 0x00, off), [settings.setup_value(field)])
 
@@ -786,5 +778,4 @@ class PerformanceProtocolMixin:
         for field in SETUP_OFFSETS:
             if field != "switch":
                 self.write_arp_field(settings, field)
-        self.write_arp_field(settings, "part")
         self.write_arp_field(settings, "switch")

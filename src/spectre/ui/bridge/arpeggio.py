@@ -6,6 +6,8 @@ extras) and pushes them on load. They are read back from the synth on
 connect and whenever the page opens (the panel's [ARPEGGIO] button changes
 them behind the app's back). Until they were read or set once, nothing is
 saved, so a file never stores made-up defaults.
+
+The part the arp plays (PERFORM) can only be set on the Juno's panel.
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 ARP_VIEW = "ARPEGGIO"
 _CLOCK = mido.Message("clock")
-_INT_FIELDS = ("style", "motif", "grid", "duration", "octave", "accent", "velocity", "step", "part")
+_INT_FIELDS = ("style", "motif", "grid", "duration", "octave", "accent", "velocity", "step")
 
 
 class ArpBridgeMixin(BridgeBaseMixin):
