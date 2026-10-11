@@ -87,9 +87,10 @@ def context_title(context: str) -> str:
 
 
 # App pages a binding can belong to (activeView keys)
+# (in launcher order, so Next/Previous Page steps through them as the Screens overlay shows them)
 CONTEXT_PAGES = ["JUNO PCM", "VECTOR", "WAVETABLE", "VA", "MOD MATRIX", "STEP LFO", "MSEG ENVELOPES",
-                 "ROUTING", "MFX", "MASTER FX", "LIVE", "SEQUENCER", "ARPEGGIO", "SETLIST", "PERFORMANCE",
-                 "MACROS"]
+                 "ROUTING", "MFX", "MASTER FX", "MACROS", "ARPEGGIO", "PERFORMANCE", "SEQUENCER", "LIVE",
+                 "SETLIST"]
 # The 8 context knobs of each page (on-screen strip; controllers bind "context.N").
 # "" = unused. Keys are macro catalog targets, "macro.N", or the editor-following
 # and stepped targets below.

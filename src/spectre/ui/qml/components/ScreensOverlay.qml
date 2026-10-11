@@ -251,50 +251,10 @@ Rectangle {
                         accent: Theme.tone2
                     }
 
+                    // Top: shaping the sound while playing; bottom: the song workflow
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: ScaleMetrics.dp(8)
-
-                        AppTile {
-                            Layout.fillWidth: true
-                            viewKey: "LIVE"
-                            title: "LIVE MODE"
-                            subtitle: "8-track session matrix & 8 live macros"
-                            glyph: "▶"
-                            accentColor: "#10b981"
-                        }
-
-                        AppTile {
-                            Layout.fillWidth: true
-                            viewKey: "SEQUENCER"
-                            title: "SEQUENCER"
-                            subtitle: "Polymetric step sequencer & motion"
-                            glyph: "⏱"
-                            accentColor: "#38bdf8"
-                        }
-
-                        AppTile {
-                            Layout.fillWidth: true
-                            viewKey: "SETLIST"
-                            title: "SETLIST"
-                            subtitle: "Repertoire manager & seamless transitions"
-                            glyph: "📋"
-                            accentColor: "#f59e0b"
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: ScaleMetrics.dp(8)
-
-                        AppTile {
-                            Layout.fillWidth: true
-                            viewKey: "PERFORMANCE"
-                            title: "PERFORMANCE"
-                            subtitle: "16-part multi-timbral mixer & key zones"
-                            glyph: "🎛"
-                            accentColor: "#a855f7"
-                        }
 
                         AppTile {
                             Layout.fillWidth: true
@@ -312,6 +272,47 @@ Rectangle {
                             subtitle: "Juno arp styles, motifs & MIDI clock"
                             glyph: "♫"
                             accentColor: "#22d3ee"
+                        }
+
+                        AppTile {
+                            Layout.fillWidth: true
+                            viewKey: "PERFORMANCE"
+                            title: "PERFORMANCE"
+                            subtitle: "16-part multi-timbral mixer & key zones"
+                            glyph: "🎛"
+                            accentColor: "#a855f7"
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(8)
+
+                        AppTile {
+                            Layout.fillWidth: true
+                            viewKey: "SEQUENCER"
+                            title: "SEQUENCER"
+                            subtitle: "Polymetric step sequencer & motion"
+                            glyph: "⏱"
+                            accentColor: "#38bdf8"
+                        }
+
+                        AppTile {
+                            Layout.fillWidth: true
+                            viewKey: "LIVE"
+                            title: "LIVE MODE"
+                            subtitle: "8-track session matrix & 8 live macros"
+                            glyph: "▶"
+                            accentColor: "#10b981"
+                        }
+
+                        AppTile {
+                            Layout.fillWidth: true
+                            viewKey: "SETLIST"
+                            title: "SETLIST"
+                            subtitle: "Repertoire manager & seamless transitions"
+                            glyph: "📋"
+                            accentColor: "#f59e0b"
                         }
                     }
 
