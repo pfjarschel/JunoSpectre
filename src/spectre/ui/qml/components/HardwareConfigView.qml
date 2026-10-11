@@ -4,6 +4,9 @@ import QtQuick.Layouts
 import JunoSpectre
 import ".."
 
+// Hardware page: the synth connection (port, identity ping, reconnect) and
+// the MIDI ports seen on this machine. Ports are rescanned every 2 s; a
+// synth that appears while offline is attached automatically.
 Rectangle {
     id: root
     color: Theme.bgCard
@@ -11,30 +14,32 @@ Rectangle {
     border.color: Theme.borderCard
     border.width: 1
 
-    property string midiInPort: "JUNO-DS MIDI 1"
-    property string midiOutPort: "JUNO-DS MIDI 1"
-    property int deviceId: 16
-    property int sysexDelayMs: 15
-    property bool localControl: false
-    property string clockSource: "INTERNAL (120 BPM)"
-    property bool isHardwarePinged: true
+    property bool connected: Bridge.synthConnected
+    property var ports: Bridge.midiPorts
+    property var ctlPorts: Bridge.controllerPorts
+
+    function ctlState(key) {
+        for (var i = 0; i < ctlPorts.length; i++)
+            if (ctlPorts[i].key === key) return ctlPorts[i]
+        return null
+    }
+    property bool busy: Bridge.jobBusy
+    property bool hwJob: busy && (Bridge.jobName === "connect" || Bridge.jobName === "ping")
 
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: ScaleMetrics.dp(10)
         spacing: ScaleMetrics.dp(8)
 
-        // Header
         RowLayout {
             Layout.fillWidth: true
             spacing: ScaleMetrics.dp(8)
-
             Rectangle {
                 width: ScaleMetrics.dp(8); height: ScaleMetrics.dp(8); radius: 4
                 color: "#94a3b8"
             }
             Text {
-                text: "HARDWARE CONFIGURATION (JUNO-DS & CONTROLLERS)"
+                text: "HARDWARE"
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(12)
                 font.letterSpacing: 1.2
@@ -42,20 +47,19 @@ Rectangle {
             }
             Item { Layout.fillWidth: true }
             Text {
-                text: "DEVICE MIDI & USB INTERFACE"
+                text: "PORTS RESCAN EVERY 2 S"
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(9)
                 color: Theme.textDim
             }
         }
 
-        // 2 Columns: Roland Juno Hardware & External Controllers
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: ScaleMetrics.dp(10)
 
-            // Column 1: Roland Synth Device
+            // Synth
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -71,118 +75,83 @@ Rectangle {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "ROLAND JUNO-DS / XPS-30 HARDWARE"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.tone1 }
+                        Text { text: "ROLAND JUNO-DS / XPS-30"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.tone1 }
                         Item { Layout.fillWidth: true }
-                        // Status badge
                         Rectangle {
                             height: ScaleMetrics.dp(20)
                             implicitWidth: ScaleMetrics.dp(90)
                             radius: 3
-                            color: root.isHardwarePinged ? "#064e3b" : "#451a1a"
-                            border.color: root.isHardwarePinged ? "#10b981" : Theme.recording
+                            color: root.connected ? "#064e3b" : "#451a1a"
+                            border.color: root.connected ? "#10b981" : Theme.recording
                             border.width: 1
                             Text {
                                 anchors.centerIn: parent
-                                text: root.isHardwarePinged ? "● CONNECTED" : "○ OFFLINE"
+                                text: root.connected ? "● CONNECTED" : "○ OFFLINE"
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(7)
-                                color: root.isHardwarePinged ? "#6ee7b7" : "#fca5a5"
+                                color: root.connected ? "#6ee7b7" : "#fca5a5"
                             }
                         }
                     }
 
-                    // Port selectors
-                    SettingRow { label: "MIDI IN PORT"; value: root.midiInPort; onClicked: root.midiInPort = (root.midiInPort === "JUNO-DS MIDI 1" ? "USB MIDI IN" : "JUNO-DS MIDI 1") }
-                    SettingRow { label: "MIDI OUT PORT"; value: root.midiOutPort; onClicked: root.midiOutPort = (root.midiOutPort === "JUNO-DS MIDI 1" ? "USB MIDI OUT" : "JUNO-DS MIDI 1") }
-                    SettingRow { label: "DEVICE ID (SYSEX)"; value: root.deviceId.toString() + " (0x10 Default)"; onClicked: root.deviceId = (root.deviceId === 16 ? 17 : 16) }
-
-                    // Local Control Toggle
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Text { text: "LOCAL CONTROL"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textPrimary }
-                        Item { Layout.fillWidth: true }
-                        Rectangle {
-                            width: ScaleMetrics.dp(70)
-                            height: ScaleMetrics.dp(24)
-                            radius: 3
-                            color: root.localControl ? Theme.bgCardActive : "#10141d"
-                            border.color: root.localControl ? Theme.tone1 : Theme.borderCard
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: root.localControl ? "ON (LOCAL)" : "OFF (MIDI)"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(8)
-                                color: root.localControl ? Theme.tone1 : Theme.textDim
-                            }
-                            MouseArea { anchors.fill: parent; onClicked: root.localControl = !root.localControl }
-                        }
+                    InfoRow { label: "PORT"; value: Bridge.synthPort || "—" }
+                    InfoRow { label: "IDENTITY"; value: Bridge.synthIdentity || "—" }
+                    InfoRow {
+                        label: "LAST PING"
+                        value: root.hwJob ? Bridge.jobText : (Bridge.pingText || "—")
+                        valueColor: (Bridge.pingText.indexOf("OK") === 0 || root.hwJob) ? Theme.tone1 : Theme.recording
                     }
 
-                    // SysEx Delay Slider
-                    ColumnLayout {
+                    Text { text: "SYNTH PORT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
+                    Flow {
                         Layout.fillWidth: true
-                        spacing: 2
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Text { text: "SYSEX PACKET THROTTLING"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-                            Item { Layout.fillWidth: true }
-                            Text { text: root.sysexDelayMs.toString() + " ms"; font.family: Theme.fontMono; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textPrimary }
+                        spacing: ScaleMetrics.dp(4)
+                        Chip {
+                            text: "AUTO"
+                            active: Bridge.synthPortPref === ""
+                            onClicked: Bridge.setSynthPort("")
                         }
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: ScaleMetrics.dp(20)
-                            radius: 3
-                            color: "#10141d"
-                            border.color: Theme.borderCard
-                            border.width: 1
-                            Rectangle {
-                                width: parent.width * ((root.sysexDelayMs - 5) / 45.0)
-                                height: parent.height
-                                radius: 3
-                                color: Qt.rgba(0.22, 0.74, 0.97, 0.35)
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onPositionChanged: (mouse) => {
-                                    if (pressed) root.sysexDelayMs = Math.max(5, Math.min(50, Math.round(5 + (mouse.x / width) * 45)));
-                                }
-                                onPressed: (mouse) => {
-                                    root.sysexDelayMs = Math.max(5, Math.min(50, Math.round(5 + (mouse.x / width) * 45)));
-                                }
+                        Repeater {
+                            model: root.ports
+                            delegate: Chip {
+                                required property var modelData
+                                visible: modelData.input && modelData.output
+                                text: modelData.key.split(":").pop()
+                                active: Bridge.synthPortPref === modelData.key
+                                onClicked: Bridge.setSynthPort(modelData.key)
                             }
                         }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: "AUTO picks the JUNO-DS / XPS-30 USB port (MIDI 1). Pick another port to reach the synth through a MIDI interface."
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Theme.textDim
                     }
 
                     Item { Layout.fillHeight: true }
 
-                    // Ping Button
-                    Rectangle {
+                    RowLayout {
                         Layout.fillWidth: true
-                        height: ScaleMetrics.dp(32)
-                        radius: ScaleMetrics.dp(4)
-                        color: pingMouse.pressed ? Theme.bgCardActive : "#10141d"
-                        border.color: Theme.tone1
-                        border.width: 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: "PING HARDWARE / SYSEX IDENTITY REQUEST"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(9)
-                            color: Theme.tone1
+                        spacing: ScaleMetrics.dp(6)
+                        ActionButton {
+                            text: "PING"
+                            accent: Theme.tone1
+                            enabled: !root.busy && root.connected
+                            onClicked: Bridge.pingSynth()
                         }
-                        MouseArea {
-                            id: pingMouse
-                            anchors.fill: parent
-                            onClicked: {
-                                root.isHardwarePinged = true;
-                            }
+                        ActionButton {
+                            text: "RECONNECT"
+                            accent: Theme.tone1
+                            enabled: !root.busy
+                            onClicked: Bridge.reconnectSynth()
                         }
                     }
                 }
             }
 
-            // Column 2: External USB MIDI Controllers & Clock
+            // MIDI ports (controllers come here)
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -196,101 +165,205 @@ Rectangle {
                     anchors.margins: ScaleMetrics.dp(12)
                     spacing: ScaleMetrics.dp(8)
 
-                    Text { text: "CONNECTED MIDI CONTROLLERS & SURFACES"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.tone2 }
-
-                    // List of USB controllers
-                    ColumnLayout {
+                    Text { text: "MIDI PORTS"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.tone2 }
+                    Text {
                         Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: "Inputs marked CONTROLLER are listened to for MIDI Control bindings (MIDI Learn page). FEEDBACK sends each bound knob its target's value, so endless knobs follow patch changes."
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Theme.textDim
+                    }
+
+                    ListView {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
                         spacing: 4
-                        Repeater {
-                            model: [
-                                { name: "KORG nanoKONTROL2", status: "Active (Ch 1)", icon: "🎛" },
-                                { name: "Novation Launchkey Mini MK3", status: "Active (Ch 1)", icon: "🎹" },
-                                { name: "Roland USB MIDI Interface", status: "Active (Ch 1)", icon: "🔌" }
-                            ]
-                            delegate: Rectangle {
-                                Layout.fillWidth: true
-                                height: ScaleMetrics.dp(32)
-                                radius: 4
-                                color: "#10141d"
-                                border.color: Theme.borderCard
-                                border.width: 1
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: ScaleMetrics.dp(6)
-                                    spacing: 6
-                                    Text { text: modelData.icon; font.pixelSize: ScaleMetrics.sp(12) }
-                                    Text { text: modelData.name; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textPrimary }
-                                    Item { Layout.fillWidth: true }
-                                    Text { text: modelData.status; font.pixelSize: ScaleMetrics.sp(8); color: "#10b981" }
+                        model: root.ports
+                        delegate: Rectangle {
+                            id: portRow
+                            required property var modelData
+                            property var ctl: root.ctlState(modelData.key)
+                            width: ListView.view.width
+                            height: ScaleMetrics.dp(32)
+                            radius: 4
+                            color: "#10141d"
+                            border.color: modelData.synth ? Theme.tone1 : Theme.borderCard
+                            border.width: 1
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: ScaleMetrics.dp(6)
+                                spacing: 6
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: portRow.modelData.key
+                                    elide: Text.ElideRight
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(9)
+                                    color: Theme.textPrimary
                                 }
+                                Tag { visible: portRow.modelData.synth; text: "SYNTH"; tint: Theme.tone1 }
+                                Rectangle {
+                                    visible: portRow.ctl !== null && portRow.ctl.enabled
+                                    implicitWidth: fbLabel.implicitWidth + ScaleMetrics.dp(14)
+                                    implicitHeight: ScaleMetrics.dp(22)
+                                    radius: 3
+                                    color: "transparent"
+                                    border.color: portRow.ctl && portRow.ctl.feedback ? Theme.tone2 : Theme.borderCard
+                                    border.width: 1
+                                    Text {
+                                        id: fbLabel
+                                        anchors.centerIn: parent
+                                        text: portRow.ctl && portRow.ctl.feedback ? "FEEDBACK" : "NO FEEDBACK"
+                                        font.bold: true
+                                        font.pixelSize: ScaleMetrics.sp(7)
+                                        color: portRow.ctl && portRow.ctl.feedback ? Theme.tone2 : Theme.textDim
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: Bridge.setControllerFeedback(portRow.modelData.key, !portRow.ctl.feedback)
+                                    }
+                                }
+                                Rectangle {
+                                    visible: portRow.ctl !== null
+                                    implicitWidth: ctlLabel.implicitWidth + ScaleMetrics.dp(14)
+                                    implicitHeight: ScaleMetrics.dp(22)
+                                    radius: 3
+                                    color: portRow.ctl && portRow.ctl.enabled ? "#2a1f08" : "transparent"
+                                    border.color: portRow.ctl && portRow.ctl.enabled ? Theme.warning : Theme.borderCard
+                                    border.width: 1
+                                    Text {
+                                        id: ctlLabel
+                                        anchors.centerIn: parent
+                                        text: portRow.ctl && portRow.ctl.enabled ? (portRow.ctl.open ? "CONTROLLER ●" : "CONTROLLER") : "CONTROLLER OFF"
+                                        font.bold: true
+                                        font.pixelSize: ScaleMetrics.sp(7)
+                                        color: portRow.ctl && portRow.ctl.enabled ? Theme.warning : Theme.textDim
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: Bridge.setControllerPortEnabled(portRow.modelData.key, !portRow.ctl.enabled)
+                                    }
+                                }
+                                Tag { visible: portRow.modelData.input; text: "IN"; tint: Theme.textSecondary }
+                                Tag { visible: portRow.modelData.output; text: "OUT"; tint: Theme.textSecondary }
                             }
                         }
-                    }
-
-                    SettingRow {
-                        label: "CLOCK SYNC SOURCE"
-                        value: root.clockSource
-                        onClicked: {
-                            if (root.clockSource.startsWith("INTERNAL")) root.clockSource = "USB MIDI CLOCK";
-                            else if (root.clockSource.startsWith("USB")) root.clockSource = "MIDI DIN CLOCK";
-                            else root.clockSource = "INTERNAL (120 BPM)";
-                        }
-                    }
-
-                    Item { Layout.fillHeight: true }
-
-                    // Panic Button
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: ScaleMetrics.dp(32)
-                        radius: ScaleMetrics.dp(4)
-                        color: panicMouse.pressed ? "#451a1a" : "#10141d"
-                        border.color: Theme.recording
-                        border.width: 1
                         Text {
                             anchors.centerIn: parent
-                            text: "SEND ALL NOTES OFF (PANIC)"
-                            font.bold: true
+                            visible: root.ports.length === 0
+                            text: "No MIDI ports found"
                             font.pixelSize: ScaleMetrics.sp(9)
-                            color: Theme.recording
+                            color: Theme.textDim
                         }
-                        MouseArea {
-                            id: panicMouse
-                            anchors.fill: parent
-                            onClicked: Bridge.panic()
-                        }
+                    }
+
+                    ActionButton {
+                        Layout.fillWidth: true
+                        text: "SEND ALL NOTES OFF (PANIC)"
+                        accent: Theme.recording
+                        onClicked: Bridge.panic()
                     }
                 }
             }
         }
     }
 
-    component SettingRow: Rectangle {
-        id: sr
-        property string label: "SETTING"
-        property string value: "VALUE"
-        signal clicked()
-
+    component InfoRow: Rectangle {
+        id: ir
+        property string label: ""
+        property string value: ""
+        property color valueColor: Theme.tone1
         Layout.fillWidth: true
-        height: ScaleMetrics.dp(32)
+        height: ScaleMetrics.dp(30)
         radius: 4
         color: "#10141d"
         border.color: Theme.borderCard
         border.width: 1
-
         RowLayout {
             anchors.fill: parent
             anchors.margins: ScaleMetrics.dp(6)
-            Text { text: sr.label; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-            Item { Layout.fillWidth: true }
-            Text { text: sr.value; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.tone1 }
-            Text { text: "▼"; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
+            spacing: ScaleMetrics.dp(8)
+            Text { text: ir.label; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
+            Text {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                elide: Text.ElideLeft
+                text: ir.value
+                font.bold: true
+                font.pixelSize: ScaleMetrics.sp(9)
+                color: ir.valueColor
+            }
         }
+    }
 
+    component Chip: Rectangle {
+        id: chip
+        property string text: ""
+        property bool active: false
+        signal clicked()
+        width: chipLabel.implicitWidth + ScaleMetrics.dp(16)
+        height: ScaleMetrics.dp(26)
+        radius: 3
+        color: active ? Theme.bgCardActive : "#10141d"
+        border.color: active ? Theme.tone1 : Theme.borderCard
+        border.width: 1
+        opacity: root.busy ? 0.5 : 1.0
+        Text {
+            id: chipLabel
+            anchors.centerIn: parent
+            text: chip.text
+            font.bold: true
+            font.pixelSize: ScaleMetrics.sp(8)
+            color: chip.active ? Theme.tone1 : Theme.textSecondary
+        }
+        MouseArea { anchors.fill: parent; enabled: !root.busy; onClicked: chip.clicked() }
+    }
+
+    component Tag: Rectangle {
+        id: tag
+        property string text: ""
+        property color tint: Theme.textSecondary
+        implicitWidth: tagLabel.implicitWidth + ScaleMetrics.dp(10)
+        implicitHeight: ScaleMetrics.dp(18)
+        radius: 3
+        color: "transparent"
+        border.color: tint
+        border.width: 1
+        Text {
+            id: tagLabel
+            anchors.centerIn: parent
+            text: tag.text
+            font.bold: true
+            font.pixelSize: ScaleMetrics.sp(7)
+            color: tag.tint
+        }
+    }
+
+    component ActionButton: Rectangle {
+        id: ab
+        property string text: ""
+        property color accent: Theme.tone1
+        signal clicked()
+        Layout.fillWidth: true
+        height: ScaleMetrics.dp(32)
+        radius: ScaleMetrics.dp(4)
+        color: abMouse.pressed ? Theme.bgCardActive : "#10141d"
+        border.color: ab.accent
+        border.width: 1
+        opacity: enabled ? 1.0 : 0.4
+        Text {
+            anchors.centerIn: parent
+            text: ab.text
+            font.bold: true
+            font.pixelSize: ScaleMetrics.sp(9)
+            color: ab.accent
+        }
         MouseArea {
+            id: abMouse
             anchors.fill: parent
-            onClicked: sr.clicked()
+            enabled: ab.enabled
+            onClicked: ab.clicked()
         }
     }
 }

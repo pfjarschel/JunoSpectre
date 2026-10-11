@@ -728,6 +728,12 @@ class VectorBridgeMixin(BridgeBaseMixin):
                 self.tvaLevelChanged.emit(self.tvaLevel)
             except Exception:
                 pass
+        if "common.level" in keys:
+            self.masterLevelChanged.emit(self.masterLevel)
+        if "common.portamento_time" in keys:
+            self.portamentoTimeChanged.emit(self.portamentoTime)
+        if "common.analog_feel" in keys:
+            self.analogFeelChanged.emit(self.analogFeel)
         if any(k.startswith("effects.chorus") for k in keys):
             self.chorusParamsChanged.emit()
         if any(k.startswith("effects.reverb") for k in keys):

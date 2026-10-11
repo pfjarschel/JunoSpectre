@@ -20,6 +20,8 @@ Rectangle {
     property var targetList: []
     property var assignedKeys: []
     property bool keyboardVisible: false
+    // MIDI controller assignment: targets also include the macros
+    property bool midiMode: false
 
     signal addRequested(string key)
     signal closeRequested()
@@ -41,7 +43,8 @@ Rectangle {
     }
 
     function refreshTargets() {
-        targetList = Bridge.getMacroTargets(selectedCategory, searchText);
+        targetList = midiMode ? Bridge.getControlTargets(selectedCategory, searchText)
+                              : Bridge.getMacroTargets(selectedCategory, searchText);
     }
 
     function isAssigned(key) {
@@ -86,7 +89,7 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 Text {
-                    text: "ADD PARAMETER • M" + root.targetMacro
+                    text: root.midiMode ? "ASSIGN A CONTROL TO…" : "ADD PARAMETER • M" + root.targetMacro
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(12)
                     font.letterSpacing: 1.0
@@ -198,7 +201,9 @@ Rectangle {
                 RowLayout {
                     id: categoryRow
                     spacing: ScaleMetrics.dp(4)
-                    readonly property var categories: ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART"]
+                    readonly property var categories: root.midiMode
+                        ? ["ALL", "MACRO", "ACTION", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART"]
+                        : ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART"]
 
                     Repeater {
                         model: categoryRow.categories
@@ -286,7 +291,7 @@ Rectangle {
                             border.width: 1
                             Text {
                                 anchors.centerIn: parent
-                                text: assigned ? "✓" : "+ ADD"
+                                text: assigned ? "✓" : (root.midiMode ? "LEARN" : "+ ADD")
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(10)
                                 color: assigned ? Theme.textDim : "#000000"

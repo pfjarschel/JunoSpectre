@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import re
 import threading
 import time
 from typing import Callable, Generator, List, Optional, Tuple
@@ -15,6 +16,14 @@ from typing import Callable, Generator, List, Optional, Tuple
 import mido
 
 logger = logging.getLogger(__name__)
+
+_ALSA_ADDR = re.compile(r"\s+\d+:\d+$")
+
+
+def port_key(name: str) -> str:
+    """Port name without the ALSA client:port suffix ("JUNO-DS:JUNO-DS MIDI 1 32:0"
+    -> "JUNO-DS:JUNO-DS MIDI 1"); the numbers change when a device is replugged."""
+    return _ALSA_ADDR.sub("", str(name or "")).strip()
 
 
 class MidiDeviceManager:
@@ -108,6 +117,8 @@ class MidiDeviceManager:
         self.juno_out: Optional[mido.ports.BaseOutput] = None
         self.lcxl_in: Optional[mido.ports.BaseInput] = None
         self.lcxl_out: Optional[mido.ports.BaseOutput] = None
+        # port_key() of the synth port picked on the Hardware page ("" = auto)
+        self.juno_port_pref: str = ""
 
         self._note_listeners: List[Callable[[mido.Message], None]] = []
         # SysEx replies for request/response reads; bounded so unread traffic can't pile up.
@@ -115,9 +126,17 @@ class MidiDeviceManager:
         self._worker_thread: Optional[threading.Thread] = None
         self._worker_running: bool = False
 
-    def connect_juno(self) -> Tuple[str, str]:
-        """Open bidirectional MIDI connection to JUNO-DS / XPS-30."""
-        in_name, out_name = self.find_juno_ports()
+    def connect_juno(self, port: Optional[str] = None) -> Tuple[str, str]:
+        """Open bidirectional MIDI connection to JUNO-DS / XPS-30.
+
+        port: a port_key() to use instead of auto-detection (e.g. a DIN
+        interface); its input and output must share the name.
+        """
+        if port:
+            in_name = next((n for n in self.get_input_names() if port_key(n) == port), None)
+            out_name = next((n for n in self.get_output_names() if port_key(n) == port), None)
+        else:
+            in_name, out_name = self.find_juno_ports()
         if not in_name or not out_name:
             raise ConnectionError(
                 f"Could not find Roland synth ports. Available inputs: {self.get_input_names()}, "
@@ -190,11 +209,11 @@ class MidiDeviceManager:
         self.juno_in = None
         self.juno_out = None
 
-    def reconnect_juno(self) -> bool:
+    def reconnect_juno(self, port: Optional[str] = None) -> bool:
         """Attempt to re-establish connection to Juno synth ports if disconnected."""
         try:
             self.close_juno()
-            self.connect_juno()
+            self.connect_juno(port or self.juno_port_pref)
             return True
         except Exception as e:
             logger.debug(f"reconnect_juno attempt failed: {e}")

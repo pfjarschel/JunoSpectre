@@ -22,7 +22,6 @@ if str(PROJECT_ROOT) not in sys.path:
 import mido
 from PyQt6.QtCore import QTimer
 
-from src.spectre.control import MidiControllerEngine
 from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.protocol import JunoClient
 from src.spectre.ui.app import create_application
@@ -41,8 +40,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--windowed", action="store_true", help="Force windowed mode (overrides --fullscreen)")
     parser.add_argument("--platform", type=str, default=None, help="Qt platform plugin (e.g. eglfs, wayland, xcb)")
     parser.add_argument("--juno-port", type=str, default=None, help="MIDI port name for Roland synth")
-    parser.add_argument("--controller-port", type=str, default=None, help="MIDI port name for hardware controller")
-    parser.add_argument("--profile", type=str, default="novation_lc_xl", help="Hardware controller profile name")
     parser.add_argument("--list-ports", action="store_true", help="List detected MIDI ports and exit (no UI)")
     parser.add_argument("--exit-after", type=float, default=None, help="Exit after N seconds (testing)")
     return parser.parse_args()
@@ -95,7 +92,6 @@ def main() -> int:
 
     juno_client: Optional[JunoClient] = None
     midi_mgr: Optional[MidiDeviceManager] = None
-    ctrl_engine: Optional[MidiControllerEngine] = None
 
     try:
         midi_mgr = MidiDeviceManager()
@@ -116,6 +112,8 @@ def main() -> int:
                 info = juno_client.ping(timeout=1.0)
                 if info:
                     logger.info(f"Roland synth verified via SysEx ping: {info}")
+                    juno_client.adopt_device_id(info.device_id)
+                    juno_client._startup_identity = info
                     p_name = juno_client.get_patch_name(timeout=1.0)
                     logger.info(f"Active synth patch: '{p_name}'")
             except Exception as ping_ex:
@@ -125,45 +123,23 @@ def main() -> int:
         except Exception as e:
             logger.warning(f"Roland synth not connected ({e}). Available ports: {_describe_ports()}")
 
-        # Attempt to connect to hardware controller
-        try:
-            if args.controller_port:
-                logger.info(f"Connecting to controller port: {args.controller_port}...")
-                midi_mgr.connect_controller(args.controller_port)
-            else:
-                midi_mgr.connect_launch_control()
-            ctrl_engine = MidiControllerEngine(midi_mgr=midi_mgr, juno_client=juno_client)
-            ctrl_engine.load_profile(args.profile)
-            logger.info(f"Loaded controller profile '{args.profile}'.")
-        except Exception as e:
-            logger.info(f"No hardware controller connected ({e}). Available ports: {_describe_ports()}")
-
     except Exception as e:
         logger.warning(f"Hardware initialization failed, continuing offline (UI remains editable): {e}")
 
-    if juno_client is None and ctrl_engine is None:
+    if juno_client is None:
         logger.info("No MIDI hardware detected: running offline, full editing/saving remains available.")
 
     # Initialize VectorEngine
     vector_engine = VectorEngine(juno_client=juno_client)
-
-    # Link controller engine if available
-    if ctrl_engine:
-        def on_control_event(evt):
-            # If controller moves vector X or Y, update vector engine
-            if evt.target and evt.target.param_name == "vector_x":
-                vector_engine.set_coordinates(evt.normalized_value, vector_engine.y)
-            elif evt.target and evt.target.param_name == "vector_y":
-                vector_engine.set_coordinates(vector_engine.x, evt.normalized_value)
-            elif evt.target and evt.target.param_name == "wavetable_pos":
-                vector_engine.set_wavetable_pos(evt.normalized_value)
-        ctrl_engine.subscribe(on_control_event)
 
     # Launch Qt Quick Application
     app, qml_engine, bridge = create_application(
         engine=vector_engine,
         platform=args.platform,
     )
+
+    # Hardware page: port watcher, reconnect, and attaching a synth powered on later
+    bridge.attach_midi_manager(midi_mgr)
 
     # Auto-detect patch and waveform state from connected Roland synth
     if juno_client:
@@ -187,11 +163,6 @@ def main() -> int:
             bridge._perform_appliance_cleanup("signal")
         except Exception:
             pass
-        if ctrl_engine:
-            try:
-                ctrl_engine.stop()
-            except Exception:
-                pass
         if midi_mgr:
             try:
                 midi_mgr.send_all_notes_off()
@@ -222,15 +193,11 @@ def main() -> int:
         return app.exec()
     finally:
         sig_timer.stop()
+        bridge.stop_hardware_watch()
         try:
             bridge._perform_appliance_cleanup("exit")
         except Exception:
             pass
-        if ctrl_engine:
-            try:
-                ctrl_engine.stop()
-            except Exception:
-                pass
         if midi_mgr:
             try:
                 midi_mgr.close()

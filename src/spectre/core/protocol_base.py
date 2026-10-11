@@ -108,6 +108,7 @@ class BaseProtocolMixin:
         self._writer_thread: Optional[threading.Thread] = None
         self._writer_busy = False  # popped, not yet on the wire
         self._io_lock = threading.RLock()
+        self.last_ping_ms: float = 0.0
 
     def invalidate_cache(self) -> None:
         """Clear cached state (call when changing synth patches or modes)."""
@@ -173,23 +174,32 @@ class BaseProtocolMixin:
         """Send Universal Non-realtime Identity Request and wait for reply."""
         # F0 7E 7F 06 01 F7 (Broadcast)
         req_data = [0x7E, 0x7F, 0x06, 0x01]
-        self.midi.send_juno_sysex(req_data)
-
-        start = time.perf_counter()
-        while time.perf_counter() - start < timeout:
-            for msg in self.midi.iter_juno_messages():
-                if msg.type == "sysex" and len(msg.data) >= 13:
-                    # Check Universal Identity Reply: 7E <dev> 06 02 41 ...
-                    d = msg.data
-                    if d[0] == 0x7E and d[2] == 0x06 and d[3] == 0x02 and d[4] == 0x41:
-                        return IdentityInfo(
-                            device_id=d[1],
-                            family_code=(d[5], d[6]),
-                            family_number=(d[7], d[8]),
-                            software_revision=(d[9], d[10], d[11], d[12]),
-                        )
-            time.sleep(0.005)
+        with self._io_lock:
+            self.midi.send_juno_sysex(req_data)
+            start = time.perf_counter()
+            while time.perf_counter() - start < timeout:
+                for msg in self.midi.iter_juno_messages():
+                    if msg.type == "sysex" and len(msg.data) >= 13:
+                        # Check Universal Identity Reply: 7E <dev> 06 02 41 ...
+                        d = msg.data
+                        if d[0] == 0x7E and d[2] == 0x06 and d[3] == 0x02 and d[4] == 0x41:
+                            self.last_ping_ms = (time.perf_counter() - start) * 1000.0
+                            return IdentityInfo(
+                                device_id=d[1],
+                                family_code=(d[5], d[6]),
+                                family_number=(d[7], d[8]),
+                                software_revision=(d[9], d[10], d[11], d[12]),
+                            )
+                time.sleep(0.002)
         return None
+
+    def adopt_device_id(self, device_id: int) -> None:
+        """Address the synth by the device ID its identity reply carried."""
+        device_id = int(device_id) & 0x7F
+        if device_id != self.device_id:
+            logger.info(f"Synth device ID {device_id:#04x} (was {self.device_id:#04x})")
+            self.device_id = device_id
+            self.sysex = RolandSysEx(device_id=device_id, model_id=self.model_id)
 
     @staticmethod
     def _rq_size(length: int) -> Tuple[int, int, int, int]:

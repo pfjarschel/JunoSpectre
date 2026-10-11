@@ -74,6 +74,13 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         # Subscribe recorder UI updates to Qt signals
         self.recorder.subscribe_ui(self._on_rec_ui_update)
 
+        self._attach_seq_midi(midi_mgr)
+
+    def _attach_seq_midi(self, midi_mgr) -> None:
+        """Play to and record from midi_mgr (also when the synth connects later)."""
+        if midi_mgr is None:
+            return
+        self.sequencer.midi = midi_mgr
         # Connect note listener to recorder if midi manager supports it
         if hasattr(midi_mgr, "add_note_listener"):
             midi_mgr.add_note_listener(self.recorder.handle_midi_message)

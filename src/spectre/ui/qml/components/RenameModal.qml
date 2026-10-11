@@ -13,7 +13,7 @@ Rectangle {
     z: 998
     color: "#e60a0c10"
 
-    property string mode: "file" // "file" | "slot" | "track"
+    property string mode: "file" // "file" | "slot" | "track" | "ctlpreset"
     property int trackIdx: -1
     property string path: ""
     property int msb: -1
@@ -54,6 +54,15 @@ Rectangle {
         visible = true
     }
 
+    function openControlPreset(currentName) {
+        mode = "ctlpreset"
+        newName = currentName
+        errorText = ""
+        busy = false
+        keyboardVisible = true
+        visible = true
+    }
+
     function close() {
         visible = false
         keyboardVisible = false
@@ -84,7 +93,7 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: ScaleMetrics.dp(8)
                 Text {
-                    text: "✏ RENAME"
+                    text: root.mode === "ctlpreset" ? "💾 SAVE CONTROLLER PRESET" : "✏ RENAME"
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(11)
                     font.letterSpacing: 1.1
@@ -105,7 +114,8 @@ Rectangle {
                 Layout.fillWidth: true
                 text: root.mode === "slot" ? ("User slot " + (501 + root.lsb * 128 + root.pc) + " on the keyboard")
                       : (root.mode === "track" ? ("Sequencer track " + (root.trackIdx + 1) + " (saved with the song)")
-                                               : "Pi file (travels with the patch)")
+                      : (root.mode === "ctlpreset" ? "Current MIDI control bindings, saved on the Pi"
+                                               : "Pi file (travels with the patch)"))
                 font.pixelSize: ScaleMetrics.sp(8)
                 color: Theme.textDim
             }
@@ -225,6 +235,9 @@ Rectangle {
                 if (root.mode === "track") {
                     Bridge.seqRenameTrack(root.trackIdx, root.newName)
                     ok = true
+                } else if (root.mode === "ctlpreset") {
+                    root.errorText = Bridge.saveControlPreset(root.newName)
+                    ok = root.errorText === ""
                 } else if (root.mode === "slot") {
                     ok = Bridge.renameUserSlot(root.msb, root.lsb, root.pc, root.newName)
                     if (!ok) root.errorText = "Rename failed (synth unreachable?)."
