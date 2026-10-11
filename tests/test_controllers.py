@@ -110,9 +110,9 @@ def ui(monkeypatch, tmp_path):
     del qml_engine
 
 
-def _send(app, bridge, *events):
+def _send(app, bridge, *events, port=PORT):
     for ev in events:
-        bridge._ctl_on_message(PORT, ev)
+        bridge._ctl_on_message(port, ev)
     end = time.time() + 1.0
     while time.time() < end:
         app.processEvents()
@@ -288,3 +288,95 @@ def test_latch_follows_the_button_state_for_values():
     r, b = Resolver(), _b(behavior="latch")
     assert r.resolve(b, 127, 0.0) == 1.0
     assert r.resolve(b, 0, 1.0) == 0.0
+
+
+SURFACE = PRESET.with_name("novation_lcxl3_surface.json")
+
+
+def test_surface_preset_targets_exist():
+    from src.spectre.core.macro_targets import get_macro_catalog
+    from src.spectre.ui.bridge.controllers import ACTIONS
+
+    keys = {e["key"] for e in get_macro_catalog()} | {a["key"] for a in ACTIONS}
+    d = json.loads(SURFACE.read_text())
+    assert d["device"]["surface"] == "lcxl3"
+    for x in d["bindings"]:
+        b = Binding.from_dict(x)
+        assert b.target.split("@")[0] in keys or b.target.startswith("macro."), b.target
+        assert x["port_hint"] == "DAW In"
+        assert b.channel == (15 if 5 <= b.number <= 36 else 0)
+
+
+def test_value_text():
+    from src.spectre.control.lcxl3 import format_value
+
+    assert format_value("macro.1", -0.5, -1, 1) == "-50%"
+    assert format_value("common.cutoff_offset", 70, 1, 127) == "+6"
+    assert format_value("tone.1.tva_pan", 64, 0, 127) == "C"
+    assert format_value("tone.1.tva_pan", 40, 0, 127) == "L24"
+    assert format_value("vector.x", 0.25, 0, 1) == "25%"
+    assert format_value("part.level@3", 100, 0, 127) == "100"
+
+
+@pytest.mark.ui
+def test_surface_shows_names_values_and_leds(ui):
+    from src.spectre.control import lcxl3
+
+    app, bridge, _ = ui
+    bridge._ctl_open[DAW] = object()
+    sent = []
+    bridge._ctl_send = lambda key, msg: sent.append((key, msg.hex()))
+    bridge._hw_outputs = [PORT + " 36:0", DAW + " 36:1"]
+    bridge._ctl_sync_ports = lambda ins: None
+    assert bridge.loadControlPreset(str(SURFACE)) == ""
+    assert sent[:2] == [(DAW, "9F 0C 7F"), (DAW, "B6 1E 02")]
+    bridge._ctl_feedback_tick()
+    msgs = [m for _, m in sent]
+    text = lambda cc, field, t: lcxl3.display_text(cc, field, t).hex()
+    assert text(13, 0, "MACRO 1") in msgs                    # knob A1 = macro 1
+    assert text(13, 1, "CUTOFF") in msgs
+    assert text(13, 2, "+0%") in msgs
+    assert lcxl3.led_rgb(13, lcxl3.by_value(lcxl3.CATEGORY_COLORS["MACRO"], 0.5)).hex() in msgs
+    assert lcxl3.led_rgb(21, lcxl3.OFF).hex() in msgs        # row B unassigned
+    # Moving a knob updates only its value
+    sent.clear()
+    bridge._ctl_bindings = [b for b in bridge._ctl_bindings]
+    for b in bridge._ctl_bindings:
+        b.takeover = "jump"
+    bridge._ctl_on_message(DAW, _cc(13, 127, ch=15))
+    _send(app, bridge)
+    assert [m for _, m in sent] == [text(13, 2, "+100%"),
+                                    lcxl3.led_rgb(13, lcxl3.CATEGORY_COLORS["MACRO"]).hex()]
+    # Page buttons switch the app page; the stationary screen follows
+    sent.clear()
+    bridge.setActiveView("JUNO PCM")
+    _send(app, bridge, _cc(107, 127), _cc(107, 0), port=DAW)
+    assert bridge._active_view == "VECTOR"
+    bridge._ctl_feedback_tick()
+    assert lcxl3.display_text(lcxl3.STATIONARY, 1, "VECTOR").hex() in [m for _, m in sent]
+
+
+def test_screen_text_is_ascii_and_fits():
+    from src.spectre.control import lcxl3
+
+    assert lcxl3.ascii_bytes("PATCH · TONE 1") == list(b"PATCH - TONE 1")
+    m = lcxl3.display_text(13, 1, "Filter Cutoff Offset")
+    assert bytes(m.data[8:]) == b"Filter Cutoff "          # 14 on the large lines
+    m = lcxl3.display_text(13, 0, "SPECTRE PERFORM MODE")
+    assert len(m.data[8:]) == 16
+    assert lcxl3.led_category("common.cutoff_offset", "COMMON") == "FILTER"
+    assert lcxl3.led_category("common.level", "COMMON") == "COMMON"
+
+
+def test_screen_names_fit_for_every_target():
+    from src.spectre.control.lcxl3 import screen_names
+    from src.spectre.core.macro_targets import get_macro_catalog
+    from src.spectre.ui.bridge.controllers import ACTIONS
+
+    assert screen_names("tone.all.lfo1_tvf_depth", "All LFO1 Filter Depth", "LFO") == ("ALL TONES", "LFO1 Flt Dep")
+    assert screen_names("tone.3.tvf_cutoff", "T3 Cutoff", "FILTER") == ("TONE 3", "Cutoff")
+    assert screen_names("part.level@5", "Part 5 Level", "PART") == ("PART 5", "Level")
+    assert screen_names("common.cutoff_offset", "Filter Cutoff Offset", "COMMON") == ("COMMON", "Cutoff Ofs")
+    for e in get_macro_catalog():
+        title, name = screen_names(e["key"], e["title"], e["category"])
+        assert len(title) <= 16 and len(name) <= 14, (e["key"], name)

@@ -22,6 +22,7 @@ from typing import Optional
 import mido
 from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
+from ...control import lcxl3
 from ...control.mapping import BEHAVIORS, TAKEOVERS, Binding, Resolver, pick_bindings
 from ...core.macro_targets import filter_macro_targets, get_macro_categories
 from ...core.midi import port_key
@@ -62,7 +63,9 @@ ACTIONS: list[dict] = (
     + [_action(f"part.solo.{n}", f"Part {n} Solo On/Off") for n in range(1, 17)]
     + [_action(f"part.edit.{n}", f"Edit Part {n}") for n in range(1, 17)]
     + [_action("playlist.next", "Playlist Next"), _action("playlist.prev", "Playlist Previous"),
-       _action("panic", "Panic (All Notes Off)")]
+       _action("panic", "Panic (All Notes Off)"),
+       _action("view.next", "Next Page"), _action("view.prev", "Previous Page"),
+       _action("select.next", "Next Tone / Part"), _action("select.prev", "Previous Tone / Part")]
 )
 _ACTION_TITLES = {a["key"]: a["title"] for a in ACTIONS}
 
@@ -191,6 +194,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 live.add((i, k.split(":")[0]))
         for i, client in sorted(live - self._ctl_connected_devices):
             logger.info(f"Controller setup: {client}")
+            for k in [k for k in self.__dict__.get("_surface_state", {}) if k.split(":")[0] == client]:
+                del self._surface_state[k]
             self._ctl_device_messages(client, self._ctl_devices[i].get("on_connect", []))
         self._ctl_connected_devices = live
 
@@ -294,6 +299,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             for item in ordered:
                 ev = latest[item] if len(item) == 4 else item
                 self._ctl_handle(ev)
+        # Moved controls show their new value on the device screen right away
+        self._surface_tick({ev[:4] if len(ev) == 5 else ev for ev in ordered})
 
     def _ctl_is_button(self, ctl: tuple) -> bool:
         return any(b.behavior != "absolute" or b.target.startswith("action.") for b in self._ctl_pick(*ctl))
@@ -309,6 +316,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     def _ctl_handle(self, ev: tuple) -> None:
         port, ch, kind, num, raw = ev
+        if ch == 6 and any(p == port for p, _ in self._surfaces()):
+            return      # LCXL3 feature channel: mode reports, not controls
         self._ctl_moved[(port, ch, kind, num)] = (raw, time.monotonic())
         if self._ctl_learn_target:
             if raw == 0:
@@ -446,7 +455,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     # -- feedback --------------------------------------------------------------
 
     def _ctl_update_feedback_timer(self) -> None:
-        want = any(self._ctl_feedback_on(k) for k in self._ctl_open)
+        want = any(self._ctl_feedback_on(k) for k in self._ctl_open) or bool(self._surfaces())
         if want and not self._ctl_fb_timer.isActive():
             self._ctl_fb_timer.start()
         elif not want and self._ctl_fb_timer.isActive():
@@ -476,6 +485,132 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             self._ctl_fb_sent[ctl] = raw
             self._ctl_send(b.port, mido.Message("control_change", channel=b.channel,
                                                 control=b.number, value=raw))
+        self._surface_tick()
+
+    # -- LCXL3 surface (screen + LEDs; preset device "surface": "lcxl3") -------------
+
+    _TONE_RGB = [(0, 110, 127), (127, 0, 110), (127, 90, 0), (0, 127, 50)]
+
+    def _surfaces(self) -> list[tuple[str, dict]]:
+        """(DAW port key, state) per connected surface device."""
+        out = []
+        st_all = self.__dict__.setdefault("_surface_state", {})
+        for i, client in self._ctl_connected_devices:
+            dev = self._ctl_devices[i] if i < len(self._ctl_devices) else {}
+            if dev.get("surface") != "lcxl3":
+                continue
+            port = next((k for k in self._ctl_open if k.split(":")[0] == client and "DAW" in k), None)
+            if port:
+                out.append((port, st_all.setdefault(port, {"names": {}, "values": {}, "leds": {}, "stat": None})))
+        return out
+
+    def _surface_binding(self, port: str, number: int):
+        ch = 0 if number in lcxl3.BUTTONS or number > 100 else 15
+        view, mode = str(getattr(self, "_active_view", "")), self._ctl_mode()
+        hits = pick_bindings(self._ctl_bindings, port, ch, "cc", number, view, mode)
+        return hits[0] if hits else None
+
+    def _surface_button_rgb(self, b) -> tuple:
+        if b is None:
+            return lcxl3.OFF
+        t = b.target
+        n = int(t.rsplit(".", 1)[1]) if t.rsplit(".", 1)[-1].isdigit() else 0
+        ps = self.patch_state
+        on, color = False, (40, 40, 40)
+        if t.startswith("action.part.mute."):
+            on, color = ps.perf_parts[n - 1].muted, (127, 0, 0)
+        elif t.startswith("action.part.solo."):
+            on, color = ps.perf_parts[n - 1].solo, (127, 100, 0)
+        elif t.startswith("action.part.edit."):
+            on, color = self._editedPart() == n, (127, 127, 127)
+        elif t.startswith("action.tone.mute."):
+            on, color = ps.tones[n - 1].muted, (127, 0, 0)
+        elif t.startswith("action.tone.select."):
+            on, color = int(self._selected_tone) == n, self._TONE_RGB[n - 1]
+        elif t in ("action.seq.toggle_play", "action.seq.play"):
+            on, color = bool(getattr(self.sequencer, "is_playing", False)), (0, 127, 0)
+        elif t == "action.seq.live_record":
+            on, color = bool(self.seqLiveRecordEnabled), (127, 0, 0)
+        elif t.startswith("action.seq.scene."):
+            color = (0, 127, 0)
+        elif t.startswith("action.seq.stop_track."):
+            color = (127, 0, 0)
+        elif t == "action.motion.toggle_play":
+            on, color = self.engine.motion.state.value == "playing", (0, 127, 0)
+        elif t == "action.motion.toggle_record":
+            on, color = self.engine.motion.state.value == "recording", (127, 0, 0)
+        elif not t.startswith("action."):
+            cur = self._ctl_current(t)
+            entry = self._macroEntry(t)
+            color = lcxl3.CATEGORY_COLORS.get(lcxl3.led_category(t, (entry or {}).get("category", "")),
+                                              (60, 60, 60))
+            on = cur is not None and cur >= 0.5
+        return color if on else lcxl3.dim(color)
+
+    def _surface_tick(self, moved: set | None = None) -> None:
+        """Bring each surface's screen and LEDs up to date (only diffs are sent)."""
+        for port, st in self._surfaces():
+            msgs = []
+            controls = list(lcxl3.FADERS) + list(lcxl3.KNOBS)
+            if moved is not None:
+                controls = [c for c in controls if (port, 15, "cc", c) in moved]
+            for num in controls:
+                b = self._surface_binding(port, num)
+                if b is None:
+                    names, value = ("SPECTRE", "-"), ""
+                else:
+                    if b.target.startswith("macro."):
+                        idx = b.target[6:]
+                        title = self.patch_state.macros[int(idx) - 1].name if idx.isdigit() else ""
+                    elif b.target.startswith("action."):
+                        title = lcxl3.short_title(self._ctl_target_title(b.target))
+                    else:
+                        title = self._ctl_target_title(b.target)
+                    entry = self._macroEntry(b.target)
+                    names = lcxl3.screen_names(b.target, title, (entry or {}).get("category", ""))
+                    value = ""
+                    if not b.target.startswith("action."):
+                        lo, hi = self._ctl_range(b.target)
+                        cur = self._ctl_current(b.target)
+                        if cur is not None:
+                            value = lcxl3.format_value(b.target, lo + (hi - lo) * cur, lo, hi)
+                if st["names"].get(num) != names:
+                    if num not in st["names"]:
+                        msgs.append(lcxl3.display_config(num))
+                    msgs += [lcxl3.display_text(num, 0, names[0]), lcxl3.display_text(num, 1, names[1])]
+                    st["names"][num] = names
+                if st["values"].get(num) != value:
+                    msgs.append(lcxl3.display_text(num, 2, value))
+                    st["values"][num] = value
+                if num in lcxl3.KNOBS:
+                    rgb = lcxl3.OFF
+                    if b is not None:
+                        entry = self._macroEntry(b.target)
+                        cat = lcxl3.led_category(b.target, (entry or {}).get("category", ""))
+                        rgb = lcxl3.CATEGORY_COLORS.get(cat, (60, 60, 60))
+                        if not b.target.startswith("action."):
+                            rgb = lcxl3.by_value(rgb, self._ctl_current(b.target))
+                    if st["leds"].get(num) != rgb:
+                        msgs.append(lcxl3.led_rgb(num, rgb))
+                        st["leds"][num] = rgb
+            if moved is None:
+                for num in list(lcxl3.BUTTONS) + [116, 118]:
+                    rgb = self._surface_button_rgb(self._surface_binding(port, num))
+                    if st["leds"].get(num) != rgb:
+                        msgs.append(lcxl3.led_rgb(num, rgb))
+                        st["leds"][num] = rgb
+                sel = (f"PART {self._editedPart()}" if self._in_perform()
+                       else f"TONE {int(self._selected_tone)}")
+                stat = (str(getattr(self, "_patch_name", "") or "JUNO SPECTRE"),
+                        str(getattr(self, "_active_view", "")), f"{self._ctl_mode()} · {sel}")
+                if st["stat"] != stat:
+                    if st["stat"] is None:
+                        msgs.append(lcxl3.display_config(lcxl3.STATIONARY, stationary=True))
+                    msgs += [lcxl3.display_text(lcxl3.STATIONARY, i, line) for i, line in enumerate(stat)]
+                    msgs.append(lcxl3.display_show(lcxl3.STATIONARY))
+                    st["stat"] = stat
+            for m in msgs:
+                self._ctl_send(port, m)
 
     def _ctl_run_action(self, action: str) -> None:
         parts = action.split(".")
@@ -515,6 +650,17 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self.prevPlaylistEntry()
             elif action == "panic":
                 self.panic()
+            elif action in ("view.next", "view.prev"):
+                view = str(getattr(self, "_active_view", ""))
+                i = CONTEXT_PAGES.index(view) if view in CONTEXT_PAGES else -1
+                step = 1 if action == "view.next" else -1
+                self.setActiveView(CONTEXT_PAGES[(i + step) % len(CONTEXT_PAGES)])
+            elif action in ("select.next", "select.prev"):
+                step = 1 if action == "select.next" else -1
+                if self._in_perform():
+                    self.editPerfPart(max(1, min(16, self._editedPart() + step)))
+                else:
+                    self.setSelectedTone(max(1, min(4, int(self._selected_tone) + step)))
         except Exception as e:
             logger.warning(f"controller action {action} failed: {e}")
 

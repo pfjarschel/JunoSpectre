@@ -52,7 +52,13 @@
   "cc:36": "Knob C8",
   "cc:12": "Fader 8",
   "cc:44": "Button 8",
-  "cc:52": "Button 16"
+  "cc:52": "Button 16",
+  "cc:116": "Play",
+  "cc:118": "Record",
+  "cc:106": "Page Left",
+  "cc:107": "Page Right",
+  "cc:103": "Track Left",
+  "cc:102": "Track Right"
  },
  "bindings": [
   {
