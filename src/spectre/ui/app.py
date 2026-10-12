@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -36,6 +38,30 @@ def load_fonts(app: QGuiApplication) -> None:
             logger.warning("Could not load font %s", path.name)
     QFont.insertSubstitution("Noto Sans", "Noto Sans Mono")
     app.setFont(QFont("Noto Sans"))
+
+
+def quit_boot_splash() -> None:
+    """Close the Plymouth boot splash (scripts/boot-splash). Call right before
+    the event loop starts, i.e. before the first frame.
+
+    start_spectre.sh deactivated Plymouth (and set SPECTRE_QUIT_PLYMOUTH) so
+    eglfs could become DRM master. Quitting it hands the VT back to the
+    console, which resets the display; eglfs sets its mode on its first page
+    flip, so this has to happen before that flip: after it, every flip fails
+    and the screen stays black.
+    """
+    if os.environ.pop("SPECTRE_QUIT_PLYMOUTH", "") != "1":
+        return
+    try:
+        subprocess.run(["sudo", "-n", "plymouth", "quit", "--retain-splash"],
+                       timeout=5, capture_output=True)
+        for _ in range(30):  # until plymouthd is gone (it resets the VT on exit)
+            if subprocess.run(["sudo", "-n", "plymouth", "--ping"],
+                              timeout=2, capture_output=True).returncode != 0:
+                break
+            time.sleep(0.1)
+    except (OSError, subprocess.SubprocessError):
+        logger.warning("Could not quit the boot splash", exc_info=True)
 
 
 def _show_ui_after_splash(window: QQuickWindow) -> None:
@@ -165,6 +191,7 @@ def run_app(
         if hasattr(root_obj, "showFullScreen"):
             root_obj.showFullScreen()
 
+    quit_boot_splash()
     try:
         return app.exec()
     finally:

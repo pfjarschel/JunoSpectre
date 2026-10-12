@@ -24,7 +24,7 @@ from PyQt6.QtCore import QTimer
 
 from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.protocol import JunoClient
-from src.spectre.ui.app import create_application
+from src.spectre.ui.app import create_application, quit_boot_splash
 from src.spectre.vector.engine import VectorEngine
 
 logging.basicConfig(
@@ -190,6 +190,7 @@ def main() -> int:
     from src.spectre.ui.stall_watchdog import maybe_start as _start_stall_log
     _stall_log = _start_stall_log(app)  # noqa: F841 (kept alive with the app)
 
+    quit_boot_splash()  # last thing before the first frame (see app.py)
     logger.info("Juno Spectre UI started successfully.")
     try:
         return app.exec()

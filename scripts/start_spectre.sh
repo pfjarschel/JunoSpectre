@@ -108,6 +108,15 @@ else
     unset QT_QPA_EGLFS_KMS_CONFIG || true
 fi
 
+# --- Boot splash handover (scripts/boot-splash) ---------------------------------
+# Plymouth holds the display: deactivate it (its picture stays on screen) so
+# eglfs becomes DRM master; the app quits it just before its first frame.
+if [[ "$MODE" == appliance* ]] && command -v plymouth > /dev/null \
+        && sudo -n plymouth --ping 2> /dev/null; then
+    sudo -n plymouth deactivate || true
+    export SPECTRE_QUIT_PLYMOUTH=1
+fi
+
 # --- Fullscreen default: on for appliance/eglfs, off for desktop/headless ----
 EXTRA_ARGS=()
 if [[ "$MODE" == appliance* && "$WANT_FULLSCREEN" -eq 0 && "$WANT_WINDOWED" -eq 0 ]]; then

@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Juno Spectre
+Description=Juno Spectre boot splash: the app splash picture, full screen
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/spectre
+ScriptFile=/usr/share/plymouth/themes/spectre/spectre.script
