@@ -54,3 +54,14 @@ python tools/scan_mfx_patches.py
 
 ### 6. `sampler_test.py`
 Audio input and sampling test script for verifying soundcard capture latency and level thresholding.
+
+### 7. `voice_count_test.py`
+Polyphony test: does a tone at level 0 still use a voice?
+- **Requirements:** Connected Roland synth over USB MIDI, plus the USB audio input (same capture setup as `dump_waveforms.py`). Overwrites the temporary patch and switches to PATCH mode.
+- **Function:** Holds a low sine probe note, then adds quiet high notes until the probe's voice is stolen (Patch Priority LAST). This is measured for tones 2-4 at level 127, at level 0, and switched off, and reports the voices used per note in each case.
+
+```bash
+python tools/voice_count_test.py            # recorded and analysed
+python tools/voice_count_test.py --listen   # no audio capture: listen for the low C dropping out
+python tools/voice_count_test.py --switch   # listen: what a Tone Switch change does to held notes
+```
