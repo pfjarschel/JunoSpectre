@@ -134,8 +134,7 @@ Rectangle {
                 anchors.rightMargin: ScaleMetrics.dp(4)
                 spacing: ScaleMetrics.dp(4)
 
-                // PERFORM: "PERF NAME [P3 · MFX2] patch name". The tag opens the
-                // part/MFX picker; the names open the Librarian like in PATCH.
+                // PERFORM: "PERF NAME  patch name"; both open the Librarian like in PATCH.
                 Text {
                     visible: Bridge.soundMode === "PERFORM"
                     Layout.maximumWidth: ScaleMetrics.dp(150)
@@ -149,14 +148,28 @@ Rectangle {
                         onClicked: Bridge.toggleLibrarian()
                     }
                 }
+                Text {
+                    Layout.fillWidth: true
+                    text: Bridge.soundMode === "PERFORM" ? Bridge.perfHeader.patch : Bridge.patchName
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(11)
+                    color: Theme.textPrimary
+                    elide: Text.ElideRight
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Bridge.toggleLibrarian()
+                    }
+                }
+
+                // PERFORM: part + MFX being edited; opens the picker
                 Rectangle {
                     id: editTag
                     visible: Bridge.soundMode === "PERFORM"
                     implicitWidth: tagRow.implicitWidth + ScaleMetrics.dp(12)
-                    implicitHeight: ScaleMetrics.dp(26)
-                    radius: ScaleMetrics.dp(4)
-                    color: tagMouse.pressed ? Theme.bgCardActive : "#10141d"
-                    border.color: "#a855f7"
+                    implicitHeight: ScaleMetrics.dp(30)
+                    radius: ScaleMetrics.dp(3)
+                    color: tagMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
+                    border.color: tagMouse.pressed ? "#a855f7" : Theme.borderCard
                     border.width: 1
                     Row {
                         id: tagRow
@@ -184,25 +197,8 @@ Rectangle {
                     }
                     MouseArea {
                         id: tagMouse
-                        // Taller than the tag: easy to hit in the header
                         anchors.fill: parent
-                        anchors.topMargin: -ScaleMetrics.dp(6)
-                        anchors.bottomMargin: -ScaleMetrics.dp(6)
-                        anchors.leftMargin: -ScaleMetrics.dp(4)
-                        anchors.rightMargin: -ScaleMetrics.dp(4)
                         onClicked: Bridge.openEditTarget()
-                    }
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: Bridge.soundMode === "PERFORM" ? Bridge.perfHeader.patch : Bridge.patchName
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(11)
-                    color: Theme.textPrimary
-                    elide: Text.ElideRight
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: Bridge.toggleLibrarian()
                     }
                 }
 
