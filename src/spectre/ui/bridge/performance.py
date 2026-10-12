@@ -8,7 +8,8 @@ from pathlib import Path
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
-from ...core.routing import mfx_structure_layout
+from ...core.mfx_catalog import get_mfx_algo
+from ...core.routing import is_direct, mfx_structure_layout
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     # Background part read finished: (part index, PatchState) -> UI thread
     partStateRead = pyqtSignal(int, object)
     partFileStatusChanged = pyqtSignal()
+    requestOpenEditTarget = pyqtSignal()
 
     @pyqtProperty("QVariantList", notify=perfPartsChanged)
     def perfParts(self) -> list:
@@ -81,6 +83,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         elif holder is not None:
             shown = {"type": int(holder.mfx_type), "drySend": int(holder.dry_send),
                      "chorusSend": int(holder.chorus_send), "reverbSend": int(holder.reverb_send)}
+        algo = get_mfx_algo(int(shown["type"]))
+        shown["name"] = algo["name"].split(" ", 1)[-1] if algo else "THRU"
         return {"kind": f"MFX{n}", "slot": n, **shown, "source": source,
                 "editing": int(getattr(self, "_editing_perf_mfx", 1)) == n}
 
@@ -178,6 +182,18 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     def perfStructure(self) -> int:
         fx = getattr(self.patch_state, "perf_fx", None)
         return int(getattr(fx, "mfx_structure", 0)) if fx is not None else 0
+
+    @pyqtProperty("QVariantMap", notify=perfPartsChanged)
+    def perfHeader(self) -> dict:
+        """Header pieces in PERFORM: performance name, edited part and its patch."""
+        idx = max(1, min(16, int(getattr(self.patch_state, "active_perf_part", 1))))
+        try:
+            part = self.patch_state.perf_parts[idx - 1]
+            patch = str(part.patch_name or part.name or f"Part {idx}")
+        except IndexError:
+            patch = f"Part {idx}"
+        perf = str(getattr(self.patch_state, "perf_name", "") or self._patch_name or "")
+        return {"perf": perf, "part": idx, "patch": patch}
 
     @pyqtProperty(str, notify=perfPartsChanged)
     def perfName(self) -> str:
@@ -756,8 +772,27 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                     juno.set_active_perf_part(part_index)
                 except Exception as e:
                     logger.debug(f"editPerfPart: {e}")
+            mfx = self._part_mfx(part_index)
+            if mfx and mfx != self.editingPerfMfx:
+                self.setEditingPerfMfx(mfx)  # the MFX the part's sound enters
             if not self._refresh_editors_for_part(int(part_index), async_mode=True):
                 self.perfPartsChanged.emit()
+
+    def _part_mfx(self, part_index: int) -> int:
+        """MFX (1..3) a part's sound enters, 0 when the part bypasses the MFX."""
+        try:
+            part = self.patch_state.perf_parts[int(part_index) - 1]
+        except (IndexError, ValueError):
+            return 0
+        if is_direct(int(getattr(part, "output_assign", 13))):
+            return 0
+        return max(0, min(2, int(getattr(part, "mfx_select", 0)))) + 1
+
+    @pyqtSlot()
+    def openEditTarget(self) -> None:
+        """Header picker: which part and which MFX the editors work on (PERFORM)."""
+        if self._in_perform():
+            self.requestOpenEditTarget.emit()
 
     def _in_perform(self) -> bool:
         return str(getattr(self, "_sound_mode", "PATCH")).upper() == "PERFORM"

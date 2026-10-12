@@ -63,6 +63,9 @@ ACTIONS: list[dict] = (
     + [_action(f"part.mute.{n}", f"Part {n} Mute On/Off") for n in range(1, 17)]
     + [_action(f"part.solo.{n}", f"Part {n} Solo On/Off") for n in range(1, 17)]
     + [_action(f"part.edit.{n}", f"Edit Part {n}") for n in range(1, 17)]
+    + [_action(f"mfx.edit.{n}", f"Edit MFX {n}") for n in range(1, 4)]
+    + [_action("mfx.next", "Next MFX"), _action("mfx.prev", "Previous MFX"),
+       _action("edit_target.open", "Part / MFX Picker")]
     + [_action("playlist.next", "Playlist Next"), _action("playlist.prev", "Playlist Previous"),
        _action("panic", "Panic (All Notes Off)"),
        _action("view.next", "Next Page"), _action("view.prev", "Previous Page"),
@@ -687,6 +690,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             on, color = ps.perf_parts[n - 1].solo, (127, 100, 0)
         elif t.startswith("action.part.edit."):
             on, color = self._editedPart() == n, (127, 127, 127)
+        elif t.startswith("action.mfx.edit."):
+            on, color = self.editingPerfMfx == n, (127, 0, 127)
         elif t.startswith("action.tone.mute."):
             on, color = ps.tones[n - 1].muted, (127, 0, 0)
         elif t.startswith("action.tone.select."):
@@ -925,6 +930,13 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self.setPartSolo(n, not self.patch_state.perf_parts[n - 1].solo)
             elif action.startswith("part.edit."):
                 self.editPerfPart(n)
+            elif action.startswith("mfx.edit."):
+                self.setEditingPerfMfx(n)
+            elif action in ("mfx.next", "mfx.prev"):
+                step = 1 if action == "mfx.next" else -1
+                self.setEditingPerfMfx((self.editingPerfMfx - 1 + step) % 3 + 1)
+            elif action == "edit_target.open":
+                self.openEditTarget()
             elif action == "playlist.next":
                 self.nextPlaylistEntry()
             elif action == "playlist.prev":

@@ -254,6 +254,12 @@ Window {
         objectName: "tmtOverlay"
     }
 
+    // Global Modal: part + MFX being edited (PERFORM), from the header tag
+    EditTargetPicker {
+        id: editTargetPicker
+        objectName: "editTargetPicker"
+    }
+
     // Global Bridge signal listeners
     Connections {
         target: Bridge
@@ -277,6 +283,9 @@ Window {
         }
         function onRequestOpenTmtOverlay(tab) {
             tmtOverlay.open(tab);
+        }
+        function onRequestOpenEditTarget() {
+            editTargetPicker.open();
         }
     }
 }
