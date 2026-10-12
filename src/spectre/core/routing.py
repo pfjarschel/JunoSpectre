@@ -12,10 +12,11 @@ Hardware facts (verified on a JUNO-DS, 2026-10-10):
 - An MFX of type THRU still passes its input through its output level/sends.
 - PERFORM: a part assign other than PATCH overrides the patch route, and
   then the part's chorus/reverb sends apply instead of the tone sends.
-- PERFORM MFX Structure chains: every unit the sound passes through feeds
-  the chorus/reverb with its own sends (heard 2026-10-11: MFX1's reverb send
-  plays in a 1→2→3 chain). Assumed, not yet verified: a unit's output level
-  feeds the next unit, and only the last unit's output level reaches the mixer.
+- PERFORM MFX Structure chains (verified 2026-10-11): every unit the sound
+  passes through feeds the chorus/reverb with its own sends, and a unit's
+  output level feeds the next unit; only the last unit's output level
+  reaches the mixer. A unit at output level 0 stops the chain, while the
+  sends of the units before it still play.
 
 build_graph() follows the signal from the tones to the output; a wire is
 active only when sound actually travels it.
@@ -131,7 +132,7 @@ def chain_outputs(units: list[dict]) -> dict:
     the mixer: {type, dry, cho, rev, reached, choUnits, revUnits}.
 
     units: [{slot, type, dry, cho, rev}]. A unit only gets sound while the
-    one before it has an output level above 0.
+    one before it has an output level above 0 (verified on the Juno).
     """
     reached, cho, rev, cho_units, rev_units = [], 0, 0, [], []
     for u in units:
