@@ -149,6 +149,13 @@ Rectangle {
                     }
                 }
                 Text {
+                    visible: Bridge.soundMode === "PERFORM"
+                    text: "/"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(11)
+                    color: Theme.textDim
+                }
+                Text {
                     Layout.fillWidth: true
                     text: Bridge.soundMode === "PERFORM" ? Bridge.perfHeader.patch : Bridge.patchName
                     font.bold: true
