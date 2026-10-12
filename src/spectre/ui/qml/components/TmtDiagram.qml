@@ -40,6 +40,9 @@ Canvas {
         var laneY = [height * 0.2, height * 0.8];
         function nx(n) { return label + colW * (n[1] + 0.5); }
         function ny(n) { return laneY[0] + (laneY[1] - laneY[0]) * n[2]; }
+        var mixR = ScaleMetrics.dp(9);
+        // Half width: lines meet the "+" circle, not an invisible box
+        function hw(n) { return n[0] === "+" ? mixR : nodeW / 2; }
         function ownerColor(n) {
             return n[3] === 1 ? root.colorA : (n[3] === 2 ? root.colorB : Theme.textPrimary);
         }
@@ -60,8 +63,8 @@ Canvas {
         ctx.strokeStyle = Theme.textSecondary;
         for (var i = 0; i < edges.length; ++i) {
             var a = nodes[edges[i][0]], b = nodes[edges[i][1]];
-            var x1 = nx(a) + nodeW / 2, y1 = ny(a);
-            var x2 = nx(b) - nodeW / 2, y2 = ny(b);
+            var x1 = nx(a) + hw(a), y1 = ny(a);
+            var x2 = nx(b) - hw(b), y2 = ny(b);
             ctx.beginPath();
             ctx.moveTo(x1, y1);
             if (Math.abs(y1 - y2) > 1) {
@@ -77,7 +80,7 @@ Canvas {
         ctx.fillStyle = Theme.textPrimary;
         for (var o = 0; o < outs.length; ++o) {
             var n = nodes[outs[o]];
-            var ox = nx(n) + nodeW / 2, oy = ny(n), ex = width - ScaleMetrics.dp(4);
+            var ox = nx(n) + hw(n), oy = ny(n), ex = width - ScaleMetrics.dp(4);
             ctx.beginPath();
             ctx.moveTo(ox, oy);
             ctx.lineTo(ex, oy);
@@ -96,9 +99,8 @@ Canvas {
             var nd = nodes[k];
             var cx = nx(nd), cy = ny(nd), lab = nd[0];
             if (lab === "+") {
-                var r = ScaleMetrics.dp(9);
                 ctx.beginPath();
-                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.arc(cx, cy, mixR, 0, Math.PI * 2);
                 ctx.fillStyle = Theme.bgApp;
                 ctx.fill();
                 ctx.strokeStyle = Theme.textPrimary;
