@@ -19,11 +19,11 @@ Rectangle {
     property var notes: Bridge.routingPitfalls
     property int selectedToneTab: 0 // 0: ALL, 1..4: tone
 
-    readonly property color cMfx: "#ec4899"
-    readonly property color cCho: "#38bdf8"
-    readonly property color cRev: "#a855f7"
-    readonly property color cOut: "#10b981"
-    readonly property color cPart: "#f59e0b"
+    readonly property color cMfx: Theme.stageMfx
+    readonly property color cCho: Theme.stageChorus
+    readonly property color cRev: Theme.stageReverb
+    readonly property color cOut: Theme.stageOutput
+    readonly property color cPart: Theme.stagePart
 
     // Output assign choices (wire values; see core.routing)
     readonly property var toneAssigns: [
@@ -86,7 +86,7 @@ Rectangle {
                 width: ScaleMetrics.dp(8)
                 height: ScaleMetrics.dp(8)
                 radius: 4
-                color: "#06b6d4"
+                color: Theme.pageAccent
             }
             Text {
                 text: root.perform && root.graph.part ? "SIGNAL ROUTING · PART " + root.graph.part.index : "SIGNAL ROUTING"
@@ -99,33 +99,21 @@ Rectangle {
 
             Repeater {
                 model: [
-                    { id: "SERIAL_CHAIN", label: "SERIAL", desc: "Tones ➔ MFX ➔ Chorus ➔ Reverb ➔ Out" },
+                    { id: "SERIAL_CHAIN", label: "SERIAL", desc: "Tones → MFX → Chorus → Reverb → Out" },
                     { id: "STUDIO_AUX", label: "STUDIO AUX", desc: "MFX insert, MFX feeds chorus & reverb" },
                     { id: "VINTAGE_SYNTH", label: "VINTAGE", desc: "Tones direct + their own chorus & reverb sends" },
                     { id: "AMBIENT_WASH", label: "AMBIENT", desc: "Mostly wet MFX, chorus into a big reverb" },
                     { id: "SPLIT_PATH", label: "SPLIT", desc: "T1-2 through MFX, T3-4 direct with sends" },
                     { id: "CLEAN_DIRECT", label: "CLEAN", desc: "Tones direct, no effects" }
                 ]
-                delegate: Rectangle {
+                delegate: SpButton {
                     readonly property bool sel: Bridge.routingPreset === modelData.id
-                    height: ScaleMetrics.dp(26)
-                    width: ScaleMetrics.dp(78)
-                    radius: ScaleMetrics.dp(4)
-                    color: sel ? "#0e3a47" : (presetMa.pressed ? Theme.bgCardActive : Theme.bgApp)
-                    border.color: sel ? "#06b6d4" : Theme.borderCard
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: modelData.label
-                        font.bold: parent.sel
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: parent.sel ? "#ffffff" : Theme.textSecondary
-                    }
-                    MouseArea {
-                        id: presetMa
-                        anchors.fill: parent
-                        onClicked: Bridge.applyRoutingPreset(modelData.id)
-                    }
+                    implicitHeight: ScaleMetrics.dp(26)
+                    implicitWidth: ScaleMetrics.dp(78)
+                    text: modelData.label
+                    fontSize: 8
+                    checked: sel
+                    onClicked: Bridge.applyRoutingPreset(modelData.id)
                 }
             }
         }
@@ -138,7 +126,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: ScaleMetrics.dp(205)
             radius: ScaleMetrics.dp(6)
-            color: "#070a0f"
+            color: Theme.bgTrack
             border.color: Theme.borderCard
             border.width: 1
             clip: true
@@ -191,13 +179,13 @@ Rectangle {
                             function straight(a, b, e, color) {
                                 var x1 = a.x + a.w / 2, x2 = b.x - b.w / 2;
                                 ctx.beginPath();
-                                ctx.strokeStyle = e.active ? color : "#161d28";
+                                ctx.strokeStyle = e.active ? color : Theme.gridLine;
                                 ctx.lineWidth = e.active ? width4(e.level) : 1.2 * dp;
                                 ctx.lineCap = "round";
                                 ctx.moveTo(x1, a.y);
                                 ctx.lineTo(x2, b.y);
                                 ctx.stroke();
-                                ctx.fillStyle = e.active ? color : "#222c3d";
+                                ctx.fillStyle = e.active ? color : Theme.borderCard;
                                 ctx.beginPath();
                                 ctx.moveTo(x2, b.y);
                                 ctx.lineTo(x2 - arrow * 1.5, b.y - arrow);
@@ -211,7 +199,7 @@ Rectangle {
                             // Up/down out of a node, along a bus track, into another
                             function bus(x1, y1, trackY, x2, y2, e, color, fromTop) {
                                 ctx.beginPath();
-                                ctx.strokeStyle = e.active ? color : "#161d28";
+                                ctx.strokeStyle = e.active ? color : Theme.gridLine;
                                 ctx.lineWidth = e.active ? width4(e.level) : 1.0 * dp;
                                 ctx.lineCap = "round";
                                 ctx.lineJoin = "round";
@@ -220,7 +208,7 @@ Rectangle {
                                 ctx.arcTo(x2, trackY, x2, y2, r);
                                 ctx.lineTo(x2, y2);
                                 ctx.stroke();
-                                ctx.fillStyle = e.active ? color : "#222c3d";
+                                ctx.fillStyle = e.active ? color : Theme.borderCard;
                                 ctx.beginPath();
                                 var d = fromTop ? -1 : 1;
                                 ctx.moveTo(x2, y2);
@@ -234,13 +222,13 @@ Rectangle {
 
                             // Inactive first so live wires draw on top
                             var wires = [
-                                function() { bus(nIn.x, top, top - 36 * dp, nOut.x - 16 * dp, top, root.edge("in->out"), Theme.tone1, true); },
+                                function() { bus(nIn.x, top, top - 36 * dp, nOut.x - 16 * dp, top, root.edge("in->out"), Theme.stageTones, true); },
                                 function() { bus(nMfx.x, top, top - 24 * dp, nOut.x, top, root.edge("mfx->out"), root.cOut, true); },
                                 function() { bus(nCho.x, top, top - 12 * dp, nOut.x + 16 * dp, top, root.edge("cho->out"), root.cCho, true); },
                                 function() { bus(nIn.x - 10 * dp, bot, bot + 12 * dp, nCho.x, bot, root.edge("in->cho"), root.cCho, false); },
                                 function() { bus(nMfx.x, bot, bot + 24 * dp, nRev.x + 10 * dp, bot, root.edge("mfx->rev"), root.cRev, false); },
-                                function() { bus(nIn.x + 10 * dp, bot, bot + 36 * dp, nRev.x - 10 * dp, bot, root.edge("in->rev"), "#c084fc", false); },
-                                function() { straight(nIn, nMfx, root.edge("in->mfx"), Theme.tone1); },
+                                function() { bus(nIn.x + 10 * dp, bot, bot + 36 * dp, nRev.x - 10 * dp, bot, root.edge("in->rev"), root.cRev, false); },
+                                function() { straight(nIn, nMfx, root.edge("in->mfx"), Theme.stageTones); },
                                 function() { straight(nMfx, nCho, root.edge("mfx->cho"), root.cMfx); },
                                 function() { straight(nCho, nRev, root.edge("cho->rev"), root.cRev); },
                                 function() { straight(nRev, nOut, root.edge("rev->out"), root.cOut); }
@@ -271,8 +259,8 @@ Rectangle {
                             Layout.preferredWidth: ScaleMetrics.dp(86)
                             Layout.preferredHeight: ScaleMetrics.dp(34)
                             radius: ScaleMetrics.dp(4)
-                            color: "#0f141f"
-                            border.color: Theme.tone1
+                            color: Theme.bgTrack
+                            border.color: Theme.stageTones
                             border.width: 1
                             ColumnLayout {
                                 anchors.centerIn: parent
@@ -283,7 +271,7 @@ Rectangle {
                                     font.bold: true
                                     font.pixelSize: ScaleMetrics.sp(8)
                                     font.letterSpacing: 1.0
-                                    color: Theme.tone1
+                                    color: Theme.stageTones
                                 }
                                 Row {
                                     Layout.alignment: Qt.AlignHCenter
@@ -295,8 +283,8 @@ Rectangle {
                                             width: ScaleMetrics.dp(17)
                                             height: ScaleMetrics.dp(11)
                                             radius: 2
-                                            color: !t || !t.sounding ? "#161d28" : (t.direct ? "#0b3a2a" : "#0e3a47")
-                                            border.color: !t || !t.sounding ? "#222c3d" : (t.direct ? root.cOut : Theme.tone1)
+                                            color: !t || !t.sounding ? Theme.bgControl : Theme.tint(t.direct ? root.cOut : Theme.stageTones)
+                                            border.color: !t || !t.sounding ? Theme.borderCard : (t.direct ? root.cOut : Theme.stageTones)
                                             border.width: 1
                                             Text {
                                                 anchors.centerIn: parent
@@ -379,8 +367,8 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: ScaleMetrics.dp(24)
                     radius: ScaleMetrics.dp(3)
-                    color: !n ? "#092419" : n.severity === "warning" ? "#3b1212" : n.severity === "caution" ? "#2d2305" : "#0b202e"
-                    border.color: !n ? "#10b981" : n.severity === "warning" ? Theme.recording : n.severity === "caution" ? Theme.warning : "#06b6d4"
+                    color: Theme.tint(!n ? Theme.playing : n.severity === "warning" ? Theme.recording : n.severity === "caution" ? Theme.warning : Theme.pageAccent, 0.12)
+                    border.color: !n ? Theme.playing : n.severity === "warning" ? Theme.recording : n.severity === "caution" ? Theme.warning : Theme.pageAccent
                     border.width: 1
                     Connections {
                         target: root
@@ -391,10 +379,10 @@ Rectangle {
                         anchors.leftMargin: ScaleMetrics.dp(8)
                         anchors.rightMargin: ScaleMetrics.dp(8)
                         spacing: ScaleMetrics.dp(6)
-                        Text {
-                            text: !noteStrip.n ? "✓" : noteStrip.n.severity === "info" ? "ℹ️" : "⚠️"
-                            font.pixelSize: ScaleMetrics.sp(10)
-                            color: "#86efac"
+                        Icon {
+                            name: !noteStrip.n ? "check" : noteStrip.n.severity === "info" ? "info" : "warning"
+                            size: 13
+                            color: Theme.playing
                         }
                         Text {
                             Layout.fillWidth: true
@@ -403,11 +391,11 @@ Rectangle {
                             font.family: Theme.fontMono
                             font.pixelSize: ScaleMetrics.sp(8)
                             font.bold: true
-                            color: !noteStrip.n ? "#86efac" : noteStrip.n.severity === "warning" ? "#fca5a5" : noteStrip.n.severity === "caution" ? "#fef08a" : "#67e8f9"
+                            color: !noteStrip.n ? Theme.playing : noteStrip.n.severity === "warning" ? Theme.recording : noteStrip.n.severity === "caution" ? Theme.warning : Theme.pageAccent
                         }
                         Text {
                             visible: root.notes && root.notes.length > 1
-                            text: (noteStrip.idx + 1) + "/" + (root.notes ? root.notes.length : 0) + " ▸"
+                            text: (noteStrip.idx + 1) + "/" + (root.notes ? root.notes.length : 0) + " ›"
                             font.family: Theme.fontMono
                             font.pixelSize: ScaleMetrics.sp(8)
                             color: Theme.textSecondary
@@ -438,7 +426,7 @@ Rectangle {
                 Layout.preferredWidth: 4
                 Layout.fillHeight: true
                 stageTitle: "TONES"
-                accentColor: Theme.tone1
+                accentColor: Theme.stageTones
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -463,15 +451,16 @@ Rectangle {
                                 Layout.fillWidth: true
                                 height: ScaleMetrics.dp(20)
                                 radius: 2
-                                color: root.selectedToneTab === index ? Theme.tone1 : "#131922"
-                                border.color: root.selectedToneTab === index ? "#ffffff" : Theme.borderCard
+                                readonly property color tabColor: index > 0 ? Theme.toneColors[index - 1] : Theme.pageAccent
+                                color: root.selectedToneTab === index ? Theme.tint(tabColor) : Theme.bgControl
+                                border.color: root.selectedToneTab === index ? tabColor : Theme.borderCard
                                 border.width: 1
                                 Text {
                                     anchors.centerIn: parent
                                     text: parent.follows ? modelData + "→" + parent.t.owner : modelData
                                     font.bold: true
                                     font.pixelSize: ScaleMetrics.sp(7)
-                                    color: root.selectedToneTab === index ? "#000000" : (parent.follows ? Theme.warning : Theme.textDim)
+                                    color: root.selectedToneTab === index ? parent.tabColor : (parent.follows ? Theme.warning : Theme.textDim)
                                 }
                                 MouseArea {
                                     anchors.fill: parent
@@ -498,7 +487,7 @@ Rectangle {
                         Layout.fillHeight: true
                         readonly property var t: root.shownTone()
                         label: "OUT LEVEL"
-                        accent: Theme.tone1
+                        accent: Theme.stageTones
                         val: t ? t.level : 127
                         enabled: !t || t.lockedBy !== "structure"
                         onMoved: (v) => Bridge.setToneRoutingParam(root.selectedToneTab, "level", v)
@@ -569,29 +558,17 @@ Rectangle {
                             color: Theme.textDim
                             Layout.preferredWidth: ScaleMetrics.dp(44)
                         }
-                        Rectangle {
+                        SpButton {
                             readonly property int st: Bridge.perfStructure
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(20)
-                            radius: 3
-                            color: chainMa.pressed ? Theme.bgCardActive : (st > 0 ? "#1c0d16" : "#10141d")
-                            border.color: st > 0 ? root.cMfx : Theme.borderCard
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                width: parent.width - ScaleMetrics.dp(6)
-                                horizontalAlignment: Text.AlignHCenter
-                                elide: Text.ElideRight
-                                text: "TYPE " + (parent.st + 1) + " · " + Bridge.perfMfxStructures[parent.st].label + "  ▸"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(7)
-                                color: parent.st > 0 ? root.cMfx : Theme.textSecondary
-                            }
-                            MouseArea {
-                                id: chainMa
-                                anchors.fill: parent
-                                onClicked: chainPicker.visible = true
-                            }
+                            implicitHeight: ScaleMetrics.dp(20)
+                            icon: "right"
+                            iconAfter: true
+                            text: "TYPE " + (st + 1) + " · " + Bridge.perfMfxStructures[st].label
+                            fontSize: 8
+                            accent: root.cMfx
+                            checked: st > 0
+                            onClicked: chainPicker.visible = true
                         }
                     }
                     SendSlider {
@@ -638,7 +615,7 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(20)
                         radius: 3
-                        color: "#1c0d16"
+                        color: Theme.tint(root.cMfx)
                         border.color: root.cMfx
                         border.width: 1
                         Text {
@@ -655,26 +632,14 @@ Rectangle {
                     }
 
                     // The part reaches a different MFX than the one edited here
-                    Rectangle {
+                    SpButton {
                         visible: !!(root.graph && root.graph.mfxMismatch)
                         Layout.fillWidth: true
-                        height: ScaleMetrics.dp(22)
-                        radius: 3
-                        color: mmMa.pressed ? "#3d2a05" : "#2d2305"
-                        border.color: Theme.warning
-                        border.width: 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: "PART USES MFX" + (root.graph ? root.graph.mfxEnd : "") + " · EDIT IT"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(7)
-                            color: "#fef08a"
-                        }
-                        MouseArea {
-                            id: mmMa
-                            anchors.fill: parent
-                            onClicked: Bridge.editRoutedMfx()
-                        }
+                        implicitHeight: ScaleMetrics.dp(22)
+                        text: "PART USES MFX" + (root.graph ? root.graph.mfxEnd : "") + " · EDIT IT"
+                        fontSize: 8
+                        variant: "warning"
+                        onClicked: Bridge.editRoutedMfx()
                     }
 
                     SendSlider {
@@ -721,7 +686,7 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(20)
                         radius: 3
-                        color: "#081d28"
+                        color: Theme.tint(root.cCho, 0.1)
                         border.color: Bridge.chorusTypeName === "OFF" ? Theme.warning : root.cCho
                         border.width: 1
                         Text {
@@ -749,7 +714,7 @@ Rectangle {
                     Text {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
-                        text: Bridge.chorusToReverb === 0 ? "STEREO ➔ MAIN" : (Bridge.chorusToReverb === 1 ? "MONO ➔ REVERB ONLY" : "STEREO MAIN + MONO REVERB")
+                        text: Bridge.chorusToReverb === 0 ? "STEREO → MAIN" : (Bridge.chorusToReverb === 1 ? "MONO → REVERB ONLY" : "STEREO MAIN + MONO REVERB")
                         font.family: Theme.fontMono
                         font.pixelSize: ScaleMetrics.sp(7)
                         color: root.cCho
@@ -777,7 +742,7 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(20)
                         radius: 3
-                        color: "#1c0d28"
+                        color: Theme.tint(root.cRev, 0.1)
                         border.color: Bridge.reverbTypeName === "OFF" ? Theme.warning : root.cRev
                         border.width: 1
                         Text {
@@ -811,7 +776,7 @@ Rectangle {
         visible: false
         z: 50
         radius: ScaleMetrics.dp(8)
-        color: "#f00a0c10"
+        color: Theme.scrim
         readonly property int entry: root.perform && root.graph.part ? root.graph.part.mfxSelect : 0
         onVisibleChanged: if (visible && !root.perform) visible = false
 
@@ -844,25 +809,12 @@ Rectangle {
                     font.pixelSize: ScaleMetrics.sp(8)
                     color: Theme.textSecondary
                 }
-                Rectangle {
-                    width: ScaleMetrics.dp(36)
-                    height: ScaleMetrics.dp(26)
-                    radius: ScaleMetrics.dp(6)
-                    color: pickClose.pressed ? "#3f1a1a" : Theme.bgApp
-                    border.color: Theme.borderCard
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(13)
-                        color: pickClose.pressed ? Theme.recording : Theme.textSecondary
-                    }
-                    MouseArea {
-                        id: pickClose
-                        anchors.fill: parent
-                        onClicked: chainPicker.visible = false
-                    }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(36)
+                    implicitHeight: ScaleMetrics.dp(26)
+                    icon: "close"
+                    fontSize: 13
+                    onClicked: chainPicker.visible = false
                 }
             }
 
@@ -883,7 +835,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         radius: ScaleMetrics.dp(5)
-                        color: sel ? "#2a0f20" : (tileMa.pressed ? Theme.bgCardActive : Theme.bgApp)
+                        color: sel ? Theme.tint(root.cMfx) : (tileMa.pressed ? Theme.bgCardActive : Theme.bgApp)
                         border.color: sel ? root.cMfx : Theme.borderCard
                         border.width: sel ? 2 : 1
 
@@ -940,7 +892,7 @@ Rectangle {
 
     component RoutingStageCard: Rectangle {
         property string stageTitle: "STAGE"
-        property color accentColor: Theme.tone1
+        property color accentColor: Theme.pageAccent
         default property alias content: innerContainer.data
 
         radius: ScaleMetrics.dp(6)
@@ -954,7 +906,7 @@ Rectangle {
             Rectangle {
                 Layout.fillWidth: true
                 height: ScaleMetrics.dp(24)
-                color: "#0b0f16"
+                color: Theme.bgTrack
                 border.color: Theme.borderCard
                 border.width: 1
                 RowLayout {
@@ -989,14 +941,14 @@ Rectangle {
     component SchematicNode: Rectangle {
         property string title: "NODE"
         property string sub: ""
-        property color accentColor: Theme.tone1
+        property color accentColor: Theme.pageAccent
         property bool live: true
         property bool off: false
 
         Layout.preferredWidth: ScaleMetrics.dp(86)
         Layout.preferredHeight: ScaleMetrics.dp(34)
         radius: ScaleMetrics.dp(4)
-        color: "#0f141f"
+        color: Theme.bgTrack
         border.color: off ? Theme.warning : accentColor
         onXChanged: root.repaint()
         onYChanged: root.repaint()
@@ -1055,12 +1007,12 @@ Rectangle {
             Layout.fillWidth: true
             height: ScaleMetrics.dp(20)
             radius: 3
-            color: "#10141d"
+            color: Theme.bgControl
             border.color: Theme.borderCard
             border.width: 1
             Text {
                 anchors.centerIn: parent
-                text: "🔒 " + cr.lockLabel
+                text: "LOCKED · " + cr.lockLabel
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(7)
                 color: Theme.textSecondary
@@ -1068,90 +1020,30 @@ Rectangle {
         }
         Repeater {
             model: cr.lockLabel === "" ? cr.model : []
-            delegate: Rectangle {
+            delegate: SpButton {
                 readonly property bool sel: cr.current === modelData.id
                 Layout.fillWidth: true
-                height: ScaleMetrics.dp(20)
-                radius: 3
-                color: sel ? "#00e5ff" : (chMa.pressed ? Theme.bgCardActive : "#10141d")
-                border.color: sel ? "#ffffff" : Theme.borderCard
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: modelData.label
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(7)
-                    color: parent.sel ? "#000000" : Theme.textDim
-                }
-                MouseArea {
-                    id: chMa
-                    anchors.fill: parent
-                    enabled: cr.enabled
-                    onClicked: cr.picked(modelData.id)
-                }
+                implicitHeight: ScaleMetrics.dp(20)
+                text: modelData.label
+                fontSize: 8
+                checked: sel
+                enabled: cr.enabled
+                onClicked: cr.picked(modelData.id)
             }
         }
     }
 
-    component SendSlider: Item {
-        id: ss
-        property string label: "SEND"
+    component SendSlider: SpSlider {
         property int val: 0
         property int minVal: 0
         property int maxVal: 127
-        property color accent: Theme.tone1
-        signal moved(int v)
 
         Layout.preferredHeight: ScaleMetrics.dp(36)
-        opacity: enabled ? 1.0 : 0.4
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: ScaleMetrics.dp(2)
-            RowLayout {
-                Layout.fillWidth: true
-                Text {
-                    Layout.fillWidth: true
-                    text: ss.label
-                    elide: Text.ElideRight
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(7)
-                    color: Theme.textDim
-                }
-                Text {
-                    text: ss.val.toString()
-                    font.family: Theme.fontMono
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: ss.accent
-                }
-            }
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                radius: 3
-                color: "#080b11"
-                border.color: Theme.borderCard
-                border.width: 1
-                Rectangle {
-                    width: parent.width * Math.max(0.0, Math.min(1.0, (ss.val - ss.minVal) / Math.max(1, ss.maxVal - ss.minVal)))
-                    height: parent.height
-                    radius: 3
-                    color: ss.accent
-                    opacity: 0.40
-                }
-                function updateVal(mouseX) {
-                    var norm = Math.max(0.0, Math.min(1.0, mouseX / width));
-                    ss.moved(Math.round(ss.minVal + norm * (ss.maxVal - ss.minVal)));
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: ss.enabled
-                    preventStealing: true
-                    onPositionChanged: (mouse) => { if (pressed) parent.updateVal(mouse.x); }
-                    onPressed: (mouse) => { parent.updateVal(mouse.x); }
-                }
-            }
-        }
+        stacked: true
+        from: minVal
+        to: maxVal
+        integer: true
+        norm: (val - minVal) / Math.max(1, maxVal - minVal)
+        valueText: val.toString()
     }
 }

@@ -9,12 +9,12 @@ import ".."
 Rectangle {
     id: root
     anchors.fill: parent
-    color: "#e60a0c10"
+    color: Theme.scrim
     visible: false
     z: 20
 
     property int targetMacro: 1
-    property color macroColor: Theme.primary
+    property color macroColor: Theme.pageAccent
     property string selectedCategory: "ALL"
     property string searchText: ""
     property var targetList: []
@@ -102,21 +102,12 @@ Rectangle {
                     font.pixelSize: ScaleMetrics.sp(10)
                     color: Theme.textDim
                 }
-                Rectangle {
-                    width: ScaleMetrics.dp(30)
-                    height: ScaleMetrics.dp(30)
-                    radius: ScaleMetrics.dp(6)
-                    color: Theme.bgSurface
-                    border.color: Theme.borderCard
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(14)
-                        color: Theme.textSecondary
-                    }
-                    MouseArea { anchors.fill: parent; onClicked: root.closeRequested() }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(30)
+                    implicitHeight: ScaleMetrics.dp(30)
+                    icon: "close"
+                    fontSize: 14
+                    onClicked: root.closeRequested()
                 }
             }
 
@@ -135,7 +126,7 @@ Rectangle {
                     anchors.rightMargin: ScaleMetrics.dp(8)
                     spacing: ScaleMetrics.dp(6)
 
-                    Text { text: "🔍"; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textDim }
+                    Icon { name: "search"; size: 13; color: Theme.textDim }
 
                     TextInput {
                         id: searchField
@@ -158,10 +149,10 @@ Rectangle {
                         }
                     }
 
-                    Text {
+                    Icon {
                         visible: searchField.text.length > 0
-                        text: "✕"
-                        font.pixelSize: ScaleMetrics.sp(11)
+                        name: "close"
+                        size: 14
                         color: Theme.textDim
                         MouseArea {
                             anchors.fill: parent
@@ -169,23 +160,14 @@ Rectangle {
                         }
                     }
 
-                    Rectangle {
-                        width: ScaleMetrics.dp(28)
-                        height: ScaleMetrics.dp(22)
-                        radius: ScaleMetrics.dp(4)
-                        color: root.keyboardVisible ? root.macroColor : Theme.bgSurface
-                        border.color: Theme.borderCard
-                        border.width: 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: "⌨"
-                            font.pixelSize: ScaleMetrics.sp(12)
-                            color: root.keyboardVisible ? "#000000" : Theme.textSecondary
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: root.keyboardVisible = !root.keyboardVisible
-                        }
+                    SpButton {
+                        implicitWidth: ScaleMetrics.dp(28)
+                        implicitHeight: ScaleMetrics.dp(22)
+                        icon: "keyboard"
+                        fontSize: 12
+                        accent: root.macroColor
+                        checked: root.keyboardVisible
+                        onClicked: root.keyboardVisible = !root.keyboardVisible
                     }
                 }
             }
@@ -207,28 +189,16 @@ Rectangle {
 
                     Repeater {
                         model: categoryRow.categories
-                        delegate: Rectangle {
+                        delegate: SpButton {
                             property bool isSel: root.selectedCategory === modelData
-                            height: ScaleMetrics.dp(26)
-                            Layout.preferredWidth: catText.implicitWidth + ScaleMetrics.dp(16)
-                            radius: ScaleMetrics.dp(13)
-                            color: isSel ? Theme.bgCardActive : Theme.bgApp
-                            border.color: isSel ? root.macroColor : Theme.borderCard
-                            border.width: 1
-                            Text {
-                                id: catText
-                                anchors.centerIn: parent
-                                text: modelData
-                                font.bold: parent.isSel
-                                font.pixelSize: ScaleMetrics.sp(9)
-                                color: parent.isSel ? root.macroColor : Theme.textSecondary
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    root.selectedCategory = modelData;
-                                    root.refreshTargets();
-                                }
+                            implicitHeight: ScaleMetrics.dp(26)
+                            Layout.preferredWidth: label.implicitWidth + ScaleMetrics.dp(16)
+                            text: modelData
+                            accent: root.macroColor
+                            checked: isSel
+                            onClicked: {
+                                root.selectedCategory = modelData;
+                                root.refreshTargets();
                             }
                         }
                     }
@@ -289,12 +259,19 @@ Rectangle {
                             color: assigned ? Theme.bgSurface : root.macroColor
                             border.color: assigned ? Theme.borderCard : root.macroColor
                             border.width: 1
+                            Icon {
+                                anchors.centerIn: parent
+                                visible: assigned
+                                name: "check"
+                                color: Theme.textDim
+                            }
                             Text {
                                 anchors.centerIn: parent
-                                text: assigned ? "✓" : (root.midiMode ? "LEARN" : "+ ADD")
+                                visible: !assigned
+                                text: root.midiMode ? "LEARN" : "+ ADD"
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(10)
-                                color: assigned ? Theme.textDim : "#000000"
+                                color: Theme.textOnFill
                             }
                         }
                     }

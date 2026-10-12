@@ -10,14 +10,14 @@ Rectangle {
     property string env: "TVF"
     property var seg: ({ times: [0, 0, 0, 0], levels: [0, 127, 127, 127, 0], bipolar: false, custom: false })
 
-    readonly property color accent: env === "PITCH" ? "#fbbf24" : (env === "TVF" ? "#38bdf8" : "#10b981")
+    readonly property color accent: Theme.pageAccent
 
     Layout.preferredWidth: ScaleMetrics.dp(58)
     Layout.preferredHeight: ScaleMetrics.dp(26)
     implicitWidth: Layout.preferredWidth
     implicitHeight: Layout.preferredHeight
     radius: 3
-    color: thumbArea.pressed ? Theme.bgCardActive : "#10141d"
+    color: thumbArea.pressed ? Theme.bgCardActive : Theme.bgControl
     border.color: Theme.borderCard
     border.width: 1
 
@@ -76,7 +76,7 @@ Rectangle {
             }
 
             // Reference line
-            ctx.strokeStyle = "#1e293b";
+            ctx.strokeStyle = Theme.bgRaised;
             ctx.lineWidth = 1;
             ctx.beginPath();
             var refY = root.seg.bipolar ? h * 0.5 : h - 1;
@@ -103,15 +103,15 @@ Rectangle {
         anchors.top: parent.top
         anchors.margins: 2
         width: 5; height: 5; radius: 2.5
-        color: "#f59e0b"
+        color: Theme.warning
     }
 
-    Text {
+    Icon {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: 2
-        text: "⤢"
-        font.pixelSize: ScaleMetrics.sp(8)
+        name: "expand"
+        size: 12
         color: Theme.textDim
     }
 

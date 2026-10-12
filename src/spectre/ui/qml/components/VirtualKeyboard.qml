@@ -6,7 +6,7 @@ import ".."
 Rectangle {
     id: root
 
-    property color accentColor: Theme.tone1
+    property color accentColor: Theme.pageAccent
     // When true, a SHIFT key toggles A-Z / a-z (needed for Wi-Fi passwords).
     // Existing callers leave this false and keep the legacy uppercase layout.
     property bool allowLower: false
@@ -51,15 +51,14 @@ Rectangle {
                 Layout.preferredWidth: ScaleMetrics.dp(60)
                 Layout.fillHeight: true
                 radius: ScaleMetrics.dp(4)
-                color: bsArea.pressed ? Qt.rgba(0.8, 0.2, 0.2, 0.3) : Theme.bgApp
+                color: bsArea.pressed ? Theme.tint(Theme.recording, 0.3) : Theme.bgApp
                 border.color: bsArea.pressed ? Theme.recording : Theme.borderCard
                 border.width: 1
 
-                Text {
+                Icon {
                     anchors.centerIn: parent
-                    text: "⌫"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(13)
+                    name: "backspace"
+                    size: 17
                     color: Theme.recording
                 }
 
@@ -154,7 +153,8 @@ Rectangle {
                 visible: root.allowLower
                 implicitWidth: ScaleMetrics.dp(72)
                 Layout.preferredWidth: ScaleMetrics.dp(72)
-                text: root.isLower ? "⇧ abc" : "⇧ ABC"
+                icon: "shift"
+                text: root.isLower ? "abc" : "ABC"
                 textColor: root.isLower ? Theme.textSecondary : root.accentColor
                 onClicked: root.isLower = !root.isLower
             }
@@ -226,7 +226,8 @@ Rectangle {
             KeyButton {
                 implicitWidth: ScaleMetrics.dp(110)
                 Layout.preferredWidth: ScaleMetrics.dp(110)
-                text: "HIDE ⌨"
+                icon: "keyboard"
+                text: "HIDE"
                 textColor: root.accentColor
                 onClicked: root.closeClicked()
             }
@@ -237,6 +238,7 @@ Rectangle {
     component KeyButton: Rectangle {
         id: btn
         property alias text: label.text
+        property string icon: ""
         property color textColor: Theme.textPrimary
         signal clicked()
 
@@ -251,13 +253,23 @@ Rectangle {
         border.color: mArea.pressed ? root.accentColor : Theme.borderCard
         border.width: 1
 
-        Text {
-            id: label
+        Row {
             anchors.centerIn: parent
-            font.bold: true
-            font.pixelSize: ScaleMetrics.sp(12)
-            font.family: Theme.fontSans
-            color: btn.textColor
+            spacing: btn.icon !== "" && label.text !== "" ? ScaleMetrics.dp(5) : 0
+            Icon {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: btn.icon !== ""
+                name: btn.icon
+                color: btn.textColor
+            }
+            Text {
+                id: label
+                anchors.verticalCenter: parent.verticalCenter
+                font.bold: true
+                font.pixelSize: ScaleMetrics.sp(12)
+                font.family: Theme.fontSans
+                color: btn.textColor
+            }
         }
 
         MouseArea {

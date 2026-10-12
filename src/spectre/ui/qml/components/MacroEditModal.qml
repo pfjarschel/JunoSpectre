@@ -10,12 +10,12 @@ import ".."
 Rectangle {
     id: root
     anchors.fill: parent
-    color: Qt.rgba(0.02, 0.03, 0.04, 0.85)
+    color: Theme.scrim
     visible: false
     z: 1000
 
     property int targetMacro: 1
-    property color macroColor: Theme.primary
+    property color macroColor: Theme.pageAccent
     property var linkList: []
     property bool keyboardVisible: false
     readonly property var depthSteps: [0.25, 0.5, 0.75, 1.0]
@@ -23,9 +23,7 @@ Rectangle {
 
     function open(macroIndex) {
         targetMacro = Math.max(1, Math.min(8, macroIndex));
-        const colors = [Theme.tone1, Theme.tone2, Theme.tone3, Theme.tone4,
-            "#f59e0b", "#38bdf8", "#a855f7", "#ec4899"];
-        macroColor = colors[targetMacro - 1];
+        macroColor = Theme.pageAccent;
         keyboardVisible = false;
         refreshLinks();
         visible = true;
@@ -160,21 +158,12 @@ Rectangle {
                     font.pixelSize: ScaleMetrics.sp(10)
                     color: Theme.textDim
                 }
-                Rectangle {
-                    width: ScaleMetrics.dp(30)
-                    height: ScaleMetrics.dp(30)
-                    radius: ScaleMetrics.dp(6)
-                    color: Theme.bgSurface
-                    border.color: Theme.borderCard
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(14)
-                        color: Theme.textSecondary
-                    }
-                    MouseArea { anchors.fill: parent; onClicked: root.close() }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(30)
+                    implicitHeight: ScaleMetrics.dp(30)
+                    icon: "close"
+                    fontSize: 14
+                    onClicked: root.close()
                 }
             }
 
@@ -215,23 +204,14 @@ Rectangle {
                                 if (activeFocus) root.keyboardVisible = true;
                             }
                         }
-                        Rectangle {
-                            width: ScaleMetrics.dp(28)
-                            height: ScaleMetrics.dp(22)
-                            radius: ScaleMetrics.dp(4)
-                            color: root.keyboardVisible ? root.macroColor : Theme.bgSurface
-                            border.color: Theme.borderCard
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: "⌨"
-                                font.pixelSize: ScaleMetrics.sp(12)
-                                color: root.keyboardVisible ? "#000000" : Theme.textSecondary
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: root.keyboardVisible = !root.keyboardVisible
-                            }
+                        SpButton {
+                            implicitWidth: ScaleMetrics.dp(28)
+                            implicitHeight: ScaleMetrics.dp(22)
+                            icon: "keyboard"
+                            fontSize: 12
+                            accent: root.macroColor
+                            checked: root.keyboardVisible
+                            onClicked: root.keyboardVisible = !root.keyboardVisible
                         }
                     }
                 }
@@ -369,78 +349,45 @@ Rectangle {
                         }
 
                         // Polarity toggle
-                        Rectangle {
-                            width: ScaleMetrics.dp(36)
-                            height: ScaleMetrics.dp(28)
-                            radius: ScaleMetrics.dp(4)
-                            color: modelData.polarity >= 0 ? root.macroColor : Theme.bgSurface
-                            border.color: root.macroColor
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: modelData.polarity >= 0 ? "+" : "−"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(14)
-                                color: modelData.polarity >= 0 ? "#000000" : root.macroColor
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    Bridge.setMacroLink(root.targetMacro, modelData.pos,
-                                        modelData.polarity >= 0 ? -1 : 1, modelData.depth);
-                                    root.refreshLinks();
-                                }
+                        SpButton {
+                            implicitWidth: ScaleMetrics.dp(36)
+                            implicitHeight: ScaleMetrics.dp(28)
+                            text: modelData.polarity >= 0 ? "+" : "−"
+                            fontSize: 14
+                            variant: "outline"
+                            accent: root.macroColor
+                            checked: modelData.polarity >= 0
+                            onClicked: {
+                                Bridge.setMacroLink(root.targetMacro, modelData.pos,
+                                    modelData.polarity >= 0 ? -1 : 1, modelData.depth);
+                                root.refreshLinks();
                             }
                         }
 
                         // Depth stepper (25/50/75/100)
-                        Rectangle {
-                            width: ScaleMetrics.dp(64)
-                            height: ScaleMetrics.dp(28)
-                            radius: ScaleMetrics.dp(4)
-                            color: Theme.bgSurface
-                            border.color: Theme.borderCard
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: root.depthLabel(modelData.depth)
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(11)
-                                font.family: Theme.fontMono
-                                color: Theme.textPrimary
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    Bridge.setMacroLink(root.targetMacro, modelData.pos,
-                                        modelData.polarity, root.nextDepth(modelData.depth));
-                                    root.refreshLinks();
-                                }
+                        SpButton {
+                            implicitWidth: ScaleMetrics.dp(64)
+                            implicitHeight: ScaleMetrics.dp(28)
+                            text: root.depthLabel(modelData.depth)
+                            fontSize: 11
+                            mono: true
+                            onClicked: {
+                                Bridge.setMacroLink(root.targetMacro, modelData.pos,
+                                    modelData.polarity, root.nextDepth(modelData.depth));
+                                root.refreshLinks();
                             }
                         }
 
                         // Remove link (×, kept visually apart from DIR so it never reads as "minus")
-                        Rectangle {
-                            width: ScaleMetrics.dp(32)
-                            height: ScaleMetrics.dp(28)
-                            radius: ScaleMetrics.dp(4)
-                            color: rmArea.pressed ? "#3f1a1a" : "#1c1214"
-                            border.color: rmArea.pressed ? Theme.recording : "#7f2d2d"
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: "×"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(14)
-                                color: Theme.recording
-                            }
-                            MouseArea {
-                                id: rmArea
-                                anchors.fill: parent
-                                onClicked: {
-                                    Bridge.removeMacroTarget(root.targetMacro, modelData.pos);
-                                    root.refreshLinks();
-                                }
+                        SpButton {
+                            implicitWidth: ScaleMetrics.dp(32)
+                            implicitHeight: ScaleMetrics.dp(28)
+                            text: "×"
+                            fontSize: 14
+                            variant: "danger"
+                            onClicked: {
+                                Bridge.removeMacroTarget(root.targetMacro, modelData.pos);
+                                root.refreshLinks();
                             }
                         }
                     }
@@ -457,28 +404,16 @@ Rectangle {
             }
 
             // Full-width ADD
-            Rectangle {
+            SpButton {
                 Layout.fillWidth: true
-                height: ScaleMetrics.dp(36)
-                radius: ScaleMetrics.dp(6)
-                color: addArea.pressed ? Theme.bgCardActive : Theme.bgApp
-                border.color: root.macroColor
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: "+  ADD PARAMETER"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(11)
-                    font.letterSpacing: 1.0
-                    color: root.macroColor
-                }
-                MouseArea {
-                    id: addArea
-                    anchors.fill: parent
-                    onClicked: {
-                        picker.assignedKeys = root.assignedKeyList();
-                        picker.open(root.targetMacro, root.macroColor);
-                    }
+                implicitHeight: ScaleMetrics.dp(36)
+                text: "+  ADD PARAMETER"
+                fontSize: 11
+                variant: "outline"
+                accent: root.macroColor
+                onClicked: {
+                    picker.assignedKeys = root.assignedKeyList();
+                    picker.open(root.targetMacro, root.macroColor);
                 }
             }
 
@@ -515,19 +450,14 @@ Rectangle {
                     font.pixelSize: ScaleMetrics.sp(9)
                     color: Theme.textDim
                 }
-                Rectangle {
-                    width: ScaleMetrics.dp(90)
-                    height: ScaleMetrics.dp(30)
-                    radius: ScaleMetrics.dp(5)
-                    color: root.macroColor
-                    Text {
-                        anchors.centerIn: parent
-                        text: "DONE"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(11)
-                        color: "#000000"
-                    }
-                    MouseArea { anchors.fill: parent; onClicked: root.close() }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(90)
+                    implicitHeight: ScaleMetrics.dp(30)
+                    text: "DONE"
+                    fontSize: 11
+                    variant: "primary"
+                    accent: root.macroColor
+                    onClicked: root.close()
                 }
             }
         }
@@ -593,28 +523,17 @@ Rectangle {
                         spacing: ScaleMetrics.dp(4)
                         Repeater {
                             model: [ { key: "edit", label: "EDIT PART" }, { key: "all", label: "ALL SOUNDING" } ]
-                            delegate: Rectangle {
-                                readonly property bool active: modelData.key === "edit" ? partPicker.editMode
-                                                                                        : partPicker.allMode
+                            delegate: SpButton {
+                                readonly property bool active: modelData.key === "edit" ? partPicker.editMode : partPicker.allMode
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(26)
-                                radius: 3
-                                color: active ? root.macroColor : Theme.bgApp
-                                border.color: active ? root.macroColor : Theme.borderCard
-                                border.width: 1
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    font.bold: true
-                                    font.pixelSize: ScaleMetrics.sp(8)
-                                    color: parent.active ? Theme.bgApp : Theme.textSecondary
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        Bridge.setMacroLinkPartMode(root.targetMacro, partPicker.linkPos, modelData.key);
-                                        root.refreshLinks();
-                                    }
+                                implicitHeight: ScaleMetrics.dp(26)
+                                text: modelData.label
+                                fontSize: 8
+                                accent: root.macroColor
+                                checked: active
+                                onClicked: {
+                                    Bridge.setMacroLinkPartMode(root.targetMacro, partPicker.linkPos, modelData.key);
+                                    root.refreshLinks();
                                 }
                             }
                         }
@@ -634,28 +553,18 @@ Rectangle {
                         columnSpacing: ScaleMetrics.dp(4)
                         Repeater {
                             model: 16
-                            delegate: Rectangle {
+                            delegate: SpButton {
                                 readonly property int part: index + 1
                                 readonly property bool isOn: partPicker.parts.indexOf(part) >= 0
-                                width: ScaleMetrics.dp(30)
-                                height: ScaleMetrics.dp(30)
-                                radius: 3
-                                color: isOn ? root.macroColor : Theme.bgApp
-                                border.color: isOn ? root.macroColor : Theme.borderCard
-                                border.width: 1
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "P" + parent.part
-                                    font.bold: true
-                                    font.pixelSize: ScaleMetrics.sp(8)
-                                    color: parent.isOn ? Theme.bgApp : Theme.textSecondary
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        Bridge.toggleMacroLinkPart(root.targetMacro, partPicker.linkPos, parent.part);
-                                        root.refreshLinks();
-                                    }
+                                implicitWidth: ScaleMetrics.dp(30)
+                                implicitHeight: ScaleMetrics.dp(30)
+                                text: "P" + part
+                                fontSize: 8
+                                accent: root.macroColor
+                                checked: isOn
+                                onClicked: {
+                                    Bridge.toggleMacroLinkPart(root.targetMacro, partPicker.linkPos, part);
+                                    root.refreshLinks();
                                 }
                             }
                         }

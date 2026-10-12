@@ -46,9 +46,9 @@ Rectangle {
         radius: 3
         color: arrowMouse.pressed ? Qt.rgba(st.valueColor.r, st.valueColor.g, st.valueColor.b, 0.25) : "transparent"
         opacity: (dir < 0 ? st.index > 0 : st.index < st.count - 1) ? 1.0 : 0.3
-        Text {
+        Icon {
             anchors.centerIn: parent
-            text: arrow.dir < 0 ? "◀" : "▶"
+            name: arrow.dir < 0 ? "left" : "right"
             font.pixelSize: st.textPx + 1
             color: Theme.textDim
         }

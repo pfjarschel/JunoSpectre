@@ -25,7 +25,7 @@ Rectangle {
 
             Rectangle {
                 width: ScaleMetrics.dp(8); height: ScaleMetrics.dp(8); radius: 4
-                color: Theme.tone2
+                color: Theme.pageAccent
             }
             Text {
                 text: "SETLIST & REPERTOIRE"
@@ -38,7 +38,7 @@ Rectangle {
                 text: "• " + (Bridge.setlistPath !== "" ? Bridge.setlistPath : "Untitled Setlist")
                 font.pixelSize: ScaleMetrics.sp(9)
                 font.italic: true
-                color: Theme.tone2
+                color: Theme.pageAccent
             }
             Item { Layout.fillWidth: true }
 
@@ -48,13 +48,13 @@ Rectangle {
                 implicitWidth: ScaleMetrics.dp(120)
                 radius: 4
                 color: addMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: Theme.tone2
+                border.color: Theme.pageAccent
                 border.width: 1
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: 4
-                    Text { text: "+"; font.bold: true; font.pixelSize: ScaleMetrics.sp(11); color: Theme.tone2 }
-                    Text { text: "ADD CURRENT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.tone2 }
+                    Text { text: "+"; font.bold: true; font.pixelSize: ScaleMetrics.sp(11); color: Theme.pageAccent }
+                    Text { text: "ADD CURRENT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.pageAccent }
                 }
                 MouseArea {
                     id: addMouse
@@ -67,27 +67,21 @@ Rectangle {
             }
 
             // New Setlist
-            Rectangle {
-                height: ScaleMetrics.dp(28)
+            SpButton {
+                implicitHeight: ScaleMetrics.dp(28)
                 implicitWidth: ScaleMetrics.dp(60)
-                radius: 4
-                color: newMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: Theme.borderCard
-                border.width: 1
-                Text { anchors.centerIn: parent; text: "NEW"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-                MouseArea { id: newMouse; anchors.fill: parent; onClicked: Bridge.newSetlist() }
+                text: "NEW"
+                fontSize: 8
+                onClicked: Bridge.newSetlist()
             }
 
             // Save Setlist
-            Rectangle {
-                height: ScaleMetrics.dp(28)
+            SpButton {
+                implicitHeight: ScaleMetrics.dp(28)
                 implicitWidth: ScaleMetrics.dp(60)
-                radius: 4
-                color: saveMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: Theme.borderCard
-                border.width: 1
-                Text { anchors.centerIn: parent; text: "SAVE"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-                MouseArea { id: saveMouse; anchors.fill: parent; onClicked: Bridge.saveSetlistAuto() }
+                text: "SAVE"
+                fontSize: 8
+                onClicked: Bridge.saveSetlistAuto()
             }
         }
 
@@ -120,12 +114,12 @@ Rectangle {
                         height: ScaleMetrics.dp(44)
                         radius: ScaleMetrics.dp(4)
                         color: {
-                            if (modelData.isCurrent) return "#2e1065" // active sounding song purple
+                            if (modelData.isCurrent) return Theme.tint(Theme.pageAccent, 0.25) // active sounding song purple
                             if (root.selectedIndex === modelData.index) return Theme.bgCardActive
                             return Theme.bgSurface
                         }
                         border.color: {
-                            if (modelData.isCurrent) return Theme.tone2
+                            if (modelData.isCurrent) return Theme.pageAccent
                             if (root.selectedIndex === modelData.index) return Theme.borderActive
                             return Theme.borderCard
                         }
@@ -149,13 +143,13 @@ Rectangle {
                             // Index badge
                             Rectangle {
                                 width: ScaleMetrics.dp(22); height: ScaleMetrics.dp(22); radius: 11
-                                color: modelData.isCurrent ? Theme.tone2 : "#1e293b"
+                                color: modelData.isCurrent ? Theme.pageAccent : Theme.bgRaised
                                 Text {
                                     anchors.centerIn: parent
                                     text: "" + (modelData.index + 1)
                                     font.bold: true
                                     font.pixelSize: ScaleMetrics.sp(8)
-                                    color: modelData.isCurrent ? "#ffffff" : Theme.textDim
+                                    color: modelData.isCurrent ? Theme.textPrimary : Theme.textDim
                                 }
                             }
 
@@ -167,7 +161,7 @@ Rectangle {
                                     text: modelData.name
                                     font.bold: true
                                     font.pixelSize: ScaleMetrics.sp(10)
-                                    color: modelData.isCurrent ? "#ffffff" : Theme.textPrimary
+                                    color: modelData.isCurrent ? Theme.textPrimary : Theme.textPrimary
                                     elide: Text.ElideRight
                                 }
                                 Text {
@@ -181,14 +175,14 @@ Rectangle {
                             // BPM badge
                             Rectangle {
                                 width: ScaleMetrics.dp(50); height: ScaleMetrics.dp(20); radius: 3
-                                color: "#0f172a"
+                                color: Theme.bgControl
                                 border.color: Theme.borderCard; border.width: 1
                                 Text {
                                     anchors.centerIn: parent
                                     text: Math.round(modelData.bpm) + " BPM"
                                     font.pixelSize: ScaleMetrics.sp(7)
                                     font.bold: true
-                                    color: Theme.tone1
+                                    color: Theme.pageAccent
                                 }
                             }
 
@@ -196,10 +190,10 @@ Rectangle {
                             Rectangle {
                                 width: ScaleMetrics.dp(56); height: ScaleMetrics.dp(20); radius: 3
                                 color: {
-                                    if (modelData.status === "ok") return "#064e3b"
-                                    if (modelData.status === "updated") return "#78350f"
-                                    if (modelData.status === "missing") return "#7f1d1d"
-                                    return "#1e293b"
+                                    if (modelData.status === "ok") return Theme.tint(Theme.playing, 0.25)
+                                    if (modelData.status === "updated") return Theme.tint(Theme.warning, 0.25)
+                                    if (modelData.status === "missing") return Theme.tint(Theme.recording, 0.25)
+                                    return Theme.bgRaised
                                 }
                                 Text {
                                     anchors.centerIn: parent
@@ -207,53 +201,48 @@ Rectangle {
                                     font.bold: true
                                     font.pixelSize: ScaleMetrics.sp(6)
                                     color: {
-                                        if (modelData.status === "ok") return "#10b981"
-                                        if (modelData.status === "updated") return "#f59e0b"
-                                        if (modelData.status === "missing") return "#ef4444"
+                                        if (modelData.status === "ok") return Theme.playing
+                                        if (modelData.status === "updated") return Theme.warning
+                                        if (modelData.status === "missing") return Theme.recording
                                         return Theme.textDim
                                     }
                                 }
                             }
 
                             // Reorder buttons: Up / Down
-                            Rectangle {
-                                width: ScaleMetrics.dp(22); height: ScaleMetrics.dp(22); radius: 3
-                                color: Theme.bgApp; border.color: Theme.borderCard; border.width: 1
-                                Text { anchors.centerIn: parent; text: "▲"; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        if (modelData.index > 0) {
-                                            Bridge.reorderSetlistEntry(modelData.index, modelData.index - 1)
-                                            root.selectedIndex = modelData.index - 1
-                                        }
+                            SpButton {
+                                implicitWidth: ScaleMetrics.dp(22)
+                                implicitHeight: ScaleMetrics.dp(22)
+                                icon: "up"
+                                fontSize: 8
+                                onClicked: {
+                                    if (modelData.index > 0) {
+                                        Bridge.reorderSetlistEntry(modelData.index, modelData.index - 1)
+                                        root.selectedIndex = modelData.index - 1
                                     }
                                 }
                             }
-                            Rectangle {
-                                width: ScaleMetrics.dp(22); height: ScaleMetrics.dp(22); radius: 3
-                                color: Theme.bgApp; border.color: Theme.borderCard; border.width: 1
-                                Text { anchors.centerIn: parent; text: "▼"; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        if (modelData.index + 1 < Bridge.setlistCount) {
-                                            Bridge.reorderSetlistEntry(modelData.index, modelData.index + 1)
-                                            root.selectedIndex = modelData.index + 1
-                                        }
+                            SpButton {
+                                implicitWidth: ScaleMetrics.dp(22)
+                                implicitHeight: ScaleMetrics.dp(22)
+                                icon: "down"
+                                fontSize: 8
+                                onClicked: {
+                                    if (modelData.index + 1 < Bridge.setlistCount) {
+                                        Bridge.reorderSetlistEntry(modelData.index, modelData.index + 1)
+                                        root.selectedIndex = modelData.index + 1
                                     }
                                 }
                             }
 
                             // Delete button
-                            Rectangle {
-                                width: ScaleMetrics.dp(22); height: ScaleMetrics.dp(22); radius: 3
-                                color: "#3f1a1a"; border.color: Theme.borderCard; border.width: 1
-                                Text { anchors.centerIn: parent; text: "✕"; font.pixelSize: ScaleMetrics.sp(7); color: "#ef4444" }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: Bridge.removeSetlistEntry(modelData.index)
-                                }
+                            SpButton {
+                                implicitWidth: ScaleMetrics.dp(22)
+                                implicitHeight: ScaleMetrics.dp(22)
+                                icon: "close"
+                                fontSize: 8
+                                variant: "danger"
+                                onClicked: Bridge.removeSetlistEntry(modelData.index)
                             }
                         }
                     }
@@ -314,11 +303,11 @@ Rectangle {
                             }
                             Text {
                                 text: Bridge.setlistIndex === root.selectedIndex
-                                      ? "● CURRENTLY SOUNDING LIVE"
+                                      ? "CURRENTLY SOUNDING LIVE"
                                       : "STAGED FOR SELECTION"
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(7)
-                                color: Bridge.setlistIndex === root.selectedIndex ? Theme.tone2 : Theme.textDim
+                                color: Bridge.setlistIndex === root.selectedIndex ? Theme.pageAccent : Theme.textDim
                             }
                         }
                     }
@@ -328,20 +317,20 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(48)
                         radius: ScaleMetrics.dp(6)
-                        color: activateMouse.pressed ? "#581c87" : Theme.tone2
-                        border.color: "#c084fc"
+                        color: activateMouse.pressed ? Theme.tint(Theme.pageAccent, 0.5) : Theme.pageAccent
+                        border.color: Theme.pageAccent
                         border.width: 1
 
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: ScaleMetrics.dp(8)
-                            Text { text: "⚡"; font.pixelSize: ScaleMetrics.sp(14); color: "#ffffff" }
+                            Icon { name: "load"; size: 18; color: Theme.textOnFill }
                             Text {
                                 text: "LOAD & ACTIVATE SONG"
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(10)
                                 font.letterSpacing: 1.2
-                                color: "#ffffff"
+                                color: Theme.textOnFill
                             }
                         }
 
@@ -369,7 +358,7 @@ Rectangle {
                             border.color: Theme.borderCard; border.width: 1
                             RowLayout {
                                 anchors.centerIn: parent; spacing: 4
-                                Text { text: "◀"; font.pixelSize: ScaleMetrics.sp(9); color: Theme.tone2 }
+                                Icon { name: "left"; size: 12; color: Theme.pageAccent }
                                 Text { text: "PREV SONG"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textPrimary }
                             }
                             MouseArea {
@@ -391,7 +380,7 @@ Rectangle {
                             RowLayout {
                                 anchors.centerIn: parent; spacing: 4
                                 Text { text: "NEXT SONG"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textPrimary }
-                                Text { text: "▶"; font.pixelSize: ScaleMetrics.sp(9); color: Theme.tone2 }
+                                Icon { name: "right"; size: 12; color: Theme.pageAccent }
                             }
                             MouseArea {
                                 id: nextMouse
@@ -413,24 +402,23 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: ScaleMetrics.dp(6)
 
-                        Rectangle {
+                        SpButton {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(32)
-                            radius: 4
-                            color: Theme.bgSurface
-                            border.color: Theme.tone1; border.width: 1
-                            Text { anchors.centerIn: parent; text: "▶ LIVE MODE"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.tone1 }
-                            MouseArea { anchors.fill: parent; onClicked: Bridge.setActiveView("LIVE") }
+                            implicitHeight: ScaleMetrics.dp(32)
+                            icon: "screen.live"
+                            text: "LIVE MODE"
+                            fontSize: 8
+                            variant: "outline"
+                            onClicked: Bridge.setActiveView("LIVE")
                         }
 
-                        Rectangle {
+                        SpButton {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(32)
-                            radius: 4
-                            color: Theme.bgSurface
-                            border.color: Theme.borderCard; border.width: 1
-                            Text { anchors.centerIn: parent; text: "🎛 MIXER"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
-                            MouseArea { anchors.fill: parent; onClicked: Bridge.setActiveView("PERFORMANCE") }
+                            implicitHeight: ScaleMetrics.dp(32)
+                            icon: "screen.perf"
+                            text: "MIXER"
+                            fontSize: 8
+                            onClicked: Bridge.setActiveView("PERFORMANCE")
                         }
                     }
                 }

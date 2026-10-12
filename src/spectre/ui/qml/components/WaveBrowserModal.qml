@@ -7,7 +7,7 @@ import ".."
 Rectangle {
     id: root
     anchors.fill: parent
-    color: Qt.rgba(0.02, 0.03, 0.04, 0.85)
+    color: Theme.scrim
     visible: false
     z: 1000
 
@@ -103,7 +103,7 @@ Rectangle {
                         text: "TONE " + root.targetTone
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(11)
-                        color: "#000000"
+                        color: Theme.textOnFill
                     }
                 }
 
@@ -148,26 +148,12 @@ Rectangle {
                 }
 
                 // Close Button
-                Rectangle {
-                    width: ScaleMetrics.dp(30)
-                    height: ScaleMetrics.dp(30)
-                    radius: ScaleMetrics.dp(6)
-                    color: Theme.bgSurface
-                    border.color: Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(14)
-                        color: Theme.textSecondary
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: root.close()
-                    }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(30)
+                    implicitHeight: ScaleMetrics.dp(30)
+                    icon: "close"
+                    fontSize: 14
+                    onClicked: root.close()
                 }
             }
 
@@ -225,9 +211,9 @@ Rectangle {
                         anchors.rightMargin: ScaleMetrics.dp(8)
                         spacing: ScaleMetrics.dp(6)
 
-                        Text {
-                            text: "🔍"
-                            font.pixelSize: ScaleMetrics.sp(10)
+                        Icon {
+                            name: "search"
+                            size: 13
                             color: Theme.textDim
                         }
 
@@ -258,10 +244,10 @@ Rectangle {
                             }
                         }
 
-                        Text {
+                        Icon {
                             visible: searchField.text.length > 0
-                            text: "✕"
-                            font.pixelSize: ScaleMetrics.sp(11)
+                            name: "close"
+                            size: 14
                             color: Theme.textDim
                             MouseArea {
                                 anchors.fill: parent
@@ -274,25 +260,14 @@ Rectangle {
                         }
 
                         // Virtual Keyboard Toggle Button
-                        Rectangle {
-                            width: ScaleMetrics.dp(28)
-                            height: ScaleMetrics.dp(22)
-                            radius: ScaleMetrics.dp(4)
-                            color: root.virtualKeyboardVisible ? root.toneColor : Theme.bgSurface
-                            border.color: root.virtualKeyboardVisible ? root.toneColor : Theme.borderCard
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "⌨"
-                                font.pixelSize: ScaleMetrics.sp(12)
-                                color: root.virtualKeyboardVisible ? "#000000" : Theme.textSecondary
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: root.virtualKeyboardVisible = !root.virtualKeyboardVisible
-                            }
+                        SpButton {
+                            implicitWidth: ScaleMetrics.dp(28)
+                            implicitHeight: ScaleMetrics.dp(22)
+                            icon: "keyboard"
+                            fontSize: 12
+                            accent: root.toneColor
+                            checked: root.virtualKeyboardVisible
+                            onClicked: root.virtualKeyboardVisible = !root.virtualKeyboardVisible
                         }
                     }
                 }
@@ -441,12 +416,11 @@ Rectangle {
                             border.color: waveDelegate.isActive ? root.toneColor : Theme.borderCard
                             border.width: 1
 
-                            Text {
+                            Icon {
                                 anchors.centerIn: parent
-                                text: waveDelegate.isActive ? "✓" : ""
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(11)
-                                color: "#000000"
+                                name: waveDelegate.isActive ? "check" : ""
+                                size: 14
+                                color: Theme.textOnFill
                             }
                         }
                     }
@@ -498,24 +472,14 @@ Rectangle {
                     Layout.fillWidth: true
                 }
 
-                Rectangle {
-                    width: ScaleMetrics.dp(90)
-                    height: ScaleMetrics.dp(30)
-                    radius: ScaleMetrics.dp(5)
-                    color: root.toneColor
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "DONE"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(11)
-                        color: "#000000"
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: root.close()
-                    }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(90)
+                    implicitHeight: ScaleMetrics.dp(30)
+                    text: "DONE"
+                    fontSize: 11
+                    variant: "primary"
+                    accent: root.toneColor
+                    onClicked: root.close()
                 }
             }
         }

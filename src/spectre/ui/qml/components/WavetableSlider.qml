@@ -99,7 +99,7 @@ Item {
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(10)
                     font.letterSpacing: 1.2
-                    color: Theme.tone3
+                    color: Theme.pageAccent
                     Layout.alignment: Qt.AlignHCenter
                 }
 
@@ -116,53 +116,29 @@ Item {
                         anchors.fill: parent
                         anchors.margins: 2
 
-                        Rectangle {
-                            width: parent.width / 2
-                            height: parent.height
-                            radius: ScaleMetrics.dp(3)
-                            color: !root.is3DView ? Theme.bgCardActive : "transparent"
-                            border.color: !root.is3DView ? Theme.tone1 : "transparent"
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "2D SCOPE"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(8)
-                                color: !root.is3DView ? Theme.textPrimary : Theme.textDim
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    root.is3DView = false;
-                                    waveCanvas.requestPaint();
-                                }
+                        SpButton {
+                            implicitWidth: parent.width / 2
+                            implicitHeight: parent.height
+                            text: "2D SCOPE"
+                            fontSize: 8
+                            accent: Theme.pageAccent
+                            checked: !root.is3DView
+                            onClicked: {
+                                root.is3DView = false;
+                                waveCanvas.requestPaint();
                             }
                         }
 
-                        Rectangle {
-                            width: parent.width / 2
-                            height: parent.height
-                            radius: ScaleMetrics.dp(3)
-                            color: root.is3DView ? Theme.bgCardActive : "transparent"
-                            border.color: root.is3DView ? Theme.tone1 : "transparent"
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "3D WATER"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(8)
-                                color: root.is3DView ? Theme.textPrimary : Theme.textDim
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    root.is3DView = true;
-                                    waveCanvas.requestPaint();
-                                }
+                        SpButton {
+                            implicitWidth: parent.width / 2
+                            implicitHeight: parent.height
+                            text: "3D WATER"
+                            fontSize: 8
+                            accent: Theme.pageAccent
+                            checked: root.is3DView
+                            onClicked: {
+                                root.is3DView = true;
+                                waveCanvas.requestPaint();
                             }
                         }
                     }
@@ -241,7 +217,7 @@ Item {
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(8)
                             font.family: Theme.fontMono
-                            color: Theme.tone3
+                            color: Theme.pageAccent
                         }
                     }
 
@@ -249,7 +225,7 @@ Item {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(16)
                         radius: ScaleMetrics.dp(3)
-                        color: "#0f172a"
+                        color: Theme.bgControl
                         border.color: Theme.borderCard
                         border.width: 1
                         clip: true
@@ -261,7 +237,7 @@ Item {
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
                             width: parent.width * parent.norm
-                            color: Theme.tone3
+                            color: Theme.pageAccent
                         }
 
                         MouseArea {
@@ -281,26 +257,12 @@ Item {
                 }
 
                 // Curve Toggle
-                Rectangle {
+                SpButton {
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(24)
-                    radius: ScaleMetrics.dp(4)
-                    color: Theme.bgApp
-                    border.color: Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: Bridge.curve === "equal_power" ? "CURVE: EQ-PWR" : "CURVE: LINEAR"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.textSecondary
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: Bridge.setCurve(Bridge.curve === "equal_power" ? "linear" : "equal_power")
-                    }
+                    implicitHeight: ScaleMetrics.dp(24)
+                    text: Bridge.curve === "equal_power" ? "CURVE: EQ-PWR" : "CURVE: LINEAR"
+                    fontSize: 8
+                    onClicked: Bridge.setCurve(Bridge.curve === "equal_power" ? "linear" : "equal_power")
                 }
             }
         }
@@ -336,7 +298,7 @@ Item {
                         font.bold: true
                         font.family: Theme.fontMono
                         font.pixelSize: ScaleMetrics.sp(11)
-                        color: Theme.tone3
+                        color: Theme.pageAccent
                     }
                 }
 
@@ -345,7 +307,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: ScaleMetrics.dp(6)
-                    color: "#07090d"
+                    color: Theme.bgTrack
                     border.color: Theme.borderCard
                     border.width: 1
                     clip: true
@@ -355,7 +317,7 @@ Item {
                         anchors.centerIn: parent
                         width: parent.width
                         height: 1
-                        color: "#1e293b"
+                        color: Theme.bgRaised
                         visible: !root.is3DView
                     }
 
@@ -424,7 +386,7 @@ Item {
                                     ctx.lineTo(pts2d[j].x, pts2d[j].y);
                                 }
                                 ctx.lineWidth = 2.5;
-                                ctx.strokeStyle = "#38bdf8";
+                                ctx.strokeStyle = Theme.pageAccent;
                                 ctx.lineCap = "round";
                                 ctx.lineJoin = "round";
                                 ctx.stroke();
@@ -515,7 +477,7 @@ Item {
                                         ctx.lineTo(aPts[c].x, aPts[c].y);
                                     }
                                     ctx.lineWidth = 2.4;
-                                    ctx.strokeStyle = "#ffffff";
+                                    ctx.strokeStyle = Theme.textPrimary;
                                     ctx.lineCap = "round";
                                     ctx.lineJoin = "round";
                                     ctx.stroke();
@@ -619,8 +581,8 @@ Item {
                         width: ScaleMetrics.dp(46)
                         height: ScaleMetrics.dp(46)
                         radius: width / 2
-                        color: "#1e293b"
-                        border.color: Theme.tone3
+                        color: Theme.bgRaised
+                        border.color: Theme.pageAccent
                         border.width: ScaleMetrics.dp(3)
                         z: 10
 
@@ -662,30 +624,11 @@ Item {
     }
 
     // Mini Pill Button Component
-    component SweepPill: Rectangle {
-        id: spRoot
-        property string text: "PILL"
+    component SweepPill: SpButton {
         property bool isActive: false
-        signal clicked()
-
-        height: ScaleMetrics.dp(26)
-        radius: ScaleMetrics.dp(4)
-        color: isActive ? Theme.bgCardActive : "#10141d"
-        border.color: isActive ? Theme.tone3 : Theme.borderCard
-        border.width: 1
-
-        Text {
-            anchors.centerIn: parent
-            text: spRoot.text
-            font.bold: spRoot.isActive
-            font.pixelSize: ScaleMetrics.sp(8)
-            color: spRoot.isActive ? Theme.textPrimary : Theme.textDim
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: spRoot.clicked()
-        }
+        checked: isActive
+        compact: true
+        implicitHeight: ScaleMetrics.dp(26)
     }
 
     // Node badge component with mini waveform / category icon preview

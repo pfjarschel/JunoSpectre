@@ -39,7 +39,7 @@ Rectangle {
         root.contextFor = forIndex
     }
 
-    readonly property color accent: Theme.warning
+    readonly property color accent: Theme.pageAccent
 
     function rangeName(lo, hi) {
         if (lo === 0 && hi === 1) return "full"
@@ -83,13 +83,15 @@ Rectangle {
             }
             HeadButton {
                 text: root.showAll ? ("ALL " + root.bindings.length) : ("ACTIVE NOW " + root.shown.length + "/" + root.bindings.length)
-                tint: root.showAll ? Theme.textSecondary : Theme.tone2
+                tint: root.showAll ? Theme.textSecondary : Theme.pageAccent
                 onClicked: root.showAll = !root.showAll
             }
             Item { Layout.fillWidth: true }
             Text { text: "NEW:"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
             HeadButton {
-                text: root.learnContextTitle + " ▾"
+                text: root.learnContextTitle
+                icon: "down"
+                iconAfter: true
                 tint: Theme.textSecondary
                 onClicked: root.openContexts(-1)
             }
@@ -100,7 +102,7 @@ Rectangle {
             }
             HeadButton {
                 text: "PRESETS"
-                tint: Theme.tone2
+                tint: Theme.pageAccent
                 onClicked: { root.presets = Bridge.controlPresets(); root.presetMessage = ""; root.presetsOpen = true }
             }
             HeadButton {
@@ -117,8 +119,8 @@ Rectangle {
             Layout.preferredHeight: ScaleMetrics.dp(36)
             visible: root.learning
             radius: ScaleMetrics.dp(4)
-            color: "#2a1f08"
-            border.color: root.accent
+            color: Theme.tint(Theme.warning, 0.12)
+            border.color: Theme.warning
             border.width: 1
             RowLayout {
                 anchors.fill: parent
@@ -151,7 +153,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: ScaleMetrics.dp(26)
             radius: ScaleMetrics.dp(4)
-            color: "#0a0d14"
+            color: Theme.bgTrack
             border.color: Theme.borderCard
             border.width: 1
             RowLayout {
@@ -195,7 +197,7 @@ Rectangle {
                     width: ListView.view.width
                     height: ScaleMetrics.dp(38)
                     radius: 3
-                    color: index % 2 === 0 ? "#0a0d14" : "#10141d"
+                    color: index % 2 === 0 ? Theme.bgTrack : Theme.bgControl
                     opacity: (modelData.online ? 1.0 : 0.5) * (modelData.active ? 1.0 : 0.6)
 
                     RowLayout {
@@ -220,11 +222,11 @@ Rectangle {
                             elide: Text.ElideRight
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(10)
-                            color: row.modelData.macro ? Theme.primary : (row.modelData.action ? Theme.tone4 : root.accent)
+                            color: row.modelData.macro ? Theme.catPerform : (row.modelData.action ? Theme.textPrimary : root.accent)
                         }
                         RowChip {
                             text: row.modelData.contextTitle
-                            tint: row.modelData.context === "" ? Theme.textDim : Theme.tone2
+                            tint: row.modelData.context === "" ? Theme.textDim : Theme.pageAccent
                             onClicked: root.openContexts(row.index)
                         }
                         RowChip {
@@ -250,7 +252,7 @@ Rectangle {
                             onClicked: Bridge.setControlBindingOption(row.index, "range", root.nextRange(row.modelData))
                         }
                         RowChip {
-                            text: "✕"
+                            icon: "close"
                             tint: Theme.recording
                             onClicked: Bridge.removeControlBinding(row.index)
                         }
@@ -287,7 +289,7 @@ Rectangle {
     Rectangle {
         anchors.fill: parent
         visible: root.presetsOpen
-        color: "#e60a0c10"
+        color: Theme.scrim
         z: 20
         MouseArea { anchors.fill: parent; onClicked: root.presetsOpen = false }
         Rectangle {
@@ -296,7 +298,7 @@ Rectangle {
             anchors.centerIn: parent
             radius: ScaleMetrics.dp(10)
             color: Theme.bgCard
-            border.color: Theme.tone2
+            border.color: Theme.pageAccent
             border.width: 1
             MouseArea { anchors.fill: parent }
             ColumnLayout {
@@ -309,11 +311,11 @@ Rectangle {
                     Item { Layout.fillWidth: true }
                     HeadButton {
                         text: "SAVE CURRENT…"
-                        tint: Theme.tone2
+                        tint: Theme.pageAccent
                         enabled: root.bindings.length > 0
                         onClicked: { root.presetsOpen = false; presetName.openControlPreset("My layout") }
                     }
-                    HeadButton { text: "✕"; tint: Theme.textSecondary; onClicked: root.presetsOpen = false }
+                    HeadButton { icon: "close"; tint: Theme.textSecondary; onClicked: root.presetsOpen = false }
                 }
                 Text {
                     Layout.fillWidth: true
@@ -341,7 +343,7 @@ Rectangle {
                         width: ListView.view.width
                         height: ScaleMetrics.dp(52)
                         radius: 4
-                        color: "#10141d"
+                        color: Theme.bgControl
                         border.color: Theme.borderCard
                         border.width: 1
                         RowLayout {
@@ -370,7 +372,7 @@ Rectangle {
                             }
                             HeadButton {
                                 text: "LOAD"
-                                tint: Theme.tone2
+                                tint: Theme.pageAccent
                                 onClicked: {
                                     root.presetMessage = Bridge.loadControlPreset(prow.modelData.file)
                                     if (root.presetMessage === "") root.presetsOpen = false
@@ -388,7 +390,7 @@ Rectangle {
         id: clearConfirm
         anchors.fill: parent
         visible: false
-        color: "#e60a0c10"
+        color: Theme.scrim
         z: 21
         MouseArea { anchors.fill: parent; onClicked: clearConfirm.visible = false }
         Rectangle {
@@ -428,7 +430,7 @@ Rectangle {
     Rectangle {
         anchors.fill: parent
         visible: root.contextFor > -2
-        color: "#e60a0c10"
+        color: Theme.scrim
         z: 21
         MouseArea { anchors.fill: parent; onClicked: root.contextFor = -2 }
         Rectangle {
@@ -437,7 +439,7 @@ Rectangle {
             anchors.centerIn: parent
             radius: ScaleMetrics.dp(10)
             color: Theme.bgCard
-            border.color: Theme.tone2
+            border.color: Theme.pageAccent
             border.width: 1
             MouseArea { anchors.fill: parent }
             ColumnLayout {
@@ -465,38 +467,24 @@ Rectangle {
                     spacing: ScaleMetrics.dp(4)
                     Repeater {
                         model: root.contexts
-                        delegate: Rectangle {
+                        delegate: SpButton {
                             id: cchip
                             required property var modelData
-                            property bool sel: root.contextFor === -1
-                                ? root.learnContext === modelData.key
-                                : (root.contextFor >= 0 && root.bindings[root.contextFor]
-                                   && root.bindings[root.contextFor].context === modelData.key)
-                            width: cLabel.implicitWidth + ScaleMetrics.dp(16)
-                            height: ScaleMetrics.dp(28)
-                            radius: 3
-                            color: sel ? Theme.bgCardActive : "#10141d"
-                            border.color: sel ? Theme.tone2 : Theme.borderCard
-                            border.width: 1
-                            Text {
-                                id: cLabel
-                                anchors.centerIn: parent
-                                text: cchip.modelData.title
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(8)
-                                color: cchip.sel ? Theme.tone2 : Theme.textSecondary
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    if (root.contextFor === -1) {
-                                        root.learnContext = cchip.modelData.key
-                                        root.learnContextTitle = cchip.modelData.title
-                                    } else {
-                                        Bridge.setControlBindingOption(root.contextFor, "context", cchip.modelData.key)
-                                    }
-                                    root.contextFor = -2
+                            property bool sel: root.contextFor === -1 ? root.learnContext === modelData.key : (root.contextFor >= 0 && root.bindings[root.contextFor]
+                            && root.bindings[root.contextFor].context === modelData.key)
+                            implicitWidth: label.implicitWidth + ScaleMetrics.dp(16)
+                            implicitHeight: ScaleMetrics.dp(28)
+                            text: cchip.modelData.title
+                            fontSize: 8
+                            checked: sel
+                            onClicked: {
+                                if (root.contextFor === -1) {
+                                    root.learnContext = cchip.modelData.key
+                                    root.learnContextTitle = cchip.modelData.title
+                                } else {
+                                    Bridge.setControlBindingOption(root.contextFor, "context", cchip.modelData.key)
                                 }
+                                root.contextFor = -2
                             }
                         }
                     }
@@ -512,48 +500,20 @@ Rectangle {
         z: 22
     }
 
-    component HeadButton: Rectangle {
-        id: hb
-        property string text: ""
+    component HeadButton: SpButton {
         property color tint: Theme.textSecondary
-        signal clicked()
-        implicitWidth: hbLabel.implicitWidth + ScaleMetrics.dp(20)
+        accent: tint
+        variant: "outline"
         implicitHeight: ScaleMetrics.dp(28)
-        radius: 4
-        color: hbMouse.pressed ? Theme.bgCardActive : "#10141d"
-        border.color: hb.tint
-        border.width: 1
-        opacity: enabled ? 1.0 : 0.4
-        Text {
-            id: hbLabel
-            anchors.centerIn: parent
-            text: hb.text
-            font.bold: true
-            font.pixelSize: ScaleMetrics.sp(9)
-            color: hb.tint
-        }
-        MouseArea { id: hbMouse; anchors.fill: parent; enabled: hb.enabled; onClicked: hb.clicked() }
+        horizontalPadding: ScaleMetrics.dp(10)
     }
 
-    component RowChip: Rectangle {
-        id: rc
-        property string text: ""
+    component RowChip: SpButton {
         property color tint: Theme.textSecondary
-        signal clicked()
-        implicitWidth: Math.max(ScaleMetrics.dp(30), rcLabel.implicitWidth + ScaleMetrics.dp(14))
+        accent: tint
+        variant: "outline"
+        compact: true
+        implicitWidth: Math.max(ScaleMetrics.dp(30), label.implicitWidth + ScaleMetrics.dp(14))
         implicitHeight: ScaleMetrics.dp(28)
-        radius: 3
-        color: rcMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-        border.color: Theme.borderCard
-        border.width: 1
-        Text {
-            id: rcLabel
-            anchors.centerIn: parent
-            text: rc.text
-            font.bold: true
-            font.pixelSize: ScaleMetrics.sp(8)
-            color: rc.tint
-        }
-        MouseArea { id: rcMouse; anchors.fill: parent; onClicked: rc.clicked() }
     }
 }

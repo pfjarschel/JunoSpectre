@@ -52,6 +52,7 @@ where = ["src"]
 spectre = [
     "assets/**/*",
     "ui/qml/**/*",
+    "ui/fonts/*",
 ]
 
 [tool.ruff]

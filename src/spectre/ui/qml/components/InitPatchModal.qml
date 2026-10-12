@@ -9,7 +9,7 @@ Rectangle {
     anchors.fill: parent
     visible: false
     z: 999
-    color: "#e60a0c10" // Deep translucent backdrop
+    color: Theme.scrim // Deep translucent backdrop
 
     // PERFORM inits the whole song (INIT PERF); PATCH inits the active patch
     property bool perf: false
@@ -51,7 +51,7 @@ Rectangle {
         anchors.centerIn: parent
         radius: ScaleMetrics.dp(8)
         color: Theme.bgCard
-        border.color: "#fbbf24"
+        border.color: Theme.warning
         border.width: 1
 
         MouseArea {
@@ -73,15 +73,14 @@ Rectangle {
                     width: ScaleMetrics.dp(24)
                     height: ScaleMetrics.dp(24)
                     radius: ScaleMetrics.dp(4)
-                    color: "#2a2210"
-                    border.color: "#fbbf24"
+                    color: Theme.tint(Theme.warning, 0.15)
+                    border.color: Theme.warning
                     border.width: 1
-                    Text {
+                    Icon {
                         anchors.centerIn: parent
-                        text: "✦"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(12)
-                        color: "#fbbf24"
+                        name: "init"
+                        size: 16
+                        color: Theme.warning
                     }
                 }
 
@@ -95,25 +94,12 @@ Rectangle {
 
                 Item { Layout.fillWidth: true }
 
-                Rectangle {
-                    width: ScaleMetrics.dp(26)
-                    height: ScaleMetrics.dp(26)
-                    radius: ScaleMetrics.dp(4)
-                    color: closeArea.pressed ? Theme.bgCardActive : "#10141d"
-                    border.color: Theme.borderCard
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(10)
-                        color: Theme.textSecondary
-                    }
-                    MouseArea {
-                        id: closeArea
-                        anchors.fill: parent
-                        onClicked: root.close()
-                    }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(26)
+                    implicitHeight: ScaleMetrics.dp(26)
+                    icon: "close"
+                    fontSize: 10
+                    onClicked: root.close()
                 }
             }
 
@@ -122,7 +108,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 radius: ScaleMetrics.dp(6)
-                color: "#0d1017"
+                color: Theme.bgControl
                 border.color: Theme.borderCard
                 border.width: 1
 
@@ -148,7 +134,7 @@ Rectangle {
                             delegate: Text {
                                 text: modelData.text
                                 font.pixelSize: ScaleMetrics.sp(8)
-                                color: modelData.accent ? Theme.tone1 : Theme.textSecondary
+                                color: modelData.accent ? Theme.pageAccent : Theme.textSecondary
                             }
                         }
                     }
@@ -169,53 +155,36 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: ScaleMetrics.dp(8)
 
-                Rectangle {
+                SpButton {
                     Layout.preferredWidth: ScaleMetrics.dp(120)
-                    height: ScaleMetrics.dp(36)
-                    radius: ScaleMetrics.dp(4)
-                    color: cancelArea.pressed ? Theme.bgCardActive : "#10141d"
-                    border.color: Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "CANCEL"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(9)
-                        color: Theme.textSecondary
-                    }
-
-                    MouseArea {
-                        id: cancelArea
-                        anchors.fill: parent
-                        onClicked: root.close()
-                    }
+                    implicitHeight: ScaleMetrics.dp(36)
+                    text: "CANCEL"
+                    onClicked: root.close()
                 }
 
                 Rectangle {
                     Layout.fillWidth: true
                     height: ScaleMetrics.dp(36)
                     radius: ScaleMetrics.dp(4)
-                    color: confirmArea.pressed ? "#45320d" : "#2a2210"
-                    border.color: "#fbbf24"
+                    color: Theme.tint(Theme.warning, confirmArea.pressed ? 0.3 : 0.15)
+                    border.color: Theme.warning
                     border.width: 1
 
                     RowLayout {
                         anchors.centerIn: parent
                         spacing: ScaleMetrics.dp(6)
 
-                        Text {
-                            text: "✦"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(10)
-                            color: "#fbbf24"
+                        Icon {
+                            name: "init"
+                            size: 13
+                            color: Theme.warning
                         }
                         Text {
                             text: "INITIALIZE NOW (RAM)"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(9)
                             font.letterSpacing: 0.8
-                            color: "#fbbf24"
+                            color: Theme.warning
                         }
                     }
 

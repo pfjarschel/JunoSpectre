@@ -34,7 +34,7 @@ Rectangle {
                 width: ScaleMetrics.dp(8)
                 height: ScaleMetrics.dp(8)
                 radius: 4
-                color: Bridge.seqIsPlaying ? "#10b981" : Theme.primary
+                color: Bridge.seqIsPlaying ? Theme.playing : Theme.pageAccent
             }
 
             Text {
@@ -73,7 +73,7 @@ Rectangle {
                         text: Bridge.seqMasterResync === 0 ? "OFF" : (Bridge.seqMasterResync + " BAR")
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(9)
-                        color: Bridge.seqMasterResync > 0 ? "#38bdf8" : Theme.textSecondary
+                        color: Bridge.seqMasterResync > 0 ? Theme.pageAccent : Theme.textSecondary
                     }
                 }
 
@@ -95,18 +95,18 @@ Rectangle {
                 width: ScaleMetrics.dp(100)
                 radius: 4
                 color: Theme.bgApp
-                border.color: "#10b981"
+                border.color: Theme.pageAccent
                 border.width: 1
 
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: ScaleMetrics.dp(4)
-                    Text { text: "⏱"; font.pixelSize: ScaleMetrics.sp(9); color: "#10b981" }
+                    Icon { name: "screen.seq"; size: 12; color: Theme.pageAccent }
                     Text {
                         text: "SEQUENCER"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: "#10b981"
+                        color: Theme.pageAccent
                     }
                 }
 
@@ -122,18 +122,18 @@ Rectangle {
                 width: ScaleMetrics.dp(75)
                 radius: 4
                 color: Theme.bgApp
-                border.color: "#f59e0b"
+                border.color: Theme.pageAccent
                 border.width: 1
 
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: ScaleMetrics.dp(4)
-                    Text { text: "📋"; font.pixelSize: ScaleMetrics.sp(9); color: "#f59e0b" }
+                    Icon { name: "screen.setlist"; size: 12; color: Theme.pageAccent }
                     Text {
                         text: "SETLIST"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: "#f59e0b"
+                        color: Theme.pageAccent
                     }
                 }
 
@@ -191,19 +191,29 @@ Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: root.trackHeaderHeight
                             radius: ScaleMetrics.dp(3)
-                            color: stopAllMouse.pressed ? "#7f1d1d" : Theme.bgSurface
+                            color: stopAllMouse.pressed ? Theme.tint(Theme.recording, 0.35) : Theme.bgSurface
                             border.color: stopAllMouse.containsPress ? Theme.recording : Theme.borderCard
                             border.width: 1
 
                             Column {
                                 anchors.centerIn: parent
                                 spacing: 1
-                                Text {
+                                Row {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: "■ STOP"
-                                    font.bold: true
-                                    font.pixelSize: ScaleMetrics.sp(8)
-                                    color: Theme.recording
+                                    spacing: ScaleMetrics.dp(3)
+                                    Icon {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        name: "stop"
+                                        size: 11
+                                        color: Theme.recording
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "STOP"
+                                        font.bold: true
+                                        font.pixelSize: ScaleMetrics.sp(8)
+                                        color: Theme.recording
+                                    }
                                 }
                                 Text {
                                     anchors.horizontalCenter: parent.horizontalCenter
@@ -233,17 +243,17 @@ Rectangle {
                                 Layout.fillHeight: true
                                 Layout.preferredHeight: 1
                                 radius: ScaleMetrics.dp(4)
-                                color: sceneMouse.pressed ? "#047857" : Theme.bgSurface
-                                border.color: sceneMouse.containsPress ? "#10b981" : Theme.borderCard
+                                color: sceneMouse.pressed ? Theme.tint(Theme.playing, 0.35) : Theme.bgSurface
+                                border.color: sceneMouse.containsPress ? Theme.playing : Theme.borderCard
                                 border.width: 1
 
                                 RowLayout {
                                     anchors.centerIn: parent
                                     spacing: ScaleMetrics.dp(4)
-                                    Text {
-                                        text: "▶"
-                                        font.pixelSize: ScaleMetrics.sp(8)
-                                        color: "#10b981"
+                                    Icon {
+                                        name: "play"
+                                        size: 12
+                                        color: Theme.playing
                                     }
                                     Text {
                                         text: "S" + (index + 1)
@@ -284,7 +294,7 @@ Rectangle {
                     macroIndex: modelData + 1
                     macroTitle: (Bridge.macroNames && Bridge.macroNames.length > modelData)
                                 ? Bridge.macroNames[modelData] : ("M" + (modelData + 1))
-                    macroColor: root.trackColors[modelData % root.trackColors.length]
+                    macroColor: Theme.pageAccent
                     macroValue01: (Bridge.macroValues && Bridge.macroValues.length > modelData)
                                   ? Bridge.macroValues[modelData] : 0.0
                 }
@@ -379,74 +389,35 @@ Rectangle {
                         spacing: ScaleMetrics.dp(3)
 
                         // Parts: main part + layer count; tap to pick them
-                        Rectangle {
+                        SpButton {
                             id: partBadge
                             objectName: "partBadge"
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            radius: 2
-                            color: Theme.bgApp
-                            border.color: Theme.borderCard
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "P" + colRoot.mainPart + (colRoot.layerCount > 0 ? "+" + colRoot.layerCount : "")
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(7)
-                                color: colRoot.trackColor
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: partPicker.open(colRoot.trackIdx, "main", partBadge)
-                            }
+                            text: "P" + colRoot.mainPart + (colRoot.layerCount > 0 ? "+" + colRoot.layerCount : "")
+                            fontSize: 8
+                            variant: "outline"
+                            accent: colRoot.trackColor
+                            onClicked: partPicker.open(colRoot.trackIdx, "main", partBadge)
                         }
 
                         // Kbd switch of the track's part(s): also play them from the keyboard
-                        Rectangle {
+                        SpButton {
                             Layout.preferredWidth: ScaleMetrics.dp(26)
                             Layout.fillHeight: true
-                            radius: 2
-                            color: colRoot.kbdOn ? "#0d2b1a" : Theme.bgApp
-                            border.color: colRoot.kbdOn ? "#10b981" : Theme.borderCard
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "KBD"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(6)
-                                color: colRoot.kbdOn ? "#10b981" : Theme.textDim
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: Bridge.seqSetTrackKbd(colRoot.trackIdx, !colRoot.kbdOn)
-                            }
+                            text: "KBD"
+                            fontSize: 8
+                            checked: colRoot.kbdOn
+                            onClicked: Bridge.seqSetTrackKbd(colRoot.trackIdx, !colRoot.kbdOn)
                         }
 
                         // Track stop button
-                        Rectangle {
+                        SpButton {
                             Layout.preferredWidth: ScaleMetrics.dp(16)
                             Layout.fillHeight: true
-                            radius: 2
-                            color: stopTrackMouse.pressed ? "#7f1d1d" : Theme.bgApp
-                            border.color: Theme.borderCard
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "■"
-                                font.pixelSize: ScaleMetrics.sp(7)
-                                color: Theme.textDim
-                            }
-
-                            MouseArea {
-                                id: stopTrackMouse
-                                anchors.fill: parent
-                                onClicked: Bridge.seqStopTrack(colRoot.trackIdx)
-                            }
+                            icon: "stop"
+                            fontSize: 8
+                            onClicked: Bridge.seqStopTrack(colRoot.trackIdx)
                         }
                     }
                 }
@@ -476,7 +447,7 @@ Rectangle {
         id: tileRoot
         property int trackIndex: 0
         property int clipIndex: 0
-        property color trackColor: Theme.primary
+        property color trackColor: Theme.pageAccent
         property var trackData: null
 
         readonly property var clipData: (trackData && trackData.clips && trackData.clips.length > clipIndex)
@@ -490,7 +461,7 @@ Rectangle {
         color: isPlaying ? Qt.rgba(trackColor.r, trackColor.g, trackColor.b, 0.25)
                          : (hasNotes ? Theme.bgSurface : Theme.bgApp)
         border.color: isPlaying ? trackColor
-                                : (isQueued ? "#f59e0b"
+                                : (isQueued ? Theme.warning
                                             : (isSelected ? Theme.textPrimary : Theme.borderCard))
         border.width: (isPlaying || isQueued || isSelected) ? 2 : 1
 
@@ -500,10 +471,10 @@ Rectangle {
             spacing: ScaleMetrics.dp(4)
 
             // Play / launch icon
-            Text {
-                text: isPlaying ? "▶" : (isQueued ? "⏳" : (hasNotes ? "•" : ""))
-                font.pixelSize: ScaleMetrics.sp(8)
-                color: isPlaying ? trackColor : (isQueued ? "#f59e0b" : Theme.textDim)
+            Icon {
+                name: isPlaying ? "play" : (isQueued ? "busy" : (hasNotes ? "dotFilled" : ""))
+                size: hasNotes && !isPlaying && !isQueued ? 7 : 11
+                color: isPlaying ? trackColor : (isQueued ? Theme.warning : Theme.textDim)
             }
 
             // Clip Name
@@ -522,7 +493,7 @@ Rectangle {
                 text: isQueued ? "QUEUED" : "PLAY"
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(6)
-                color: isQueued ? "#f59e0b" : trackColor
+                color: isQueued ? Theme.warning : trackColor
             }
         }
 
@@ -551,7 +522,7 @@ Rectangle {
         id: dialRoot
         property int macroIndex: 1
         property string macroTitle: "MACRO"
-        property color macroColor: Theme.primary
+        property color macroColor: Theme.pageAccent
         property real macroValue01: 0.0
 
         radius: ScaleMetrics.dp(6)
@@ -653,7 +624,7 @@ Rectangle {
             anchors.bottomMargin: ScaleMetrics.dp(6)
             height: ScaleMetrics.dp(3)
             radius: ScaleMetrics.dp(2)
-            color: "#1e293b"
+            color: Theme.bgRaised
 
             Rectangle {
                 height: parent.height

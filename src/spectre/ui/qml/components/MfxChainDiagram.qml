@@ -10,8 +10,8 @@ Canvas {
     id: root
     property var layout: null        // {rows, merge, next}
     property int entry: 0            // MFX the part enters (1..3), 0 = none
-    property color accent: "#ec4899"
-    property color entryColor: "#f59e0b"
+    property color accent: Theme.stageMfx
+    property color entryColor: Theme.stagePart
 
     onLayoutChanged: requestPaint()
     onEntryChanged: requestPaint()
@@ -71,7 +71,7 @@ Canvas {
             ctx.fill();
             ctx.stroke();
             ctx.lineWidth = 1.4 * dp;
-            ctx.fillStyle = on ? "#000000" : Theme.textSecondary;
+            ctx.fillStyle = on ? Theme.textOnFill : Theme.textSecondary;
             ctx.font = "bold " + Math.round(8 * dp) + "px monospace";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";

@@ -11,8 +11,8 @@ Rectangle {
     border.color: Theme.borderCard
     border.width: 1
 
-    readonly property var knobColors: [Theme.tone1, Theme.tone2, Theme.tone3, Theme.tone4,
-        "#f59e0b", "#38bdf8", "#a855f7", "#ec4899"]
+    readonly property var knobColors: [Theme.pageAccent, Theme.pageAccent, Theme.pageAccent, Theme.pageAccent,
+        Theme.pageAccent, Theme.pageAccent, Theme.pageAccent, Theme.pageAccent]
 
     ColumnLayout {
         anchors.fill: parent
@@ -22,13 +22,7 @@ Rectangle {
         // Header Title
         RowLayout {
             Layout.fillWidth: true
-            Text {
-                text: "MACRO PLAY DECK"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(13)
-                font.letterSpacing: 1.2
-                color: Theme.textSecondary
-            }
+            PageTitle { text: "MACRO PLAY DECK" }
             Item { Layout.fillWidth: true }
             Text {
                 text: "RELATIVE • EDIT TO CUSTOMIZE • DOUBLE-TAP KNOB TO CENTER"
@@ -69,7 +63,7 @@ Rectangle {
         id: knobRoot
         property int macroIndex: 1
         property string macroTitle: "MACRO"
-        property color macroColor: Theme.primary
+        property color macroColor: Theme.pageAccent
         property real macroValue01: 0.0
         property int linkCount: 0
 
@@ -139,25 +133,14 @@ Rectangle {
                         color: knobRoot.macroColor
                     }
                 }
-                Rectangle {
-                    width: ScaleMetrics.dp(38)
-                    height: ScaleMetrics.dp(18)
-                    radius: ScaleMetrics.dp(4)
-                    color: editArea.pressed ? Theme.bgCardActive : Theme.bgSurface
-                    border.color: knobRoot.macroColor
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "EDIT"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: knobRoot.macroColor
-                    }
-                    MouseArea {
-                        id: editArea
-                        anchors.fill: parent
-                        onClicked: Bridge.openMacroAssign(knobRoot.macroIndex)
-                    }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(38)
+                    implicitHeight: ScaleMetrics.dp(18)
+                    text: "EDIT"
+                    fontSize: 8
+                    variant: "outline"
+                    accent: knobRoot.macroColor
+                    onClicked: Bridge.openMacroAssign(knobRoot.macroIndex)
                 }
             }
 
@@ -192,7 +175,7 @@ Rectangle {
                         ctx.beginPath();
                         ctx.arc(cx, cy, radius, startAngle, endAngle);
                         ctx.lineWidth = 6;
-                        ctx.strokeStyle = "#1e293b";
+                        ctx.strokeStyle = Theme.bgRaised;
                         ctx.lineCap = "round";
                         ctx.stroke();
 
@@ -200,7 +183,7 @@ Rectangle {
                         ctx.beginPath();
                         ctx.arc(cx, cy, radius, centerAngle - 0.02, centerAngle + 0.02);
                         ctx.lineWidth = 8;
-                        ctx.strokeStyle = "#475569";
+                        ctx.strokeStyle = Theme.textDim;
                         ctx.lineCap = "round";
                         ctx.stroke();
 

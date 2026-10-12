@@ -17,7 +17,7 @@ Rectangle {
     readonly property var arp: Bridge.arp
     readonly property var lists: Bridge.arpLists
     readonly property bool perform: Bridge.soundMode === "PERFORM"
-    readonly property color accent: "#22d3ee"
+    readonly property color accent: Theme.pageAccent
 
     // Style categories (Parameter Guide p.86): [title, first, last]
     readonly property var categories: [["BASIC", 0, 5], ["SEQ PTN", 6, 65], ["BASSLINE", 66, 106],
@@ -45,31 +45,14 @@ Rectangle {
     onArpChanged: followStyle()
     Component.onCompleted: followStyle()
 
-    component Chip: Rectangle {
-        id: chip
-        property string text: ""
+    component Chip: SpButton {
         property bool selected: false
         property color tint: root.accent
-        signal clicked()
+        accent: tint
+        checked: selected
+        fontSize: Theme.fontMd
         Layout.fillWidth: true
         Layout.preferredHeight: ScaleMetrics.dp(36)
-        radius: 4
-        color: selected ? Qt.rgba(tint.r, tint.g, tint.b, 0.22) : (chipMouse.pressed ? Theme.bgCardActive : Theme.bgApp)
-        border.color: selected ? tint : Theme.borderCard
-        border.width: 1
-        Text {
-            anchors.fill: parent
-            anchors.leftMargin: ScaleMetrics.dp(3)
-            anchors.rightMargin: ScaleMetrics.dp(3)
-            text: chip.text
-            font.bold: true
-            font.pixelSize: ScaleMetrics.sp(10)
-            color: chip.selected ? chip.tint : Theme.textSecondary
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-        }
-        MouseArea { id: chipMouse; anchors.fill: parent; onClicked: chip.clicked() }
     }
 
     component SectionLabel: Text {
@@ -146,7 +129,7 @@ Rectangle {
                 Layout.preferredHeight: ScaleMetrics.dp(30)
                 text: "CLOCK OUT " + (Bridge.midiClockOut ? Math.round(Bridge.bpm) + " BPM" : "OFF")
                 selected: Bridge.midiClockOut
-                tint: "#38bdf8"
+                tint: Theme.pageAccent
                 onClicked: Bridge.setMidiClockOut(!Bridge.midiClockOut)
             }
         }

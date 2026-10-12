@@ -95,7 +95,7 @@ Rectangle {
     property bool pickerVisible: false
     property string pickerTitle: ""
     property string pickerSubtitle: ""
-    property color pickerAccent: "#c084fc"
+    property color pickerAccent: Theme.pageAccent
     property var pickerItems: []
     property int pickerCurrentId: 0
     property var pickerCallback: null
@@ -130,7 +130,7 @@ Rectangle {
 
             Rectangle {
                 width: ScaleMetrics.dp(8); height: ScaleMetrics.dp(8); radius: 4
-                color: "#c084fc"
+                color: Theme.pageAccent
             }
             Text {
                 text: "MODULATION MATRIX (4 MATRIX CONTROLLERS)"
@@ -156,10 +156,10 @@ Rectangle {
 
             Repeater {
                 model: [
-                    { id: 1, name: "MATRIX CTRL 1", defaultSrc: 1,   accent: "#d8b4fe", defaultDest1: 1 },
-                    { id: 2, name: "MATRIX CTRL 2", defaultSrc: 96,  accent: "#c084fc", defaultDest1: 2 },
-                    { id: 3, name: "MATRIX CTRL 3", defaultSrc: 102, accent: "#a855f7", defaultDest1: 4 },
-                    { id: 4, name: "MATRIX CTRL 4", defaultSrc: 105, accent: "#7c3aed", defaultDest1: 2 }
+                    { id: 1, name: "MATRIX CTRL 1", defaultSrc: 1,   accent: Theme.pageAccent, defaultDest1: 1 },
+                    { id: 2, name: "MATRIX CTRL 2", defaultSrc: 96,  accent: Theme.pageAccent, defaultDest1: 2 },
+                    { id: 3, name: "MATRIX CTRL 3", defaultSrc: 102, accent: Theme.pageAccent, defaultDest1: 4 },
+                    { id: 4, name: "MATRIX CTRL 4", defaultSrc: 105, accent: Theme.pageAccent, defaultDest1: 2 }
                 ]
 
                 delegate: Rectangle {
@@ -204,7 +204,7 @@ Rectangle {
                             Layout.fillWidth: true
                             height: ScaleMetrics.dp(36)
                             radius: ScaleMetrics.dp(4)
-                            color: srcMouse.pressed ? Qt.rgba(ctrlCol.accentColor.r, ctrlCol.accentColor.g, ctrlCol.accentColor.b, 0.15) : "#10141d"
+                            color: srcMouse.pressed ? Qt.rgba(ctrlCol.accentColor.r, ctrlCol.accentColor.g, ctrlCol.accentColor.b, 0.15) : Theme.bgControl
                             border.color: ctrlCol.accentColor
                             border.width: 1
 
@@ -233,9 +233,9 @@ Rectangle {
                                     }
                                 }
 
-                                Text {
-                                    text: "▾"
-                                    font.pixelSize: ScaleMetrics.sp(10)
+                                Icon {
+                                    name: "down"
+                                    size: 13
                                     color: ctrlCol.accentColor
                                 }
                             }
@@ -277,7 +277,7 @@ Rectangle {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     radius: ScaleMetrics.dp(4)
-                                    color: "#0a0d14"
+                                    color: Theme.bgTrack
                                     border.color: Theme.borderCard
                                     border.width: 1
 
@@ -297,7 +297,7 @@ Rectangle {
                                             Layout.fillWidth: true
                                             height: ScaleMetrics.dp(28)
                                             radius: ScaleMetrics.dp(4)
-                                            color: destMouse.pressed ? Qt.rgba(ctrlCol.accentColor.r, ctrlCol.accentColor.g, ctrlCol.accentColor.b, 0.15) : "#10141d"
+                                            color: destMouse.pressed ? Qt.rgba(ctrlCol.accentColor.r, ctrlCol.accentColor.g, ctrlCol.accentColor.b, 0.15) : Theme.bgControl
                                             border.color: destMouse.pressed ? ctrlCol.accentColor :
                                                           (slotBox.dId === 0 ? Theme.borderCard : Qt.rgba(ctrlCol.accentColor.r, ctrlCol.accentColor.g, ctrlCol.accentColor.b, 0.45))
                                             border.width: 1
@@ -328,9 +328,9 @@ Rectangle {
                                                     }
                                                 }
 
-                                                Text {
-                                                    text: "▾"
-                                                    font.pixelSize: ScaleMetrics.sp(9)
+                                                Icon {
+                                                    name: "down"
+                                                    size: 12
                                                     color: slotBox.dId === 0 ? Theme.textDim : ctrlCol.accentColor
                                                 }
                                             }
@@ -358,7 +358,7 @@ Rectangle {
                                             Layout.fillWidth: true
                                             height: ScaleMetrics.dp(18)
                                             radius: 3
-                                            color: "#10141d"
+                                            color: Theme.bgControl
                                             border.color: Theme.borderCard
                                             border.width: 1
                                             opacity: slotBox.dId === 0 ? 0.35 : 1.0
@@ -421,35 +421,21 @@ Rectangle {
                                                     { tone: 4, name: "T4", color: Theme.tone4 }
                                                 ]
 
-                                                delegate: Rectangle {
+                                                delegate: SpButton {
                                                     id: tonePill
                                                     Layout.fillWidth: true
                                                     Layout.fillHeight: true
-                                                    radius: ScaleMetrics.dp(3)
-
                                                     property bool isOn: slotBox.swStates ? (slotBox.swStates[modelData.tone - 1] === 1) : true
                                                     property color tColor: modelData.color
-
-                                                    color: isOn ? Qt.rgba(tColor.r, tColor.g, tColor.b, 0.22) : "#10141d"
-                                                    border.color: isOn ? tColor : Theme.borderCard
-                                                    border.width: isOn ? 1.5 : 1
-
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: modelData.name
-                                                        font.family: Theme.fontMono
-                                                        font.bold: true
-                                                        font.pixelSize: ScaleMetrics.sp(7.5)
-                                                        color: tonePill.isOn ? tonePill.tColor : Theme.textDim
-                                                    }
-
-                                                    MouseArea {
-                                                        anchors.fill: parent
-                                                        enabled: slotBox.dId !== 0
-                                                        onClicked: {
-                                                            var nextVal = !tonePill.isOn;
-                                                            Bridge.setToneMatrixSwitch(modelData.tone, ctrlCol.ctrlId, slotBox.slotIdx + 1, nextVal);
-                                                        }
+                                                    text: modelData.name
+                                                    fontSize: 8
+                                                    mono: true
+                                                    accent: tColor
+                                                    checked: isOn
+                                                    enabled: slotBox.dId !== 0
+                                                    onClicked: {
+                                                        var nextVal = !tonePill.isOn;
+                                                        Bridge.setToneMatrixSwitch(modelData.tone, ctrlCol.ctrlId, slotBox.slotIdx + 1, nextVal);
                                                     }
                                                 }
                                             }
@@ -470,7 +456,7 @@ Rectangle {
     Rectangle {
         id: pickerOverlay
         anchors.fill: parent
-        color: Qt.rgba(0.02, 0.03, 0.05, 0.82)
+        color: Theme.scrim
         visible: opacity > 0
         opacity: root.pickerVisible ? 1.0 : 0.0
         z: 999
@@ -498,7 +484,7 @@ Rectangle {
             width: ScaleMetrics.dp(520)
             height: Math.min(parent.height - ScaleMetrics.dp(24), ScaleMetrics.dp(350))
             radius: ScaleMetrics.dp(8)
-            color: "#0e131d"
+            color: Theme.bgControl
             border.color: root.pickerAccent
             border.width: 1.5
             scale: root.pickerVisible ? 1.0 : 0.95
@@ -542,26 +528,12 @@ Rectangle {
                     Item { Layout.fillWidth: true }
 
                     // Close Button
-                    Rectangle {
-                        width: ScaleMetrics.dp(26)
-                        height: ScaleMetrics.dp(26)
-                        radius: ScaleMetrics.dp(13)
-                        color: closeMouse.pressed ? "#ef4444" : "#192231"
-                        border.color: Theme.borderCard
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "✕"
-                            font.pixelSize: ScaleMetrics.sp(10)
-                            color: closeMouse.pressed ? "#ffffff" : Theme.textSecondary
-                        }
-
-                        MouseArea {
-                            id: closeMouse
-                            anchors.fill: parent
-                            onClicked: root.pickerVisible = false
-                        }
+                    SpButton {
+                        implicitWidth: ScaleMetrics.dp(26)
+                        implicitHeight: ScaleMetrics.dp(26)
+                        icon: "close"
+                        fontSize: 10
+                        onClicked: root.pickerVisible = false
                     }
                 }
 
@@ -607,7 +579,7 @@ Rectangle {
 
                                     color: isSelected ?
                                            Qt.rgba(root.pickerAccent.r, root.pickerAccent.g, root.pickerAccent.b, 0.28) :
-                                           (itemMouse.pressed ? Qt.rgba(root.pickerAccent.r, root.pickerAccent.g, root.pickerAccent.b, 0.15) : "#141a26")
+                                           (itemMouse.pressed ? Qt.rgba(root.pickerAccent.r, root.pickerAccent.g, root.pickerAccent.b, 0.15) : Theme.bgControl)
                                     border.color: isSelected ?
                                                   root.pickerAccent :
                                                   (itemMouse.pressed ? root.pickerAccent : Theme.borderCard)

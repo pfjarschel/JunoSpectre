@@ -78,25 +78,15 @@ Item {
 
                 Repeater {
                     model: [ { key: "main", label: "MAIN" }, { key: "layers", label: "LAYERS" } ]
-                    delegate: Rectangle {
+                    delegate: SpButton {
                         readonly property bool active: root.mode === modelData.key
-                        width: ScaleMetrics.dp(64)
-                        height: ScaleMetrics.dp(26)
-                        radius: 3
-                        color: active ? root.trackColor : Theme.bgApp
-                        border.color: active ? root.trackColor : Theme.borderCard
-                        border.width: 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.label
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: parent.active ? Theme.bgApp : Theme.textSecondary
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: root.mode = modelData.key
-                        }
+                        implicitWidth: ScaleMetrics.dp(64)
+                        implicitHeight: ScaleMetrics.dp(26)
+                        text: modelData.label
+                        fontSize: 8
+                        accent: root.trackColor
+                        checked: active
+                        onClicked: root.mode = modelData.key
                     }
                 }
             }

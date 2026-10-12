@@ -37,8 +37,8 @@ Rectangle {
     implicitWidth: row.implicitWidth + ScaleMetrics.dp(12)
     width: implicitWidth
     radius: 4
-    color: "#2a1f06"
-    border.color: "#f59e0b"
+    color: Theme.tint(Theme.warning, 0.12)
+    border.color: Theme.warning
     border.width: 1
 
     RowLayout {
@@ -49,28 +49,15 @@ Rectangle {
         Text {
             text: "Playing P" + hint.kbdPart + " · track sends to P" + hint.mainPart
             font.pixelSize: ScaleMetrics.sp(8)
-            color: "#fbbf24"
+            color: Theme.warning
         }
-        Rectangle {
-            width: useText.implicitWidth + ScaleMetrics.dp(10)
-            height: ScaleMetrics.dp(18)
-            radius: 3
-            color: useMouse.pressed ? "#f59e0b" : "#3d2c08"
-            border.color: "#f59e0b"
-            border.width: 1
-            Text {
-                id: useText
-                anchors.centerIn: parent
-                text: "USE P" + hint.kbdPart
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(8)
-                color: useMouse.pressed ? "#000000" : "#fbbf24"
-            }
-            MouseArea {
-                id: useMouse
-                anchors.fill: parent
-                onClicked: Bridge.seqSetTrackTargetPart(Bridge.seqActiveTrack, hint.kbdPart)
-            }
+        SpButton {
+            implicitWidth: label.implicitWidth + ScaleMetrics.dp(10)
+            implicitHeight: ScaleMetrics.dp(18)
+            text: "USE P" + hint.kbdPart
+            fontSize: 8
+            variant: "warning"
+            onClicked: Bridge.seqSetTrackTargetPart(Bridge.seqActiveTrack, hint.kbdPart)
         }
     }
 }

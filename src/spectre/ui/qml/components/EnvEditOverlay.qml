@@ -12,7 +12,7 @@ Rectangle {
     anchors.fill: parent
     visible: false
     z: 998
-    color: "#e60a0c10"
+    color: Theme.scrim
 
     function open(env) {
         var e = (env === undefined || env === null) ? "TVF" : String(env).toUpperCase();
@@ -63,26 +63,12 @@ Rectangle {
 
                 Item { Layout.fillWidth: true }
 
-                Rectangle {
-                    width: ScaleMetrics.dp(36)
-                    height: ScaleMetrics.dp(26)
-                    radius: ScaleMetrics.dp(6)
-                    color: closeArea.pressed ? "#3f1a1a" : Theme.bgApp
-                    border.color: Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(13)
-                        color: closeArea.pressed ? Theme.recording : Theme.textSecondary
-                    }
-                    MouseArea {
-                        id: closeArea
-                        anchors.fill: parent
-                        onClicked: root.close()
-                    }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(36)
+                    implicitHeight: ScaleMetrics.dp(26)
+                    icon: "close"
+                    fontSize: 13
+                    onClicked: root.close()
                 }
             }
 

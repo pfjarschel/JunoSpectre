@@ -64,20 +64,7 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: ScaleMetrics.dp(6)
 
-                    Rectangle {
-                        width: ScaleMetrics.dp(8)
-                        height: ScaleMetrics.dp(8)
-                        radius: 4
-                        color: "#38bdf8"
-                    }
-
-                    Text {
-                        text: "4-OSC VIRTUAL ANALOG"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(11)
-                        font.letterSpacing: 1.1
-                        color: Theme.textPrimary
-                    }
+                    PageTitle { text: "4-OSC VIRTUAL ANALOG" }
 
                     StructureButton {
                         Layout.leftMargin: ScaleMetrics.dp(6)
@@ -90,8 +77,8 @@ Rectangle {
                         width: ScaleMetrics.dp(125)
                         height: ScaleMetrics.dp(26)
                         radius: ScaleMetrics.dp(4)
-                        color: root.unisonActive ? Theme.bgCardActive : "#10141d"
-                        border.color: root.unisonActive ? "#38bdf8" : Theme.borderCard
+                        color: root.unisonActive ? Theme.tint(Theme.pageAccent) : Theme.bgControl
+                        border.color: root.unisonActive ? Theme.pageAccent : Theme.borderCard
                         border.width: root.unisonActive ? 1.5 : 1
 
                         RowLayout {
@@ -99,7 +86,7 @@ Rectangle {
                             spacing: 4
                             Rectangle {
                                 width: 5; height: 5; radius: 2.5
-                                color: root.unisonActive ? "#38bdf8" : Theme.textDim
+                                color: root.unisonActive ? Theme.pageAccent : Theme.textDim
                             }
                             Text {
                                 text: root.unisonActive ? "AUTO DETUNE: ON" : "AUTO DETUNE: OFF"
@@ -120,8 +107,8 @@ Rectangle {
                         width: ScaleMetrics.dp(110)
                         height: ScaleMetrics.dp(26)
                         radius: ScaleMetrics.dp(4)
-                        color: "#10141d"
-                        border.color: root.unisonActive ? "#38bdf8" : Theme.borderCard
+                        color: Theme.bgControl
+                        border.color: root.unisonActive ? Theme.pageAccent : Theme.borderCard
                         border.width: root.unisonActive ? 1.5 : 1
                         opacity: root.unisonActive ? 1.0 : 0.35
 
@@ -131,7 +118,7 @@ Rectangle {
                             anchors.bottom: parent.bottom
                             width: parent.width * (root.unisonDetune / 50.0)
                             radius: ScaleMetrics.dp(3)
-                            color: root.unisonActive ? Qt.rgba(0.22, 0.74, 0.97, 0.55) : Qt.rgba(0.22, 0.74, 0.97, 0.15)
+                            color: Theme.tint(Theme.pageAccent, root.unisonActive ? 0.55 : 0.15)
                         }
 
                         RowLayout {
@@ -353,7 +340,7 @@ Rectangle {
         }
 
         radius: ScaleMetrics.dp(6)
-        color: "#10141d"
+        color: Theme.bgControl
         border.color: Theme.borderCard
         border.width: 1
 
@@ -396,27 +383,16 @@ Rectangle {
                 spacing: 2
                 Repeater {
                     model: ["SAW", "SQR", "TRI", "SIN", "NOISE"]
-                    delegate: Rectangle {
+                    delegate: SpButton {
                         Layout.fillWidth: true
-                        height: ScaleMetrics.dp(20)
-                        radius: 3
-                        color: osc.waveIdx === index ? Theme.bgCardActive : "#0a0d14"
-                        border.color: osc.waveIdx === index ? osc.accent : Theme.borderCard
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData
-                            font.bold: osc.waveIdx === index
-                            font.pixelSize: ScaleMetrics.sp(7)
-                            color: osc.waveIdx === index ? osc.accent : Theme.textDim
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                osc.waveChanged(index);
-                                osc.dispatchWave();
-                            }
+                        implicitHeight: ScaleMetrics.dp(20)
+                        text: modelData
+                        fontSize: 8
+                        accent: osc.accent
+                        checked: osc.waveIdx === index
+                        onClicked: {
+                            osc.waveChanged(index);
+                            osc.dispatchWave();
                         }
                     }
                 }

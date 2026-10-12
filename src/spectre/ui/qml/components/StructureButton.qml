@@ -16,7 +16,7 @@ Rectangle {
     implicitWidth: ScaleMetrics.dp(118)
     height: ScaleMetrics.dp(26)
     radius: ScaleMetrics.dp(4)
-    color: area.pressed ? Theme.bgCardActive : (merged ? Theme.bgCardActive : "#10141d")
+    color: area.pressed ? Theme.bgCardActive : (merged ? Theme.tint(Theme.pageAccent) : Theme.bgControl)
     border.color: merged ? Theme.warning : Theme.borderCard
     border.width: 1
 

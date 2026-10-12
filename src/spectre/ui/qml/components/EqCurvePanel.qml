@@ -25,7 +25,7 @@ import ".."
 Rectangle {
     id: panel
     objectName: "eqCurvePanel"
-    color: "#070a0f"
+    color: Theme.bgTrack
     radius: ScaleMetrics.dp(6)
     border.color: Theme.borderCard
     border.width: 1
@@ -213,7 +213,7 @@ Rectangle {
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(8)
                 font.letterSpacing: 1.0
-                color: "#ec4899"
+                color: Theme.pageAccent
             }
             Item { Layout.fillWidth: true }
             Text {
@@ -238,33 +238,15 @@ Rectangle {
                 spacing: ScaleMetrics.dp(4)
                 Repeater {
                     model: panel.presets
-                    delegate: Rectangle {
+                    delegate: SpButton {
                         id: presetChip
-                        Layout.preferredWidth: Math.min(presetLabel.implicitWidth + ScaleMetrics.dp(12), ScaleMetrics.dp(88))
+                        Layout.preferredWidth: Math.min(label.implicitWidth + ScaleMetrics.dp(12), ScaleMetrics.dp(88))
                         Layout.maximumWidth: ScaleMetrics.dp(88)
                         Layout.fillHeight: true
-                        radius: 3
-                        color: panel.isPresetActive(modelData.name) ? "#3a1030" : Theme.bgSurface
-                        border.color: panel.isPresetActive(modelData.name) ? "#ec4899" : Theme.borderCard
-                        border.width: 1
-                        clip: true
-                        Text {
-                            id: presetLabel
-                            anchors.fill: parent
-                            anchors.leftMargin: ScaleMetrics.dp(6)
-                            anchors.rightMargin: ScaleMetrics.dp(6)
-                            verticalAlignment: Text.AlignVCenter
-                            horizontalAlignment: Text.AlignHCenter
-                            text: modelData.name
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(7)
-                            color: panel.isPresetActive(modelData.name) ? "#ec4899" : Theme.textSecondary
-                            elide: Text.ElideRight
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: panel.applyPreset(modelData)
-                        }
+                        text: modelData.name
+                        fontSize: 8
+                        checked: panel.isPresetActive(modelData.name)
+                        onClicked: panel.applyPreset(modelData)
                     }
                 }
             }
@@ -286,14 +268,14 @@ Rectangle {
                     var midY = h * 0.5;
 
                     // Grid: 0 dB center + octave lines
-                    ctx.strokeStyle = "#222c3d";
+                    ctx.strokeStyle = Theme.gridLine;
                     ctx.lineWidth = 1;
                     ctx.beginPath();
                     ctx.moveTo(0, midY);
                     ctx.lineTo(w, midY);
                     ctx.stroke();
                     var gridF = [100, 1000, 10000];
-                    ctx.fillStyle = "#222c3d";
+                    ctx.fillStyle = Theme.gridLine;
                     ctx.font = "8px monospace";
                     for (var gi = 0; gi < gridF.length; ++gi) {
                         var gx = panel.freqToX(gridF[gi], w);
@@ -306,7 +288,7 @@ Rectangle {
 
                     // Response curve (±16 dB headroom)
                     ctx.beginPath();
-                    ctx.strokeStyle = "#ec4899";
+                    ctx.strokeStyle = Theme.pageAccent;
                     ctx.lineWidth = ScaleMetrics.dp(2);
                     for (var x = 0; x <= w; x += 2) {
                         var f = panel.xToFreq(x, w);
@@ -318,17 +300,15 @@ Rectangle {
                     ctx.stroke();
 
                     // Band nodes (clamped into view; amber = value beyond view)
-                    var cols = ["#38bdf8", "#10b981", "#fbbf24", "#ec4899",
-                                "#38bdf8", "#10b981", "#fbbf24", "#ec4899"];
                     for (var b = 0; b < panel.bandCount; ++b) {
                         var np = panel._nodeAt(b, w, h);
                         ctx.beginPath();
-                        if (panel.draggedBand === b) ctx.fillStyle = "#ffffff";
-                        else if (np.clipped) ctx.fillStyle = "#fbbf24";
-                        else ctx.fillStyle = cols[b];
+                        if (panel.draggedBand === b) ctx.fillStyle = Theme.textPrimary;
+                        else if (np.clipped) ctx.fillStyle = Theme.warning;
+                        else ctx.fillStyle = Theme.pageAccent;
                         ctx.arc(np.x, np.y, panel.draggedBand === b ? 7 : 5, 0, Math.PI * 2);
                         ctx.fill();
-                        ctx.fillStyle = np.clipped ? "#fbbf24" : cols[b];
+                        ctx.fillStyle = np.clipped ? Theme.warning : Theme.pageAccent;
                         var tagY = Math.max(10, Math.min(h - 2, np.y - 6));
                         ctx.fillText(panel._bandTag(b), Math.max(0, Math.min(w - 40, np.x + 8)), tagY);
                     }

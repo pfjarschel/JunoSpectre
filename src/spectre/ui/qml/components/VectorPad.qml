@@ -57,59 +57,35 @@ Item {
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(10)
                     font.letterSpacing: 1.2
-                    color: Theme.tone1
+                    color: Theme.pageAccent
                     Layout.alignment: Qt.AlignHCenter
                 }
 
                 // REC Button
-                Rectangle {
+                SpButton {
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(34)
-                    radius: ScaleMetrics.dp(5)
-                    color: Bridge.recorderState === "recording" ? Theme.recording : Theme.bgApp
-                    border.color: Bridge.recorderState === "recording" ? Theme.recording : Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "● REC GESTURE"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(9)
-                        color: Bridge.recorderState === "recording" ? "#ffffff" : Theme.textPrimary
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (Bridge.recorderState === "recording") Bridge.stopRecording();
-                            else Bridge.startRecording();
-                        }
+                    implicitHeight: ScaleMetrics.dp(34)
+                    icon: "record"
+                    text: "REC GESTURE"
+                    accent: Theme.recording
+                    checked: Bridge.recorderState === "recording"
+                    onClicked: {
+                        if (Bridge.recorderState === "recording") Bridge.stopRecording();
+                        else Bridge.startRecording();
                     }
                 }
 
                 // PLAY / PAUSE Button
-                Rectangle {
+                SpButton {
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(34)
-                    radius: ScaleMetrics.dp(5)
-                    color: Bridge.recorderState === "playing" ? Theme.playing : Theme.bgApp
-                    border.color: Bridge.recorderState === "playing" ? Theme.playing : Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: Bridge.recorderState === "playing" ? "❚❚ PAUSE" : "▶ PLAY MOTION"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(9)
-                        color: Bridge.recorderState === "playing" ? "#000000" : Theme.textPrimary
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (Bridge.recorderState === "playing") Bridge.pauseMotion();
-                            else Bridge.playMotion();
-                        }
+                    implicitHeight: ScaleMetrics.dp(34)
+                    icon: Bridge.recorderState === "playing" ? "pause" : "play"
+                    text: Bridge.recorderState === "playing" ? "PAUSE" : "PLAY MOTION"
+                    accent: Theme.playing
+                    checked: Bridge.recorderState === "playing"
+                    onClicked: {
+                        if (Bridge.recorderState === "playing") Bridge.pauseMotion();
+                        else Bridge.playMotion();
                     }
                 }
 
@@ -118,44 +94,22 @@ Item {
                     Layout.fillWidth: true
                     spacing: ScaleMetrics.dp(4)
 
-                    Rectangle {
+                    SpButton {
                         Layout.fillWidth: true
-                        height: ScaleMetrics.dp(28)
-                        radius: ScaleMetrics.dp(4)
-                        color: Theme.bgApp
-                        border.color: Theme.borderCard
-                        border.width: 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: "■ RESET"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: Theme.textSecondary
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Bridge.stopMotion()
-                        }
+                        implicitHeight: ScaleMetrics.dp(28)
+                        icon: "stop"
+                        text: "RESET"
+                        fontSize: 8
+                        onClicked: Bridge.stopMotion()
                     }
 
-                    Rectangle {
+                    SpButton {
                         Layout.fillWidth: true
-                        height: ScaleMetrics.dp(28)
-                        radius: ScaleMetrics.dp(4)
-                        color: Theme.bgApp
-                        border.color: Theme.borderCard
-                        border.width: 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: "⌫ CLEAR"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: Theme.textSecondary
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Bridge.clearMotion()
-                        }
+                        implicitHeight: ScaleMetrics.dp(28)
+                        icon: "eraser"
+                        text: "CLEAR"
+                        fontSize: 8
+                        onClicked: Bridge.clearMotion()
                     }
                 }
 
@@ -280,7 +234,7 @@ Item {
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(8)
                             font.family: Theme.fontMono
-                            color: Theme.tone3
+                            color: Theme.pageAccent
                         }
                     }
 
@@ -288,7 +242,7 @@ Item {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(16)
                         radius: ScaleMetrics.dp(3)
-                        color: "#0f172a"
+                        color: Theme.bgControl
                         border.color: Theme.borderCard
                         border.width: 1
                         clip: true
@@ -300,7 +254,7 @@ Item {
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
                             width: parent.width * parent.norm
-                            color: Theme.tone3
+                            color: Theme.pageAccent
                         }
 
                         MouseArea {
@@ -320,26 +274,12 @@ Item {
                 }
 
                 // Curve Pill Toggle
-                Rectangle {
+                SpButton {
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(24)
-                    radius: ScaleMetrics.dp(4)
-                    color: Theme.bgApp
-                    border.color: Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: Bridge.curve === "equal_power" ? "CURVE: EQ-PWR" : "CURVE: LINEAR"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.textSecondary
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: Bridge.setCurve(Bridge.curve === "equal_power" ? "linear" : "equal_power")
-                    }
+                    implicitHeight: ScaleMetrics.dp(24)
+                    text: Bridge.curve === "equal_power" ? "CURVE: EQ-PWR" : "CURVE: LINEAR"
+                    fontSize: 8
+                    onClicked: Bridge.setCurve(Bridge.curve === "equal_power" ? "linear" : "equal_power")
                 }
             }
         }
@@ -449,7 +389,7 @@ Item {
                         ctx.lineTo(points[j].x, points[j].y);
                     }
                     ctx.lineWidth = 2.5;
-                    ctx.strokeStyle = "#38bdf8";
+                    ctx.strokeStyle = Theme.pageAccent;
                     ctx.lineCap = "round";
                     ctx.lineJoin = "round";
                     ctx.stroke();
@@ -484,25 +424,25 @@ Item {
                     PathLine { x: bg.width; y: bg.height / 2 }
                 }
                 ShapePath {
-                    strokeColor: "#172033"
+                    strokeColor: Theme.gridLine
                     strokeWidth: 1
                     startX: bg.width * 0.25; startY: 0
                     PathLine { x: bg.width * 0.25; y: bg.height }
                 }
                 ShapePath {
-                    strokeColor: "#172033"
+                    strokeColor: Theme.gridLine
                     strokeWidth: 1
                     startX: bg.width * 0.75; startY: 0
                     PathLine { x: bg.width * 0.75; y: bg.height }
                 }
                 ShapePath {
-                    strokeColor: "#172033"
+                    strokeColor: Theme.gridLine
                     strokeWidth: 1
                     startX: 0; startY: bg.height * 0.25
                     PathLine { x: bg.width; y: bg.height * 0.25 }
                 }
                 ShapePath {
-                    strokeColor: "#172033"
+                    strokeColor: Theme.gridLine
                     strokeWidth: 1
                     startX: 0; startY: bg.height * 0.75
                     PathLine { x: bg.width; y: bg.height * 0.75 }
@@ -524,8 +464,7 @@ Item {
                     if (!pts || pts.length < 2) return;
 
                     ctx.lineWidth = 2.0;
-                    ctx.strokeStyle = Qt.rgba(0.24, 0.49, 1.0, 0.15);
-                    // ctx.strokeStyle = Qt.rgba(1.0, 1.0, 1.0, 0.15);
+                    ctx.strokeStyle = Theme.tint(Theme.pageAccent, 0.15);
                     ctx.lineCap = "round";
                     ctx.setLineDash([1, 6]);
                     ctx.beginPath();
@@ -596,7 +535,7 @@ Item {
                     width: parent.width + ScaleMetrics.dp(16)
                     height: parent.height + ScaleMetrics.dp(16)
                     radius: width / 2
-                    color: Qt.rgba(0.24, 0.49, 1.0, 0.22)
+                    color: Theme.tint(Theme.pageAccent, 0.22)
                 }
 
                 // Middle Ring
@@ -605,8 +544,8 @@ Item {
                     width: parent.width
                     height: parent.height
                     radius: width / 2
-                    color: "#182642"
-                    border.color: Theme.primary
+                    color: Theme.tint(Theme.pageAccent, 0.25)
+                    border.color: Theme.pageAccent
                     border.width: ScaleMetrics.dp(2)
 
                     Rectangle {
@@ -626,7 +565,7 @@ Item {
                     width: ScaleMetrics.dp(82)
                     height: ScaleMetrics.dp(18)
                     radius: ScaleMetrics.dp(3)
-                    color: "#0f172a"
+                    color: Theme.bgControl
                     border.color: Theme.borderCard
                     border.width: 1
 
@@ -651,7 +590,7 @@ Item {
                 height: ScaleMetrics.dp(24)
                 radius: width / 2
                 color: "transparent"
-                border.color: "#fbbf24"
+                border.color: Theme.textPrimary
                 border.width: 2
                 z: 15
 
@@ -660,7 +599,7 @@ Item {
                     width: ScaleMetrics.dp(8)
                     height: ScaleMetrics.dp(8)
                     radius: width / 2
-                    color: "#fbbf24"
+                    color: Theme.textPrimary
                 }
 
                 Text {
@@ -670,7 +609,7 @@ Item {
                     text: "ATTRACTOR"
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(8)
-                    color: "#fbbf24"
+                    color: Theme.textPrimary
                 }
             }
 
@@ -743,30 +682,11 @@ Item {
     }
 
     // Mini Pill Button for Left Motion Column
-    component LoopPill: Rectangle {
-        id: lpRoot
-        property string text: "BTN"
+    component LoopPill: SpButton {
         property bool isActive: false
-        signal clicked()
-
-        height: ScaleMetrics.dp(24)
-        radius: ScaleMetrics.dp(4)
-        color: isActive ? Theme.bgCardActive : "#10141d"
-        border.color: isActive ? Theme.tone1 : Theme.borderCard
-        border.width: 1
-
-        Text {
-            anchors.centerIn: parent
-            text: lpRoot.text
-            font.bold: lpRoot.isActive
-            font.pixelSize: ScaleMetrics.sp(8)
-            color: lpRoot.isActive ? Theme.textPrimary : Theme.textDim
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: lpRoot.clicked()
-        }
+        checked: isActive
+        compact: true
+        implicitHeight: ScaleMetrics.dp(24)
     }
 
     // Corner badge component with reactive glow and waveform / category preview

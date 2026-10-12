@@ -46,7 +46,7 @@ Rectangle {
                 text: Bridge.playlistPath
                 font.pixelSize: ScaleMetrics.sp(8)
                 font.italic: true
-                color: Theme.tone1
+                color: Theme.pageAccent
                 elide: Text.ElideRight
                 Layout.preferredWidth: ScaleMetrics.dp(140)
             }
@@ -68,78 +68,77 @@ Rectangle {
                 text: "Drag to a new spot, tap it, or DONE"
                 font.pixelSize: ScaleMetrics.sp(8)
                 font.italic: true
-                color: Theme.tone2
+                color: Theme.pageAccent
                 elide: Text.ElideRight
             }
             // DONE: leave reorder mode
-            Rectangle {
+            SpButton {
                 visible: root.reorderIndex >= 0
-                width: ScaleMetrics.dp(64); height: ScaleMetrics.dp(28)
-                radius: ScaleMetrics.dp(4)
-                color: doneMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: Theme.tone2; border.width: 1
-                Text { anchors.centerIn: parent; text: "DONE"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.tone2 }
-                MouseArea { id: doneMouse; anchors.fill: parent; onClicked: root.reorderIndex = -1 }
+                implicitWidth: ScaleMetrics.dp(64)
+                implicitHeight: ScaleMetrics.dp(28)
+                text: "DONE"
+                fontSize: 8
+                variant: "outline"
+                onClicked: root.reorderIndex = -1
             }
             // Prev arrow
-            Rectangle {
+            SpButton {
                 visible: root.entries.length > 0 && root.reorderIndex < 0
-                width: ScaleMetrics.dp(44); height: ScaleMetrics.dp(28)
-                radius: ScaleMetrics.dp(4)
-                color: prevMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: Theme.tone2; border.width: 1
-                Text { anchors.centerIn: parent; text: "◀"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: Theme.tone2 }
-                MouseArea { id: prevMouse; anchors.fill: parent; onClicked: Bridge.prevPlaylistEntry() }
+                implicitWidth: ScaleMetrics.dp(44)
+                implicitHeight: ScaleMetrics.dp(28)
+                icon: "left"
+                fontSize: 12
+                variant: "outline"
+                onClicked: Bridge.prevPlaylistEntry()
             }
             // Next arrow
-            Rectangle {
+            SpButton {
                 visible: root.entries.length > 0 && root.reorderIndex < 0
-                width: ScaleMetrics.dp(44); height: ScaleMetrics.dp(28)
-                radius: ScaleMetrics.dp(4)
-                color: nextMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: Theme.tone2; border.width: 1
-                Text { anchors.centerIn: parent; text: "▶"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: Theme.tone2 }
-                MouseArea { id: nextMouse; anchors.fill: parent; onClicked: Bridge.nextPlaylistEntry() }
+                implicitWidth: ScaleMetrics.dp(44)
+                implicitHeight: ScaleMetrics.dp(28)
+                icon: "right"
+                fontSize: 12
+                variant: "outline"
+                onClicked: Bridge.nextPlaylistEntry()
             }
             // Add current performance as song
-            Rectangle {
+            SpButton {
                 visible: root.reorderIndex < 0
-                width: ScaleMetrics.dp(44); height: ScaleMetrics.dp(28)
-                radius: ScaleMetrics.dp(4)
-                color: addMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: Theme.tone1; border.width: 1
-                Text { anchors.centerIn: parent; text: "+"; font.bold: true; font.pixelSize: ScaleMetrics.sp(14); color: Theme.tone1 }
-                MouseArea { id: addMouse; anchors.fill: parent; onClicked: Bridge.addCurrentToPlaylist() }
+                implicitWidth: ScaleMetrics.dp(44)
+                implicitHeight: ScaleMetrics.dp(28)
+                text: "+"
+                fontSize: 14
+                variant: "outline"
+                onClicked: Bridge.addCurrentToPlaylist()
             }
             // Remove highlighted song from the setlist (file on disk untouched)
-            Rectangle {
+            SpButton {
                 visible: root.entries.length > 0 && root.reorderIndex < 0
-                width: ScaleMetrics.dp(44); height: ScaleMetrics.dp(28)
-                radius: ScaleMetrics.dp(4)
-                color: delMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: "#ef4444"; border.width: 1
-                Text { anchors.centerIn: parent; text: "−"; font.bold: true; font.pixelSize: ScaleMetrics.sp(14); color: "#ef4444" }
-                MouseArea { id: delMouse; anchors.fill: parent; onClicked: Bridge.removePlaylistEntry(Bridge.playlistIndex) }
+                implicitWidth: ScaleMetrics.dp(44)
+                implicitHeight: ScaleMetrics.dp(28)
+                text: "−"
+                fontSize: 14
+                variant: "danger"
+                onClicked: Bridge.removePlaylistEntry(Bridge.playlistIndex)
             }
             // Save setlist (overwrite loaded path, else new Setlist N file)
-            Rectangle {
+            SpButton {
                 visible: root.reorderIndex < 0
-                width: ScaleMetrics.dp(52); height: ScaleMetrics.dp(28)
-                radius: ScaleMetrics.dp(4)
-                color: savePlMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: "#38bdf8"; border.width: 1
-                Text { anchors.centerIn: parent; text: "SAVE"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: "#38bdf8" }
-                MouseArea { id: savePlMouse; anchors.fill: parent; onClicked: Bridge.savePlaylistAuto() }
+                implicitWidth: ScaleMetrics.dp(52)
+                implicitHeight: ScaleMetrics.dp(28)
+                text: "SAVE"
+                fontSize: 8
+                variant: "outline"
+                onClicked: Bridge.savePlaylistAuto()
             }
             // New empty setlist (files on disk untouched)
-            Rectangle {
+            SpButton {
                 visible: root.reorderIndex < 0
-                width: ScaleMetrics.dp(44); height: ScaleMetrics.dp(28)
-                radius: ScaleMetrics.dp(4)
-                color: newPlMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: Theme.borderCard; border.width: 1
-                Text { anchors.centerIn: parent; text: "NEW"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textSecondary }
-                MouseArea { id: newPlMouse; anchors.fill: parent; onClicked: Bridge.newPlaylist() }
+                implicitWidth: ScaleMetrics.dp(44)
+                implicitHeight: ScaleMetrics.dp(28)
+                text: "NEW"
+                fontSize: 8
+                onClicked: Bridge.newPlaylist()
             }
         }
 
@@ -163,8 +162,8 @@ Rectangle {
                         height: ScaleMetrics.dp(32)
                         radius: ScaleMetrics.dp(16)
                         opacity: root.reorderIndex === modelData.index ? 0.35 : 1.0
-                        color: root.reorderIndex === modelData.index ? Theme.tone2 : (modelData.current ? "#2d1b4e" : "#0d1017")
-                        border.color: modelData.current ? Theme.tone2 : Theme.borderCard
+                        color: root.reorderIndex === modelData.index ? Theme.tint(Theme.pageAccent, 0.4) : (modelData.current ? Theme.tint(Theme.pageAccent) : Theme.bgControl)
+                        border.color: modelData.current ? Theme.pageAccent : Theme.borderCard
                         border.width: modelData.current ? 2 : 1
                         RowLayout {
                             anchors.fill: parent
@@ -174,9 +173,9 @@ Rectangle {
                             // Status dot
                             Rectangle {
                                 width: ScaleMetrics.dp(8); height: ScaleMetrics.dp(8); radius: 4
-                                color: modelData.status === "ok" ? "#10b981"
-                                     : modelData.status === "updated" ? "#fbbf24"
-                                     : modelData.status === "missing" ? "#ef4444" : "#64748b"
+                                color: modelData.status === "ok" ? Theme.playing
+                                     : modelData.status === "updated" ? Theme.warning
+                                     : modelData.status === "missing" ? Theme.recording : Theme.textMuted
                             }
                             Text {
                                 id: chipText
@@ -184,22 +183,18 @@ Rectangle {
                                 text: (index + 1) + ". " + modelData.name
                                 font.bold: modelData.current
                                 font.pixelSize: ScaleMetrics.sp(9)
-                                color: modelData.current ? "#ffffff" : Theme.textSecondary
+                                color: modelData.current ? Theme.textPrimary : Theme.textSecondary
                                 elide: Text.ElideRight
                             }
                             // Refresh action for stale links
-                            Rectangle {
+                            SpButton {
                                 visible: modelData.status === "updated"
-                                width: ScaleMetrics.dp(24); height: ScaleMetrics.dp(20)
-                                radius: ScaleMetrics.dp(4)
-                                color: refrMouse.pressed ? Theme.bgCardActive : "#3a2f10"
-                                border.color: "#fbbf24"; border.width: 1
-                                Text { anchors.centerIn: parent; text: "↻"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: "#fbbf24" }
-                                MouseArea {
-                                    id: refrMouse
-                                    anchors.fill: parent
-                                    onClicked: (mouse) => { mouse.accepted = true; Bridge.refreshPlaylistEntry(modelData.index) }
-                                }
+                                implicitWidth: ScaleMetrics.dp(24)
+                                implicitHeight: ScaleMetrics.dp(20)
+                                icon: "restart"
+                                fontSize: 10
+                                variant: "warning"
+                                onClicked: (mouse) => { mouse.accepted = true; Bridge.refreshPlaylistEntry(modelData.index) }
                             }
                         }
                         MouseArea {
@@ -270,18 +265,18 @@ Rectangle {
         y: root.height - ScaleMetrics.dp(40)
         z: 10
         radius: ScaleMetrics.dp(15)
-        color: "#2d1b4e"
-        border.color: Theme.tone2
+        color: Theme.tint(Theme.pageAccent)
+        border.color: Theme.pageAccent
         border.width: 2
         Text {
             anchors.fill: parent
             anchors.leftMargin: ScaleMetrics.dp(12)
             anchors.rightMargin: ScaleMetrics.dp(12)
             verticalAlignment: Text.AlignVCenter
-            text: "✥ " + root.ghostName
+            text: root.ghostName
             font.bold: true
             font.pixelSize: ScaleMetrics.sp(9)
-            color: "#ffffff"
+            color: Theme.textPrimary
             elide: Text.ElideRight
         }
     }

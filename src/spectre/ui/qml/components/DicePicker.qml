@@ -102,7 +102,7 @@ Item {
                     count: 25
                     index: root.timing
                     valueText: index > 0 ? "±" + index + "t" : "OFF"
-                    valueColor: "#38bdf8"
+                    valueColor: Theme.pageAccent
                     onRequested: (i) => Bridge.seqSetTrackDice(root.trackIdx, i, root.velocity)
                 }
 
@@ -113,7 +113,7 @@ Item {
                     count: 51
                     index: root.velocity
                     valueText: index > 0 ? "±" + index + "%" : "OFF"
-                    valueColor: "#a3e635"
+                    valueColor: Theme.pageAccent
                     pxPerStep: ScaleMetrics.dp(6)
                     onRequested: (i) => Bridge.seqSetTrackDice(root.trackIdx, root.timing, i)
                 }

@@ -39,8 +39,7 @@ Rectangle {
     }
 
     function chipAccent(env) {
-        if (env === "PITCH") return "#fbbf24";
-        return env === "TVF" ? "#38bdf8" : "#10b981";
+        return Theme.pageAccent;
     }
 
     ColumnLayout {
@@ -63,29 +62,15 @@ Rectangle {
 
             Repeater {
                 model: ["TVF", "TVA", "PITCH"]
-                delegate: Rectangle {
-                    Layout.preferredWidth: chipText.implicitWidth + ScaleMetrics.dp(18)
+                delegate: SpButton {
+                    Layout.preferredWidth: label.implicitWidth + ScaleMetrics.dp(18)
                     Layout.preferredHeight: ScaleMetrics.dp(26)
-                    radius: ScaleMetrics.dp(4)
-                    color: root.activeEnv === modelData ? Theme.bgCardActive : Theme.bgApp
-                    border.color: root.activeEnv === modelData ? root.chipAccent(modelData) : Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        id: chipText
-                        anchors.centerIn: parent
-                        text: modelData
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(9)
-                        font.letterSpacing: 1.0
-                        color: root.activeEnv === modelData ? root.chipAccent(modelData) : Theme.textDim
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            root.activeEnv = modelData;
-                            root.refresh();
-                        }
+                    text: modelData
+                    accent: root.chipAccent(modelData)
+                    checked: root.activeEnv === modelData
+                    onClicked: {
+                        root.activeEnv = modelData;
+                        root.refresh();
                     }
                 }
             }

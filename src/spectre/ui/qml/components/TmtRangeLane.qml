@@ -37,7 +37,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: ScaleMetrics.dp(3)
-        color: "#10141d"
+        color: Theme.bgControl
         border.color: area.pressed ? root.barColor : Theme.borderCard
         border.width: 1
     }

@@ -17,12 +17,6 @@ Rectangle {
         anchors.rightMargin: ScaleMetrics.dp(12)
         spacing: ScaleMetrics.dp(10)
 
-        // Logo
-        Text {
-            text: "🌑"
-            font.pixelSize: ScaleMetrics.sp(16)
-        }
-
         // Screens Launcher Trigger Button (fixed width in every mode)
         Rectangle {
             id: screensBtn
@@ -33,25 +27,7 @@ Rectangle {
             border.color: screensArea.pressed ? Theme.primary : Theme.borderCard
             border.width: 1
 
-            readonly property color viewAccent: {
-                const v = Bridge.activeView;
-                if (v === "JUNO PCM" || v === "VECTOR") return Theme.tone1;
-                if (v === "WAVETABLE") return Theme.tone3;
-                if (v === "VA" || v === "MACROS") return Theme.tone2;
-                if (v === "MOD MATRIX" || v === "PATCH EDIT") return "#38bdf8";
-                if (v === "STEP LFO" || v === "SEQUENCER") return "#10b981";
-                if (v === "LIVE") return "#10b981";
-                if (v === "SETLIST") return "#f59e0b";
-                if (v === "MSEG ENVELOPES") return "#fbbf24";
-                if (v === "MFX") return "#ec4899";
-                if (v === "ROUTING") return "#06b6d4";
-                if (v === "MASTER FX" || v === "PERFORMANCE") return "#a855f7";
-                if (v === "LIBRARIAN") return "#60a5fa";
-                if (v === "MIDI LEARN") return "#f59e0b";
-                if (v === "HARDWARE") return "#94a3b8";
-                if (v === "SYSTEM") return "#ef4444";
-                return Theme.primary;
-            }
+            readonly property color viewAccent: Theme.viewAccent(Bridge.activeView)
 
             RowLayout {
                 anchors.centerIn: parent
@@ -62,11 +38,10 @@ Rectangle {
                     height: ScaleMetrics.dp(20)
                     radius: ScaleMetrics.dp(4)
                     color: Theme.bgSurface
-                    Text {
+                    Icon {
                         anchors.centerIn: parent
-                        text: "⊞"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(11)
+                        name: Icons.forView(Bridge.activeView)
+                        size: 14
                         color: screensBtn.viewAccent
                     }
                 }
@@ -80,9 +55,9 @@ Rectangle {
                     color: screensBtn.viewAccent
                 }
 
-                Text {
-                    text: "▼"
-                    font.pixelSize: ScaleMetrics.sp(8)
+                Icon {
+                    name: "down"
+                    size: 11
                     color: Theme.textSecondary
                 }
             }
@@ -95,27 +70,14 @@ Rectangle {
         }
 
         // Synth Mode toggle (tap: PATCH <-> PERFORM)
-        Rectangle {
-            height: ScaleMetrics.dp(32)
-            width: ScaleMetrics.dp(60)
-            radius: ScaleMetrics.dp(4)
-            color: modeArea.pressed ? Theme.bgCardActive
-                                    : (Bridge.soundMode === "PATCH" ? "#1e293b" : "#2d1b4e")
-            border.color: Bridge.soundMode === "PATCH" ? Theme.primary : Theme.tone2
-            border.width: 1
-
-            Text {
-                anchors.centerIn: parent
-                text: Bridge.soundMode
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(10)
-                color: Bridge.soundMode === "PATCH" ? Theme.primary : Theme.tone2
-            }
-            MouseArea {
-                id: modeArea
-                anchors.fill: parent
-                onClicked: Bridge.setSoundMode(Bridge.soundMode === "PERFORM" ? "PATCH" : "PERFORM")
-            }
+        SpButton {
+            implicitHeight: ScaleMetrics.dp(32)
+            implicitWidth: ScaleMetrics.dp(60)
+            text: Bridge.soundMode
+            fontSize: 10
+            accent: Bridge.soundMode === "PATCH" ? Theme.catSynth : Theme.catPerform
+            checked: true
+            onClicked: Bridge.setSoundMode(Bridge.soundMode === "PERFORM" ? "PATCH" : "PERFORM")
         }
 
         // Active Patch Name Display with Sync, Init and Save Buttons
@@ -176,7 +138,7 @@ Rectangle {
                     implicitHeight: ScaleMetrics.dp(30)
                     radius: ScaleMetrics.dp(3)
                     color: tagMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                    border.color: tagMouse.pressed ? "#a855f7" : Theme.borderCard
+                    border.color: tagMouse.pressed ? Theme.catPerform : Theme.borderCard
                     border.width: 1
                     Row {
                         id: tagRow
@@ -186,18 +148,18 @@ Rectangle {
                             text: "P" + Bridge.perfHeader.part
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(10)
-                            color: "#c084fc"
+                            color: Theme.catPerform
                         }
                         Text {
                             text: "MFX" + Bridge.editingPerfMfx
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(8)
-                            color: "#ec4899"
+                            color: Theme.catModFx
                             anchors.verticalCenter: parent.verticalCenter
                         }
-                        Text {
-                            text: "▾"
-                            font.pixelSize: ScaleMetrics.sp(8)
+                        Icon {
+                            name: "down"
+                            size: 12
                             color: Theme.textDim
                             anchors.verticalCenter: parent.verticalCenter
                         }
@@ -216,7 +178,7 @@ Rectangle {
                     height: ScaleMetrics.dp(30)
                     radius: ScaleMetrics.dp(3)
                     color: syncArea.pressed ? Theme.bgCardActive : Theme.bgSurface
-                    border.color: syncArea.pressed ? Theme.tone1 : Theme.borderCard
+                    border.color: syncArea.pressed ? Theme.primary : Theme.borderCard
                     border.width: 1
                     enabled: !Bridge.syncBusy
                     opacity: enabled ? 1.0 : 0.35
@@ -224,11 +186,10 @@ Rectangle {
                     RowLayout {
                         anchors.centerIn: parent
                         spacing: 2
-                        Text {
-                            text: Bridge.syncBusy ? "⏳" : "⟳"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(11)
-                            color: Theme.tone1
+                        Icon {
+                            name: Bridge.syncBusy ? "busy" : "sync"
+                            size: 14
+                            color: Theme.primary
                         }
                         Text {
                             text: Bridge.syncBusy ? "SYNC..." : "SYNC"
@@ -258,17 +219,16 @@ Rectangle {
                     height: ScaleMetrics.dp(30)
                     radius: ScaleMetrics.dp(3)
                     color: initArea.pressed ? Theme.bgCardActive : Theme.bgSurface
-                    border.color: initArea.pressed ? "#fbbf24" : Theme.borderCard
+                    border.color: initArea.pressed ? Theme.warning : Theme.borderCard
                     border.width: 1
 
                     RowLayout {
                         anchors.centerIn: parent
                         spacing: 2
-                        Text {
-                            text: "✦"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(10)
-                            color: "#fbbf24"
+                        Icon {
+                            name: "init"
+                            size: 13
+                            color: Theme.warning
                         }
                         Text {
                             text: "INIT"
@@ -294,16 +254,16 @@ Rectangle {
                     height: ScaleMetrics.dp(30)
                     radius: ScaleMetrics.dp(3)
                     color: saveArea.pressed ? Theme.bgCardActive : Theme.bgSurface
-                    border.color: saveArea.pressed ? "#38bdf8" : Theme.borderCard
+                    border.color: saveArea.pressed ? Theme.primary : Theme.borderCard
                     border.width: 1
 
                     RowLayout {
                         anchors.centerIn: parent
                         spacing: 2
-                        Text {
-                            text: "💾"
-                            font.pixelSize: ScaleMetrics.sp(10)
-                            color: "#38bdf8"
+                        Icon {
+                            name: "save"
+                            size: 13
+                            color: Theme.primary
                         }
                         Text {
                             text: "SAVE"
@@ -330,7 +290,7 @@ Rectangle {
             width: ScaleMetrics.dp(70)
             radius: ScaleMetrics.dp(4)
             color: Theme.bgApp
-            border.color: bpmArea.pressed ? Theme.tone3 : Theme.borderCard
+            border.color: bpmArea.pressed ? Theme.catPerform : Theme.borderCard
             border.width: 1
 
             RowLayout {
@@ -347,7 +307,7 @@ Rectangle {
                     text: Math.round(Bridge.bpm)
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(12)
-                    color: Theme.tone3
+                    color: Theme.catPerform
                 }
             }
 
@@ -377,19 +337,29 @@ Rectangle {
             height: ScaleMetrics.dp(38)
             width: ScaleMetrics.dp(54)
             radius: ScaleMetrics.dp(4)
-            color: armed ? "#450a0a" : (recArea.pressed ? Theme.bgCardActive : Theme.bgApp)
+            color: armed ? Theme.tint(Theme.recording, 0.25) : (recArea.pressed ? Theme.bgCardActive : Theme.bgApp)
             border.color: armed ? Theme.recording : Theme.borderCard
             border.width: 1
 
             ColumnLayout {
                 anchors.centerIn: parent
                 spacing: 0
-                Text {
+                Row {
                     Layout.alignment: Qt.AlignHCenter
-                    text: "● REC"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(9)
-                    color: recBtn.armed ? Theme.recording : Theme.textDim
+                    spacing: ScaleMetrics.dp(3)
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "record"
+                        size: 11
+                        color: recBtn.armed ? Theme.recording : Theme.textDim
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "REC"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(9)
+                        color: recBtn.armed ? Theme.recording : Theme.textDim
+                    }
                 }
                 Text {
                     Layout.alignment: Qt.AlignHCenter
@@ -397,7 +367,7 @@ Rectangle {
                     text: Bridge.seqLiveRecordWaiting ? "WAIT" : "T" + (Bridge.seqActiveTrack + 1)
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(8)
-                    color: Bridge.seqLiveRecordWaiting ? "#f59e0b" : Theme.textPrimary
+                    color: Bridge.seqLiveRecordWaiting ? Theme.warning : Theme.textPrimary
                 }
             }
 
@@ -415,18 +385,17 @@ Rectangle {
             height: ScaleMetrics.dp(38)
             width: ScaleMetrics.dp(46)
             radius: ScaleMetrics.dp(4)
-            color: flash ? "#591c1c"
-                   : Bridge.seqIsPlaying ? "#064e3b" : (playArea.pressed ? Theme.bgCardActive : Theme.bgApp)
+            color: flash ? Theme.tint(Theme.recording, 0.3)
+                   : Bridge.seqIsPlaying ? Theme.tint(Theme.playing, 0.25) : (playArea.pressed ? Theme.bgCardActive : Theme.bgApp)
             border.color: flash || playArea.holding ? Theme.recording
-                          : Bridge.seqIsPlaying ? "#10b981" : Theme.borderCard
+                          : Bridge.seqIsPlaying ? Theme.playing : Theme.borderCard
             border.width: 1
 
-            Text {
+            Icon {
                 anchors.centerIn: parent
-                text: playBtn.flash ? "!!" : Bridge.seqIsPlaying ? "■" : "▶"
-                font.bold: playBtn.flash
-                font.pixelSize: ScaleMetrics.sp(14)
-                color: playBtn.flash ? Theme.recording : Bridge.seqIsPlaying ? "#10b981" : Theme.textPrimary
+                name: playBtn.flash ? "panic" : Bridge.seqIsPlaying ? "stop" : "play"
+                size: 20
+                color: playBtn.flash ? Theme.recording : Bridge.seqIsPlaying ? Theme.playing : Theme.textPrimary
             }
 
             // Fills while held, so the hold reads as "arming" panic
@@ -485,11 +454,11 @@ Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: ScaleMetrics.dp(3)
-        color: "#1e293b"
+        color: Theme.bgRaised
         Rectangle {
             id: jobFill
             height: parent.height
-            color: Theme.tone1
+            color: Theme.primary
             width: Bridge.jobProgress >= 0 ? parent.width * Bridge.jobProgress : parent.width * 0.25
             // Indeterminate: a segment sweeping back and forth
             x: 0

@@ -42,7 +42,7 @@ Rectangle {
 
             Rectangle {
                 width: ScaleMetrics.dp(8); height: ScaleMetrics.dp(8); radius: 4
-                color: "#ef4444"
+                color: Theme.pageAccent
             }
             Text {
                 text: "SYSTEM & APPLIANCE CONTROL PANEL"
@@ -80,7 +80,7 @@ Rectangle {
                     anchors.margins: ScaleMetrics.dp(12)
                     spacing: ScaleMetrics.dp(10)
 
-                    Text { text: "APPLIANCE & POWER"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: "#ef4444" }
+                    Text { text: "APPLIANCE & POWER"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.pageAccent }
 
                     // Display Brightness Slider
                     ColumnLayout {
@@ -96,14 +96,14 @@ Rectangle {
                             Layout.fillWidth: true
                             height: ScaleMetrics.dp(24)
                             radius: 3
-                            color: "#10141d"
+                            color: Theme.bgControl
                             border.color: Theme.borderCard
                             border.width: 1
                             Rectangle {
                                 width: parent.width * (Bridge.brightness / 100.0)
                                 height: parent.height
                                 radius: 3
-                                color: Qt.rgba(0.94, 0.27, 0.27, 0.35)
+                                color: Theme.tint(Theme.pageAccent, Theme.fillAlpha)
                             }
                             MouseArea {
                                 anchors.fill: parent
@@ -126,15 +126,15 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(36)
                         radius: ScaleMetrics.dp(4)
-                        color: restartBtn.confirmAction ? "#1e3a2f" : (restartMouse.pressed ? Theme.bgCardActive : "#161d2b")
-                        border.color: restartBtn.confirmAction ? "#10b981" : Theme.tone1
+                        color: restartBtn.confirmAction ? Theme.tint(Theme.warning, 0.2) : (restartMouse.pressed ? Theme.bgCardActive : Theme.bgControl)
+                        border.color: restartBtn.confirmAction ? Theme.warning : Theme.pageAccent
                         border.width: 1
 
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 6
-                            Text { text: restartBtn.confirmAction ? "⚠" : "↻"; font.bold: true; font.pixelSize: ScaleMetrics.sp(14); color: restartBtn.confirmAction ? "#10b981" : Theme.tone1 }
-                            Text { text: restartBtn.confirmAction ? "TAP AGAIN TO RESTART" : "RESTART APPLICATION"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: restartBtn.confirmAction ? "#10b981" : Theme.tone1 }
+                            Icon { name: restartBtn.confirmAction ? "warning" : "restart"; size: 18; color: restartBtn.confirmAction ? Theme.warning : Theme.pageAccent }
+                            Text { text: restartBtn.confirmAction ? "TAP AGAIN TO RESTART" : "RESTART APPLICATION"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: restartBtn.confirmAction ? Theme.warning : Theme.pageAccent }
                         }
                         Timer { id: restartReset; interval: 3000; onTriggered: restartBtn.confirmAction = false }
                         MouseArea {
@@ -154,15 +154,15 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(36)
                         radius: ScaleMetrics.dp(4)
-                        color: quitBtn.confirmAction ? "#1e3a2f" : (quitMouse.pressed ? Theme.bgCardActive : "#161d2b")
-                        border.color: quitBtn.confirmAction ? "#10b981" : Theme.borderCard
+                        color: quitBtn.confirmAction ? Theme.tint(Theme.warning, 0.2) : (quitMouse.pressed ? Theme.bgCardActive : Theme.bgControl)
+                        border.color: quitBtn.confirmAction ? Theme.warning : Theme.borderCard
                         border.width: 1
 
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 6
-                            Text { text: quitBtn.confirmAction ? "⚠" : "✕"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: quitBtn.confirmAction ? "#10b981" : Theme.textSecondary }
-                            Text { text: quitBtn.confirmAction ? "TAP AGAIN TO QUIT" : "QUIT APPLICATION"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: quitBtn.confirmAction ? "#10b981" : Theme.textSecondary }
+                            Icon { name: quitBtn.confirmAction ? "warning" : "close"; size: 16; color: quitBtn.confirmAction ? Theme.warning : Theme.textSecondary }
+                            Text { text: quitBtn.confirmAction ? "TAP AGAIN TO QUIT" : "QUIT APPLICATION"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: quitBtn.confirmAction ? Theme.warning : Theme.textSecondary }
                         }
                         Timer { id: quitReset; interval: 3000; onTriggered: quitBtn.confirmAction = false }
                         MouseArea {
@@ -184,14 +184,14 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(36)
                         radius: ScaleMetrics.dp(4)
-                        color: rebootBtn.confirmAction ? "#451a1a" : (rebootMouse.pressed ? "#451a1a" : "#10141d")
+                        color: rebootBtn.confirmAction ? Theme.tint(Theme.recording, 0.25) : (rebootMouse.pressed ? Theme.tint(Theme.recording, 0.25) : Theme.bgControl)
                         border.color: rebootBtn.confirmAction ? Theme.recording : Theme.borderCard
                         border.width: 1
 
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 6
-                            Text { text: rebootBtn.confirmAction ? "⚠" : "⚡"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: rebootBtn.confirmAction ? Theme.recording : Theme.textSecondary }
+                            Icon { name: rebootBtn.confirmAction ? "warning" : "reboot"; size: 16; color: rebootBtn.confirmAction ? Theme.recording : Theme.textSecondary }
                             Text { text: rebootBtn.confirmAction ? "TAP AGAIN TO REBOOT" : "REBOOT WORKSTATION (PI)"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: rebootBtn.confirmAction ? Theme.recording : Theme.textSecondary }
                         }
                         Timer { id: rebootReset; interval: 3000; onTriggered: rebootBtn.confirmAction = false }
@@ -212,14 +212,14 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(36)
                         radius: ScaleMetrics.dp(4)
-                        color: shutBtn.confirmAction ? "#591c1c" : (shutMouse.pressed ? "#591c1c" : "#1a1215")
+                        color: shutBtn.confirmAction ? Theme.tint(Theme.recording, 0.3) : (shutMouse.pressed ? Theme.tint(Theme.recording, 0.3) : Theme.tint(Theme.recording, 0.08))
                         border.color: Theme.recording
                         border.width: 1
 
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 6
-                            Text { text: shutBtn.confirmAction ? "⚠" : "⏻"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: Theme.recording }
+                            Icon { name: shutBtn.confirmAction ? "warning" : "power"; size: 16; color: Theme.recording }
                             Text { text: shutBtn.confirmAction ? "TAP AGAIN TO SHUTDOWN" : "SAFE SHUTDOWN"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.recording }
                         }
                         Timer { id: shutReset; interval: 3000; onTriggered: shutBtn.confirmAction = false }
@@ -251,12 +251,12 @@ Rectangle {
                     anchors.margins: ScaleMetrics.dp(12)
                     spacing: ScaleMetrics.dp(8)
 
-                    Text { text: "HARDWARE TELEMETRY"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.tone3 }
+                    Text { text: "HARDWARE TELEMETRY"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.pageAccent }
 
-                    StatBar { label: "CPU LOAD"; stat: Bridge.cpuLoadText; norm: Bridge.cpuLoadNorm; color: Theme.tone1 }
-                    StatBar { label: "CPU TEMPERATURE"; stat: Bridge.cpuTempText; norm: Bridge.cpuTempNorm; color: "#10b981" }
-                    StatBar { label: "RAM ALLOCATION"; stat: Bridge.ramText; norm: Bridge.ramNorm; color: Theme.tone2 }
-                    StatBar { label: "EMMC DISK SPACE"; stat: Bridge.diskText; norm: Bridge.diskNorm; color: Theme.tone3 }
+                    StatBar { label: "CPU LOAD"; stat: Bridge.cpuLoadText; norm: Bridge.cpuLoadNorm; color: Theme.pageAccent }
+                    StatBar { label: "CPU TEMPERATURE"; stat: Bridge.cpuTempText; norm: Bridge.cpuTempNorm; color: Theme.pageAccent }
+                    StatBar { label: "RAM ALLOCATION"; stat: Bridge.ramText; norm: Bridge.ramNorm; color: Theme.pageAccent }
+                    StatBar { label: "EMMC DISK SPACE"; stat: Bridge.diskText; norm: Bridge.diskNorm; color: Theme.pageAccent }
 
                     Rectangle { Layout.fillWidth: true; height: 1; color: Theme.borderCard }
 
@@ -271,7 +271,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Text { text: "SYNTH LINK:"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
                         Item { Layout.fillWidth: true }
-                        Text { text: Bridge.midiLinkText; font.family: Theme.fontMono; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: "#10b981" }
+                        Text { text: Bridge.midiLinkText; font.family: Theme.fontMono; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textPrimary }
                     }
 
                     Item { Layout.fillHeight: true }
@@ -292,24 +292,24 @@ Rectangle {
                     anchors.margins: ScaleMetrics.dp(12)
                     spacing: ScaleMetrics.dp(8)
 
-                    Text { text: "NETWORK & SYSTEM UPDATES"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: "#60a5fa" }
+                    Text { text: "NETWORK & SYSTEM UPDATES"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.pageAccent }
 
                     // Wi-Fi Status Bar (live: Bridge.wifi* via NetworkManager)
                     Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(44)
                         radius: 4
-                        color: "#10141d"
-                        border.color: Bridge.wifiConnected ? "#10b981" : Theme.borderCard
+                        color: Theme.bgControl
+                        border.color: Bridge.wifiConnected ? Theme.playing : Theme.borderCard
                         border.width: 1
 
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: ScaleMetrics.dp(8)
                             spacing: ScaleMetrics.dp(6)
-                            Text {
-                                text: "📶"
-                                font.pixelSize: ScaleMetrics.sp(14)
+                            Icon {
+                                name: "wifi"
+                                size: 18
                                 opacity: Bridge.wifiConnected ? 1.0 : 0.45
                             }
                             ColumnLayout {
@@ -327,41 +327,28 @@ Rectangle {
                                 Text {
                                     text: Bridge.wifiDetailText
                                     font.pixelSize: ScaleMetrics.sp(7)
-                                    color: Bridge.wifiConnected ? "#10b981" : Theme.textDim
+                                    color: Bridge.wifiConnected ? Theme.playing : Theme.textDim
                                     elide: Text.ElideRight
                                 }
                             }
-                            Rectangle {
-                                width: ScaleMetrics.dp(26)
-                                height: ScaleMetrics.dp(24)
-                                radius: 3
-                                color: refMouse.pressed ? Theme.bgCardActive : "#10141d"
-                                border.color: Theme.borderCard
-                                border.width: 1
-                                opacity: Bridge.wifiBusy ? 0.4 : 1.0
-                                Text { anchors.centerIn: parent; text: "↻"; font.bold: true; font.pixelSize: ScaleMetrics.sp(11); color: Theme.textSecondary }
-                                MouseArea {
-                                    id: refMouse
-                                    anchors.fill: parent
-                                    enabled: !Bridge.wifiBusy
-                                    onClicked: Bridge.refreshWifiStatus()
-                                }
+                            SpButton {
+                                implicitWidth: ScaleMetrics.dp(26)
+                                implicitHeight: ScaleMetrics.dp(24)
+                                icon: "restart"
+                                fontSize: 11
+                                enabled: !Bridge.wifiBusy
+                                onClicked: Bridge.refreshWifiStatus()
                             }
-                            Rectangle {
-                                width: ScaleMetrics.dp(60)
-                                height: ScaleMetrics.dp(24)
-                                radius: 3
-                                color: Theme.bgCardActive
-                                border.color: "#60a5fa"
-                                border.width: 1
-                                Text { anchors.centerIn: parent; text: "MANAGE"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: "#60a5fa" }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        if (root.selectedSsid === "" && Bridge.wifiSsid !== "")
-                                            root.selectedSsid = Bridge.wifiSsid;
-                                        root.showWifiModal = true;
-                                    }
+                            SpButton {
+                                implicitWidth: ScaleMetrics.dp(60)
+                                implicitHeight: ScaleMetrics.dp(24)
+                                text: "MANAGE"
+                                fontSize: 8
+                                variant: "outline"
+                                onClicked: {
+                                    if (root.selectedSsid === "" && Bridge.wifiSsid !== "")
+                                        root.selectedSsid = Bridge.wifiSsid;
+                                    root.showWifiModal = true;
                                 }
                             }
                         }
@@ -373,61 +360,39 @@ Rectangle {
                         spacing: ScaleMetrics.dp(6)
                         opacity: Bridge.wifiBusy ? 0.55 : 1.0
 
-                        Rectangle {
+                        SpButton {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(24)
-                            radius: 3
-                            color: "#10141d"
-                            border.color: Bridge.wifiEnabled ? "#10b981" : Theme.borderCard
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: Bridge.wifiEnabled ? "RADIO: ON" : "RADIO: OFF"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(7)
-                                color: Bridge.wifiEnabled ? "#10b981" : Theme.textDim
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !Bridge.wifiBusy && Bridge.wifiAvailable
-                                onClicked: Bridge.setWifiEnabled(!Bridge.wifiEnabled)
-                            }
+                            implicitHeight: ScaleMetrics.dp(24)
+                            text: Bridge.wifiEnabled ? "RADIO: ON" : "RADIO: OFF"
+                            fontSize: 8
+                            checked: Bridge.wifiEnabled
+                            enabled: !Bridge.wifiBusy && Bridge.wifiAvailable
+                            onClicked: Bridge.setWifiEnabled(!Bridge.wifiEnabled)
                         }
-                        Rectangle {
+                        SpButton {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(24)
-                            radius: 3
-                            color: "#10141d"
-                            border.color: Theme.borderCard
-                            border.width: 1
-                            Text { anchors.centerIn: parent; text: "RESCAN"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textSecondary }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !Bridge.wifiBusy && Bridge.wifiEnabled
-                                onClicked: Bridge.scanWifi(true)
-                            }
+                            implicitHeight: ScaleMetrics.dp(24)
+                            text: "RESCAN"
+                            fontSize: 8
+                            enabled: !Bridge.wifiBusy && Bridge.wifiEnabled
+                            onClicked: Bridge.scanWifi(true)
                         }
-                        Rectangle {
+                        SpButton {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(24)
-                            radius: 3
+                            implicitHeight: ScaleMetrics.dp(24)
                             visible: Bridge.wifiConnected
-                            color: "#10141d"
-                            border.color: Theme.recording
-                            border.width: 1
-                            Text { anchors.centerIn: parent; text: "DISCONNECT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.recording }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !Bridge.wifiBusy
-                                onClicked: Bridge.disconnectWifi()
-                            }
+                            text: "DISCONNECT"
+                            fontSize: 8
+                            variant: "danger"
+                            enabled: !Bridge.wifiBusy
+                            onClicked: Bridge.disconnectWifi()
                         }
                         Text {
                             visible: Bridge.wifiBusy
                             text: "WORKING…"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(7)
-                            color: "#60a5fa"
+                            color: Theme.pageAccent
                         }
                     }
 
@@ -436,7 +401,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         radius: 4
-                        color: "#080b11"
+                        color: Theme.bgTrack
                         border.color: Theme.borderCard
                         border.width: 1
 
@@ -449,15 +414,15 @@ Rectangle {
                                 Layout.fillWidth: true
                                 Text { text: "TERMINAL / APT UPDATER"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
                                 Item { Layout.fillWidth: true }
-                                Text { text: "JUNO-SPECTRE-OS"; font.family: Theme.fontMono; font.pixelSize: ScaleMetrics.sp(7); color: Theme.tone1 }
+                                Text { text: "JUNO-SPECTRE-OS"; font.family: Theme.fontMono; font.pixelSize: ScaleMetrics.sp(7); color: Theme.pageAccent }
                             }
 
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: 2
-                                color: "#040609"
-                                border.color: "#151b27"
+                                color: Theme.bgTrack
+                                border.color: Theme.borderCard
                                 border.width: 1
                                 Text {
                                     anchors.fill: parent
@@ -465,86 +430,46 @@ Rectangle {
                                     text: "$ uname -a\nLinux juno-spectre-pi 6.1.21-v8+ aarch64\n$ git describe --tags\n" + Bridge.version + "\n" + Bridge.updaterLog
                                     font.family: Theme.fontMono
                                     font.pixelSize: ScaleMetrics.sp(8)
-                                    color: "#6ee7b7"
+                                    color: Theme.playing
                                 }
                             }
 
                             // Check for Releases Button
-                            Rectangle {
+                            SpButton {
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(28)
-                                radius: 3
-                                color: Bridge.updaterBusy ? "#10141d" : (updMouse.pressed ? Theme.bgCardActive : "#10141d")
-                                border.color: "#60a5fa"
-                                border.width: 1
-                                opacity: Bridge.updaterBusy ? 0.5 : 1.0
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: Bridge.updaterBusy ? "CONTACTING RELEASE CHANNEL..." : "CHECK FOR SPECTRE RELEASES"
-                                    font.bold: true
-                                    font.pixelSize: ScaleMetrics.sp(8)
-                                    color: "#60a5fa"
-                                }
-                                MouseArea {
-                                    id: updMouse
-                                    anchors.fill: parent
-                                    enabled: !Bridge.updaterBusy
-                                    onClicked: Bridge.checkForUpdates()
-                                }
+                                implicitHeight: ScaleMetrics.dp(28)
+                                text: Bridge.updaterBusy ? "CONTACTING RELEASE CHANNEL..." : "CHECK FOR SPECTRE RELEASES"
+                                fontSize: 8
+                                variant: "outline"
+                                enabled: !Bridge.updaterBusy
+                                onClicked: Bridge.checkForUpdates()
                             }
 
                             // Install Latest Release Button (toggles to RESTART when done)
-                            Rectangle {
+                            SpButton {
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(28)
-                                radius: 3
+                                implicitHeight: ScaleMetrics.dp(28)
                                 visible: Bridge.updateAvailable || Bridge.updateApplied
-                                color: instMouse.pressed ? "#14532d" : "#10141d"
-                                border.color: "#10b981"
-                                border.width: 1
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: Bridge.updateApplied
-                                        ? "RESTART NOW TO RUN " + Bridge.version
-                                        : "INSTALL RELEASE " + Bridge.latestVersion
-                                    font.bold: true
-                                    font.pixelSize: ScaleMetrics.sp(8)
-                                    color: "#10b981"
-                                }
-                                MouseArea {
-                                    id: instMouse
-                                    anchors.fill: parent
-                                    enabled: !Bridge.updaterBusy
-                                    onClicked: {
-                                        if (Bridge.updateApplied)
-                                            Bridge.restartApp();
-                                        else
-                                            Bridge.applyLatestRelease();
-                                    }
+                                text: Bridge.updateApplied ? "RESTART NOW TO RUN " + Bridge.version : "INSTALL RELEASE " + Bridge.latestVersion
+                                fontSize: 8
+                                variant: "outline"
+                                enabled: !Bridge.updaterBusy
+                                onClicked: {
+                                    if (Bridge.updateApplied)
+                                        Bridge.restartApp();
+                                    else
+                                        Bridge.applyLatestRelease();
                                 }
                             }
 
                             // Rollback to Previous Release Button
-                            Rectangle {
+                            SpButton {
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(28)
-                                radius: 3
-                                color: rbMouse.pressed ? "#451a1a" : "#10141d"
-                                border.color: Theme.borderCard
-                                border.width: 1
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "ROLLBACK TO PREVIOUS RELEASE"
-                                    font.bold: true
-                                    font.pixelSize: ScaleMetrics.sp(8)
-                                    color: Theme.textSecondary
-                                }
-                                MouseArea {
-                                    id: rbMouse
-                                    anchors.fill: parent
-                                    enabled: !Bridge.updaterBusy
-                                    onClicked: Bridge.rollbackRelease()
-                                }
+                                implicitHeight: ScaleMetrics.dp(28)
+                                text: "ROLLBACK TO PREVIOUS RELEASE"
+                                fontSize: 8
+                                enabled: !Bridge.updaterBusy
+                                onClicked: Bridge.rollbackRelease()
                             }
                         }
                     }
@@ -557,7 +482,7 @@ Rectangle {
     Rectangle {
         visible: root.showWifiModal
         anchors.fill: parent
-        color: "#e6080b11"
+        color: Theme.scrim
         z: 99
         onVisibleChanged: {
             if (visible) {
@@ -576,7 +501,7 @@ Rectangle {
             anchors.centerIn: parent
             radius: 8
             color: Theme.bgCard
-            border.color: "#60a5fa"
+            border.color: Theme.pageAccent
             border.width: 1
 
             ColumnLayout {
@@ -588,24 +513,24 @@ Rectangle {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: ScaleMetrics.dp(6)
-                    Text { text: "WI-FI NETWORKS"; font.bold: true; font.pixelSize: ScaleMetrics.sp(11); color: "#60a5fa" }
+                    Text { text: "WI-FI NETWORKS"; font.bold: true; font.pixelSize: ScaleMetrics.sp(11); color: Theme.pageAccent }
                     Text {
                         text: Bridge.wifiBusy ? "WORKING…" : ("SCAN: " + Bridge.wifiLastScan)
                         font.pixelSize: ScaleMetrics.sp(7)
-                        color: Bridge.wifiBusy ? "#60a5fa" : Theme.textDim
+                        color: Bridge.wifiBusy ? Theme.pageAccent : Theme.textDim
                     }
                     Item { Layout.fillWidth: true }
                     Text {
                         text: Bridge.wifiStatusText
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: Bridge.wifiConnected ? "#10b981" : Theme.textDim
+                        color: Bridge.wifiConnected ? Theme.playing : Theme.textDim
                     }
-                    Rectangle {
-                        width: ScaleMetrics.dp(24); height: ScaleMetrics.dp(24); radius: 3; color: "#10141d"
-                        border.color: Theme.borderCard; border.width: 1
-                        Text { anchors.centerIn: parent; text: "✕"; color: Theme.textDim }
-                        MouseArea { anchors.fill: parent; onClicked: root.showWifiModal = false }
+                    SpButton {
+                        implicitWidth: ScaleMetrics.dp(24)
+                        implicitHeight: ScaleMetrics.dp(24)
+                        icon: "close"
+                        onClicked: root.showWifiModal = false
                     }
                 }
 
@@ -614,13 +539,13 @@ Rectangle {
                     Layout.fillWidth: true
                     text: Bridge.wifiDetailText
                     font.pixelSize: ScaleMetrics.sp(8)
-                    color: Bridge.wifiConnected ? "#10b981" : Theme.textSecondary
+                    color: Bridge.wifiConnected ? Theme.playing : Theme.textSecondary
                     elide: Text.ElideRight
                 }
                 Text {
                     Layout.fillWidth: true
                     visible: Bridge.wifiError !== ""
-                    text: "⚠ " + Bridge.wifiError
+                    text: Bridge.wifiError
                     font.pixelSize: ScaleMetrics.sp(8)
                     color: Theme.recording
                     wrapMode: Text.Wrap
@@ -632,40 +557,23 @@ Rectangle {
                     spacing: ScaleMetrics.dp(6)
                     opacity: Bridge.wifiBusy ? 0.55 : 1.0
 
-                    Rectangle {
+                    SpButton {
                         Layout.preferredWidth: ScaleMetrics.dp(130)
-                        height: ScaleMetrics.dp(26)
-                        radius: 3
-                        color: "#10141d"
-                        border.color: Bridge.wifiEnabled ? "#10b981" : Theme.borderCard
-                        border.width: 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: Bridge.wifiEnabled ? "RADIO: ON" : "RADIO: OFF"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: Bridge.wifiEnabled ? "#10b981" : Theme.textDim
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: !Bridge.wifiBusy && Bridge.wifiAvailable
-                            onClicked: Bridge.setWifiEnabled(!Bridge.wifiEnabled)
-                        }
+                        implicitHeight: ScaleMetrics.dp(26)
+                        text: Bridge.wifiEnabled ? "RADIO: ON" : "RADIO: OFF"
+                        fontSize: 8
+                        checked: Bridge.wifiEnabled
+                        enabled: !Bridge.wifiBusy && Bridge.wifiAvailable
+                        onClicked: Bridge.setWifiEnabled(!Bridge.wifiEnabled)
                     }
-                    Rectangle {
+                    SpButton {
                         Layout.fillWidth: true
-                        height: ScaleMetrics.dp(26)
-                        radius: 3
-                        color: rsMouse.pressed ? Theme.bgCardActive : "#10141d"
-                        border.color: "#60a5fa"
-                        border.width: 1
-                        Text { anchors.centerIn: parent; text: Bridge.wifiBusy ? "SCANNING…" : "RESCAN NETWORKS"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: "#60a5fa" }
-                        MouseArea {
-                            id: rsMouse
-                            anchors.fill: parent
-                            enabled: !Bridge.wifiBusy && Bridge.wifiEnabled
-                            onClicked: Bridge.scanWifi(true)
-                        }
+                        implicitHeight: ScaleMetrics.dp(26)
+                        text: Bridge.wifiBusy ? "SCANNING…" : "RESCAN NETWORKS"
+                        fontSize: 8
+                        variant: "outline"
+                        enabled: !Bridge.wifiBusy && Bridge.wifiEnabled
+                        onClicked: Bridge.scanWifi(true)
                     }
                 }
 
@@ -680,7 +588,7 @@ Rectangle {
                         Layout.preferredWidth: ScaleMetrics.dp(270)
                         Layout.fillHeight: true
                         radius: 4
-                        color: "#080b11"
+                        color: Theme.bgTrack
                         border.color: Theme.borderCard
                         border.width: 1
 
@@ -703,11 +611,11 @@ Rectangle {
                                     height: ScaleMetrics.dp(38)
                                     radius: 3
                                     color: modelData.ssid === root.selectedSsid
-                                        ? "#1b2740"
-                                        : (netMouse.pressed ? Theme.bgCardActive : "#10141d")
+                                        ? Theme.tint(Theme.pageAccent)
+                                        : (netMouse.pressed ? Theme.bgCardActive : Theme.bgControl)
                                     border.color: modelData.inUse
-                                        ? "#10b981"
-                                        : (modelData.ssid === root.selectedSsid ? "#60a5fa" : Theme.borderCard)
+                                        ? Theme.playing
+                                        : (modelData.ssid === root.selectedSsid ? Theme.pageAccent : Theme.borderCard)
                                     border.width: 1
 
                                     ColumnLayout {
@@ -719,15 +627,15 @@ Rectangle {
                                             spacing: 4
                                             Text {
                                                 Layout.fillWidth: true
-                                                text: (modelData.inUse ? "● " : "") + modelData.ssid
+                                                text: modelData.ssid
                                                 font.bold: true
                                                 font.pixelSize: ScaleMetrics.sp(9)
-                                                color: modelData.inUse ? "#10b981" : Theme.textPrimary
+                                                color: modelData.inUse ? Theme.playing : Theme.textPrimary
                                                 elide: Text.ElideRight
                                             }
-                                            Text {
-                                                text: modelData.secured ? "🔒" : "○"
-                                                font.pixelSize: ScaleMetrics.sp(9)
+                                            Icon {
+                                                name: modelData.secured ? "lock" : "dot"
+                                                size: 12
                                             }
                                         }
                                         Text {
@@ -770,8 +678,8 @@ Rectangle {
                             Layout.fillWidth: true
                             height: ScaleMetrics.dp(30)
                             radius: 4
-                            color: "#080b11"
-                            border.color: root.wifiActiveField === "ssid" ? "#60a5fa" : Theme.borderCard
+                            color: Theme.bgTrack
+                            border.color: root.wifiActiveField === "ssid" ? Theme.pageAccent : Theme.borderCard
                             border.width: 1
                             TextInput {
                                 id: ssidField
@@ -800,8 +708,8 @@ Rectangle {
                                 Layout.fillWidth: true
                                 height: ScaleMetrics.dp(30)
                                 radius: 4
-                                color: "#080b11"
-                                border.color: root.wifiActiveField === "password" ? "#60a5fa" : Theme.borderCard
+                                color: Theme.bgTrack
+                                border.color: root.wifiActiveField === "password" ? Theme.pageAccent : Theme.borderCard
                                 border.width: 1
                                 TextInput {
                                     id: passField
@@ -822,15 +730,12 @@ Rectangle {
                                     onClicked: { root.wifiActiveField = "password"; passField.forceActiveFocus(); }
                                 }
                             }
-                            Rectangle {
+                            SpButton {
                                 Layout.preferredWidth: ScaleMetrics.dp(52)
-                                height: ScaleMetrics.dp(30)
-                                radius: 3
-                                color: "#10141d"
-                                border.color: Theme.borderCard
-                                border.width: 1
-                                Text { anchors.centerIn: parent; text: root.wifiShowPassword ? "HIDE" : "SHOW"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textSecondary }
-                                MouseArea { anchors.fill: parent; onClicked: root.wifiShowPassword = !root.wifiShowPassword }
+                                implicitHeight: ScaleMetrics.dp(30)
+                                text: root.wifiShowPassword ? "HIDE" : "SHOW"
+                                fontSize: 8
+                                onClicked: root.wifiShowPassword = !root.wifiShowPassword
                             }
                         }
 
@@ -847,31 +752,16 @@ Rectangle {
                         }
 
                         // Connect button
-                        Rectangle {
+                        SpButton {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(30)
-                            radius: 3
-                            color: connMouse.pressed ? "#14532d" : "#10141d"
-                            border.color: "#10b981"
-                            border.width: 1
-                            opacity: (root.selectedSsid === "" || Bridge.wifiBusy) ? 0.45 : 1.0
-                            Text {
-                                anchors.centerIn: parent
-                                text: Bridge.wifiBusy
-                                    ? "WORKING…"
-                                    : (root.selectedSsid === "" ? "SELECT A NETWORK" : "CONNECT TO " + root.selectedSsid)
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(8)
-                                color: "#10b981"
-                            }
-                            MouseArea {
-                                id: connMouse
-                                anchors.fill: parent
-                                enabled: root.selectedSsid !== "" && !Bridge.wifiBusy
-                                onClicked: {
-                                    Bridge.connectWifi(root.selectedSsid, root.wifiPassword);
-                                    root.wifiPassword = "";
-                                }
+                            implicitHeight: ScaleMetrics.dp(30)
+                            text: Bridge.wifiBusy ? "WORKING…" : (root.selectedSsid === "" ? "SELECT A NETWORK" : "CONNECT TO " + root.selectedSsid)
+                            fontSize: 8
+                            variant: "outline"
+                            enabled: root.selectedSsid !== "" && !Bridge.wifiBusy
+                            onClicked: {
+                                Bridge.connectWifi(root.selectedSsid, root.wifiPassword);
+                                root.wifiPassword = "";
                             }
                         }
 
@@ -879,36 +769,23 @@ Rectangle {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: ScaleMetrics.dp(6)
-                            Rectangle {
+                            SpButton {
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(26)
-                                radius: 3
+                                implicitHeight: ScaleMetrics.dp(26)
                                 visible: Bridge.wifiConnected
-                                color: "#10141d"
-                                border.color: Theme.recording
-                                border.width: 1
-                                opacity: Bridge.wifiBusy ? 0.45 : 1.0
-                                Text { anchors.centerIn: parent; text: "DISCONNECT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.recording }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    enabled: !Bridge.wifiBusy
-                                    onClicked: Bridge.disconnectWifi()
-                                }
+                                text: "DISCONNECT"
+                                fontSize: 8
+                                variant: "danger"
+                                enabled: !Bridge.wifiBusy
+                                onClicked: Bridge.disconnectWifi()
                             }
-                            Rectangle {
+                            SpButton {
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(26)
-                                radius: 3
-                                color: "#10141d"
-                                border.color: Theme.borderCard
-                                border.width: 1
-                                opacity: (root.selectedSsid === "" || Bridge.wifiBusy) ? 0.45 : 1.0
-                                Text { anchors.centerIn: parent; text: "FORGET SAVED"; font.bold: true; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textSecondary }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    enabled: root.selectedSsid !== "" && !Bridge.wifiBusy
-                                    onClicked: Bridge.forgetWifi(root.selectedSsid)
-                                }
+                                implicitHeight: ScaleMetrics.dp(26)
+                                text: "FORGET SAVED"
+                                fontSize: 8
+                                enabled: root.selectedSsid !== "" && !Bridge.wifiBusy
+                                onClicked: Bridge.forgetWifi(root.selectedSsid)
                             }
                         }
 
@@ -916,7 +793,7 @@ Rectangle {
                         VirtualKeyboard {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            accentColor: "#60a5fa"
+                            accentColor: Theme.pageAccent
                             allowLower: true
                             allowSymbols: true
                             onKeyClicked: (k) => {
@@ -947,7 +824,7 @@ Rectangle {
         property string label: "STAT"
         property string stat: "0"
         property real norm: 0.5
-        property color color: Theme.primary
+        property color color: Theme.pageAccent
         Layout.fillWidth: true
         spacing: 2
 
@@ -962,7 +839,7 @@ Rectangle {
             Layout.fillWidth: true
             height: ScaleMetrics.dp(10)
             radius: 2
-            color: "#10141d"
+            color: Theme.bgControl
             Rectangle {
                 width: parent.width * Math.max(0, Math.min(1.0, sb.norm))
                 height: parent.height

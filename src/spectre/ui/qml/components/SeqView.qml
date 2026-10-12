@@ -112,7 +112,7 @@ Rectangle {
                 width: ScaleMetrics.dp(8)
                 height: ScaleMetrics.dp(8)
                 radius: 4
-                color: "#10b981"
+                color: Theme.pageAccent
             }
 
             Text {
@@ -133,7 +133,7 @@ Rectangle {
                 height: ScaleMetrics.dp(28)
                 width: ScaleMetrics.dp(90)
                 radius: 4
-                color: Bridge.seqStepRecordEnabled ? "#450a0a" : Theme.bgApp
+                color: Bridge.seqStepRecordEnabled ? Theme.tint(Theme.recording, 0.25) : Theme.bgApp
                 border.color: Bridge.seqStepRecordEnabled ? Theme.recording : Theme.borderCard
                 border.width: 1
 
@@ -165,18 +165,18 @@ Rectangle {
                 width: ScaleMetrics.dp(105)
                 radius: 4
                 color: Theme.bgApp
-                border.color: Theme.tone1
+                border.color: Theme.pageAccent
                 border.width: 1
 
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: ScaleMetrics.dp(4)
-                    Text { text: "⊞"; font.pixelSize: ScaleMetrics.sp(9); color: Theme.tone1 }
+                    Icon { name: "screens"; size: 12; color: Theme.pageAccent }
                     Text {
                         text: "LIVE MATRIX"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.tone1
+                        color: Theme.pageAccent
                     }
                 }
                 MouseArea {
@@ -198,32 +198,19 @@ Rectangle {
                 spacing: ScaleMetrics.dp(3)
                 Repeater {
                     model: Bridge.seqTracks ? Bridge.seqTracks.length : 0
-                    delegate: Rectangle {
+                    delegate: SpButton {
                         readonly property string trackName: Bridge.seqTracks[index] ? Bridge.seqTracks[index].name : ""
-                        height: ScaleMetrics.dp(26)
-                        width: ScaleMetrics.dp(58)
-                        radius: 3
-                        color: Bridge.seqActiveTrack === index ? root.trackColors[index] : Theme.bgApp
-                        border.color: root.trackColors[index]
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            width: parent.width - ScaleMetrics.dp(6)
-                            horizontalAlignment: Text.AlignHCenter
-                            elide: Text.ElideRight
-                            text: parent.trackName
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: Bridge.seqActiveTrack === index ? Theme.bgApp : Theme.textSecondary
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Bridge.seqSelectTrack(index)
-                            onPressAndHold: {
-                                Bridge.seqSelectTrack(index);
-                                trackRename.openTrack(index, parent.trackName);
-                            }
+                        implicitHeight: ScaleMetrics.dp(26)
+                        implicitWidth: ScaleMetrics.dp(58)
+                        text: trackName
+                        fontSize: 8
+                        variant: "outline"
+                        accent: root.trackColors[index]
+                        checked: Bridge.seqActiveTrack === index
+                        onClicked: Bridge.seqSelectTrack(index)
+                        onPressAndHold: {
+                            Bridge.seqSelectTrack(index);
+                            trackRename.openTrack(index, trackName);
                         }
                     }
                 }
@@ -243,34 +230,20 @@ Rectangle {
 
             // Layers: extra parts this track also sends to (tap to edit).
             // Grows into the free space before DIV / SWING / DICE; elides past that.
-            Rectangle {
+            SpButton {
                 id: layerChip
                 objectName: "layerChip"
-                readonly property var layers: (root.activeTrackData && root.activeTrackData.layerParts)
-                                              ? root.activeTrackData.layerParts : []
-                height: ScaleMetrics.dp(30)
+                readonly property var layers: (root.activeTrackData && root.activeTrackData.layerParts) ? root.activeTrackData.layerParts : []
+                implicitHeight: ScaleMetrics.dp(30)
                 Layout.fillWidth: true
-                Layout.preferredWidth: layerText.implicitWidth + ScaleMetrics.dp(16)
-                Layout.maximumWidth: layerText.implicitWidth + ScaleMetrics.dp(16)
-                radius: 3
-                color: partPicker.visible ? Theme.bgCardActive : Theme.bgApp
-                border.color: layers.length > 0 || partPicker.visible ? root.currentTrackColor : Theme.borderCard
-                border.width: 1
-
-                Text {
-                    id: layerText
-                    anchors.centerIn: parent
-                    width: Math.min(implicitWidth, parent.width - ScaleMetrics.dp(8))
-                    text: layerChip.layers.length > 0 ? "+ " + root.formatParts(layerChip.layers) : "+ LAYER"
-                    elide: Text.ElideRight
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: layerChip.layers.length > 0 ? root.currentTrackColor : Theme.textDim
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: partPicker.open(Bridge.seqActiveTrack, "layers", layerChip)
-                }
+                Layout.preferredWidth: label.implicitWidth + ScaleMetrics.dp(16)
+                Layout.maximumWidth: label.implicitWidth + ScaleMetrics.dp(16)
+                text: layerChip.layers.length > 0 ? "+ " + root.formatParts(layerChip.layers) : "+ LAYER"
+                fontSize: 8
+                variant: layers.length > 0 ? "outline" : "neutral"
+                accent: root.currentTrackColor
+                checked: partPicker.visible
+                onClicked: partPicker.open(Bridge.seqActiveTrack, "layers", layerChip)
             }
 
             // DIV, SWING and DICE sit at the right edge
@@ -283,7 +256,7 @@ Rectangle {
                 count: divs.length
                 index: Math.max(0, divs.indexOf(root.activeTrackData ? root.activeTrackData.clockDivider : "1/16"))
                 valueText: divs[index]
-                valueColor: "#38bdf8"
+                valueColor: Theme.pageAccent
                 pxPerStep: ScaleMetrics.dp(18)
                 onRequested: (i) => Bridge.seqSetTrackClockDivider(Bridge.seqActiveTrack, divs[i])
             }
@@ -294,36 +267,24 @@ Rectangle {
                 count: 26
                 index: Math.round(((root.activeTrackData ? root.activeTrackData.swing : 0.50) - 0.50) * 100)
                 valueText: (50 + index) + "%"
-                valueColor: "#fbbf24"
+                valueColor: Theme.pageAccent
                 pxPerStep: ScaleMetrics.dp(8)
                 onRequested: (i) => Bridge.seqSetTrackSwing(Bridge.seqActiveTrack, 0.50 + i / 100)
             }
 
             // Dice (humanize): random timing / velocity per note (tap to edit)
-            Rectangle {
+            SpButton {
                 id: diceChip
                 objectName: "diceChip"
-                readonly property bool on: root.activeTrackData
-                                           ? (root.activeTrackData.diceTiming > 0 || root.activeTrackData.diceVelocity > 0)
-                                           : false
-                height: ScaleMetrics.dp(30)
-                width: ScaleMetrics.dp(56)
-                radius: 3
-                color: dicePicker.visible ? Theme.bgCardActive : Theme.bgApp
-                border.color: on || dicePicker.visible ? root.currentTrackColor : Theme.borderCard
-                border.width: 1
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "DICE"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: diceChip.on ? root.currentTrackColor : Theme.textDim
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: dicePicker.open(Bridge.seqActiveTrack, diceChip)
-                }
+                readonly property bool on: root.activeTrackData ? (root.activeTrackData.diceTiming > 0 || root.activeTrackData.diceVelocity > 0) : false
+                implicitHeight: ScaleMetrics.dp(30)
+                implicitWidth: ScaleMetrics.dp(56)
+                text: "DICE"
+                fontSize: 8
+                variant: on ? "outline" : "neutral"
+                accent: root.currentTrackColor
+                checked: dicePicker.visible
+                onClicked: dicePicker.open(Bridge.seqActiveTrack, diceChip)
             }
         }
 
@@ -366,7 +327,7 @@ Rectangle {
                             width: ScaleMetrics.dp(5)
                             height: width
                             radius: width / 2
-                            color: playing ? "#10b981" : "#f59e0b"
+                            color: playing ? Theme.playing : Theme.warning
                         }
                         MouseArea {
                             anchors.fill: parent
@@ -390,7 +351,7 @@ Rectangle {
                 count: lens.length
                 index: Math.max(0, lens.indexOf(root.stepsList ? root.stepsList.length : 16))
                 valueText: lens[index] + "S"
-                valueColor: "#10b981"
+                valueColor: Theme.pageAccent
                 pxPerStep: ScaleMetrics.dp(20)
                 onRequested: (i) => {
                     root.currentStepPage = 0;
@@ -415,25 +376,14 @@ Rectangle {
                 }
                 Repeater {
                     model: root.stepPageCount
-                    delegate: Rectangle {
-                        height: ScaleMetrics.dp(26)
-                        width: ScaleMetrics.dp(42)
-                        radius: 3
-                        color: root.currentStepPage === index ? root.currentTrackColor : Theme.bgApp
-                        border.color: root.currentStepPage === index ? root.currentTrackColor : Theme.borderCard
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: ((index * 16) + 1) + "-" + ((index + 1) * 16)
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: root.currentStepPage === index ? "#ffffff" : Theme.textDim
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: root.currentStepPage = index
-                        }
+                    delegate: SpButton {
+                        implicitHeight: ScaleMetrics.dp(26)
+                        implicitWidth: ScaleMetrics.dp(42)
+                        text: ((index * 16) + 1) + "-" + ((index + 1) * 16)
+                        fontSize: 8
+                        accent: root.currentTrackColor
+                        checked: root.currentStepPage === index
+                        onClicked: root.currentStepPage = index
                     }
                 }
             }
@@ -445,7 +395,7 @@ Rectangle {
                 height: ScaleMetrics.dp(26)
                 width: ScaleMetrics.dp(95)
                 radius: 3
-                color: clearClipMouse.pressed ? "#7f1d1d" : Theme.bgApp
+                color: clearClipMouse.pressed ? Theme.tint(Theme.recording, 0.35) : Theme.bgApp
                 border.color: clearClipMouse.containsPress ? Theme.recording : Theme.borderCard
                 border.width: 1
 
@@ -536,7 +486,7 @@ Rectangle {
                     Layout.preferredWidth: ScaleMetrics.dp(250)
                     Layout.fillHeight: true
                     radius: ScaleMetrics.dp(4)
-                    color: Bridge.seqStepRecordEnabled ? "#3f1a1a" : Theme.bgSurface
+                    color: Bridge.seqStepRecordEnabled ? Theme.tint(Theme.recording, 0.25) : Theme.bgSurface
                     border.color: Bridge.seqStepRecordEnabled ? Theme.recording : Theme.borderCard
                     border.width: 1
 
@@ -546,7 +496,7 @@ Rectangle {
                         spacing: ScaleMetrics.dp(2)
 
                         Text {
-                            text: Bridge.seqStepRecordEnabled ? "● STEP REC CURSOR: " + (Bridge.seqCursorStep + 1) : "STEP REC: OFF"
+                            text: Bridge.seqStepRecordEnabled ? "STEP REC CURSOR: " + (Bridge.seqCursorStep + 1) : "STEP REC: OFF"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(8)
                             color: Bridge.seqStepRecordEnabled ? Theme.recording : Theme.textDim
@@ -557,37 +507,29 @@ Rectangle {
                             Layout.fillHeight: true
                             spacing: ScaleMetrics.dp(3)
 
-                            Rectangle {
+                            SpButton {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                radius: 2
-                                color: Theme.bgApp
-                                border.color: Theme.borderCard
-                                border.width: 1
-                                Text { anchors.centerIn: parent; text: "REST"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
-                                MouseArea { anchors.fill: parent; onClicked: Bridge.seqRecordRest() }
+                                text: "REST"
+                                fontSize: 10
+                                onClicked: Bridge.seqRecordRest()
                             }
 
-                            Rectangle {
+                            SpButton {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                radius: 2
-                                color: Theme.bgApp
-                                border.color: Theme.borderCard
-                                border.width: 1
-                                Text { anchors.centerIn: parent; text: "TIE"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
-                                MouseArea { anchors.fill: parent; onClicked: Bridge.seqRecordTie() }
+                                text: "TIE"
+                                fontSize: 10
+                                onClicked: Bridge.seqRecordTie()
                             }
 
-                            Rectangle {
+                            SpButton {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                radius: 2
-                                color: Theme.bgApp
-                                border.color: Theme.borderCard
-                                border.width: 1
-                                Text { anchors.centerIn: parent; text: "CLEAR"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.recording }
-                                MouseArea { anchors.fill: parent; onClicked: Bridge.seqClearStep(Bridge.seqCursorStep) }
+                                text: "CLEAR"
+                                fontSize: 10
+                                variant: "danger"
+                                onClicked: Bridge.seqClearStep(Bridge.seqCursorStep)
                             }
                         }
 
@@ -595,27 +537,20 @@ Rectangle {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             spacing: ScaleMetrics.dp(3)
-                            Rectangle {
+                            SpButton {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                radius: 2
-                                color: Theme.bgApp
-                                Text { anchors.centerIn: parent; text: "◀ PREV"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textSecondary }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: Bridge.seqSetCursorStep(Math.max(0, Bridge.seqCursorStep - 1))
-                                }
+                                icon: "left"
+                                text: "PREV"
+                                onClicked: Bridge.seqSetCursorStep(Math.max(0, Bridge.seqCursorStep - 1))
                             }
-                            Rectangle {
+                            SpButton {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                radius: 2
-                                color: Theme.bgApp
-                                Text { anchors.centerIn: parent; text: "NEXT ▶"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textSecondary }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: Bridge.seqSetCursorStep(Bridge.seqCursorStep + 1)
-                                }
+                                icon: "right"
+                                iconAfter: true
+                                text: "NEXT"
+                                onClicked: Bridge.seqSetCursorStep(Bridge.seqCursorStep + 1)
                             }
                         }
                     }
@@ -633,7 +568,7 @@ Rectangle {
                         Layout.fillHeight: true
                         title: "PITCH"
                         valStr: root.selNote ? root.formatPitch(root.selNote.pitch, root.isDrumTrack) : "--"
-                        accent: "#e879f9"
+                        accent: Theme.pageAccent
                         onAdjust: (delta) => root.nudgeSelNote(delta)
                     }
 
@@ -663,22 +598,12 @@ Rectangle {
                                     spacing: 2
                                     Repeater {
                                         model: [ { name: "BD", p: 36 }, { name: "SD", p: 38 }, { name: "CH", p: 42 } ]
-                                        delegate: Rectangle {
+                                        delegate: SpButton {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
-                                            radius: 2
-                                            color: (root.selNote && root.selNote.pitch === modelData.p) ? "#f59e0b" : Theme.bgApp
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: modelData.name
-                                                font.bold: true
-                                                font.pixelSize: ScaleMetrics.sp(9)
-                                                color: (root.selNote && root.selNote.pitch === modelData.p) ? "#000000" : Theme.textSecondary
-                                            }
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                onClicked: root.setSelNotePitch(modelData.p)
-                                            }
+                                            text: modelData.name
+                                            checked: (root.selNote && root.selNote.pitch === modelData.p)
+                                            onClicked: root.setSelNotePitch(modelData.p)
                                         }
                                     }
                                 }
@@ -688,22 +613,12 @@ Rectangle {
                                     spacing: 2
                                     Repeater {
                                         model: [ { name: "OH", p: 46 }, { name: "CP", p: 39 }, { name: "CY", p: 49 } ]
-                                        delegate: Rectangle {
+                                        delegate: SpButton {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
-                                            radius: 2
-                                            color: (root.selNote && root.selNote.pitch === modelData.p) ? "#f59e0b" : Theme.bgApp
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: modelData.name
-                                                font.bold: true
-                                                font.pixelSize: ScaleMetrics.sp(9)
-                                                color: (root.selNote && root.selNote.pitch === modelData.p) ? "#000000" : Theme.textSecondary
-                                            }
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                onClicked: root.setSelNotePitch(modelData.p)
-                                            }
+                                            text: modelData.name
+                                            checked: (root.selNote && root.selNote.pitch === modelData.p)
+                                            onClicked: root.setSelNotePitch(modelData.p)
                                         }
                                     }
                                 }
@@ -719,42 +634,38 @@ Rectangle {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     spacing: 2
-                                    Rectangle {
+                                    SpButton {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        radius: 2
-                                        color: Theme.bgApp
-                                        Text { anchors.centerIn: parent; text: "-1"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
-                                        MouseArea { anchors.fill: parent; onClicked: root.nudgeSelNote(-1) }
+                                        text: "-1"
+                                        fontSize: 10
+                                        onClicked: root.nudgeSelNote(-1)
                                     }
-                                    Rectangle {
+                                    SpButton {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        radius: 2
-                                        color: Theme.bgApp
-                                        Text { anchors.centerIn: parent; text: "+1"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
-                                        MouseArea { anchors.fill: parent; onClicked: root.nudgeSelNote(1) }
+                                        text: "+1"
+                                        fontSize: 10
+                                        onClicked: root.nudgeSelNote(1)
                                     }
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     spacing: 2
-                                    Rectangle {
+                                    SpButton {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        radius: 2
-                                        color: Theme.bgApp
-                                        Text { anchors.centerIn: parent; text: "-OCT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: "#38bdf8" }
-                                        MouseArea { anchors.fill: parent; onClicked: root.nudgeSelNote(-12) }
+                                        text: "-OCT"
+                                        variant: "outline"
+                                        onClicked: root.nudgeSelNote(-12)
                                     }
-                                    Rectangle {
+                                    SpButton {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        radius: 2
-                                        color: Theme.bgApp
-                                        Text { anchors.centerIn: parent; text: "+OCT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: "#38bdf8" }
-                                        MouseArea { anchors.fill: parent; onClicked: root.nudgeSelNote(12) }
+                                        text: "+OCT"
+                                        variant: "outline"
+                                        onClicked: root.nudgeSelNote(12)
                                     }
                                 }
                             }
@@ -782,7 +693,7 @@ Rectangle {
                         Layout.fillHeight: true
                         title: "GATE"
                         valStr: selStep ? Math.round(selStep.gateLength * 100) + "%" : "80%"
-                        accent: "#10b981"
+                        accent: Theme.pageAccent
                         onAdjust: (delta) => {
                             if (selStep) {
                                 const curr = selStep.gateLength || 0.8;
@@ -797,7 +708,7 @@ Rectangle {
                         Layout.fillHeight: true
                         title: "MICRO"
                         valStr: selStep ? (selStep.microTiming >= 0 ? "+" : "") + selStep.microTiming + "t" : "0t"
-                        accent: "#38bdf8"
+                        accent: Theme.pageAccent
                         onAdjust: (delta) => {
                             if (selStep) {
                                 const curr = selStep.microTiming || 0;
@@ -812,7 +723,7 @@ Rectangle {
                         Layout.fillHeight: true
                         title: "STRUM"
                         valStr: selStep && selStep.strum ? (selStep.strum > 0 ? "↑" : "↓") + Math.abs(selStep.strum) + "t" : "OFF"
-                        accent: "#f472b6"
+                        accent: Theme.pageAccent
                         onAdjust: (delta) => {
                             if (selStep) {
                                 const curr = selStep.strum || 0;
@@ -827,7 +738,7 @@ Rectangle {
                         Layout.fillHeight: true
                         title: "PROB"
                         valStr: selStep ? Math.round(selStep.probability * 100) + "%" : "100%"
-                        accent: "#fbbf24"
+                        accent: Theme.pageAccent
                         onAdjust: (delta) => {
                             if (selStep) {
                                 const curr = selStep.probability || 1.0;
@@ -841,8 +752,8 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         radius: ScaleMetrics.dp(4)
-                        color: selStep && selStep.tie ? "#1e3a5f" : Theme.bgSurface
-                        border.color: selStep && selStep.tie ? "#38bdf8" : Theme.borderCard
+                        color: selStep && selStep.tie ? Theme.tint(Theme.pageAccent) : Theme.bgSurface
+                        border.color: selStep && selStep.tie ? Theme.pageAccent : Theme.borderCard
                         border.width: 1
 
                         ColumnLayout {
@@ -854,7 +765,7 @@ Rectangle {
                                 text: "TIE"
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(9)
-                                color: selStep && selStep.tie ? "#38bdf8" : Theme.textDim
+                                color: selStep && selStep.tie ? Theme.pageAccent : Theme.textDim
                             }
                             Item { Layout.fillHeight: true }
                             Text {
@@ -863,7 +774,7 @@ Rectangle {
                                 font.family: Theme.fontMono
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(14)
-                                color: selStep && selStep.tie ? "#ffffff" : Theme.textSecondary
+                                color: selStep && selStep.tie ? Theme.textPrimary : Theme.textSecondary
                             }
                             Item { Layout.fillHeight: true }
                         }
@@ -883,7 +794,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         radius: ScaleMetrics.dp(4)
-                        color: clearStepMouse.pressed ? "#7f1d1d" : Theme.bgSurface
+                        color: clearStepMouse.pressed ? Theme.tint(Theme.recording, 0.35) : Theme.bgSurface
                         border.color: Theme.borderCard
                         border.width: 1
 
@@ -945,8 +856,8 @@ Rectangle {
 
         radius: ScaleMetrics.dp(4)
         color: isActive ? Qt.rgba(root.currentTrackColor.r, root.currentTrackColor.g, root.currentTrackColor.b, 0.22)
-                        : ((stepOffset % 4 === 0) ? "#161b26" : Theme.bgSurface)
-        border.color: isCurrentPlayhead ? "#ffffff"
+                        : ((stepOffset % 4 === 0) ? Theme.bgCardActive : Theme.bgSurface)
+        border.color: isCurrentPlayhead ? Theme.textPrimary
                                         : (isCursorStep ? Theme.recording
                                                         : (isSelected ? root.currentTrackColor : Theme.borderCard))
         border.width: (isCurrentPlayhead || isCursorStep || isSelected) ? 2 : 1
@@ -974,7 +885,7 @@ Rectangle {
                     font.family: Theme.fontMono
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(10)
-                    color: (stepOffset % 4 === 0) ? Theme.primary : Theme.textSecondary
+                    color: (stepOffset % 4 === 0) ? Theme.pageAccent : Theme.textSecondary
                 }
                 Text {
                     Layout.fillWidth: true
@@ -990,7 +901,7 @@ Rectangle {
                     text: "—"
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(10)
-                    color: "#38bdf8"
+                    color: Theme.pageAccent
                 }
             }
 
@@ -1081,7 +992,7 @@ Rectangle {
                 Rectangle {
                     height: parent.height
                     width: isActive && stepData ? (parent.width * (stepData.maxVelocity / 127.0)) : 0
-                    color: isCurrentPlayhead ? "#ffffff" : root.currentTrackColor
+                    color: isCurrentPlayhead ? Theme.textPrimary : root.currentTrackColor
                 }
             }
         }
@@ -1094,7 +1005,7 @@ Rectangle {
         id: ipRoot
         property string title: "PARAM"
         property string valStr: "--"
-        property color accent: Theme.primary
+        property color accent: Theme.pageAccent
         signal adjust(int delta)
 
         radius: ScaleMetrics.dp(4)

@@ -12,7 +12,7 @@ Rectangle {
     anchors.fill: parent
     visible: false
     z: 998
-    color: "#e60a0c10"
+    color: Theme.scrim
 
     property string tab: "STRUCTURE"
     readonly property var tmt: Bridge.tmt
@@ -74,52 +74,25 @@ Rectangle {
 
                 Repeater {
                     model: ["STRUCTURE", "ZONES"]
-                    delegate: Rectangle {
+                    delegate: SpButton {
                         required property string modelData
                         readonly property bool sel: root.tab === modelData
-                        width: ScaleMetrics.dp(110)
-                        height: ScaleMetrics.dp(28)
-                        radius: ScaleMetrics.dp(4)
-                        color: sel ? Theme.primary : (tabArea.pressed ? Theme.bgCardActive : Theme.bgApp)
-                        border.color: sel ? "transparent" : Theme.borderCard
-                        border.width: 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: parent.modelData
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(9)
-                            color: parent.sel ? "#ffffff" : Theme.textSecondary
-                        }
-                        MouseArea {
-                            id: tabArea
-                            anchors.fill: parent
-                            onClicked: root.tab = parent.modelData
-                        }
+                        implicitWidth: ScaleMetrics.dp(110)
+                        implicitHeight: ScaleMetrics.dp(28)
+                        text: modelData
+                        checked: sel
+                        onClicked: root.tab = modelData
                     }
                 }
 
                 Item { Layout.fillWidth: true }
 
-                Rectangle {
-                    width: ScaleMetrics.dp(36)
-                    height: ScaleMetrics.dp(26)
-                    radius: ScaleMetrics.dp(6)
-                    color: closeArea.pressed ? "#3f1a1a" : Theme.bgApp
-                    border.color: Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(13)
-                        color: closeArea.pressed ? Theme.recording : Theme.textSecondary
-                    }
-                    MouseArea {
-                        id: closeArea
-                        anchors.fill: parent
-                        onClicked: root.close()
-                    }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(36)
+                    implicitHeight: ScaleMetrics.dp(26)
+                    icon: "close"
+                    fontSize: 13
+                    onClicked: root.close()
                 }
             }
 
@@ -167,28 +140,16 @@ Rectangle {
                     }
                     Repeater {
                         model: Bridge.tmtVelocityControlLabels
-                        delegate: Rectangle {
+                        delegate: SpButton {
                             required property int index
                             required property string modelData
                             readonly property bool sel: root.tmt.veloControl === index
-                            width: ScaleMetrics.dp(70)
-                            height: ScaleMetrics.dp(28)
-                            radius: ScaleMetrics.dp(4)
-                            color: sel ? Theme.primary : (vcArea.pressed ? Theme.bgCardActive : Theme.bgApp)
-                            border.color: sel ? "transparent" : Theme.borderCard
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: parent.modelData
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(8)
-                                color: parent.sel ? "#ffffff" : Theme.textSecondary
-                            }
-                            MouseArea {
-                                id: vcArea
-                                anchors.fill: parent
-                                onClicked: Bridge.setTmtVelocityControl(index)
-                            }
+                            implicitWidth: ScaleMetrics.dp(70)
+                            implicitHeight: ScaleMetrics.dp(28)
+                            text: modelData
+                            fontSize: 8
+                            checked: sel
+                            onClicked: Bridge.setTmtVelocityControl(index)
                         }
                     }
 
@@ -199,14 +160,14 @@ Rectangle {
                         height: ScaleMetrics.dp(28)
                         radius: ScaleMetrics.dp(4)
                         color: root.tmt.ctrlSwitch ? Theme.bgCardActive : Theme.bgApp
-                        border.color: root.tmt.ctrlSwitch ? "#38bdf8" : Theme.borderCard
+                        border.color: root.tmt.ctrlSwitch ? Theme.pageAccent : Theme.borderCard
                         border.width: 1
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 4
                             Rectangle {
                                 width: 6; height: 6; radius: 3
-                                color: root.tmt.ctrlSwitch ? "#38bdf8" : Theme.textDim
+                                color: root.tmt.ctrlSwitch ? Theme.pageAccent : Theme.textDim
                             }
                             Text {
                                 text: root.tmt.ctrlSwitch ? "MATRIX PICKS TONES: ON" : "MATRIX PICKS TONES: OFF"
@@ -301,25 +262,12 @@ Rectangle {
                     color: Theme.textDim
                 }
                 Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: ScaleMetrics.dp(80)
-                    height: ScaleMetrics.dp(20)
-                    radius: ScaleMetrics.dp(4)
-                    color: resetAll.pressed ? Theme.bgCardActive : Theme.bgSurface
-                    border.color: Theme.borderCard
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "RESET ALL"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.textSecondary
-                    }
-                    MouseArea {
-                        id: resetAll
-                        anchors.fill: parent
-                        onClicked: Bridge.resetToneRange(0, section.kind)
-                    }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(80)
+                    implicitHeight: ScaleMetrics.dp(20)
+                    text: "RESET ALL"
+                    fontSize: 8
+                    onClicked: Bridge.resetToneRange(0, section.kind)
                 }
             }
 

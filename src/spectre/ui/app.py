@@ -13,13 +13,28 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 
 from ..vector.engine import VectorEngine
 from .bridge import SpectreBridge
 
 logger = logging.getLogger(__name__)
+
+FONTS_DIR = Path(__file__).parent / "fonts"
+
+
+def load_fonts(app: QGuiApplication) -> None:
+    """Register the bundled fonts so the Pi renders exactly like the PC.
+
+    Noto Sans is the UI font (Noto Sans Mono covers its missing arrows);
+    Phosphor holds the icon glyphs (see qml/Icons.qml).
+    """
+    for path in sorted(FONTS_DIR.glob("*.ttf")):
+        if QFontDatabase.addApplicationFont(str(path)) < 0:
+            logger.warning("Could not load font %s", path.name)
+    QFont.insertSubstitution("Noto Sans", "Noto Sans Mono")
+    app.setFont(QFont("Noto Sans"))
 
 
 def create_application(
@@ -36,6 +51,7 @@ def create_application(
     app = QGuiApplication.instance()
     if app is None:
         app = QGuiApplication(sys.argv)
+    load_fonts(app)
 
     qml_engine = QQmlApplicationEngine()
 

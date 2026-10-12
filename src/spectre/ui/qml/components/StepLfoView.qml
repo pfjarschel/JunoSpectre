@@ -52,7 +52,7 @@ Rectangle {
 
             Rectangle {
                 width: ScaleMetrics.dp(8); height: ScaleMetrics.dp(8); radius: 4
-                color: "#10b981"
+                color: Theme.pageAccent
             }
             Text {
                 text: "16-STEP PATTERN LFO"
@@ -81,48 +81,25 @@ Rectangle {
                         { id: 3, label: "T3", col: Theme.tone3 },
                         { id: 4, label: "T4", col: Theme.tone4 }
                     ]
-                    delegate: Rectangle {
-                        height: ScaleMetrics.dp(24)
+                    delegate: SpButton {
+                        implicitHeight: ScaleMetrics.dp(24)
                         implicitWidth: ScaleMetrics.dp(28)
-                        radius: 4
                         property bool isSel: root.selectedTone === modelData.id
-                        color: isSel ? Qt.rgba(modelData.col.r, modelData.col.g, modelData.col.b, 0.25) : "#10141d"
-                        border.color: isSel ? modelData.col : Theme.borderCard
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.label
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: parent.isSel ? modelData.col : Theme.textDim
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Bridge.setSelectedTone(modelData.id)
-                        }
+                        text: modelData.label
+                        fontSize: 8
+                        accent: modelData.col
+                        checked: isSel
+                        onClicked: Bridge.setSelectedTone(modelData.id)
                     }
                 }
 
-                Rectangle {
-                    height: ScaleMetrics.dp(24)
+                SpButton {
+                    implicitHeight: ScaleMetrics.dp(24)
                     implicitWidth: ScaleMetrics.dp(64)
-                    radius: 4
-                    color: root.isLinked ? Qt.rgba(0.66, 0.33, 0.97, 0.25) : "#10141d"
-                    border.color: root.isLinked ? "#a855f7" : Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "LINK ALL"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: root.isLinked ? "#c084fc" : Theme.textDim
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: Bridge.setLinkedMode(!Bridge.linkedMode)
-                    }
+                    text: "LINK ALL"
+                    fontSize: 8
+                    checked: root.isLinked
+                    onClicked: Bridge.setLinkedMode(!Bridge.linkedMode)
                 }
             }
 
@@ -136,48 +113,24 @@ Rectangle {
                     color: Theme.textDim
                 }
 
-                Rectangle {
-                    height: ScaleMetrics.dp(24)
+                SpButton {
+                    implicitHeight: ScaleMetrics.dp(24)
                     implicitWidth: ScaleMetrics.dp(46)
-                    radius: 4
                     property bool isActive: root.lfo1Wave === "STEP"
-                    color: isActive ? Qt.rgba(0.06, 0.72, 0.51, 0.25) : "#10141d"
-                    border.color: isActive ? "#10b981" : Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "LFO 1"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: parent.isActive ? "#10b981" : Theme.textDim
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: Bridge.assignStepLfoToLfo(1)
-                    }
+                    text: "LFO 1"
+                    fontSize: 8
+                    checked: isActive
+                    onClicked: Bridge.assignStepLfoToLfo(1)
                 }
 
-                Rectangle {
-                    height: ScaleMetrics.dp(24)
+                SpButton {
+                    implicitHeight: ScaleMetrics.dp(24)
                     implicitWidth: ScaleMetrics.dp(46)
-                    radius: 4
                     property bool isActive: root.lfo2Wave === "STEP"
-                    color: isActive ? Qt.rgba(0.06, 0.72, 0.51, 0.25) : "#10141d"
-                    border.color: isActive ? "#10b981" : Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "LFO 2"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: parent.isActive ? "#10b981" : Theme.textDim
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: Bridge.assignStepLfoToLfo(2)
-                    }
+                    text: "LFO 2"
+                    fontSize: 8
+                    checked: isActive
+                    onClicked: Bridge.assignStepLfoToLfo(2)
                 }
             }
 
@@ -186,8 +139,8 @@ Rectangle {
                 height: ScaleMetrics.dp(24)
                 implicitWidth: ScaleMetrics.dp(120)
                 radius: 4
-                color: "#10141d"
-                border.color: root.curveType === 0 ? Theme.tone1 : Theme.tone2
+                color: Theme.bgControl
+                border.color: Theme.pageAccent
                 border.width: 1
 
                 RowLayout {
@@ -198,7 +151,7 @@ Rectangle {
                         text: root.curveType === 0 ? "STEP (HOLD)" : "GLIDE (SMOOTH)"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: root.curveType === 0 ? Theme.tone1 : Theme.tone2
+                        color: Theme.pageAccent
                     }
                 }
                 MouseArea {
@@ -283,25 +236,12 @@ Rectangle {
                     }}
                 ]
 
-                delegate: Rectangle {
+                delegate: SpButton {
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(22)
-                    radius: 3
-                    color: Theme.bgApp
-                    border.color: Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: modelData.name
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.textSecondary
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: modelData.fn()
-                    }
+                    implicitHeight: ScaleMetrics.dp(22)
+                    text: modelData.name
+                    fontSize: 8
+                    onClicked: modelData.fn()
                 }
             }
         }
@@ -314,7 +254,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             radius: ScaleMetrics.dp(6)
-            color: "#080b11"
+            color: Theme.bgTrack
             border.color: Theme.borderCard
             border.width: 1
             clip: true
@@ -325,7 +265,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 height: 1
-                color: "#1e293b"
+                color: Theme.bgRaised
             }
 
             // 16 Step Columns
@@ -353,7 +293,7 @@ Rectangle {
                             property real norm: (barCol.stepVal + 36.0) / 72.0
                             y: norm >= 0.5 ? parent.height * 0.5 - height : parent.height * 0.5
                             height: Math.max(2, Math.abs((norm - 0.5) * parent.height))
-                            color: barCol.stepVal > 0 ? "#10b981" : (barCol.stepVal < 0 ? "#0284c7" : "#334155")
+                            color: barCol.stepVal > 0 ? Theme.pageAccent : (barCol.stepVal < 0 ? Theme.pageAccent : Theme.borderActive)
                             radius: 1
                         }
 

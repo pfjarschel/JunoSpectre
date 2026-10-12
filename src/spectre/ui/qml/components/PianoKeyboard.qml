@@ -11,7 +11,7 @@ Item {
 
     property int rangeLow: 0
     property int rangeHigh: 127
-    property color rangeColor: "#a855f7"
+    property color rangeColor: Theme.pageAccent
     property int whiteWidth: ScaleMetrics.dp(28)
 
     signal keyTapped(int note)
@@ -114,8 +114,8 @@ Item {
                     anchors.bottom: parent.bottom
                     radius: 2
                     color: (modelData.n >= root.rangeLow && modelData.n <= root.rangeHigh)
-                           ? Qt.lighter(root.rangeColor, 1.35) : "#e8edf3"
-                    border.color: "#0f172a"
+                           ? Qt.lighter(root.rangeColor, 1.35) : Theme.keyWhite
+                    border.color: Theme.bgControl
                     border.width: 1
                     Text {
                         visible: (modelData.n % 12) === 0
@@ -125,7 +125,7 @@ Item {
                         text: root.noteName(modelData.n)
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: (modelData.n >= root.rangeLow && modelData.n <= root.rangeHigh) ? "#ffffff" : "#475569"
+                        color: (modelData.n >= root.rangeLow && modelData.n <= root.rangeHigh) ? Theme.textPrimary : Theme.textDim
                     }
                 }
             }
@@ -140,15 +140,15 @@ Item {
                     height: parent.height * 0.62
                     radius: 2
                     color: (modelData.n >= root.rangeLow && modelData.n <= root.rangeHigh)
-                           ? root.rangeColor : "#11151d"
-                    border.color: "#000000"
+                           ? root.rangeColor : Theme.keyBlack
+                    border.color: Theme.textOnFill
                     border.width: 1
                 }
             }
 
             // Low (blue) / High (amber) bound markers
             Repeater {
-                model: [{ n: root.rangeLow, c: "#38bdf8" }, { n: root.rangeHigh, c: "#f59e0b" }]
+                model: [{ n: root.rangeLow, c: Theme.pageAccent }, { n: root.rangeHigh, c: Theme.pageAccent }]
                 delegate: Rectangle {
                     property int markNote: modelData.n
                     property var box: (function() {

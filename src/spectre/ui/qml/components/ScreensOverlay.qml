@@ -9,7 +9,7 @@ Rectangle {
     anchors.fill: parent
     visible: false
     z: 999
-    color: "#e60a0c10" // Deep translucent backdrop
+    color: Theme.scrim // Deep translucent backdrop
 
     function open() {
         visible = true;
@@ -56,11 +56,10 @@ Rectangle {
                     height: ScaleMetrics.dp(24)
                     radius: ScaleMetrics.dp(4)
                     color: Theme.bgCardActive
-                    Text {
+                    Icon {
                         anchors.centerIn: parent
-                        text: "⊞"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(14)
+                        name: "screens"
+                        size: 18
                         color: Theme.primary
                     }
                 }
@@ -84,27 +83,12 @@ Rectangle {
                 Item { Layout.fillWidth: true }
 
                 // Close Button
-                Rectangle {
-                    width: ScaleMetrics.dp(36)
-                    height: ScaleMetrics.dp(32)
-                    radius: ScaleMetrics.dp(6)
-                    color: closeArea.pressed ? "#3f1a1a" : Theme.bgApp
-                    border.color: Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(14)
-                        color: closeArea.pressed ? Theme.recording : Theme.textSecondary
-                    }
-
-                    MouseArea {
-                        id: closeArea
-                        anchors.fill: parent
-                        onClicked: root.close()
-                    }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(36)
+                    implicitHeight: ScaleMetrics.dp(32)
+                    icon: "close"
+                    fontSize: 14
+                    onClicked: root.close()
                 }
             }
 
@@ -127,7 +111,7 @@ Rectangle {
                     // =========================================================
                     CategoryDivider {
                         title: "SYNTH ENGINES"
-                        accent: Theme.tone1
+                        accent: Theme.catSynth
                     }
 
                     RowLayout {
@@ -139,8 +123,7 @@ Rectangle {
                             viewKey: "JUNO PCM"
                             title: "JUNO PCM"
                             subtitle: "Standard 4-Tone Roland sound designer"
-                            glyph: "🎹"
-                            accentColor: Theme.tone1
+                            accentColor: Theme.catSynth
                         }
 
                         AppTile {
@@ -148,8 +131,7 @@ Rectangle {
                             viewKey: "VECTOR"
                             title: "2D VECTOR"
                             subtitle: "4-Tone Cartesian morph pad & orbit"
-                            glyph: "✛"
-                            accentColor: Theme.tone1
+                            accentColor: Theme.catSynth
                         }
 
                         AppTile {
@@ -157,8 +139,7 @@ Rectangle {
                             viewKey: "WAVETABLE"
                             title: "1D WAVETABLE"
                             subtitle: "Linear crossfade, scope & 3D waterfall"
-                            glyph: "∿"
-                            accentColor: Theme.tone3
+                            accentColor: Theme.catSynth
                         }
 
                         AppTile {
@@ -166,8 +147,7 @@ Rectangle {
                             viewKey: "VA"
                             title: "4-OSC VA"
                             subtitle: "Classic virtual analog console & detuning"
-                            glyph: "⚡"
-                            accentColor: Theme.tone2
+                            accentColor: Theme.catSynth
                         }
                     }
 
@@ -176,7 +156,7 @@ Rectangle {
                     // =========================================================
                     CategoryDivider {
                         title: "MODULATION & FX"
-                        accent: "#38bdf8"
+                        accent: Theme.catModFx
                     }
 
                     RowLayout {
@@ -188,8 +168,7 @@ Rectangle {
                             viewKey: "MOD MATRIX"
                             title: "MOD MATRIX"
                             subtitle: "4 Matrix controllers & destinations"
-                            glyph: "☵"
-                            accentColor: "#38bdf8"
+                            accentColor: Theme.catModFx
                         }
 
                         AppTile {
@@ -197,8 +176,7 @@ Rectangle {
                             viewKey: "STEP LFO"
                             title: "STEP LFO"
                             subtitle: "16-step touch pattern modulator & glide"
-                            glyph: "▰"
-                            accentColor: "#10b981"
+                            accentColor: Theme.catModFx
                         }
 
                         AppTile {
@@ -206,8 +184,7 @@ Rectangle {
                             viewKey: "MSEG ENVELOPES"
                             title: "MSEG ENVELOPES"
                             subtitle: "TVF / TVA / Pitch multi-segment editors"
-                            glyph: "📈"
-                            accentColor: "#fbbf24"
+                            accentColor: Theme.catModFx
                         }
                     }
 
@@ -220,8 +197,7 @@ Rectangle {
                             viewKey: "ROUTING"
                             title: "ROUTING"
                             subtitle: "Signal flow presets & bus matrix"
-                            glyph: "🔀"
-                            accentColor: "#06b6d4"
+                            accentColor: Theme.catModFx
                         }
 
                         AppTile {
@@ -229,8 +205,7 @@ Rectangle {
                             viewKey: "MFX"
                             title: "MFX STUDIO"
                             subtitle: "80 multi-effects processors & params"
-                            glyph: "🎛"
-                            accentColor: "#ec4899"
+                            accentColor: Theme.catModFx
                         }
 
                         AppTile {
@@ -238,8 +213,7 @@ Rectangle {
                             viewKey: "MASTER FX"
                             title: "MASTER FX"
                             subtitle: "Chorus, Hall/Room Reverb & 3-Band EQ"
-                            glyph: "🔊"
-                            accentColor: "#a855f7"
+                            accentColor: Theme.catModFx
                         }
                     }
 
@@ -248,7 +222,7 @@ Rectangle {
                     // =========================================================
                     CategoryDivider {
                         title: "PERFORMANCE & PLAY"
-                        accent: Theme.tone2
+                        accent: Theme.catPerform
                     }
 
                     // Top: shaping the sound while playing; bottom: the song workflow
@@ -261,8 +235,7 @@ Rectangle {
                             viewKey: "MACROS"
                             title: "MACRO DECK"
                             subtitle: "8 large touch dials assigned to knobs"
-                            glyph: "🎚"
-                            accentColor: Theme.tone2
+                            accentColor: Theme.catPerform
                         }
 
                         AppTile {
@@ -270,8 +243,7 @@ Rectangle {
                             viewKey: "ARPEGGIO"
                             title: "ARPEGGIATOR"
                             subtitle: "Juno arp styles, motifs & MIDI clock"
-                            glyph: "♫"
-                            accentColor: "#22d3ee"
+                            accentColor: Theme.catPerform
                         }
 
                         AppTile {
@@ -279,8 +251,7 @@ Rectangle {
                             viewKey: "PERFORMANCE"
                             title: "PERFORMANCE"
                             subtitle: "16-part multi-timbral mixer & key zones"
-                            glyph: "🎛"
-                            accentColor: "#a855f7"
+                            accentColor: Theme.catPerform
                         }
                     }
 
@@ -293,8 +264,7 @@ Rectangle {
                             viewKey: "SEQUENCER"
                             title: "SEQUENCER"
                             subtitle: "Polymetric step sequencer & motion"
-                            glyph: "⏱"
-                            accentColor: "#38bdf8"
+                            accentColor: Theme.catPerform
                         }
 
                         AppTile {
@@ -302,8 +272,7 @@ Rectangle {
                             viewKey: "LIVE"
                             title: "LIVE MODE"
                             subtitle: "8-track session matrix & 8 live macros"
-                            glyph: "▶"
-                            accentColor: "#10b981"
+                            accentColor: Theme.catPerform
                         }
 
                         AppTile {
@@ -311,8 +280,7 @@ Rectangle {
                             viewKey: "SETLIST"
                             title: "SETLIST"
                             subtitle: "Repertoire manager & seamless transitions"
-                            glyph: "📋"
-                            accentColor: "#f59e0b"
+                            accentColor: Theme.catPerform
                         }
                     }
 
@@ -321,7 +289,7 @@ Rectangle {
                     // =========================================================
                     CategoryDivider {
                         title: "SYSTEM & UTILITIES"
-                        accent: "#60a5fa"
+                        accent: Theme.catSystem
                     }
 
                     RowLayout {
@@ -333,8 +301,7 @@ Rectangle {
                             viewKey: "LIBRARIAN"
                             title: "LIBRARIAN"
                             subtitle: ".spectre & .syx disk preset storage"
-                            glyph: "💾"
-                            accentColor: "#60a5fa"
+                            accentColor: Theme.catSystem
                         }
 
                         AppTile {
@@ -342,8 +309,7 @@ Rectangle {
                             viewKey: "MIDI LEARN"
                             title: "MIDI LEARN"
                             subtitle: "Hardware controller surface mapping"
-                            glyph: "🎛"
-                            accentColor: "#f59e0b"
+                            accentColor: Theme.catSystem
                         }
 
                         AppTile {
@@ -351,8 +317,7 @@ Rectangle {
                             viewKey: "HARDWARE"
                             title: "HARDWARE"
                             subtitle: "Juno-DS / XPS-30 synth device config"
-                            glyph: "⚙"
-                            accentColor: "#94a3b8"
+                            accentColor: Theme.catSystem
                         }
 
                         AppTile {
@@ -360,8 +325,7 @@ Rectangle {
                             viewKey: "SYSTEM"
                             title: "SYSTEM"
                             subtitle: "Reboot, brightness, Pi stats & apt updater"
-                            glyph: "💻"
-                            accentColor: "#ef4444"
+                            accentColor: Theme.catSystem
                         }
                     }
                 }
@@ -404,13 +368,12 @@ Rectangle {
         property string viewKey: "JUNO PCM"
         property string title: "APP"
         property string subtitle: "Description"
-        property string glyph: "🎹"
         property color accentColor: Theme.primary
         property bool isActive: Bridge.activeView === viewKey
 
         height: ScaleMetrics.dp(56)
         radius: ScaleMetrics.dp(6)
-        color: tileArea.pressed ? Theme.bgCardActive : (isActive ? "#1e293b" : Theme.bgApp)
+        color: tileArea.pressed ? Theme.bgCardActive : (isActive ? Theme.tint(accentColor) : Theme.bgApp)
         border.color: isActive ? accentColor : (tileArea.pressed ? Theme.borderActive : Theme.borderCard)
         border.width: isActive ? 2 : 1
 
@@ -425,14 +388,13 @@ Rectangle {
                 height: ScaleMetrics.dp(36)
                 radius: ScaleMetrics.dp(6)
                 color: tile.isActive ? tile.accentColor : Theme.bgSurface
-                border.color: tile.isActive ? "#ffffff" : Theme.borderCard
-                border.width: tile.isActive ? 1 : 0
+                border.width: 0
 
-                Text {
+                Icon {
                     anchors.centerIn: parent
-                    text: tile.glyph
-                    font.pixelSize: ScaleMetrics.sp(16)
-                    color: tile.isActive ? "#000000" : tile.accentColor
+                    name: Icons.forView(tile.viewKey)
+                    size: 20
+                    color: tile.isActive ? Theme.textOnFill : tile.accentColor
                 }
             }
 

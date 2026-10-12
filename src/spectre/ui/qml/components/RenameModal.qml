@@ -11,7 +11,7 @@ Rectangle {
     anchors.fill: parent
     visible: false
     z: 998
-    color: "#e60a0c10"
+    color: Theme.scrim
 
     property string mode: "file" // "file" | "slot" | "track" | "ctlpreset"
     property int trackIdx: -1
@@ -79,7 +79,7 @@ Rectangle {
         anchors.centerIn: parent
         radius: ScaleMetrics.dp(8)
         color: Theme.bgCard
-        border.color: Theme.tone2
+        border.color: Theme.pageAccent
         border.width: 1
 
         MouseArea { anchors.fill: parent }
@@ -93,20 +93,19 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: ScaleMetrics.dp(8)
                 Text {
-                    text: root.mode === "ctlpreset" ? "💾 SAVE CONTROLLER PRESET" : "✏ RENAME"
+                    text: root.mode === "ctlpreset" ? "SAVE CONTROLLER PRESET" : "RENAME"
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(11)
                     font.letterSpacing: 1.1
                     color: Theme.textPrimary
                 }
                 Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: ScaleMetrics.dp(26); height: ScaleMetrics.dp(26)
-                    radius: ScaleMetrics.dp(4)
-                    color: closeArea.pressed ? Theme.bgCardActive : "#10141d"
-                    border.color: Theme.borderCard; border.width: 1
-                    Text { anchors.centerIn: parent; text: "✕"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textSecondary }
-                    MouseArea { id: closeArea; anchors.fill: parent; onClicked: { if (!root.busy) root.close() } }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(26)
+                    implicitHeight: ScaleMetrics.dp(26)
+                    icon: "close"
+                    fontSize: 10
+                    onClicked: { if (!root.busy) root.close() }
                 }
             }
 
@@ -125,7 +124,7 @@ Rectangle {
                 height: ScaleMetrics.dp(40)
                 radius: ScaleMetrics.dp(4)
                 color: Theme.bgApp
-                border.color: nameField.activeFocus ? Theme.tone2 : Theme.borderCard
+                border.color: nameField.activeFocus ? Theme.pageAccent : Theme.borderCard
                 border.width: 1
                 RowLayout {
                     anchors.fill: parent
@@ -149,13 +148,13 @@ Rectangle {
                         font.pixelSize: ScaleMetrics.sp(8)
                         color: Theme.textDim
                     }
-                    Rectangle {
-                        width: ScaleMetrics.dp(28); height: ScaleMetrics.dp(22)
-                        radius: ScaleMetrics.dp(4)
-                        color: root.keyboardVisible ? Theme.tone2 : Theme.bgSurface
-                        border.color: Theme.borderCard; border.width: 1
-                        Text { anchors.centerIn: parent; text: "⌨"; font.pixelSize: ScaleMetrics.sp(12); color: Theme.textSecondary }
-                        MouseArea { anchors.fill: parent; onClicked: { root.keyboardVisible = !root.keyboardVisible } }
+                    SpButton {
+                        implicitWidth: ScaleMetrics.dp(28)
+                        implicitHeight: ScaleMetrics.dp(22)
+                        icon: "keyboard"
+                        fontSize: 12
+                        checked: root.keyboardVisible
+                        onClicked: { root.keyboardVisible = !root.keyboardVisible }
                     }
                 }
             }
@@ -165,7 +164,7 @@ Rectangle {
                 visible: root.errorText !== ""
                 text: root.errorText
                 font.pixelSize: ScaleMetrics.sp(8)
-                color: "#ef4444"
+                color: Theme.recording
                 wrapMode: Text.Wrap
             }
 
@@ -173,7 +172,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: ScaleMetrics.dp(140)
                 visible: root.keyboardVisible
-                accentColor: Theme.tone2
+                accentColor: Theme.pageAccent
                 onKeyClicked: (key) => {
                     if (nameField.text.length < 12) {
                         nameField.text += key.toUpperCase();
@@ -195,31 +194,24 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: ScaleMetrics.dp(8)
-                Rectangle {
+                SpButton {
                     Layout.preferredWidth: ScaleMetrics.dp(110)
-                    height: ScaleMetrics.dp(36)
-                    radius: ScaleMetrics.dp(4)
-                    color: cancelArea.pressed ? Theme.bgCardActive : "#10141d"
-                    border.color: Theme.borderCard; border.width: 1
-                    Text { anchors.centerIn: parent; text: "CANCEL"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textSecondary }
-                    MouseArea { id: cancelArea; anchors.fill: parent; onClicked: { if (!root.busy) root.close() } }
+                    implicitHeight: ScaleMetrics.dp(36)
+                    text: "CANCEL"
+                    onClicked: { if (!root.busy) root.close() }
                 }
-                Rectangle {
+                SpButton {
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(36)
-                    radius: ScaleMetrics.dp(4)
-                    color: root.busy ? Theme.bgSurface : "#1c2433"
-                    border.color: Theme.tone2; border.width: 1
-                    Text { anchors.centerIn: parent; text: root.busy ? "WORKING…" : "RENAME"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.tone2 }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (root.busy) return
-                            if ((root.newName || "").trim() === "") { root.errorText = "Give it a name."; return }
-                            root.busy = true
-                            root.errorText = ""
-                            renameTimer.start()
-                        }
+                    implicitHeight: ScaleMetrics.dp(36)
+                    text: root.busy ? "WORKING…" : "RENAME"
+                    variant: "outline"
+                    checked: root.busy
+                    onClicked: {
+                        if (root.busy) return
+                        if ((root.newName || "").trim() === "") { root.errorText = "Give it a name."; return }
+                        root.busy = true
+                        root.errorText = ""
+                        renameTimer.start()
                     }
                 }
             }

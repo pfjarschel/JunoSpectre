@@ -72,7 +72,7 @@ Rectangle {
 
                     Rectangle {
                         width: ScaleMetrics.dp(8); height: ScaleMetrics.dp(8); radius: 4
-                        color: "#ec4899"
+                        color: Theme.pageAccent
                     }
                     Text {
                         text: "MFX ALGORITHMS"
@@ -89,8 +89,8 @@ Rectangle {
                         Layout.maximumWidth: ScaleMetrics.dp(110)
                         Layout.minimumWidth: ScaleMetrics.dp(52)
                         radius: 3
-                        color: "#1c1533"
-                        border.color: Theme.tone2
+                        color: Theme.tint(Theme.pageAccent)
+                        border.color: Theme.pageAccent
                         border.width: 1
                         clip: true
                         Text {
@@ -105,7 +105,7 @@ Rectangle {
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(7)
                             font.family: Theme.fontMono
-                            color: Theme.tone2
+                            color: Theme.pageAccent
                             elide: Text.ElideRight
                         }
                     }
@@ -114,7 +114,7 @@ Rectangle {
                         font.family: Theme.fontMono
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: "#ec4899"
+                        color: Theme.pageAccent
                     }
                 }
 
@@ -123,8 +123,8 @@ Rectangle {
                     Layout.fillWidth: true
                     height: ScaleMetrics.dp(28)
                     radius: ScaleMetrics.dp(4)
-                    color: "#0a0d14"
-                    border.color: mfxSearchField.activeFocus || root.virtualKeyboardVisible ? "#ec4899" : Theme.borderCard
+                    color: Theme.bgTrack
+                    border.color: mfxSearchField.activeFocus || root.virtualKeyboardVisible ? Theme.pageAccent : Theme.borderCard
                     border.width: 1
 
                     RowLayout {
@@ -133,9 +133,9 @@ Rectangle {
                         anchors.rightMargin: ScaleMetrics.dp(6)
                         spacing: ScaleMetrics.dp(6)
 
-                        Text {
-                            text: "🔍"
-                            font.pixelSize: ScaleMetrics.sp(9)
+                        Icon {
+                            name: "search"
+                            size: 12
                             color: Theme.textDim
                         }
 
@@ -166,36 +166,25 @@ Rectangle {
                         }
 
                         // Toggle Keyboard Button
-                        Rectangle {
-                            width: ScaleMetrics.dp(22)
-                            height: ScaleMetrics.dp(20)
-                            radius: 3
-                            color: root.virtualKeyboardVisible ? "#ec4899" : "#1a2233"
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "⌨"
-                                font.pixelSize: ScaleMetrics.sp(10)
-                                color: root.virtualKeyboardVisible ? "#ffffff" : Theme.textSecondary
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    root.virtualKeyboardVisible = !root.virtualKeyboardVisible;
-                                    if (root.virtualKeyboardVisible) {
-                                        mfxSearchField.forceActiveFocus();
-                                    }
+                        SpButton {
+                            implicitWidth: ScaleMetrics.dp(22)
+                            implicitHeight: ScaleMetrics.dp(20)
+                            icon: "keyboard"
+                            fontSize: 10
+                            checked: root.virtualKeyboardVisible
+                            onClicked: {
+                                root.virtualKeyboardVisible = !root.virtualKeyboardVisible;
+                                if (root.virtualKeyboardVisible) {
+                                    mfxSearchField.forceActiveFocus();
                                 }
                             }
                         }
 
                         // Clear Button
-                        Text {
+                        Icon {
                             visible: mfxSearchField.text.length > 0
-                            text: "✕"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(11)
+                            name: "close"
+                            size: 14
                             color: Theme.textDim
                             MouseArea {
                                 anchors.fill: parent
@@ -211,7 +200,7 @@ Rectangle {
                     // Tapping anywhere in the search input box triggers focus and opens keyboard
                     MouseArea {
                         anchors.fill: parent
-                        anchors.rightMargin: ScaleMetrics.dp(50) // Leave room for ⌨ and ✕ buttons
+                        anchors.rightMargin: ScaleMetrics.dp(50) // Leave room for the keyboard and close buttons
                         onClicked: {
                             mfxSearchField.forceActiveFocus();
                             root.virtualKeyboardVisible = true;
@@ -236,31 +225,16 @@ Rectangle {
 
                         Repeater {
                             model: root.categories
-                            delegate: Rectangle {
+                            delegate: SpButton {
                                 id: catChip
                                 property bool isSel: root.selectedCategory === modelData
-                                height: ScaleMetrics.dp(22)
-                                width: catText.implicitWidth + ScaleMetrics.dp(14)
-                                radius: ScaleMetrics.dp(11)
-                                color: isSel ? "#ec4899" : (chipMouse.pressed ? "#1e293b" : "#10141d")
-                                border.color: isSel ? "#f472b6" : Theme.borderCard
-                                border.width: 1
-
-                                Text {
-                                    id: catText
-                                    anchors.centerIn: parent
-                                    text: modelData
-                                    font.bold: catChip.isSel
-                                    font.pixelSize: ScaleMetrics.sp(8)
-                                    color: catChip.isSel ? "#ffffff" : Theme.textSecondary
-                                }
-
-                                MouseArea {
-                                    id: chipMouse
-                                    anchors.fill: parent
-                                    onClicked: {
-                                        root.selectedCategory = modelData;
-                                    }
+                                implicitHeight: ScaleMetrics.dp(22)
+                                implicitWidth: label.implicitWidth + ScaleMetrics.dp(14)
+                                text: modelData
+                                fontSize: 8
+                                checked: isSel
+                                onClicked: {
+                                    root.selectedCategory = modelData;
                                 }
                             }
                         }
@@ -281,8 +255,8 @@ Rectangle {
                         width: ListView.view.width
                         height: ScaleMetrics.dp(34)
                         radius: 4
-                        color: root.activeAlgoId === modelData.id ? Theme.bgCardActive : (itemMouse.pressed ? "#161c28" : "#0d1017")
-                        border.color: root.activeAlgoId === modelData.id ? "#ec4899" : Theme.borderCard
+                        color: root.activeAlgoId === modelData.id ? Theme.bgCardActive : (itemMouse.pressed ? Theme.bgCardActive : Theme.bgControl)
+                        border.color: root.activeAlgoId === modelData.id ? Theme.pageAccent : Theme.borderCard
                         border.width: root.activeAlgoId === modelData.id ? 1.5 : 1
 
                         RowLayout {
@@ -294,14 +268,14 @@ Rectangle {
                                 width: ScaleMetrics.dp(22)
                                 height: ScaleMetrics.dp(20)
                                 radius: 3
-                                color: root.activeAlgoId === modelData.id ? "#ec4899" : "#1a2233"
+                                color: root.activeAlgoId === modelData.id ? Theme.pageAccent : Theme.bgRaised
                                 Text {
                                     anchors.centerIn: parent
                                     text: modelData.id.toString()
                                     font.bold: true
                                     font.family: Theme.fontMono
                                     font.pixelSize: ScaleMetrics.sp(8)
-                                    color: root.activeAlgoId === modelData.id ? "#ffffff" : Theme.textSecondary
+                                    color: root.activeAlgoId === modelData.id ? Theme.textPrimary : Theme.textSecondary
                                 }
                             }
 
@@ -318,13 +292,13 @@ Rectangle {
                                 width: ScaleMetrics.dp(52)
                                 height: ScaleMetrics.dp(16)
                                 radius: 2
-                                color: "#10141d"
+                                color: Theme.bgControl
                                 Text {
                                     anchors.centerIn: parent
                                     text: modelData.cat
                                     font.pixelSize: ScaleMetrics.sp(7)
                                     font.bold: true
-                                    color: "#ec4899"
+                                    color: Theme.pageAccent
                                 }
                             }
                         }
@@ -365,7 +339,7 @@ Rectangle {
                             text: root.currentAlgo ? root.currentAlgo.name : "NO EFFECT SELECTED"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(14)
-                            color: "#ec4899"
+                            color: Theme.pageAccent
                         }
                         Text {
                             text: root.currentAlgo ?
@@ -378,51 +352,27 @@ Rectangle {
                     Item { Layout.fillWidth: true }
 
                     // PERFORM: MFX1-3 are chained (Performance MFX Structure); tap for Routing
-                    Rectangle {
+                    SpButton {
                         objectName: "mfxChainTag"
                         readonly property int st: Bridge.perfStructure
                         visible: Bridge.soundMode === "PERFORM" && st > 0
-                        width: chainTagText.implicitWidth + ScaleMetrics.dp(16)
-                        height: ScaleMetrics.dp(30)
-                        radius: ScaleMetrics.dp(4)
-                        color: chainTagMa.pressed ? Theme.bgCardActive : "#1c0d16"
-                        border.color: "#ec4899"
-                        border.width: 1
-                        Text {
-                            id: chainTagText
-                            anchors.centerIn: parent
-                            text: "MFX CHAIN · TYPE " + (parent.st + 1) + " · " + Bridge.perfMfxStructures[parent.st].label
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(8)
-                            color: "#ec4899"
-                        }
-                        MouseArea {
-                            id: chainTagMa
-                            anchors.fill: parent
-                            onClicked: Bridge.setActiveView("ROUTING")
-                        }
+                        implicitWidth: label.implicitWidth + ScaleMetrics.dp(16)
+                        implicitHeight: ScaleMetrics.dp(30)
+                        text: "MFX CHAIN · TYPE " + (st + 1) + " · " + Bridge.perfMfxStructures[st].label
+                        fontSize: 8
+                        variant: "outline"
+                        onClicked: Bridge.setActiveView("ROUTING")
                     }
 
                     // Bypass Button
-                    Rectangle {
-                        width: ScaleMetrics.dp(84)
-                        height: ScaleMetrics.dp(30)
-                        radius: ScaleMetrics.dp(4)
-                        color: root.isBypassed ? "#3f1a1a" : Theme.bgCardActive
-                        border.color: root.isBypassed ? Theme.recording : "#ec4899"
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: root.isBypassed ? "BYPASS" : "ACTIVE"
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(9)
-                            color: root.isBypassed ? Theme.recording : "#ec4899"
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: Bridge.setMfxBypass(!Bridge.mfxBypassed)
-                        }
+                    SpButton {
+                        implicitWidth: ScaleMetrics.dp(84)
+                        implicitHeight: ScaleMetrics.dp(30)
+                        text: root.isBypassed ? "BYPASS" : "ACTIVE"
+                        variant: "outline"
+                        accent: root.isBypassed ? Theme.recording : Theme.pageAccent
+                        checked: root.isBypassed
+                        onClicked: Bridge.setMfxBypass(!Bridge.mfxBypassed)
                     }
                 }
 
@@ -477,7 +427,7 @@ Rectangle {
                                     maxVal: (modelData.max !== undefined) ? modelData.max : 127
                                     unitText: (modelData.unit !== undefined) ? modelData.unit : ""
                                     options: (modelData.options !== undefined) ? modelData.options : []
-                                    accent: "#ec4899"
+                                    accent: Theme.pageAccent
                                     isDimmed: root.isBypassed
                                     onUserModified: (newVal) => {
                                         Bridge.setMfxParam(modelData.idx, newVal);
@@ -495,7 +445,7 @@ Rectangle {
                         width: ScaleMetrics.dp(3)
                         height: Math.max(ScaleMetrics.dp(18), paramFlickable.visibleArea.heightRatio * paramFlickable.height)
                         radius: 1.5
-                        color: "#ec4899"
+                        color: Theme.pageAccent
                         opacity: paramFlickable.visibleArea.heightRatio < 0.99 ? 0.6 : 0.0
                     }
                 }
@@ -516,14 +466,14 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(26)
                         radius: 3
-                        color: "#10141d"
+                        color: Theme.bgControl
                         border.color: Theme.borderCard
                         border.width: 1
                         Text {
                             anchors.centerIn: parent
                             text: root.isBypassed ?
-                                "TONES 1-4 ➔ [MFX BYPASS: DRY DIRECT] ➔ CHORUS / REVERB SENDS" :
-                                ("TONES 1-4 ➔ [MFX: " + (root.currentAlgo ? root.currentAlgo.name : "THRU") + "] ➔ CHORUS / REVERB SENDS")
+                                "TONES 1-4 → [MFX BYPASS: DRY DIRECT] → CHORUS / REVERB SENDS" :
+                                ("TONES 1-4 → [MFX: " + (root.currentAlgo ? root.currentAlgo.name : "THRU") + "] → CHORUS / REVERB SENDS")
                             font.family: Theme.fontMono
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(8)
@@ -535,131 +485,29 @@ Rectangle {
         }
     }
 
-    component MfxSlider: Rectangle {
+    component MfxSlider: SpSlider {
         id: ms
         property int paramIdx: 0
-        property string label: "PARAM"
         property int val: 64
         property int minVal: 0
         property int maxVal: 127
         property string unitText: ""
         property var options: []
-        property color accent: Theme.primary
         property bool isDimmed: false
-        // Parent Flickable holding this slider (set at instantiation).
-        // Used for directional locking: a horizontal-first drag disables
-        // scrolling until release so vertical drift can't steal the gesture.
-        property var scrollView: null
+        // Option-list values may arrive offset by 600 (wire encoding)
+        readonly property int _v: (options && options.length > 0 && val >= 600) ? val - 600 : val
 
         signal userModified(int newVal)
 
-        radius: ScaleMetrics.dp(4)
-        color: "#10141d"
-        border.color: Theme.borderCard
-        border.width: 1
-        opacity: isDimmed ? 0.45 : 1.0
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: ScaleMetrics.dp(5)
-            spacing: ScaleMetrics.dp(2)
-
-            RowLayout {
-                Layout.fillWidth: true
-                Text {
-                    text: ms.label
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8.5)
-                    color: Theme.textPrimary
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                }
-                Text {
-                    text: {
-                        if (ms.options && ms.options.length > 0) {
-                            var optIdx = ms.val;
-                            if (optIdx >= 600) optIdx -= 600;
-                            if (optIdx >= 0 && optIdx < ms.options.length) {
-                                return ms.options[optIdx];
-                            }
-                        }
-                        return ms.val.toString() + (ms.unitText !== "" ? " " + ms.unitText : "");
-                    }
-                    font.family: Theme.fontMono
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8.5)
-                    color: ms.accent
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                radius: 3
-                color: "#0a0d14"
-                border.color: Theme.borderCard
-                border.width: 1
-
-                Rectangle {
-                    x: 0; y: 0
-                    width: {
-                        var v = ms.val;
-                        if (ms.options && ms.options.length > 0 && v >= 600) v -= 600;
-                        return parent.width * Math.max(0.0, Math.min(1.0, (v - ms.minVal) / Math.max(1, ms.maxVal - ms.minVal)));
-                    }
-                    height: parent.height
-                    radius: 3
-                    color: Qt.rgba(ms.accent.r, ms.accent.g, ms.accent.b, 0.35)
-                }
-
-                function updateVal(mouseX) {
-                    var norm = Math.max(0.0, Math.min(1.0, mouseX / width));
-                    var newVal = Math.round(ms.minVal + norm * (ms.maxVal - ms.minVal));
-                    if (newVal !== ms.val) {
-                        ms.userModified(newVal);
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: !ms.isDimmed
-                    // Directional lock: on first movement past touch slop,
-                    // decide the axis. Horizontal wins -> hold the parent
-                    // Flickable (slider keeps working despite vertical drift);
-                    // vertical wins -> ignore moves, Flickable scrolls instead.
-                    property real startX: 0
-                    property real startY: 0
-                    property string lockDir: ""
-                    function releaseLock() {
-                        if (ms.scrollView) ms.scrollView.interactive = true;
-                        lockDir = "";
-                    }
-                    onPressed: (mouse) => {
-                        startX = mouse.x; startY = mouse.y; lockDir = "";
-                        parent.updateVal(mouse.x);
-                    }
-                    onPositionChanged: (mouse) => {
-                        if (!pressed) return;
-                        if (lockDir === "") {
-                            var dx = Math.abs(mouse.x - startX);
-                            var dy = Math.abs(mouse.y - startY);
-                            var slop = ScaleMetrics.dp(10);
-                            if (dx < slop && dy < slop) return;
-                            if (dx >= dy) {
-                                lockDir = "h";
-                                if (ms.scrollView) ms.scrollView.interactive = false;
-                            } else {
-                                lockDir = "v";
-                                return;
-                            }
-                        }
-                        if (lockDir === "h") parent.updateVal(mouse.x);
-                    }
-                    onReleased: releaseLock()
-                    onCanceled: releaseLock()
-                }
-            }
-        }
+        stacked: true
+        enabled: !isDimmed
+        from: minVal
+        to: maxVal
+        integer: true
+        norm: (_v - minVal) / Math.max(1, maxVal - minVal)
+        valueText: (options && options.length > 0 && _v >= 0 && _v < options.length)
+                   ? options[_v] : val.toString() + (unitText !== "" ? " " + unitText : "")
+        onMoved: (v) => { if (v !== ms.val) ms.userModified(v); }
     }
 
     // On-screen Virtual Keyboard
@@ -673,7 +521,7 @@ Rectangle {
         height: ScaleMetrics.dp(158)
         visible: root.virtualKeyboardVisible
         z: 99
-        accentColor: "#ec4899"
+        accentColor: Theme.pageAccent
 
         onKeyClicked: (key) => {
             mfxSearchField.text += key;

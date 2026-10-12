@@ -29,13 +29,7 @@ Rectangle {
             Layout.fillWidth: true
             spacing: ScaleMetrics.dp(6)
 
-            Text {
-                text: "PERFORMANCE"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(12)
-                font.letterSpacing: 1.2
-                color: Theme.textSecondary
-            }
+            PageTitle { text: "PERFORMANCE" }
             Text {
                 Layout.fillWidth: true
                 text: Bridge.perfName
@@ -45,80 +39,54 @@ Rectangle {
                 elide: Text.ElideRight
             }
             // Pager 1-8 / 9-16
-            Rectangle {
+            SpButton {
                 visible: root.subView === "mixer"
-                width: ScaleMetrics.dp(76); height: ScaleMetrics.dp(26)
-                radius: ScaleMetrics.dp(4)
-                color: pageMouse.pressed ? Theme.bgCardActive : Theme.bgApp
-                border.color: Theme.borderCard; border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: root.page === 1 ? "1–8  ▶" : "◀  9–16"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(9)
-                    color: Theme.textSecondary
-                }
-                MouseArea {
-                    id: pageMouse
-                    anchors.fill: parent
-                    onClicked: root.page = (root.page === 1 ? 2 : 1)
-                }
+                implicitWidth: ScaleMetrics.dp(76)
+                implicitHeight: ScaleMetrics.dp(26)
+                icon: root.page === 1 ? "right" : "left"
+                iconAfter: root.page === 1
+                text: root.page === 1 ? "1–8" : "9–16"
+                onClicked: root.page = (root.page === 1 ? 2 : 1)
             }
             // MIXER | ZONES sub-view toggle
-            Rectangle {
-                width: ScaleMetrics.dp(104); height: ScaleMetrics.dp(26)
-                radius: ScaleMetrics.dp(4)
-                color: subMouse.pressed ? Theme.bgCardActive : Theme.bgApp
-                border.color: root.subView === "zones" ? Theme.tone1 : Theme.borderCard
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: root.subView === "mixer" ? "MIXER  ▶" : "◀  ZONES"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: root.subView === "zones" ? Theme.tone1 : Theme.textSecondary
-                }
-                MouseArea {
-                    id: subMouse
-                    anchors.fill: parent
-                    onClicked: root.subView = (root.subView === "mixer" ? "zones" : "mixer")
-                }
+            SpButton {
+                implicitWidth: ScaleMetrics.dp(104)
+                implicitHeight: ScaleMetrics.dp(26)
+                icon: root.subView === "mixer" ? "right" : "left"
+                iconAfter: root.subView === "mixer"
+                text: root.subView === "mixer" ? "MIXER" : "ZONES"
+                fontSize: 8
+                checked: root.subView === "zones"
+                onClicked: root.subView = (root.subView === "mixer" ? "zones" : "mixer")
             }
             // Mode switch PATCH / PERFORM
-            Rectangle {
-                width: ScaleMetrics.dp(86); height: ScaleMetrics.dp(26)
-                radius: ScaleMetrics.dp(4)
-                color: Bridge.soundMode === "PERFORM" ? "#2d1b4e" : "#1e293b"
-                border.color: Bridge.soundMode === "PERFORM" ? Theme.tone2 : Theme.primary
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: Bridge.soundMode === "PERFORM" ? "PERFORM ✓" : "GO PERFORM"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: Bridge.soundMode === "PERFORM" ? Theme.tone2 : Theme.primary
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Bridge.setSoundMode(Bridge.soundMode === "PERFORM" ? "PATCH" : "PERFORM")
-                }
+            SpButton {
+                implicitWidth: ScaleMetrics.dp(86)
+                implicitHeight: ScaleMetrics.dp(26)
+                icon: Bridge.soundMode === "PERFORM" ? "check" : ""
+                text: Bridge.soundMode === "PERFORM" ? "PERFORM" : "GO PERFORM"
+                fontSize: 8
+                variant: "outline"
+                accent: Bridge.soundMode === "PERFORM" ? Theme.catPerform : Theme.catSynth
+                checked: Bridge.soundMode === "PERFORM"
+                onClicked: Bridge.setSoundMode(Bridge.soundMode === "PERFORM" ? "PATCH" : "PERFORM")
             }
             // Open Setlist View
             Rectangle {
                 width: ScaleMetrics.dp(80); height: ScaleMetrics.dp(26)
                 radius: ScaleMetrics.dp(4)
                 color: setlistMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: "#f59e0b"
+                border.color: Theme.pageAccent
                 border.width: 1
                 RowLayout {
                     anchors.centerIn: parent
                     spacing: ScaleMetrics.dp(4)
-                    Text { text: "📋"; font.pixelSize: ScaleMetrics.sp(8); color: "#f59e0b" }
+                    Icon { name: "screen.setlist"; size: 12; color: Theme.pageAccent }
                     Text {
                         text: "SETLIST"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: "#f59e0b"
+                        color: Theme.pageAccent
                     }
                 }
                 MouseArea {
@@ -136,21 +104,21 @@ Rectangle {
             Layout.preferredHeight: root.pushBusy ? ScaleMetrics.dp(14) : 0
             height: ScaleMetrics.dp(14)
             radius: ScaleMetrics.dp(7)
-            color: "#0f172a"
-            border.color: Theme.tone2
+            color: Theme.bgControl
+            border.color: Theme.pageAccent
             border.width: 1
             Rectangle {
                 width: parent.width * Math.max(0, Math.min(1, Bridge.perfPushProgress))
                 height: parent.height
                 radius: ScaleMetrics.dp(7)
-                color: Theme.tone2
+                color: Theme.pageAccent
             }
             Text {
                 anchors.centerIn: parent
                 text: "PUSHING PART SOUNDS " + Math.round(Math.max(0, Bridge.perfPushProgress) * 100) + "%"
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(7)
-                color: "#ffffff"
+                color: Theme.textPrimary
             }
         }
 
@@ -225,7 +193,7 @@ Rectangle {
         property bool feedsEditing: false
 
         radius: ScaleMetrics.dp(6)
-        color: chan.isActive ? "#1c1533" : Theme.bgApp
+        color: chan.isActive ? Theme.tint(Theme.editingAccent) : Theme.bgApp
         border.color: chan.isActive ? Theme.editingAccent : Theme.borderCard
         border.width: chan.isActive ? 2 : 1
 
@@ -242,7 +210,7 @@ Rectangle {
                     Layout.fillWidth: true
                     height: ScaleMetrics.dp(18)
                     radius: ScaleMetrics.dp(4)
-                    color: chan.isActive ? Theme.editingFill : "#1e293b"
+                    color: chan.isActive ? Theme.editingFill : Theme.bgRaised
 
                     Text {
                         anchors.centerIn: parent
@@ -250,7 +218,7 @@ Rectangle {
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(9)
                         color: chan.trackColor.a > 0 ? chan.trackColor
-                             : (chan.isActive ? "#ffffff" : Theme.textSecondary)
+                             : (chan.isActive ? Theme.textPrimary : Theme.textSecondary)
                     }
                     // Tap the badge to edit this part (same as EDIT)
                     MouseArea {
@@ -265,16 +233,15 @@ Rectangle {
                     visible: chan.partStatus !== ""
                     width: ScaleMetrics.dp(18); height: ScaleMetrics.dp(18)
                     radius: 9
-                    color: chan.partStatus === "ok" ? "#10b981"
-                         : chan.partStatus === "updated" ? "#fbbf24"
-                         : chan.partStatus === "edited" ? "#60a5fa" : "#ef4444"
-                    border.color: "#ffffff"; border.width: 1
-                    Text {
+                    color: chan.partStatus === "ok" ? Theme.playing
+                         : chan.partStatus === "updated" ? Theme.warning
+                         : chan.partStatus === "edited" ? Theme.modified : Theme.recording
+                    border.color: Theme.textPrimary; border.width: 1
+                    Icon {
                         anchors.centerIn: parent
-                        text: chan.partStatus === "ok" ? "✓" : chan.partStatus === "edited" ? "✎" : "!"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(9)
-                        color: "#000000"
+                        name: chan.partStatus === "ok" ? "check" : chan.partStatus === "edited" ? "edit" : "warning"
+                        size: 11
+                        color: Theme.textOnFill
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -293,7 +260,7 @@ Rectangle {
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(8)
                 font.underline: true
-                color: nameMouse.pressed ? Theme.tone1 : Theme.textDim
+                color: nameMouse.pressed ? Theme.pageAccent : Theme.textDim
                 elide: Text.ElideRight
                 wrapMode: Text.NoWrap
                 horizontalAlignment: Text.AlignHCenter
@@ -311,70 +278,37 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: ScaleMetrics.dp(2)
 
-                Rectangle {
+                SpButton {
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(16)
-                    radius: ScaleMetrics.dp(3)
-                    color: chan.isMuted ? Theme.recording : "#1e293b"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "M"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: chan.isMuted ? "#ffffff" : Theme.textDim
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: !root.pushBusy
-                        onClicked: Bridge.setPartMute(chan.partIndex, !chan.isMuted)
-                    }
+                    implicitHeight: ScaleMetrics.dp(16)
+                    text: "M"
+                    fontSize: 8
+                    accent: Theme.recording
+                    checked: chan.isMuted
+                    enabled: !root.pushBusy
+                    onClicked: Bridge.setPartMute(chan.partIndex, !chan.isMuted)
                 }
 
-                Rectangle {
+                SpButton {
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(16)
-                    radius: ScaleMetrics.dp(3)
-                    color: chan.isSolo ? Theme.tone3 : "#1e293b"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "S"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: chan.isSolo ? "#ffffff" : Theme.textDim
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: !root.pushBusy
-                        onClicked: Bridge.setPartSolo(chan.partIndex, !chan.isSolo)
-                    }
+                    implicitHeight: ScaleMetrics.dp(16)
+                    text: "S"
+                    fontSize: 8
+                    accent: Theme.warning
+                    checked: chan.isSolo
+                    enabled: !root.pushBusy
+                    onClicked: Bridge.setPartSolo(chan.partIndex, !chan.isSolo)
                 }
 
                 // Kbd switch: the part also sounds from the keyboard
-                Rectangle {
+                SpButton {
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(16)
-                    radius: ScaleMetrics.dp(3)
-                    color: chan.kbdOn ? "#0d2b1a" : "#1e293b"
-                    border.color: chan.kbdOn ? "#10b981" : "transparent"
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "KBD"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(7)
-                        color: chan.kbdOn ? "#10b981" : Theme.textDim
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: !root.pushBusy
-                        onClicked: Bridge.setPartZoneSwitch(chan.partIndex, !chan.kbdOn)
-                    }
+                    implicitHeight: ScaleMetrics.dp(16)
+                    text: "KBD"
+                    fontSize: 8
+                    checked: chan.kbdOn
+                    enabled: !root.pushBusy
+                    onClicked: Bridge.setPartZoneSwitch(chan.partIndex, !chan.kbdOn)
                 }
             }
 
@@ -397,25 +331,15 @@ Rectangle {
                 spacing: 1
                 Repeater {
                     model: [0, 1, 2]
-                    delegate: Rectangle {
+                    delegate: SpButton {
                         Layout.fillWidth: true
-                        height: ScaleMetrics.dp(16)
-                        radius: 2
-                        color: chan.mfxSelect === modelData ? Theme.tone2 : "#1e293b"
-                        border.color: chan.mfxSelect === modelData ? "#ffffff" : Theme.borderCard
-                        border.width: 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: (modelData + 1)
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(7)
-                            color: chan.mfxSelect === modelData ? "#ffffff" : Theme.textDim
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: !root.pushBusy
-                            onClicked: Bridge.setPartMfxSelect(chan.partIndex, modelData)
-                        }
+                        implicitHeight: ScaleMetrics.dp(16)
+                        text: (modelData + 1)
+                        fontSize: 8
+                        accent: Theme.stageMfx
+                        checked: chan.mfxSelect === modelData
+                        enabled: !root.pushBusy
+                        onClicked: Bridge.setPartMfxSelect(chan.partIndex, modelData)
                     }
                 }
             }
@@ -427,7 +351,7 @@ Rectangle {
                 Layout.fillHeight: true
                 Layout.minimumHeight: ScaleMetrics.dp(60)
                 radius: ScaleMetrics.dp(4)
-                color: "#0f172a"
+                color: Theme.bgControl
                 border.color: Theme.borderCard
                 border.width: 1
 
@@ -440,7 +364,7 @@ Rectangle {
                     anchors.bottomMargin: ScaleMetrics.dp(8)
                     width: ScaleMetrics.dp(4)
                     radius: 2
-                    color: "#1e293b"
+                    color: Theme.bgRaised
                 }
 
                 // Fader Cap (Handle)
@@ -451,8 +375,8 @@ Rectangle {
                     width: faderTrack.width - ScaleMetrics.dp(8)
                     height: ScaleMetrics.dp(22)
                     radius: ScaleMetrics.dp(4)
-                    color: faderMouse.containsPress ? Theme.tone2 : Theme.bgCardActive
-                    border.color: Theme.tone2
+                    color: faderMouse.containsPress ? Theme.tint(Theme.pageAccent, 0.4) : Theme.bgCardActive
+                    border.color: Theme.pageAccent
                     border.width: 1
 
                     // Cap grip line
@@ -460,7 +384,7 @@ Rectangle {
                         anchors.centerIn: parent
                         width: parent.width - ScaleMetrics.dp(6)
                         height: ScaleMetrics.dp(2)
-                        color: "#ffffff"
+                        color: Theme.textPrimary
                     }
                 }
 
@@ -494,7 +418,7 @@ Rectangle {
                 Layout.fillWidth: true
                 height: ScaleMetrics.dp(16)
                 radius: ScaleMetrics.dp(3)
-                color: "#0f172a"
+                color: Theme.bgControl
                 border.color: Theme.borderCard
                 border.width: 1
 
@@ -504,7 +428,7 @@ Rectangle {
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
                     width: 1
-                    color: "#475569"
+                    color: Theme.textDim
                 }
                 // Pan thumb
                 Rectangle {
@@ -513,8 +437,8 @@ Rectangle {
                     width: ScaleMetrics.dp(10)
                     height: parent.height - ScaleMetrics.dp(4)
                     radius: ScaleMetrics.dp(2)
-                    color: panMouse.containsPress ? Theme.tone1 : Theme.bgCardActive
-                    border.color: Theme.tone1
+                    color: panMouse.containsPress ? Theme.tint(Theme.pageAccent, 0.4) : Theme.bgCardActive
+                    border.color: Theme.pageAccent
                     border.width: 1
                 }
                 Text {
@@ -539,25 +463,18 @@ Rectangle {
             }
 
             // EDIT button: target this part in patch editors
-            Rectangle {
+            SpButton {
                 Layout.fillWidth: true
-                height: ScaleMetrics.dp(20)
-                radius: ScaleMetrics.dp(4)
-                color: chan.isActive ? Theme.editingFill : Theme.bgSurface
-                border.color: Theme.editingAccent
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: chan.isActive ? "● EDITING" : "EDIT"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: chan.isActive ? "#ffffff" : Theme.editingAccent
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: !root.pushBusy
-                    onClicked: Bridge.editPerfPart(chan.partIndex)
-                }
+                implicitHeight: ScaleMetrics.dp(20)
+                icon: chan.isActive ? "dotFilled" : ""
+                iconSize: 8
+                text: chan.isActive ? "EDITING" : "EDIT"
+                fontSize: 8
+                variant: "outline"
+                accent: Theme.editingAccent
+                checked: chan.isActive
+                enabled: !root.pushBusy
+                onClicked: Bridge.editPerfPart(chan.partIndex)
             }
         }
     }

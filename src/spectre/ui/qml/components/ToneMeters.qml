@@ -119,7 +119,7 @@ Rectangle {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     height: ScaleMetrics.dp(4)
-                    color: "#ffffff"
+                    color: Theme.textPrimary
                     opacity: barRoot.level > 0 ? 0.35 : 0.0
                 }
             }

@@ -36,7 +36,7 @@ Rectangle {
             spacing: ScaleMetrics.dp(8)
             Rectangle {
                 width: ScaleMetrics.dp(8); height: ScaleMetrics.dp(8); radius: 4
-                color: "#94a3b8"
+                color: Theme.textSecondary
             }
             Text {
                 text: "HARDWARE"
@@ -75,21 +75,21 @@ Rectangle {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "ROLAND JUNO-DS / XPS-30"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.tone1 }
+                        Text { text: "ROLAND JUNO-DS / XPS-30"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.pageAccent }
                         Item { Layout.fillWidth: true }
                         Rectangle {
                             height: ScaleMetrics.dp(20)
                             implicitWidth: ScaleMetrics.dp(90)
                             radius: 3
-                            color: root.connected ? "#064e3b" : "#451a1a"
-                            border.color: root.connected ? "#10b981" : Theme.recording
+                            color: Theme.tint(root.connected ? Theme.playing : Theme.recording, 0.25)
+                            border.color: root.connected ? Theme.playing : Theme.recording
                             border.width: 1
                             Text {
                                 anchors.centerIn: parent
-                                text: root.connected ? "● CONNECTED" : "○ OFFLINE"
+                                text: root.connected ? "CONNECTED" : "OFFLINE"
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(7)
-                                color: root.connected ? "#6ee7b7" : "#fca5a5"
+                                color: root.connected ? Theme.playing : Theme.recording
                             }
                         }
                     }
@@ -99,7 +99,7 @@ Rectangle {
                     InfoRow {
                         label: "LAST PING"
                         value: root.hwJob ? Bridge.jobText : (Bridge.pingText || "—")
-                        valueColor: (Bridge.pingText.indexOf("OK") === 0 || root.hwJob) ? Theme.tone1 : Theme.recording
+                        valueColor: (Bridge.pingText.indexOf("OK") === 0 || root.hwJob) ? Theme.pageAccent : Theme.recording
                     }
 
                     Text { text: "SYNTH PORT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
@@ -152,13 +152,13 @@ Rectangle {
                         spacing: ScaleMetrics.dp(6)
                         ActionButton {
                             text: "PING"
-                            accent: Theme.tone1
+                            accent: Theme.pageAccent
                             enabled: !root.busy && root.connected
                             onClicked: Bridge.pingSynth()
                         }
                         ActionButton {
                             text: "RECONNECT"
-                            accent: Theme.tone1
+                            accent: Theme.pageAccent
                             enabled: !root.busy
                             onClicked: Bridge.reconnectSynth()
                         }
@@ -180,7 +180,7 @@ Rectangle {
                     anchors.margins: ScaleMetrics.dp(12)
                     spacing: ScaleMetrics.dp(8)
 
-                    Text { text: "MIDI PORTS"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.tone2 }
+                    Text { text: "MIDI PORTS"; font.bold: true; font.pixelSize: ScaleMetrics.sp(10); color: Theme.pageAccent }
                     Text {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
@@ -202,8 +202,8 @@ Rectangle {
                             width: ListView.view.width
                             height: ScaleMetrics.dp(32)
                             radius: 4
-                            color: "#10141d"
-                            border.color: modelData.synth ? Theme.tone1 : Theme.borderCard
+                            color: Theme.bgControl
+                            border.color: modelData.synth ? Theme.pageAccent : Theme.borderCard
                             border.width: 1
                             RowLayout {
                                 anchors.fill: parent
@@ -217,48 +217,26 @@ Rectangle {
                                     font.pixelSize: ScaleMetrics.sp(9)
                                     color: Theme.textPrimary
                                 }
-                                Tag { visible: portRow.modelData.synth; text: "SYNTH"; tint: Theme.tone1 }
-                                Rectangle {
+                                Tag { visible: portRow.modelData.synth; text: "SYNTH"; tint: Theme.pageAccent }
+                                SpButton {
                                     visible: portRow.ctl !== null && portRow.ctl.enabled
-                                    implicitWidth: fbLabel.implicitWidth + ScaleMetrics.dp(14)
+                                    implicitWidth: label.implicitWidth + ScaleMetrics.dp(14)
                                     implicitHeight: ScaleMetrics.dp(22)
-                                    radius: 3
-                                    color: "transparent"
-                                    border.color: portRow.ctl && portRow.ctl.feedback ? Theme.tone2 : Theme.borderCard
-                                    border.width: 1
-                                    Text {
-                                        id: fbLabel
-                                        anchors.centerIn: parent
-                                        text: portRow.ctl && portRow.ctl.feedback ? "FEEDBACK" : "NO FEEDBACK"
-                                        font.bold: true
-                                        font.pixelSize: ScaleMetrics.sp(7)
-                                        color: portRow.ctl && portRow.ctl.feedback ? Theme.tone2 : Theme.textDim
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: Bridge.setControllerFeedback(portRow.modelData.key, !portRow.ctl.feedback)
-                                    }
+                                    text: portRow.ctl && portRow.ctl.feedback ? "FEEDBACK" : "NO FEEDBACK"
+                                    fontSize: 8
+                                    checked: portRow.ctl && portRow.ctl.feedback
+                                    onClicked: Bridge.setControllerFeedback(portRow.modelData.key, !portRow.ctl.feedback)
                                 }
-                                Rectangle {
+                                SpButton {
                                     visible: portRow.ctl !== null
-                                    implicitWidth: ctlLabel.implicitWidth + ScaleMetrics.dp(14)
                                     implicitHeight: ScaleMetrics.dp(22)
-                                    radius: 3
-                                    color: portRow.ctl && portRow.ctl.enabled ? "#2a1f08" : "transparent"
-                                    border.color: portRow.ctl && portRow.ctl.enabled ? Theme.warning : Theme.borderCard
-                                    border.width: 1
-                                    Text {
-                                        id: ctlLabel
-                                        anchors.centerIn: parent
-                                        text: portRow.ctl && portRow.ctl.enabled ? (portRow.ctl.open ? "CONTROLLER ●" : "CONTROLLER") : "CONTROLLER OFF"
-                                        font.bold: true
-                                        font.pixelSize: ScaleMetrics.sp(7)
-                                        color: portRow.ctl && portRow.ctl.enabled ? Theme.warning : Theme.textDim
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: Bridge.setControllerPortEnabled(portRow.modelData.key, !portRow.ctl.enabled)
-                                    }
+                                    compact: true
+                                    icon: portRow.ctl && portRow.ctl.enabled && portRow.ctl.open ? "dotFilled" : ""
+                                    iconSize: 8
+                                    text: portRow.ctl && portRow.ctl.enabled ? "CONTROLLER" : "CONTROLLER OFF"
+                                    fontSize: 8
+                                    checked: portRow.ctl && portRow.ctl.enabled
+                                    onClicked: Bridge.setControllerPortEnabled(portRow.modelData.key, !portRow.ctl.enabled)
                                 }
                                 Tag { visible: portRow.modelData.input; text: "IN"; tint: Theme.textSecondary }
                                 Tag { visible: portRow.modelData.output; text: "OUT"; tint: Theme.textSecondary }
@@ -288,11 +266,11 @@ Rectangle {
         id: ir
         property string label: ""
         property string value: ""
-        property color valueColor: Theme.tone1
+        property color valueColor: Theme.pageAccent
         Layout.fillWidth: true
         height: ScaleMetrics.dp(30)
         radius: 4
-        color: "#10141d"
+        color: Theme.bgControl
         border.color: Theme.borderCard
         border.width: 1
         RowLayout {
@@ -312,27 +290,12 @@ Rectangle {
         }
     }
 
-    component Chip: Rectangle {
-        id: chip
-        property string text: ""
+    component Chip: SpButton {
         property bool active: false
-        signal clicked()
-        width: chipLabel.implicitWidth + ScaleMetrics.dp(16)
-        height: ScaleMetrics.dp(26)
-        radius: 3
-        color: active ? Theme.bgCardActive : "#10141d"
-        border.color: active ? Theme.tone1 : Theme.borderCard
-        border.width: 1
-        opacity: root.busy ? 0.5 : 1.0
-        Text {
-            id: chipLabel
-            anchors.centerIn: parent
-            text: chip.text
-            font.bold: true
-            font.pixelSize: ScaleMetrics.sp(8)
-            color: chip.active ? Theme.tone1 : Theme.textSecondary
-        }
-        MouseArea { anchors.fill: parent; enabled: !root.busy; onClicked: chip.clicked() }
+        checked: active
+        compact: true
+        enabled: !root.busy
+        implicitHeight: ScaleMetrics.dp(26)
     }
 
     component Tag: Rectangle {
@@ -355,30 +318,9 @@ Rectangle {
         }
     }
 
-    component ActionButton: Rectangle {
-        id: ab
-        property string text: ""
-        property color accent: Theme.tone1
-        signal clicked()
+    component ActionButton: SpButton {
+        variant: "outline"
         Layout.fillWidth: true
-        height: ScaleMetrics.dp(32)
-        radius: ScaleMetrics.dp(4)
-        color: abMouse.pressed ? Theme.bgCardActive : "#10141d"
-        border.color: ab.accent
-        border.width: 1
-        opacity: enabled ? 1.0 : 0.4
-        Text {
-            anchors.centerIn: parent
-            text: ab.text
-            font.bold: true
-            font.pixelSize: ScaleMetrics.sp(9)
-            color: ab.accent
-        }
-        MouseArea {
-            id: abMouse
-            anchors.fill: parent
-            enabled: ab.enabled
-            onClicked: ab.clicked()
-        }
+        implicitHeight: ScaleMetrics.dp(32)
     }
 }

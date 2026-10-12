@@ -120,7 +120,7 @@ Rectangle {
 
             Rectangle {
                 width: ScaleMetrics.dp(8); height: ScaleMetrics.dp(8); radius: 4
-                color: "#60a5fa"
+                color: Theme.pageAccent
             }
             Text {
                 text: "PRESET & PATCH LIBRARIAN"
@@ -132,9 +132,9 @@ Rectangle {
             Item { Layout.fillWidth: true }
             Rectangle {
                 visible: root.patchModel === null || root.patchModel === undefined || (Bridge.libraryError || "") !== ""
-                color: "#3a2f10"
+                color: Theme.tint(Theme.favorite, 0.2)
                 radius: 3
-                border.color: "#fbbf24"
+                border.color: Theme.favorite
                 border.width: 1
                 Layout.preferredWidth: ScaleMetrics.dp(280)
                 height: ScaleMetrics.dp(22)
@@ -144,7 +144,7 @@ Rectangle {
                     text: "DEMO DATA — LIBRARY OFFLINE" + (((Bridge.libraryError || "") !== "") ? (": " + Bridge.libraryError) : "")
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(7)
-                    color: "#fbbf24"
+                    color: Theme.favorite
                     elide: Text.ElideRight
                 }
             }
@@ -157,46 +157,20 @@ Rectangle {
             }
             Item { width: ScaleMetrics.dp(4) }
             // CANCEL: back to the previous view, no destination change
-            Rectangle {
-                width: ScaleMetrics.dp(72)
-                height: ScaleMetrics.dp(26)
-                radius: ScaleMetrics.dp(4)
-                color: libCancelArea.pressed ? Theme.bgCardActive : "#10141d"
-                border.color: Theme.borderCard
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: "CANCEL"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(9)
-                    color: Theme.textSecondary
-                }
-                MouseArea {
-                    id: libCancelArea
-                    anchors.fill: parent
-                    onClicked: Bridge.cancelLibrarian()
-                }
+            SpButton {
+                implicitWidth: ScaleMetrics.dp(72)
+                implicitHeight: ScaleMetrics.dp(26)
+                text: "CANCEL"
+                onClicked: Bridge.cancelLibrarian()
             }
             // OK: close into the auditioned context (mixer / engine view)
-            Rectangle {
-                width: ScaleMetrics.dp(56)
-                height: ScaleMetrics.dp(26)
-                radius: ScaleMetrics.dp(4)
-                color: libOkArea.pressed ? Theme.bgCardActive : "#0c2f3f"
-                border.color: "#38bdf8"
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: "OK ✓"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(9)
-                    color: "#38bdf8"
-                }
-                MouseArea {
-                    id: libOkArea
-                    anchors.fill: parent
-                    onClicked: Bridge.toggleLibrarian()
-                }
+            SpButton {
+                implicitWidth: ScaleMetrics.dp(56)
+                implicitHeight: ScaleMetrics.dp(26)
+                icon: "check"
+                text: "OK"
+                variant: "outline"
+                onClicked: Bridge.toggleLibrarian()
             }
         }
 
@@ -207,8 +181,8 @@ Rectangle {
             Layout.preferredHeight: Bridge.librarianPickTarget > 0 ? ScaleMetrics.dp(30) : 0
             height: ScaleMetrics.dp(30)
             radius: ScaleMetrics.dp(4)
-            color: "#2d1b4e"
-            border.color: Theme.tone2
+            color: Theme.tint(Theme.stagePart)
+            border.color: Theme.stagePart
             border.width: 1
             Text {
                 anchors.fill: parent
@@ -218,7 +192,7 @@ Rectangle {
                 text: "PICKING PATCH FOR PART " + Bridge.librarianPickTarget + " — taps audition & assign, OK when done"
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(9)
-                color: Theme.tone2
+                color: Theme.stagePart
                 elide: Text.ElideRight
             }
         }
@@ -240,54 +214,30 @@ Rectangle {
             spacing: ScaleMetrics.dp(4)
             Repeater {
                 model: root.kindLabels
-                delegate: Rectangle {
-                    width: ScaleMetrics.dp(64)
-                    height: ScaleMetrics.dp(24)
-                    radius: 3
-                    color: root.activeKindIdx === index ? Theme.bgCardActive : "#10141d"
-                    border.color: root.activeKindIdx === index ? "#60a5fa" : Theme.borderCard
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: modelData
-                        font.bold: root.activeKindIdx === index
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: root.activeKindIdx === index ? "#60a5fa" : Theme.textSecondary
-                    }
-                    MouseArea { anchors.fill: parent; onClicked: { root.activeKindIdx = index; root.applyFilter() } }
+                delegate: SpButton {
+                    implicitWidth: ScaleMetrics.dp(64)
+                    implicitHeight: ScaleMetrics.dp(24)
+                    text: modelData
+                    fontSize: 8
+                    checked: root.activeKindIdx === index
+                    onClicked: { root.activeKindIdx = index; root.applyFilter() }
                 }
             }
-            Rectangle {
-                width: ScaleMetrics.dp(76)
-                height: ScaleMetrics.dp(24)
-                radius: 3
-                color: root.userSlotsOnly ? Theme.bgCardActive : "#10141d"
-                border.color: root.userSlotsOnly ? "#60a5fa" : Theme.borderCard
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: "USER SLOTS"
-                    font.bold: root.userSlotsOnly
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: root.userSlotsOnly ? "#60a5fa" : Theme.textSecondary
-                }
-                MouseArea { anchors.fill: parent; onClicked: root.setSourceFilter("slots") }
+            SpButton {
+                implicitWidth: ScaleMetrics.dp(76)
+                implicitHeight: ScaleMetrics.dp(24)
+                text: "USER SLOTS"
+                fontSize: 8
+                checked: root.userSlotsOnly
+                onClicked: root.setSourceFilter("slots")
             }
-            Rectangle {
-                width: ScaleMetrics.dp(76)
-                height: ScaleMetrics.dp(24)
-                radius: 3
-                color: root.userFilesOnly ? Theme.bgCardActive : "#10141d"
-                border.color: root.userFilesOnly ? "#60a5fa" : Theme.borderCard
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: "USER FILES"
-                    font.bold: root.userFilesOnly
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: root.userFilesOnly ? "#60a5fa" : Theme.textSecondary
-                }
-                MouseArea { anchors.fill: parent; onClicked: root.setSourceFilter("files") }
+            SpButton {
+                implicitWidth: ScaleMetrics.dp(76)
+                implicitHeight: ScaleMetrics.dp(24)
+                text: "USER FILES"
+                fontSize: 8
+                checked: root.userFilesOnly
+                onClicked: root.setSourceFilter("files")
             }
             Item { Layout.fillWidth: true }
             Text {
@@ -295,21 +245,16 @@ Rectangle {
                 font.pixelSize: ScaleMetrics.sp(8)
                 color: Theme.textSecondary
             }
-            Rectangle {
-                width: ScaleMetrics.dp(52)
-                height: ScaleMetrics.dp(24)
-                radius: 3
-                color: root.favOnly ? "#3a2f10" : "#10141d"
-                border.color: root.favOnly ? "#fbbf24" : Theme.borderCard
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: "★ Fav"
-                    font.bold: root.favOnly
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: root.favOnly ? "#fbbf24" : Theme.textSecondary
-                }
-                MouseArea { anchors.fill: parent; onClicked: { root.favOnly = !root.favOnly; root.applyFilter() } }
+            SpButton {
+                implicitWidth: ScaleMetrics.dp(52)
+                implicitHeight: ScaleMetrics.dp(24)
+                icon: "favorite"
+                iconFilled: root.favOnly
+                text: "Fav"
+                fontSize: 8
+                accent: Theme.favorite
+                checked: root.favOnly
+                onClicked: { root.favOnly = !root.favOnly; root.applyFilter() }
             }
         }
 
@@ -349,8 +294,8 @@ Rectangle {
                             property string code: modelData.split(":")[0]
                             property string label: modelData.split(":").slice(1).join(":")
                             property bool isActive: root.activeCode === code
-                            color: isActive ? Theme.bgCardActive : "#10141d"
-                            border.color: isActive ? "#60a5fa" : Theme.borderCard
+                            color: isActive ? Theme.tint(Theme.pageAccent) : Theme.bgControl
+                            border.color: isActive ? Theme.pageAccent : Theme.borderCard
                             border.width: 1
                             RowLayout {
                                 anchors.fill: parent
@@ -362,12 +307,12 @@ Rectangle {
                                     font.family: Theme.fontMono
                                     font.bold: true
                                     font.pixelSize: ScaleMetrics.sp(8)
-                                    color: isActive ? "#60a5fa" : Theme.tone1
+                                    color: isActive ? Theme.pageAccent : Theme.textSecondary
                                 }
                                 Text {
                                     text: label
                                     font.pixelSize: ScaleMetrics.sp(8)
-                                    color: isActive ? "#60a5fa" : Theme.textSecondary
+                                    color: isActive ? Theme.pageAccent : Theme.textSecondary
                                     elide: Text.ElideRight
                                     Layout.fillWidth: true
                                 }
@@ -384,7 +329,7 @@ Rectangle {
             Layout.fillWidth: true
             height: ScaleMetrics.dp(28)
             radius: 4
-            color: "#10141d"
+            color: Theme.bgControl
             border.color: Theme.borderCard
             border.width: 1
             visible: root.patchModel !== null
@@ -393,9 +338,9 @@ Rectangle {
                 anchors.leftMargin: ScaleMetrics.dp(8)
                 anchors.rightMargin: ScaleMetrics.dp(6)
                 spacing: ScaleMetrics.dp(6)
-                Text {
-                    text: "🔍"
-                    font.pixelSize: ScaleMetrics.sp(10)
+                Icon {
+                    name: "search"
+                    size: 13
                     color: Theme.textDim
                 }
                 TextInput {
@@ -416,30 +361,23 @@ Rectangle {
                         visible: parent.text === "" && !parent.activeFocus
                     }
                 }
-                Text {
+                Icon {
                     visible: searchField.text.length > 0
-                    text: "✕"
-                    font.pixelSize: ScaleMetrics.sp(10)
+                    name: "close"
+                    size: 13
                     color: Theme.textDim
                     MouseArea {
                         anchors.fill: parent
                         onClicked: { searchField.text = ""; root.searchText = ""; root.applyFilter() }
                     }
                 }
-                Rectangle {
-                    width: ScaleMetrics.dp(28)
-                    height: ScaleMetrics.dp(22)
-                    radius: ScaleMetrics.dp(4)
-                    color: root.searchKbVisible ? "#60a5fa" : Theme.bgSurface
-                    border.color: Theme.borderCard
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "⌨"
-                        font.pixelSize: ScaleMetrics.sp(12)
-                        color: root.searchKbVisible ? "#000000" : Theme.textSecondary
-                    }
-                    MouseArea { anchors.fill: parent; onClicked: { root.searchKbVisible = !root.searchKbVisible; if (root.searchKbVisible) searchField.forceActiveFocus() } }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(28)
+                    implicitHeight: ScaleMetrics.dp(22)
+                    icon: "keyboard"
+                    fontSize: 12
+                    checked: root.searchKbVisible
+                    onClicked: { root.searchKbVisible = !root.searchKbVisible; if (root.searchKbVisible) searchField.forceActiveFocus() }
                 }
             }
         }
@@ -449,7 +387,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: ScaleMetrics.dp(140)
             visible: root.searchKbVisible && root.patchModel !== null
-            accentColor: "#60a5fa"
+            accentColor: Theme.pageAccent
             onKeyClicked: (key) => {
                 searchField.text += key
                 root.searchText = searchField.text
@@ -493,12 +431,12 @@ Rectangle {
                         minimumSize: 0.04
                         contentItem: Rectangle {
                             radius: width / 2
-                            color: parent.pressed ? "#60a5fa" : "#3b82a6"
+                            color: parent.pressed ? Theme.pageAccent : Theme.borderActive
                             opacity: 0.9
                         }
                         background: Rectangle {
                             radius: width / 2
-                            color: "#10141d"
+                            color: Theme.bgControl
                             opacity: 0.7
                         }
                     }
@@ -507,8 +445,8 @@ Rectangle {
                         width: ListView.view.width - ScaleMetrics.dp(16)
                         height: ScaleMetrics.dp(48)
                         radius: 4
-                        color: rowMouse.pressed ? Theme.bgCardActive : "#0d1017"
-                        border.color: _selected ? "#60a5fa" : Theme.borderCard
+                        color: rowMouse.pressed ? Theme.bgCardActive : Theme.bgControl
+                        border.color: _selected ? Theme.pageAccent : Theme.borderCard
                         border.width: _selected ? 2 : 1
 
                         // Resolve display fields for both models:
@@ -532,7 +470,7 @@ Rectangle {
                                 font.family: Theme.fontMono
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(9)
-                                color: Theme.tone1
+                                color: Theme.pageAccent
                             }
                             Text {
                                 text: parent.parent._name
@@ -548,10 +486,11 @@ Rectangle {
                                 color: Theme.textDim
                                 elide: Text.ElideRight
                             }
-                            Text {
-                                text: parent.parent._fav ? "★" : "☆"
-                                font.pixelSize: ScaleMetrics.sp(12)
-                                color: parent.parent._fav ? "#fbbf24" : Theme.textDim
+                            Icon {
+                                name: "favorite"
+                                filled: parent.parent._fav
+                                size: 16
+                                color: parent.parent._fav ? Theme.favorite : Theme.textDim
                                 MouseArea {
                                     anchors.fill: parent
                                     onClicked: function(mouse) {
@@ -633,10 +572,10 @@ Rectangle {
 
                     Text { text: "PRESET ACTIONS"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textDim }
 
-                    LibBtn { text: "INITIALIZE ACTIVE PATCH (RAM)"; accent: "#fbbf24"; onClicked: { root.pendingAction = ""; Bridge.openInitPatchModal() } }
+                    LibBtn { text: "INITIALIZE ACTIVE PATCH (RAM)"; accent: Theme.warning; onClicked: { root.pendingAction = ""; Bridge.openInitPatchModal() } }
                     LibBtn {
                         text: "RENAME SELECTED"
-                        accent: Theme.tone2
+                        accent: Theme.pageAccent
                         opacity: (root.isSpectreFileRow() || root.isUserPatchRow()) ? 1.0 : 0.4
                         onClicked: {
                             root.pendingAction = ""
@@ -651,7 +590,7 @@ Rectangle {
                     }
                     LibBtn {
                         text: root.pendingAction === "delete" ? "TAP AGAIN TO DELETE" : "DELETE SELECTED FILE"
-                        accent: "#ef4444"
+                        accent: Theme.recording
                         opacity: root.selectedRow !== null && root.selectedRow.source === "file" ? 1.0 : 0.4
                         onClicked: {
                             if (!(root.selectedRow !== null && root.selectedRow.source === "file")) {
@@ -671,7 +610,7 @@ Rectangle {
                     }
                     LibBtn {
                         text: root.pendingAction === "reinit" ? "TAP AGAIN TO REINIT" : "REINIT SELECTED SLOT"
-                        accent: "#fbbf24"
+                        accent: Theme.warning
                         opacity: root.isUserPatchRow() ? 1.0 : 0.4
                         onClicked: {
                             if (!root.isUserPatchRow()) {
@@ -692,7 +631,7 @@ Rectangle {
                         text: root.refreshingSlots
                               ? (Bridge.jobProgress >= 0 ? "READING SLOTS… " + Math.round(Bridge.jobProgress * 100) + "%" : "READING SLOTS…")
                               : "REFRESH USER SLOTS"
-                        accent: Theme.tone1
+                        accent: Theme.pageAccent
                         onClicked: {
                             if (root.refreshingSlots) return
                             root.pendingAction = ""
@@ -719,14 +658,14 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(40)
                         radius: 4
-                        color: "#10141d"
+                        color: Theme.bgControl
                         border.color: Theme.borderCard
                         border.width: 1
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: 4
                             Text { text: "ACTIVE SOUND:"; font.pixelSize: ScaleMetrics.sp(7); color: Theme.textDim }
-                            Text { text: Bridge.patchName; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.tone1; elide: Text.ElideRight }
+                            Text { text: Bridge.patchName; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.pageAccent; elide: Text.ElideRight }
                         }
                     }
                 }
@@ -753,30 +692,10 @@ Rectangle {
         id: renameModal
     }
 
-    component LibBtn: Rectangle {
-        id: lb
-        property string text: "ACTION"
-        property color accent: Theme.primary
-        signal clicked()
-
+    component LibBtn: SpButton {
+        variant: "outline"
+        fontSize: Theme.fontXs
         Layout.fillWidth: true
-        height: ScaleMetrics.dp(34)
-        radius: 4
-        color: lbMouse.pressed ? Theme.bgCardActive : "#10141d"
-        border.color: lb.accent
-        border.width: 1
-
-        Text {
-            anchors.centerIn: parent
-            text: lb.text
-            font.bold: true
-            font.pixelSize: ScaleMetrics.sp(8)
-            color: lb.accent
-        }
-        MouseArea {
-            id: lbMouse
-            anchors.fill: parent
-            onClicked: lb.clicked()
-        }
+        implicitHeight: ScaleMetrics.dp(34)
     }
 }

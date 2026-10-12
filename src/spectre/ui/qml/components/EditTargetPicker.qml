@@ -12,10 +12,10 @@ Rectangle {
     anchors.fill: parent
     visible: false
     z: 998
-    color: "#e60a0c10"
+    color: Theme.scrim
 
-    readonly property color partColor: "#c084fc"
-    readonly property color mfxColor: "#ec4899"
+    readonly property color partColor: Theme.stagePart
+    readonly property color mfxColor: Theme.stageMfx
     readonly property var parts: Bridge.perfParts
     readonly property var status: Bridge.partFileStatus
     readonly property var mfxSlots: Bridge.perfFxSlots
@@ -86,22 +86,12 @@ Rectangle {
                     color: Theme.textDim
                     elide: Text.ElideRight
                 }
-                Rectangle {
+                SpButton {
                     implicitWidth: ScaleMetrics.dp(34)
                     implicitHeight: ScaleMetrics.dp(28)
-                    radius: ScaleMetrics.dp(4)
-                    color: "#10141d"
-                    border.color: Theme.borderCard
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        font.pixelSize: ScaleMetrics.sp(11)
-                        color: Theme.textSecondary
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: root.close()
-                    }
+                    icon: "close"
+                    fontSize: 11
+                    onClicked: root.close()
                 }
             }
 
@@ -127,7 +117,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: ScaleMetrics.dp(66)
                         radius: ScaleMetrics.dp(5)
-                        color: active ? Theme.bgCardActive : (tileMouse.pressed ? "#1a1f2b" : "#10141d")
+                        color: active ? Theme.tint(root.partColor) : (tileMouse.pressed ? Theme.bgCardActive : Theme.bgControl)
                         border.color: active ? root.partColor : Theme.borderCard
                         border.width: active ? 2 : 1
                         opacity: modelData.muted ? 0.45 : 1.0
@@ -143,11 +133,20 @@ Rectangle {
                             anchors.right: parent.right
                             anchors.rightMargin: ScaleMetrics.dp(6)
                             y: ScaleMetrics.dp(4)
-                            visible: tile.edited || tile.modelData.muted
-                            text: tile.modelData.muted ? "MUTE" : "✎"
+                            visible: tile.modelData.muted
+                            text: "MUTE"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(7)
-                            color: tile.modelData.muted ? Theme.recording : "#60a5fa"
+                            color: Theme.recording
+                        }
+                        Icon {
+                            anchors.right: parent.right
+                            anchors.rightMargin: ScaleMetrics.dp(6)
+                            y: ScaleMetrics.dp(3)
+                            visible: tile.edited && !tile.modelData.muted
+                            name: "edit"
+                            size: 12
+                            color: Theme.modified
                         }
                         Text {
                             x: ScaleMetrics.dp(6)
@@ -202,7 +201,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: ScaleMetrics.dp(52)
                         radius: ScaleMetrics.dp(5)
-                        color: active ? Theme.bgCardActive : (mfxMouse.pressed ? "#1a1f2b" : "#10141d")
+                        color: active ? Theme.tint(root.mfxColor) : (mfxMouse.pressed ? Theme.bgCardActive : Theme.bgControl)
                         border.color: active ? root.mfxColor : Theme.borderCard
                         border.width: active ? 2 : 1
                         Column {

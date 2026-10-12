@@ -119,7 +119,7 @@ Canvas {
             ctx.rect(cx - nodeW / 2, cy - nodeH / 2, nodeW, nodeH);
             ctx.fill();
             ctx.stroke();
-            ctx.fillStyle = special ? "#000000" : col;
+            ctx.fillStyle = special ? Theme.textOnFill : col;
             ctx.font = "bold " + ScaleMetrics.sp(8) + "px sans-serif";
             ctx.fillText(lab === "RING" ? "RING ×" : lab, cx, cy);
             if (lab === "BOOST" && root.boosterText !== "") {

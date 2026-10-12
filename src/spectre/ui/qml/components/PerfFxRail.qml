@@ -98,8 +98,8 @@ Rectangle {
                     Layout.fillWidth: true
                     height: ScaleMetrics.dp(58)
                     radius: ScaleMetrics.dp(4)
-                    color: rail.editingSlot === modelData ? "#1c1533" : "#0f172a"
-                    border.color: rail.editingSlot === modelData ? Theme.tone2 : Theme.borderCard
+                    color: rail.editingSlot === modelData ? Theme.tint(Theme.stageMfx) : Theme.bgControl
+                    border.color: rail.editingSlot === modelData ? Theme.stageMfx : Theme.borderCard
                     border.width: rail.editingSlot === modelData ? 2 : 1
                     property var entry: rail.mfxEntry(modelData)
                     property int src: mfxCard.entry ? mfxCard.entry.source : 0
@@ -112,21 +112,16 @@ Rectangle {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: ScaleMetrics.dp(3)
-                            Rectangle {
-                                width: ScaleMetrics.dp(16); height: ScaleMetrics.dp(14)
-                                radius: 2
-                                color: rail.editingSlot === modelData ? Theme.tone2 : "#1e293b"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "●"
-                                    font.pixelSize: ScaleMetrics.sp(7)
-                                    color: rail.editingSlot === modelData ? "#fff" : Theme.textDim
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    enabled: !rail.busy
-                                    onClicked: Bridge.setEditingPerfMfx(modelData)
-                                }
+                            SpButton {
+                                implicitWidth: ScaleMetrics.dp(16)
+                                implicitHeight: ScaleMetrics.dp(14)
+                                icon: "dotFilled"
+                                iconSize: 8
+                                fontSize: 8
+                                accent: Theme.stageMfx
+                                checked: rail.editingSlot === modelData
+                                enabled: !rail.busy
+                                onClicked: Bridge.setEditingPerfMfx(modelData)
                             }
                             Text {
                                 text: "MFX" + modelData + " T" + (mfxCard.entry ? mfxCard.entry.type : 0)
@@ -142,51 +137,32 @@ Rectangle {
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(6)
                                 font.family: Theme.fontMono
-                                color: mfxCard.feeds > 0 ? Theme.tone2 : Theme.textDim
+                                color: mfxCard.feeds > 0 ? Theme.stageMfx : Theme.textDim
                             }
                         }
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: ScaleMetrics.dp(3)
-                            Rectangle {
+                            SpButton {
                                 Layout.fillWidth: true
-                                height: ScaleMetrics.dp(18)
-                                radius: 3
-                                color: mfxCard.src === 0 ? "#0e3a47" : "#2e1a06"
-                                border.color: mfxCard.src === 0 ? "#06b6d4" : Theme.warning
-                                border.width: 1
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: mfxCard.src === 0 ? "PERFORM" : "PART " + mfxCard.src
-                                    font.bold: true
-                                    font.pixelSize: ScaleMetrics.sp(7)
-                                    color: mfxCard.src === 0 ? "#67e8f9" : Theme.warning
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    enabled: !rail.busy
-                                    onClicked: rail.cycleOrigin("mfx" + modelData, mfxCard.src)
-                                }
+                                implicitHeight: ScaleMetrics.dp(18)
+                                text: mfxCard.src === 0 ? "PERFORM" : "PART " + mfxCard.src
+                                fontSize: 8
+                                accent: Theme.stagePart
+                                checked: mfxCard.src !== 0
+                                enabled: !rail.busy
+                                onClicked: rail.cycleOrigin("mfx" + modelData, mfxCard.src)
                             }
-                            Rectangle {
+                            SpButton {
                                 visible: mfxCard.src !== 0
-                                width: ScaleMetrics.dp(44); height: ScaleMetrics.dp(18)
-                                radius: 3
-                                color: Theme.bgSurface
-                                border.color: Theme.tone1
-                                border.width: 1
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "⧉→PERF"
-                                    font.bold: true
-                                    font.pixelSize: ScaleMetrics.sp(6)
-                                    color: Theme.tone1
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    enabled: !rail.busy
-                                    onClicked: Bridge.copyOriginToPerform("mfx" + modelData)
-                                }
+                                implicitWidth: ScaleMetrics.dp(44)
+                                implicitHeight: ScaleMetrics.dp(18)
+                                icon: "copy"
+                                text: "PERF"
+                                fontSize: 8
+                                variant: "outline"
+                                enabled: !rail.busy
+                                onClicked: Bridge.copyOriginToPerform("mfx" + modelData)
                             }
                         }
                     }
@@ -199,7 +175,7 @@ Rectangle {
                 Layout.fillWidth: true
                 height: ScaleMetrics.dp(50)
                 radius: ScaleMetrics.dp(4)
-                color: "#0f172a"
+                color: Theme.bgControl
                 border.color: Theme.borderCard
                 border.width: 1
                 property var entry: rail.choEntry()
@@ -221,45 +197,26 @@ Rectangle {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: ScaleMetrics.dp(3)
-                        Rectangle {
+                        SpButton {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(18)
-                            radius: 3
-                            color: choCard.src === 0 ? "#0e3a47" : "#2e1a06"
-                            border.color: choCard.src === 0 ? "#06b6d4" : Theme.warning
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: choCard.src === 0 ? "PERFORM" : "PART " + choCard.src
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(7)
-                                color: choCard.src === 0 ? "#67e8f9" : Theme.warning
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !rail.busy
-                                onClicked: rail.cycleOrigin("chorus", choCard.src)
-                            }
+                            implicitHeight: ScaleMetrics.dp(18)
+                            text: choCard.src === 0 ? "PERFORM" : "PART " + choCard.src
+                            fontSize: 8
+                            accent: Theme.stagePart
+                            checked: choCard.src !== 0
+                            enabled: !rail.busy
+                            onClicked: rail.cycleOrigin("chorus", choCard.src)
                         }
-                        Rectangle {
+                        SpButton {
                             visible: choCard.src !== 0
-                            width: ScaleMetrics.dp(44); height: ScaleMetrics.dp(18)
-                            radius: 3
-                            color: Theme.bgSurface
-                            border.color: Theme.tone1
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: "⧉→PERF"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(6)
-                                color: Theme.tone1
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !rail.busy
-                                onClicked: Bridge.copyOriginToPerform("chorus")
-                            }
+                            implicitWidth: ScaleMetrics.dp(44)
+                            implicitHeight: ScaleMetrics.dp(18)
+                            icon: "copy"
+                            text: "PERF"
+                            fontSize: 8
+                            variant: "outline"
+                            enabled: !rail.busy
+                            onClicked: Bridge.copyOriginToPerform("chorus")
                         }
                     }
                 }
@@ -271,7 +228,7 @@ Rectangle {
                 Layout.fillWidth: true
                 height: ScaleMetrics.dp(50)
                 radius: ScaleMetrics.dp(4)
-                color: "#0f172a"
+                color: Theme.bgControl
                 border.color: Theme.borderCard
                 border.width: 1
                 property var entry: rail.revEntry()
@@ -293,45 +250,26 @@ Rectangle {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: ScaleMetrics.dp(3)
-                        Rectangle {
+                        SpButton {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(18)
-                            radius: 3
-                            color: revCard.src === 0 ? "#0e3a47" : "#2e1a06"
-                            border.color: revCard.src === 0 ? "#06b6d4" : Theme.warning
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: revCard.src === 0 ? "PERFORM" : "PART " + revCard.src
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(7)
-                                color: revCard.src === 0 ? "#67e8f9" : Theme.warning
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !rail.busy
-                                onClicked: rail.cycleOrigin("reverb", revCard.src)
-                            }
+                            implicitHeight: ScaleMetrics.dp(18)
+                            text: revCard.src === 0 ? "PERFORM" : "PART " + revCard.src
+                            fontSize: 8
+                            accent: Theme.stagePart
+                            checked: revCard.src !== 0
+                            enabled: !rail.busy
+                            onClicked: rail.cycleOrigin("reverb", revCard.src)
                         }
-                        Rectangle {
+                        SpButton {
                             visible: revCard.src !== 0
-                            width: ScaleMetrics.dp(44); height: ScaleMetrics.dp(18)
-                            radius: 3
-                            color: Theme.bgSurface
-                            border.color: Theme.tone1
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: "⧉→PERF"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(6)
-                                color: Theme.tone1
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !rail.busy
-                                onClicked: Bridge.copyOriginToPerform("reverb")
-                            }
+                            implicitWidth: ScaleMetrics.dp(44)
+                            implicitHeight: ScaleMetrics.dp(18)
+                            icon: "copy"
+                            text: "PERF"
+                            fontSize: 8
+                            variant: "outline"
+                            enabled: !rail.busy
+                            onClicked: Bridge.copyOriginToPerform("reverb")
                         }
                     }
                 }

@@ -62,28 +62,17 @@ Rectangle {
             spacing: ScaleMetrics.dp(4)
             Repeater {
                 model: 10
-                delegate: Rectangle {
+                delegate: SpButton {
                     required property int index
                     readonly property bool sel: root.typeIndex === index
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(30)
-                    radius: ScaleMetrics.dp(4)
-                    color: sel ? (index > 0 ? Theme.warning : Theme.primary) : (chipArea.pressed ? Theme.bgCardActive : Theme.bgSurface)
-                    border.color: sel ? "transparent" : Theme.borderCard
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: (index + 1).toString()
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(11)
-                        font.family: Theme.fontMono
-                        color: parent.sel ? "#000000" : Theme.textSecondary
-                    }
-                    MouseArea {
-                        id: chipArea
-                        anchors.fill: parent
-                        onClicked: Bridge.setTmtStructure(root.pair, index)
-                    }
+                    implicitHeight: ScaleMetrics.dp(30)
+                    text: (index + 1).toString()
+                    fontSize: 11
+                    mono: true
+                    accent: index > 0 ? Theme.warning : Theme.pageAccent
+                    checked: sel
+                    onClicked: Bridge.setTmtStructure(root.pair, index)
                 }
             }
         }
@@ -134,28 +123,17 @@ Rectangle {
             }
             Repeater {
                 model: Bridge.tmtBoosterLabels
-                delegate: Rectangle {
+                delegate: SpButton {
                     required property int index
                     required property string modelData
                     readonly property bool sel: root.booster === index
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(26)
-                    radius: ScaleMetrics.dp(4)
-                    color: sel ? Theme.warning : (boostArea.pressed ? Theme.bgCardActive : Theme.bgSurface)
-                    border.color: sel ? "transparent" : Theme.borderCard
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: parent.modelData
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: parent.sel ? "#000000" : Theme.textSecondary
-                    }
-                    MouseArea {
-                        id: boostArea
-                        anchors.fill: parent
-                        onClicked: Bridge.setTmtBooster(root.pair, index)
-                    }
+                    implicitHeight: ScaleMetrics.dp(26)
+                    text: modelData
+                    fontSize: 8
+                    accent: index > 0 ? Theme.warning : Theme.pageAccent
+                    checked: sel
+                    onClicked: Bridge.setTmtBooster(root.pair, index)
                 }
             }
         }

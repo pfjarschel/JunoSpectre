@@ -56,7 +56,7 @@ Rectangle {
                 width: ScaleMetrics.dp(8)
                 height: ScaleMetrics.dp(8)
                 radius: 4
-                color: "#38bdf8"
+                color: Theme.pageAccent
             }
 
             Text {
@@ -73,8 +73,8 @@ Rectangle {
                 height: ScaleMetrics.dp(20)
                 implicitWidth: ScaleMetrics.dp(105)
                 radius: ScaleMetrics.dp(3)
-                color: "#1e293b"
-                border.color: "#38bdf8"
+                color: Theme.bgRaised
+                border.color: Theme.pageAccent
                 border.width: 1
 
                 RowLayout {
@@ -82,13 +82,13 @@ Rectangle {
                     spacing: 4
                     Rectangle {
                         width: 5; height: 5; radius: 2.5
-                        color: "#38bdf8"
+                        color: Theme.pageAccent
                     }
                     Text {
                         text: "LINKED (4 TONES)"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
-                        color: "#38bdf8"
+                        color: Theme.pageAccent
                     }
                 }
             }
@@ -168,25 +168,13 @@ Rectangle {
                     spacing: ScaleMetrics.dp(3)
                     Repeater {
                         model: ["OFF", "LPF", "LPF2", "LPF3", "BPF", "HPF", "PKG"]
-                        delegate: Rectangle {
+                        delegate: SpButton {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(22)
-                            radius: 3
-                            color: Bridge.tvfType === modelData ? Theme.bgCardActive : "#10141d"
-                            border.color: Bridge.tvfType === modelData ? "#38bdf8" : Theme.borderCard
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: modelData
-                                font.bold: Bridge.tvfType === modelData
-                                font.pixelSize: ScaleMetrics.sp(7)
-                                color: Bridge.tvfType === modelData ? Theme.textPrimary : Theme.textDim
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: Bridge.sculptTvfType(modelData)
-                            }
+                            implicitHeight: ScaleMetrics.dp(22)
+                            text: modelData
+                            fontSize: 8
+                            checked: Bridge.tvfType === modelData
+                            onClicked: Bridge.sculptTvfType(modelData)
                         }
                     }
                 }
@@ -414,37 +402,21 @@ Rectangle {
 
                     Row {
                         spacing: 3
-                        Rectangle {
-                            width: ScaleMetrics.dp(45)
-                            height: ScaleMetrics.dp(22)
-                            radius: 3
-                            color: root.activeLfoTab === 1 ? Theme.bgCardActive : "#10141d"
-                            border.color: root.activeLfoTab === 1 ? "#38bdf8" : Theme.borderCard
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: "LFO 1"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(8)
-                                color: root.activeLfoTab === 1 ? Theme.textPrimary : Theme.textDim
-                            }
-                            MouseArea { anchors.fill: parent; onClicked: root.activeLfoTab = 1 }
+                        SpButton {
+                            implicitWidth: ScaleMetrics.dp(45)
+                            implicitHeight: ScaleMetrics.dp(22)
+                            text: "LFO 1"
+                            fontSize: 8
+                            checked: root.activeLfoTab === 1
+                            onClicked: root.activeLfoTab = 1
                         }
-                        Rectangle {
-                            width: ScaleMetrics.dp(45)
-                            height: ScaleMetrics.dp(22)
-                            radius: 3
-                            color: root.activeLfoTab === 2 ? Theme.bgCardActive : "#10141d"
-                            border.color: root.activeLfoTab === 2 ? "#38bdf8" : Theme.borderCard
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: "LFO 2"
-                                font.bold: true
-                                font.pixelSize: ScaleMetrics.sp(8)
-                                color: root.activeLfoTab === 2 ? Theme.textPrimary : Theme.textDim
-                            }
-                            MouseArea { anchors.fill: parent; onClicked: root.activeLfoTab = 2 }
+                        SpButton {
+                            implicitWidth: ScaleMetrics.dp(45)
+                            implicitHeight: ScaleMetrics.dp(22)
+                            text: "LFO 2"
+                            fontSize: 8
+                            checked: root.activeLfoTab === 2
+                            onClicked: root.activeLfoTab = 2
                         }
                     }
                 }
@@ -456,26 +428,13 @@ Rectangle {
                     rowSpacing: 2; columnSpacing: 2
                     Repeater {
                         model: ["TRI", "SIN", "SAW", "SQR", "TRP", "S&H", "RND", "CHS"]
-                        delegate: Rectangle {
+                        delegate: SpButton {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(20)
-                            radius: 3
-                            color: root.lfoData.wave === modelData ? Theme.bgCardActive : "#10141d"
-                            border.color: root.lfoData.wave === modelData ? "#38bdf8" : Theme.borderCard
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: modelData
-                                font.bold: root.lfoData.wave === modelData
-                                font.pixelSize: ScaleMetrics.sp(7)
-                                color: root.lfoData.wave === modelData ? Theme.textPrimary : Theme.textDim
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: Bridge.sculptLfoParam(root.activeLfoTab, "wave", modelData)
-                            }
+                            implicitHeight: ScaleMetrics.dp(20)
+                            text: modelData
+                            fontSize: 8
+                            checked: root.lfoData.wave === modelData
+                            onClicked: Bridge.sculptLfoParam(root.activeLfoTab, "wave", modelData)
                         }
                     }
                 }
@@ -538,25 +497,13 @@ Rectangle {
                     spacing: ScaleMetrics.dp(2)
                     Repeater {
                         model: ["ON-IN", "ON-OUT", "OFF-IN", "OFF-OUT"]
-                        delegate: Rectangle {
+                        delegate: SpButton {
                             Layout.fillWidth: true
-                            height: ScaleMetrics.dp(18)
-                            radius: 2
-                            color: root.lfoData.fadeMode === modelData ? Theme.bgCardActive : "#10141d"
-                            border.color: root.lfoData.fadeMode === modelData ? "#38bdf8" : Theme.borderCard
-                            border.width: 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: modelData
-                                font.bold: root.lfoData.fadeMode === modelData
-                                font.pixelSize: ScaleMetrics.sp(6)
-                                color: root.lfoData.fadeMode === modelData ? Theme.textPrimary : Theme.textDim
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: Bridge.sculptLfoParam(root.activeLfoTab, "fade_mode", modelData)
-                            }
+                            implicitHeight: ScaleMetrics.dp(18)
+                            text: modelData
+                            fontSize: 8
+                            checked: root.lfoData.fadeMode === modelData
+                            onClicked: Bridge.sculptLfoParam(root.activeLfoTab, "fade_mode", modelData)
                         }
                     }
                 }
@@ -671,8 +618,8 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(26)
                         radius: ScaleMetrics.dp(4)
-                        color: Bridge.portamentoSwitch ? Theme.bgCardActive : "#10141d"
-                        border.color: Bridge.portamentoSwitch ? "#38bdf8" : Theme.borderCard
+                        color: Bridge.portamentoSwitch ? Theme.tint(Theme.pageAccent) : Theme.bgControl
+                        border.color: Bridge.portamentoSwitch ? Theme.pageAccent : Theme.borderCard
                         border.width: 1
 
                         RowLayout {
@@ -680,7 +627,7 @@ Rectangle {
                             spacing: 4
                             Rectangle {
                                 width: 5; height: 5; radius: 2.5
-                                color: Bridge.portamentoSwitch ? "#38bdf8" : Theme.textDim
+                                color: Bridge.portamentoSwitch ? Theme.pageAccent : Theme.textDim
                             }
                             Text {
                                 text: Bridge.portamentoSwitch ? "PORTAMENTO: ON" : "PORTAMENTO: OFF"
@@ -700,8 +647,8 @@ Rectangle {
                         Layout.fillWidth: true
                         height: ScaleMetrics.dp(26)
                         radius: ScaleMetrics.dp(4)
-                        color: Bridge.legatoSwitch ? Theme.bgCardActive : "#10141d"
-                        border.color: Bridge.legatoSwitch ? "#38bdf8" : Theme.borderCard
+                        color: Bridge.legatoSwitch ? Theme.tint(Theme.pageAccent) : Theme.bgControl
+                        border.color: Bridge.legatoSwitch ? Theme.pageAccent : Theme.borderCard
                         border.width: 1
 
                         RowLayout {
@@ -709,7 +656,7 @@ Rectangle {
                             spacing: 4
                             Rectangle {
                                 width: 5; height: 5; radius: 2.5
-                                color: Bridge.legatoSwitch ? "#38bdf8" : Theme.textDim
+                                color: Bridge.legatoSwitch ? Theme.pageAccent : Theme.textDim
                             }
                             Text {
                                 text: Bridge.legatoSwitch ? "LEGATO: ON" : "LEGATO: OFF"
@@ -752,7 +699,7 @@ Rectangle {
                     label: "1/f MOD DEPTH"
                     valText: Bridge.analogFeel.toString()
                     normVal: Bridge.analogFeel / 127.0
-                    barColor: "#f59e0b"
+                    barColor: Theme.pageAccent
                     onMoved: (norm) => Bridge.setAnalogFeel(Math.round(norm * 127))
                 }
 
@@ -762,41 +709,12 @@ Rectangle {
     }
 
     // Category Tab Button Component
-    component CategoryTabButton: Rectangle {
-        id: ctb
+    component CategoryTabButton: SpButton {
         property string tabTitle: "TAB"
         property bool isSelected: false
-        signal clicked()
-
-        height: ScaleMetrics.dp(26)
-        radius: ScaleMetrics.dp(4)
-        color: ctb.isSelected ? Theme.bgCardActive : "#10141d"
-        border.color: ctb.isSelected ? "#38bdf8" : Theme.borderCard
-        border.width: ctb.isSelected ? 1.5 : 1
-
-        RowLayout {
-            anchors.centerIn: parent
-            spacing: ScaleMetrics.dp(3)
-
-            Rectangle {
-                visible: ctb.isSelected
-                width: ScaleMetrics.dp(4)
-                height: ScaleMetrics.dp(4)
-                radius: 2
-                color: "#38bdf8"
-            }
-
-            Text {
-                text: ctb.tabTitle
-                font.bold: ctb.isSelected
-                font.pixelSize: ScaleMetrics.sp(8)
-                color: ctb.isSelected ? Theme.textPrimary : Theme.textDim
-            }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: ctb.clicked()
-        }
+        text: tabTitle
+        checked: isSelected
+        compact: true
+        implicitHeight: ScaleMetrics.dp(26)
     }
 }

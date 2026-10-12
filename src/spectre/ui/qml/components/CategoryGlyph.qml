@@ -5,7 +5,7 @@ import ".."
 Item {
     id: root
     property string category: "synth_wave"
-    property color color: Theme.primary
+    property color color: Theme.pageAccent
     property var samples64: null
     property bool isSingleCycle: true
     property int toneIndex: 0 // fallback shape 0=saw, 1=sqr, 2=tri, 3=sin

@@ -44,7 +44,7 @@ Rectangle {
         return (m && m[key] !== undefined) ? m[key] : 0;
     }
 
-    readonly property color accent: env === "PITCH" ? "#fbbf24" : (env === "TVF" ? "#38bdf8" : "#10b981")
+    readonly property color accent: Theme.pageAccent
     readonly property string envTitle:
         env === "PITCH" ? "MULTI-SEGMENT PITCH ENVELOPE (T1..T4 / L0..L4)" :
         (env === "TVF" ? "TVF FILTER ENVELOPE (T1..T4 / L0..L4)" : "TVA AMP ENVELOPE (T1..T4 / L1..L3)")
@@ -155,7 +155,7 @@ Rectangle {
                 Layout.preferredHeight: ScaleMetrics.dp(16)
                 width: customLabel.width + ScaleMetrics.dp(10)
                 radius: 3
-                color: "#2a1b06"
+                color: Theme.tint(root.accent)
                 border.color: root.accent
                 border.width: 1
 
@@ -185,25 +185,12 @@ Rectangle {
             Repeater {
                 model: Bridge.envPresetNames(root.env)
 
-                delegate: Rectangle {
+                delegate: SpButton {
                     Layout.fillWidth: true
-                    height: ScaleMetrics.dp(22)
-                    radius: 3
-                    color: Theme.bgApp
-                    border.color: Theme.borderCard
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: modelData
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.textSecondary
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: Bridge.applyEnvPreset(root.env, modelData)
-                    }
+                    implicitHeight: ScaleMetrics.dp(22)
+                    text: modelData
+                    fontSize: 8
+                    onClicked: Bridge.applyEnvPreset(root.env, modelData)
                 }
             }
         }
@@ -214,7 +201,7 @@ Rectangle {
             Layout.fillHeight: true
             Layout.minimumHeight: ScaleMetrics.dp(120)
             radius: ScaleMetrics.dp(6)
-            color: "#080b11"
+            color: Theme.bgTrack
             border.color: Theme.borderCard
             border.width: 1
             clip: true
@@ -232,7 +219,7 @@ Rectangle {
                     var midY = h * 0.5;
                     var baseY = h - 6;
 
-                    ctx.strokeStyle = "#162032";
+                    ctx.strokeStyle = Theme.gridLine;
                     ctx.lineWidth = 1;
                     ctx.setLineDash([3, 3]);
                     ctx.beginPath();
@@ -246,7 +233,7 @@ Rectangle {
                     ctx.stroke();
 
                     // Reference line: 0 for bipolar envelopes, baseline otherwise
-                    ctx.strokeStyle = "#1e293b";
+                    ctx.strokeStyle = Theme.bgRaised;
                     ctx.setLineDash([]);
                     ctx.lineWidth = 1.5;
                     ctx.beginPath();
@@ -298,7 +285,7 @@ Rectangle {
                             ctx.arc(pt.x, pt.y, 9, 0, Math.PI * 2);
                             ctx.stroke();
 
-                            ctx.fillStyle = "#ffffff";
+                            ctx.fillStyle = Theme.textPrimary;
                             ctx.beginPath();
                             ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
                             ctx.fill();
@@ -312,7 +299,7 @@ Rectangle {
                             var badgeX = Math.max(6, Math.min(w - badgeW - 6, pt.x - badgeW * 0.5));
                             var badgeY = Math.max(22, pt.y - 18);
 
-                            ctx.fillStyle = "#10141d";
+                            ctx.fillStyle = Theme.bgControl;
                             ctx.fillRect(badgeX, badgeY - 14, badgeW, badgeH);
                             ctx.strokeStyle = root.accent;
                             ctx.lineWidth = 1;
@@ -321,17 +308,17 @@ Rectangle {
                             ctx.fillStyle = root.accent;
                             ctx.fillText(infoText, badgeX + 8, badgeY);
                         } else {
-                            ctx.fillStyle = isFixed ? "#334155" : root.accent;
+                            ctx.fillStyle = isFixed ? Theme.borderActive : root.accent;
                             ctx.beginPath();
                             ctx.arc(pt.x, pt.y, 5.5, 0, Math.PI * 2);
                             ctx.fill();
 
-                            ctx.fillStyle = "#080b11";
+                            ctx.fillStyle = Theme.bgTrack;
                             ctx.beginPath();
                             ctx.arc(pt.x, pt.y, 2.5, 0, Math.PI * 2);
                             ctx.fill();
 
-                            ctx.fillStyle = "#94a3b8";
+                            ctx.fillStyle = Theme.textSecondary;
                             ctx.font = "bold 9px monospace";
                             ctx.fillText(pt.label, pt.x - 8, pt.y - 9);
                         }

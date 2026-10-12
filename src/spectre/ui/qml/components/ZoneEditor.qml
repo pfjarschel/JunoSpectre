@@ -15,9 +15,7 @@ ColumnLayout {
     property int activePart: Bridge.activePerfPart
     property bool handleLow: true
 
-    property var partColors: ["#f87171", "#fb923c", "#fbbf24", "#a3e635", "#34d399", "#2dd4bf",
-        "#38bdf8", "#818cf8", "#a78bfa", "#e879f9", "#f472b6", "#fb7185",
-        "#facc15", "#4ade80", "#22d3ee", "#c084fc"]
+    property var partColors: Theme.partColors
 
     function partAt(idx) {
         if (root.allParts && root.allParts.length >= idx) return root.allParts[idx - 1]
@@ -32,8 +30,8 @@ ColumnLayout {
             if (!p.zoneOn) continue
             if (n >= p.keyLow && n <= p.keyHigh) { count++; found = i }
         }
-        if (count === 0) return "#0f172a"
-        if (count > 1) return "#ffffff"
+        if (count === 0) return Theme.bgControl
+        if (count > 1) return Theme.textPrimary
         return root.partColors[found % 16]
     }
 
@@ -61,28 +59,18 @@ ColumnLayout {
             height: ScaleMetrics.dp(30)
             Repeater {
                 model: 16
-                delegate: Rectangle {
+                delegate: SpButton {
                     property int pIdx: index + 1
                     property var pp: root.partAt(pIdx)
-                    width: ScaleMetrics.dp(52)
-                    height: ScaleMetrics.dp(28)
-                    radius: ScaleMetrics.dp(4)
-                    color: root.activePart === pIdx ? root.partColors[index % 16] : "#0d1017"
-                    border.color: root.activePart === pIdx ? "#ffffff" : Theme.borderCard
-                    border.width: root.activePart === pIdx ? 2 : 1
+                    implicitWidth: ScaleMetrics.dp(52)
+                    implicitHeight: ScaleMetrics.dp(28)
+                    text: "P" + pIdx
+                    fontSize: 10
+                    accent: root.partColors[index % 16]
+                    checked: root.activePart === pIdx
                     opacity: (pp && !pp.zoneOn) ? 0.45 : 1.0
-                    Text {
-                        anchors.centerIn: parent
-                        text: "P" + pIdx
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(10)
-                        color: root.activePart === pIdx ? "#000000" : Theme.textSecondary
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: !root.pushBusyRef
-                        onClicked: Bridge.editPerfPart(pIdx)
-                    }
+                    enabled: !root.pushBusyRef
+                    onClicked: Bridge.editPerfPart(pIdx)
                 }
             }
         }
@@ -95,7 +83,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.preferredHeight: ScaleMetrics.dp(14)
         radius: ScaleMetrics.dp(3)
-        color: "#0f172a"
+        color: Theme.bgControl
         border.color: Theme.borderCard
         border.width: 1
         Canvas {
@@ -113,7 +101,7 @@ ColumnLayout {
                 var slice = width / 128;
                 for (var n = 0; n < 128; ++n) {
                     var c = root.coverColor(n);
-                    if (c === "#0f172a") continue;
+                    if (c === Theme.bgControl) continue;
                     ctx.fillStyle = c;
                     ctx.fillRect(Math.floor(n * slice), 0, Math.ceil(slice), height);
                 }
@@ -139,35 +127,21 @@ ColumnLayout {
         spacing: ScaleMetrics.dp(6)
 
         // LOW / HIGH handle toggle
-        Rectangle {
-            width: ScaleMetrics.dp(64); height: ScaleMetrics.dp(40)
-            radius: ScaleMetrics.dp(4)
-            color: root.handleLow ? "#0c2f3f" : Theme.bgApp
-            border.color: "#38bdf8"; border.width: 1
-            Text {
-                anchors.centerIn: parent
-                text: "LOW\n" + root.noteName((root.partAt(root.activePart) || { keyLow: 0 }).keyLow)
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(9)
-                horizontalAlignment: Text.AlignHCenter
-                color: "#38bdf8"
-            }
-            MouseArea { anchors.fill: parent; onClicked: root.handleLow = true }
+        SpButton {
+            implicitWidth: ScaleMetrics.dp(64)
+            implicitHeight: ScaleMetrics.dp(40)
+            text: "LOW\n" + root.noteName((root.partAt(root.activePart) || { keyLow: 0 }).keyLow)
+            variant: "outline"
+            checked: root.handleLow
+            onClicked: root.handleLow = true
         }
-        Rectangle {
-            width: ScaleMetrics.dp(64); height: ScaleMetrics.dp(40)
-            radius: ScaleMetrics.dp(4)
-            color: !root.handleLow ? "#3a2f10" : Theme.bgApp
-            border.color: "#f59e0b"; border.width: 1
-            Text {
-                anchors.centerIn: parent
-                text: "HIGH\n" + root.noteName((root.partAt(root.activePart) || { keyHigh: 127 }).keyHigh)
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(9)
-                horizontalAlignment: Text.AlignHCenter
-                color: "#f59e0b"
-            }
-            MouseArea { anchors.fill: parent; onClicked: root.handleLow = false }
+        SpButton {
+            implicitWidth: ScaleMetrics.dp(64)
+            implicitHeight: ScaleMetrics.dp(40)
+            text: "HIGH\n" + root.noteName((root.partAt(root.activePart) || { keyHigh: 127 }).keyHigh)
+            variant: "outline"
+            checked: !root.handleLow
+            onClicked: root.handleLow = false
         }
         // Octave shift stepper
         Rectangle {
@@ -181,17 +155,14 @@ ColumnLayout {
                 anchors.margins: ScaleMetrics.dp(4)
                 spacing: ScaleMetrics.dp(4)
                 Text { text: "OCT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textDim }
-                Rectangle {
-                    width: ScaleMetrics.dp(32); height: ScaleMetrics.dp(30)
-                    radius: 3; color: octDown.pressed ? Theme.bgCardActive : Theme.bgSurface
-                    border.color: Theme.borderCard; border.width: 1
-                    Text { anchors.centerIn: parent; text: "−"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: Theme.textSecondary }
-                    MouseArea {
-                        id: octDown; anchors.fill: parent
-                        onClicked: {
-                            var p = root.partAt(root.activePart)
-                            if (p) Bridge.setPartZoneOctave(p.index, p.zoneOctave - 1)
-                        }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(32)
+                    implicitHeight: ScaleMetrics.dp(30)
+                    text: "−"
+                    fontSize: 12
+                    onClicked: {
+                        var p = root.partAt(root.activePart)
+                        if (p) Bridge.setPartZoneOctave(p.index, p.zoneOctave - 1)
                     }
                 }
                 Text {
@@ -207,75 +178,54 @@ ColumnLayout {
                     font.family: Theme.fontMono
                     color: Theme.textPrimary
                 }
-                Rectangle {
-                    width: ScaleMetrics.dp(32); height: ScaleMetrics.dp(30)
-                    radius: 3; color: octUp.pressed ? Theme.bgCardActive : Theme.bgSurface
-                    border.color: Theme.borderCard; border.width: 1
-                    Text { anchors.centerIn: parent; text: "+"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: Theme.textSecondary }
-                    MouseArea {
-                        id: octUp; anchors.fill: parent
-                        onClicked: {
-                            var p = root.partAt(root.activePart)
-                            if (p) Bridge.setPartZoneOctave(p.index, p.zoneOctave + 1)
-                        }
+                SpButton {
+                    implicitWidth: ScaleMetrics.dp(32)
+                    implicitHeight: ScaleMetrics.dp(30)
+                    text: "+"
+                    fontSize: 12
+                    onClicked: {
+                        var p = root.partAt(root.activePart)
+                        if (p) Bridge.setPartZoneOctave(p.index, p.zoneOctave + 1)
                     }
                 }
             }
         }
         // Zone ON/OFF
-        Rectangle {
-            width: ScaleMetrics.dp(64); height: ScaleMetrics.dp(40)
-            radius: ScaleMetrics.dp(4)
-            color: (root.partAt(root.activePart) || { zoneOn: true }).zoneOn ? "#0d2b1a" : "#3f1a1a"
-            border.color: (root.partAt(root.activePart) || { zoneOn: true }).zoneOn ? "#10b981" : Theme.recording
-            border.width: 1
-            Text {
-                anchors.centerIn: parent
-                text: (root.partAt(root.activePart) || { zoneOn: true }).zoneOn ? "ZONE\nON" : "ZONE\nOFF"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(9)
-                horizontalAlignment: Text.AlignHCenter
-                color: (root.partAt(root.activePart) || { zoneOn: true }).zoneOn ? "#10b981" : Theme.recording
-            }
-            MouseArea {
-                anchors.fill: parent
-                onClicked: {
-                    var p = root.partAt(root.activePart)
-                    if (p) Bridge.setPartZoneSwitch(p.index, !p.zoneOn)
-                }
+        SpButton {
+            implicitWidth: ScaleMetrics.dp(64)
+            implicitHeight: ScaleMetrics.dp(40)
+            text: (root.partAt(root.activePart) || { zoneOn: true }).zoneOn ? "ZONE\nON" : "ZONE\nOFF"
+            accent: (root.partAt(root.activePart) || { zoneOn: true }).zoneOn ? Theme.pageAccent : Theme.recording
+            checked: true
+            onClicked: {
+                var p = root.partAt(root.activePart)
+                if (p) Bridge.setPartZoneSwitch(p.index, !p.zoneOn)
             }
         }
         // FULL range reset
-        Rectangle {
-            width: ScaleMetrics.dp(56); height: ScaleMetrics.dp(40)
-            radius: ScaleMetrics.dp(4)
-            color: fullMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-            border.color: Theme.borderCard; border.width: 1
-            Text { anchors.centerIn: parent; text: "FULL"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textSecondary }
-            MouseArea {
-                id: fullMouse; anchors.fill: parent
-                onClicked: {
-                    var p = root.partAt(root.activePart)
-                    if (p) Bridge.setPartZone(p.index, 0, 127)
-                }
+        SpButton {
+            implicitWidth: ScaleMetrics.dp(56)
+            implicitHeight: ScaleMetrics.dp(40)
+            text: "FULL"
+            onClicked: {
+                var p = root.partAt(root.activePart)
+                if (p) Bridge.setPartZone(p.index, 0, 127)
             }
         }
         // Keyboard scroll reach
-        Rectangle {
-            width: ScaleMetrics.dp(44); height: ScaleMetrics.dp(40)
-            radius: ScaleMetrics.dp(4)
-            color: Theme.bgSurface
-            border.color: Theme.borderCard; border.width: 1
-            Text { anchors.centerIn: parent; text: "◀"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: Theme.textSecondary }
-            MouseArea { anchors.fill: parent; onClicked: piano.scrollKeys(-280) }
+        SpButton {
+            implicitWidth: ScaleMetrics.dp(44)
+            implicitHeight: ScaleMetrics.dp(40)
+            icon: "left"
+            fontSize: 12
+            onClicked: piano.scrollKeys(-280)
         }
-        Rectangle {
-            width: ScaleMetrics.dp(44); height: ScaleMetrics.dp(40)
-            radius: ScaleMetrics.dp(4)
-            color: Theme.bgSurface
-            border.color: Theme.borderCard; border.width: 1
-            Text { anchors.centerIn: parent; text: "▶"; font.bold: true; font.pixelSize: ScaleMetrics.sp(12); color: Theme.textSecondary }
-            MouseArea { anchors.fill: parent; onClicked: piano.scrollKeys(280) }
+        SpButton {
+            implicitWidth: ScaleMetrics.dp(44)
+            implicitHeight: ScaleMetrics.dp(40)
+            icon: "right"
+            fontSize: 12
+            onClicked: piano.scrollKeys(280)
         }
     }
 }

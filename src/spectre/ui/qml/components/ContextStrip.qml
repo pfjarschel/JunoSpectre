@@ -39,10 +39,15 @@ Rectangle {
         readonly property string paramName: knob ? knob.title : "-"
         readonly property real normValue: knob ? knob.norm : 0.0
         readonly property string displayString: knob ? knob.text : ""
+        // Tone-specific knobs ("T2 Level") take the tone colour, the rest the page accent
+        readonly property color knobColor: {
+            const m = /^T([1-4]) /.exec(paramName);
+            return m ? Theme.toneColors[parseInt(m[1]) - 1] : Theme.pageAccent;
+        }
 
         radius: ScaleMetrics.dp(6)
         color: Theme.bgApp
-        border.color: mouseArea.containsPress ? Theme.primary : Theme.borderCard
+        border.color: mouseArea.containsPress ? card.knobColor : Theme.borderCard
         border.width: 1
         opacity: active ? 1.0 : 0.35
 
@@ -73,7 +78,7 @@ Rectangle {
                     text: "K" + card.knobIndex
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(8)
-                    color: Theme.tone1
+                    color: Theme.textSecondary
                 }
             }
 
@@ -118,7 +123,7 @@ Rectangle {
             anchors.bottomMargin: ScaleMetrics.dp(6)
             height: ScaleMetrics.dp(3)
             radius: ScaleMetrics.dp(2)
-            color: "#1e293b"
+            color: Theme.bgRaised
             clip: true
 
             Rectangle {
@@ -127,7 +132,7 @@ Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width * Math.max(0.0, Math.min(1.0, card.normValue))
                 radius: ScaleMetrics.dp(2)
-                color: card.knobIndex <= 4 ? Theme.tone1 : Theme.tone3
+                color: card.knobColor
             }
         }
 
