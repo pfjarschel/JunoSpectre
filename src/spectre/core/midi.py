@@ -121,6 +121,8 @@ class MidiDeviceManager:
         self.juno_port_pref: str = ""
 
         self._note_listeners: List[Callable[[mido.Message], None]] = []
+        # Program/control changes and SysEx from the synth (panel following)
+        self._message_listeners: List[Callable[[mido.Message], None]] = []
         # SysEx replies for request/response reads; bounded so unread traffic can't pile up.
         self._sysex_queue: queue.Queue = queue.Queue(maxsize=256)
         self._worker_thread: Optional[threading.Thread] = None
@@ -287,6 +289,15 @@ class MidiDeviceManager:
         if listener in self._note_listeners:
             self._note_listeners.remove(listener)
 
+    def add_message_listener(self, listener: Callable[[mido.Message], None]) -> None:
+        """Register a callback for incoming program/control changes and SysEx."""
+        if listener not in self._message_listeners:
+            self._message_listeners.append(listener)
+
+    def remove_message_listener(self, listener: Callable[[mido.Message], None]) -> None:
+        if listener in self._message_listeners:
+            self._message_listeners.remove(listener)
+
     def start_input_worker(self) -> None:
         """Start asynchronous MIDI input demuxer thread."""
         if self._worker_running:
@@ -305,7 +316,7 @@ class MidiDeviceManager:
         self._worker_thread = None
 
     def _input_loop(self) -> None:
-        """Demuxer loop: routes notes to listeners and queues SysEx replies."""
+        """Demuxer loop: routes notes and messages to listeners, queues SysEx replies."""
         while self._worker_running:
             if not self.juno_in or getattr(self.juno_in, "closed", False):
                 time.sleep(0.02)
@@ -329,6 +340,12 @@ class MidiDeviceManager:
                             except queue.Empty:
                                 pass
                         self._sysex_queue.put_nowait(msg)
+                    if msg.type in ("program_change", "control_change", "sysex"):
+                        for listener in list(self._message_listeners):
+                            try:
+                                listener(msg)
+                            except Exception as e:
+                                logger.error(f"Error in message listener: {e}")
             except Exception as e:
                 logger.debug(f"Midi input loop error: {e}")
             if not has_msg:

@@ -108,6 +108,9 @@ class BaseProtocolMixin:
         self._writer_thread: Optional[threading.Thread] = None
         self._writer_busy = False  # popped, not yet on the wire
         self._io_lock = threading.RLock()
+        # Own traffic, so panel following can tell a Transmit Edit Data DT1
+        # from a read reply or an echo: address -> (time, data or None for RQ1)
+        self._own_traffic: dict[tuple, tuple[float, Optional[bytes]]] = {}
         self.last_ping_ms: float = 0.0
 
     def invalidate_cache(self) -> None:
@@ -229,6 +232,7 @@ class BaseProtocolMixin:
 
     def _request_data_locked(self, address, size, timeout) -> Optional[bytes]:
         packet = self.sysex.build_rq1(address, size)
+        self._note_own(address, None)
         self.midi.send_juno_sysex(packet)
 
         target_addr = tuple(address)
@@ -272,6 +276,7 @@ class BaseProtocolMixin:
                 if wait > 0.0:
                     time.sleep(wait)
             packet = self.sysex.build_dt1(address, data)
+            self._note_own(address, bytes(int(b) & 0x7F for b in data))
             try:
                 self.midi.send_juno_sysex(packet)
             except (ConnectionError, OSError, RuntimeError):
@@ -280,6 +285,23 @@ class BaseProtocolMixin:
                 else:
                     raise
             self._last_send_time = time.monotonic()
+
+    OWN_TRAFFIC_S = 3.0
+
+    def _note_own(self, address: Sequence[int], data: Optional[bytes]) -> None:
+        now = time.monotonic()
+        own = self._own_traffic
+        if len(own) > 512:
+            for k in [k for k, (t, _) in own.items() if now - t > self.OWN_TRAFFIC_S]:
+                own.pop(k, None)
+        own[tuple(int(a) for a in address)] = (now, data)
+
+    def is_own_traffic(self, address: Sequence[int], data: Sequence[int]) -> bool:
+        """An incoming DT1 is a reply to our RQ1 or an echo of our own write."""
+        hit = self._own_traffic.get(tuple(int(a) for a in address))
+        if hit is None or time.monotonic() - hit[0] > self.OWN_TRAFFIC_S:
+            return False
+        return hit[1] is None or hit[1] == bytes(int(b) for b in data)
 
     @contextmanager
     def coalesced_writes(self):

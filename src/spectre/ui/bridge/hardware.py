@@ -70,6 +70,7 @@ class HardwareBridgeMixin(BridgeBaseMixin):
         self._midi_mgr = midi_mgr
         if midi_mgr is not None:
             midi_mgr.juno_port_pref = str(self._hw_settings.get("synth_port", ""))
+            self._follow_attach(midi_mgr)
         juno = self.juno
         if juno is not None:
             self._note_identity(getattr(juno, "_startup_identity", None), juno.last_ping_ms)

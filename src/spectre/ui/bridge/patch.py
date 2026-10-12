@@ -2852,8 +2852,12 @@ class PatchBridgeMixin(BridgeBaseMixin):
                             # Preserve customizable macro assignments (names/links/values);
                             # bases re-capture lazily from the fresh hardware truth.
                             kept_macros = self.patch_state.macros
+                            # A patch read carries no performance: keep the app's
+                            old = self.patch_state
                             self.patch_state = state
                             self.patch_state.macros = kept_macros
+                            state.perf_parts, state.perf_name = old.perf_parts, old.perf_name
+                            state.perf_fx, state.active_perf_part = old.perf_fx, old.active_perf_part
                             self._resetMacroBases()
                             self.patch_state.effects.routing_preset = ""  # No algorithm preset selected on hardware sync
                             self._patch_name = state.common.name
@@ -2973,39 +2977,57 @@ class PatchBridgeMixin(BridgeBaseMixin):
             out.send(_mido.Message("control_change", channel=15, control=32, value=int(lsb)))
             out.send(_mido.Message("program_change", channel=15, program=int(pc)))
             _time.sleep(0.8)
-            try:
-                juno._cached_patch_base = None
-                juno._cached_sound_mode = None
-            except AttributeError:
-                pass
-            heard: str = ""
-            try:
-                raw = juno.request_data((0x10, 0x00, 0x00, 0x00),
-                                        (0x00, 0x00, 0x00, 0x0C), timeout=0.8)
-                if raw and len(raw) >= 12:
-                    heard = bytes(raw[:12]).decode("latin1", errors="replace").strip()
-            except Exception as e:
-                logger.debug(f"selectLibraryPerformance: name re-read failed: {e}")
-            # Synth truth wins; library row name is the offline/fallback.
-            self._patch_name = (heard or str(name or ""))[:12] or self._patch_name
-            self.patch_state.perf_name = str(self._patch_name)[:12]
-            # The app's performance is what mode switches push back: take the
-            # loaded one whole. Nothing of the previous one survives (sounds,
-            # names, edits).
-            self._part_snapshots = {}
-            for p in self.patch_state.perf_parts:
-                p.patch_name, p.name = "", f"Part {p.part_index}"
-            try:
-                self.syncPerformanceFromSynth(async_mode=False)
-            except Exception as e:
-                logger.warning(f"selectLibraryPerformance: performance read failed: {e}")
-            self._apply_performance_selected(int(msb), int(lsb), int(pc))
-            return True
+            return self._adopt_synth_performance(int(msb), int(lsb), int(pc), str(name or ""))
         except Exception as e:
             logger.warning(f"selectLibraryPerformance failed: {e}")
             return False
 
-    def _apply_performance_selected(self, msb: int, lsb: int, pc: int) -> None:
+    def _adopt_synth_performance(self, msb: int, lsb: int, pc: int, name: str = "",
+                                 navigate: bool = True) -> bool:
+        """Take the performance the synth just selected into the app, whole.
+
+        Library loads (after their Bank/PC) and panel performance picks.
+        """
+        juno = self.juno
+        try:
+            juno._cached_patch_base = None
+            juno._cached_sound_mode = None
+        except AttributeError:
+            pass
+        heard: str = ""
+        try:
+            raw = juno.request_data((0x10, 0x00, 0x00, 0x00),
+                                    (0x00, 0x00, 0x00, 0x0C), timeout=0.8)
+            if raw and len(raw) >= 12:
+                heard = bytes(raw[:12]).decode("latin1", errors="replace").strip()
+        except Exception as e:
+            logger.debug(f"adopt performance: name re-read failed: {e}")
+        # Synth truth wins; library row name is the offline/fallback.
+        self._patch_name = (heard or str(name or ""))[:12] or self._patch_name
+        self.patch_state.perf_name = str(self._patch_name)[:12]
+        if str(self._sound_mode).upper() != "PERFORM":
+            self._patch_origin = None
+            self._resetMacroBases()
+        # The app's performance is what mode switches push back: take the
+        # loaded one whole. Nothing of the previous one survives (sounds,
+        # names, edits).
+        self._part_snapshots = {}
+        self._part_file_status = [""] * 16
+        for p in self.patch_state.perf_parts:
+            p.patch_name, p.name = "", f"Part {p.part_index}"
+        try:
+            self.syncPerformanceFromSynth(async_mode=False)
+        except Exception as e:
+            logger.warning(f"adopt performance: performance read failed: {e}")
+        self._apply_performance_selected(int(msb), int(lsb), int(pc), navigate)
+        try:
+            self.partFileStatusChanged.emit()
+        except Exception:
+            pass
+        return True
+
+    def _apply_performance_selected(self, msb: int, lsb: int, pc: int,
+                                    navigate: bool = True) -> None:
         """App-side half of a performance audition (mode + ref + OK destination)."""
         self._sound_mode = "PERFORM"
         self.patch_state.sound_mode = "PERFORM"
@@ -3016,7 +3038,8 @@ class PatchBridgeMixin(BridgeBaseMixin):
         except Exception:
             pass
         self._set_current_slot_ref(int(msb), int(lsb), int(pc), "performance")
-        self._pending_view = "PERFORMANCE"
+        if navigate:
+            self._pending_view = "PERFORMANCE"
 
     @pyqtSlot(int, int, int, result=bool)
     @pyqtSlot(int, int, int, str, result=bool)
@@ -3052,45 +3075,55 @@ class PatchBridgeMixin(BridgeBaseMixin):
             out.send(_mido.Message("control_change", channel=0, control=0, value=int(msb)))
             out.send(_mido.Message("control_change", channel=0, control=32, value=int(lsb)))
             out.send(_mido.Message("program_change", channel=0, program=int(pc)))
-            try:
-                juno._cached_patch_base = None
-                juno._cached_sound_mode = None
-            except AttributeError:
-                pass
             # Give the synth a moment to switch, then follow its display name.
             import time as _time
 
             _time.sleep(0.35)
-            heard: str = ""
-            try:
-                heard = juno.get_patch_name(timeout=0.8)
-            except Exception as e:
-                logger.debug(f"selectLibraryPatch: name re-read failed: {e}")
-            # Synth truth wins; library row name is the fallback.
-            resolved = (heard if isinstance(heard, str) else "") or str(name or "")
-            if resolved:
-                self._patch_name = resolved[:12]
-                self.patch_state.common.name = resolved[:12]
-            try:
-                mode = juno.get_sound_mode(timeout=0.5)
-                mode_str = mode.name if hasattr(mode, "name") else str(mode)
-                self._sound_mode = mode_str
-                self.patch_state.sound_mode = mode_str
-            except Exception:
-                pass
-            self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
-            # Pull the full sounding state so editors follow the auditioned patch.
-            try:
-                self.syncPatchFromSynth()
-            except Exception as e:
-                logger.debug(f"selectLibraryPatch: full sync failed: {e}")
-            self._set_current_slot_ref(int(msb), int(lsb), int(pc),
-                                       "drum" if int(msb) == 86 else "patch")
-            self._pending_view = "JUNO PCM"
-            return True
+            return self._adopt_synth_patch(int(msb), int(lsb), int(pc), str(name or ""))
         except Exception as e:
             logger.warning(f"selectLibraryPatch failed: {e}")
             return False
+
+    def _adopt_synth_patch(self, msb: int, lsb: int, pc: int, name: str = "",
+                           navigate: bool = True) -> bool:
+        """Take the patch the synth just selected into the editors.
+
+        Library loads (after their Bank/PC) and PATCH-mode panel picks.
+        """
+        juno = self.juno
+        try:
+            juno._cached_patch_base = None
+            juno._cached_sound_mode = None
+        except AttributeError:
+            pass
+        heard: str = ""
+        try:
+            heard = juno.get_patch_name(timeout=0.8)
+        except Exception as e:
+            logger.debug(f"adopt patch: name re-read failed: {e}")
+        # Synth truth wins; library row name is the fallback.
+        resolved = (heard if isinstance(heard, str) else "") or str(name or "")
+        if resolved:
+            self._patch_name = resolved[:12]
+            self.patch_state.common.name = resolved[:12]
+        try:
+            mode = juno.get_sound_mode(timeout=0.5)
+            mode_str = mode.name if hasattr(mode, "name") else str(mode)
+            self._sound_mode = mode_str
+            self.patch_state.sound_mode = mode_str
+        except Exception:
+            pass
+        self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
+        # Pull the full sounding state so editors follow the auditioned patch.
+        try:
+            self.syncPatchFromSynth()
+        except Exception as e:
+            logger.debug(f"adopt patch: full sync failed: {e}")
+        self._set_current_slot_ref(int(msb), int(lsb), int(pc),
+                                   "drum" if int(msb) == 86 else "patch")
+        if navigate:
+            self._pending_view = "JUNO PCM"
+        return True
 
     def _apply_patch_selected(self, msb: int, lsb: int, pc: int) -> None:
         """Offline half of a patch audition (mode + ref + OK destination)."""

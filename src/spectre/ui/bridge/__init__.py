@@ -17,6 +17,7 @@ from ...core.wifi import WifiManager, WifiStatus
 from ...vector.engine import VectorEngine
 from .arpeggio import ArpBridgeMixin
 from .controllers import ControllersBridgeMixin
+from .follow import FollowBridgeMixin
 from .hardware import HardwareBridgeMixin
 from .jobs import JobsBridgeMixin
 from .librarian import LibrarianBridgeMixin
@@ -44,6 +45,7 @@ class SpectreBridge(
     ControllersBridgeMixin,
     ArpBridgeMixin,
     TmtBridgeMixin,
+    FollowBridgeMixin,
     QObject,
 ):
     """Unified bridge exposing workstation engine, patch, performance and system state to QML."""
@@ -168,6 +170,7 @@ class SpectreBridge(
         self._init_controllers()
         self._init_arp()
         self._init_tmt()
+        self._init_follow()
 
         # Subscribe to engine state updates
         self.engine.subscribe(self._on_engine_state_changed)

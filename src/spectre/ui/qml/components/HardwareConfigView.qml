@@ -130,6 +130,21 @@ Rectangle {
                         color: Theme.textDim
                     }
 
+                    Text { text: "FOLLOW THE JUNO PANEL"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(4)
+                        Chip { text: "ON"; active: Bridge.followPanel; onClicked: Bridge.setFollowPanel(true) }
+                        Chip { text: "OFF"; active: !Bridge.followPanel; onClicked: Bridge.setFollowPanel(false) }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: "Performances and patches picked on the Juno load into the app. To follow edits made on the Juno too, set SYSTEM > MIDI > Transmit Edit Data to ON there."
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Theme.textDim
+                    }
+
                     Item { Layout.fillHeight: true }
 
                     RowLayout {
