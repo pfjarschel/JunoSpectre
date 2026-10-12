@@ -148,6 +148,23 @@ fullscreen. Useful flags:
 
 You can also add this to a `systemd` service to boot straight into Spectre.
 
+#### Boot splash (Raspberry Pi OS)
+
+The app opens on a splash picture while the UI loads. To show the same picture
+during boot (via Plymouth) instead of the rainbow square and boot text:
+
+```bash
+sudo bash scripts/boot-splash/install.sh           # installs; normal boot unchanged
+sudo reboot '0 tryboot'                            # one-off test boot with the splash
+sudo bash scripts/boot-splash/install.sh --enable  # if the test looked right
+```
+
+If the test boot misbehaves, a power cycle boots normally again. `--disable`
+returns to the plain boot and `--uninstall` removes everything; the original
+`cmdline.txt` and `config.txt` are kept as `*.spectre-bak`. On splash boots the
+`tty1` login prompt is skipped (Ctrl+Alt+F2 still opens a local login; ssh is
+unaffected).
+
 ### Entry Points & CLI
 
 | Script | Purpose |
