@@ -435,3 +435,39 @@ def test_bridge_perf_structure_setter():
     assert len(bridge.perfMfxStructures) == 16
     bridge.setPerfStructure(10)  # TYPE11: 1→2→3
     assert bridge.perfStructure == 10
+
+
+def test_chain_outputs_every_reached_unit_sends():
+    """Heard on the Juno: MFX1's reverb send plays in a 1→2→3 chain."""
+    from src.spectre.core.routing import chain_outputs
+
+    units = [{"slot": 1, "type": 5, "dry": 127, "cho": 0, "rev": 90},
+             {"slot": 2, "type": 7, "dry": 100, "cho": 40, "rev": 0},
+             {"slot": 3, "type": 9, "dry": 110, "cho": 0, "rev": 30}]
+    out = chain_outputs(units)
+    assert (out["type"], out["dry"], out["cho"], out["rev"]) == (9, 110, 40, 90)
+    assert out["revUnits"] == [1, 3] and out["choUnits"] == [2] and out["reached"] == [1, 2, 3]
+
+    # A unit at output level 0 starves the rest of the chain
+    units[1]["dry"] = 0
+    out = chain_outputs(units)
+    assert out["reached"] == [1, 2] and out["dry"] == 0 and out["rev"] == 90 and out["cho"] == 40
+
+
+def test_perform_graph_takes_sends_from_the_whole_chain(tmp_path):
+    from tests.test_performance import _perform_bridge
+
+    bridge, juno = _perform_bridge(tmp_path)
+    part = bridge.patch_state.perf_parts[bridge.activePerfPart - 1]
+    part.output_assign, part.mfx_select = 0, 0     # into MFX1
+    fx = bridge.patch_state.perf_fx
+    for slot, rev in ((fx.mfx1, 90), (fx.mfx2, 0), (fx.mfx3, 0)):
+        slot.source, slot.dry_send, slot.reverb_send = 0, 127, rev
+    bridge.setPerfStructure(10)                    # 1→2→3
+    g = bridge._build_routing_graph()
+    assert g["edges"]["mfx->rev"]["active"] and g["edges"]["mfx->rev"]["level"] == 90
+    assert any(n["type"] == "MFX_CHAIN_SENDS" for n in g["notes"])
+    fx.mfx2.dry_send = 0
+    g = bridge._build_routing_graph()
+    assert not g["edges"]["mfx->out"]["active"]
+    assert g["notes"][0]["type"] == "MFX_CHAIN_CUT"

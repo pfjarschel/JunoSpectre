@@ -28,6 +28,7 @@ from ...core.routing import (
     TONE_ASSIGNS,
     TONE_SEND_ATTRS,
     build_graph,
+    chain_outputs,
     is_direct,
     mfx_chain,
     tone_send_attrs,
@@ -2232,13 +2233,15 @@ class PatchBridgeMixin(BridgeBaseMixin):
             part = self.patch_state.perf_parts[self.activePerfPart - 1]
             fx = self.patch_state.perf_fx
             chain = mfx_chain(int(part.mfx_select) + 1, int(getattr(fx, "mfx_structure", 0)))
-            m = self._rail_mfx_entry(chain[-1])
+            units = [dict(self._rail_mfx_entry(n), slot=n) for n in chain]
+            m = units[-1]
             c, r = self._rail_cho_entry(), self._rail_rev_entry()
             return {
                 "part": part, "chain": chain, "mfxSource": int(m["source"]),
                 "choSource": int(c["source"]), "revSource": int(r["source"]),
-                "mfx": {"type": int(m["type"]), "dry": int(m["drySend"]),
-                        "cho": int(m["chorusSend"]), "rev": int(m["reverbSend"])},
+                "mfx": chain_outputs([{"slot": u["slot"], "type": int(u["type"]),
+                                       "dry": int(u["drySend"]), "cho": int(u["chorusSend"]),
+                                       "rev": int(u["reverbSend"])} for u in units]),
                 "chorus": {"type": int(c["type"]), "level": int(c["level"]), "toReverb": int(c["toReverb"])},
                 "reverb": {"type": int(r["type"]), "level": int(r["level"])},
             }
@@ -2270,6 +2273,22 @@ class PatchBridgeMixin(BridgeBaseMixin):
                          "mfxSelect": int(part.mfx_select) + 1, "level": int(part.dry_send),
                          "chorusSend": int(part.chorus_send), "reverbSend": int(part.reverb_send),
                          "muted": bool(part.muted), "volume": int(part.volume)}
+            m, chain = inp["mfx"], inp["chain"]
+            if g["edges"]["in->mfx"]["active"] and len(m["reached"]) < len(chain):
+                cut = m["reached"][-1]
+                g["notes"].insert(0, {
+                    "type": "MFX_CHAIN_CUT", "severity": "caution",
+                    "title": f"Chain stops at MFX{cut}",
+                    "description": f"MFX{cut}'s output level is 0, so "
+                                   + ", ".join(f"MFX{n}" for n in chain[len(m['reached']):])
+                                   + " get no sound."})
+            early = [f"MFX{n}" for n in dict.fromkeys(m["choUnits"] + m["revUnits"]) if n != chain[-1]]
+            if g["edges"]["in->mfx"]["active"] and early:
+                g["notes"].append({
+                    "type": "MFX_CHAIN_SENDS", "severity": "info",
+                    "title": "Every MFX in the chain sends",
+                    "description": " and ".join(early) + " also feed chorus/reverb with their own "
+                                   "sends, not only the last unit."})
             editing = self.editingPerfMfx
             g["editingMfx"] = editing
             g["mfxEnd"] = inp["chain"][-1]

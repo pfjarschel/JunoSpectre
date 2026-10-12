@@ -926,7 +926,7 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: "In a chain, only the last unit's output level and chorus/reverb sends are assumed to reach the mixer (to verify by ear). Change which MFX a part enters with its MFX buttons."
+                text: "In a chain every unit the sound passes sends to chorus/reverb with its own sends; each unit's output level feeds the next, and the last one's reaches the output. Change which MFX a part enters with its MFX buttons."
                 wrapMode: Text.WordWrap
                 font.pixelSize: ScaleMetrics.sp(8)
                 color: Theme.textDim

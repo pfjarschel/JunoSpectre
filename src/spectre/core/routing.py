@@ -12,6 +12,10 @@ Hardware facts (verified on a JUNO-DS, 2026-10-10):
 - An MFX of type THRU still passes its input through its output level/sends.
 - PERFORM: a part assign other than PATCH overrides the patch route, and
   then the part's chorus/reverb sends apply instead of the tone sends.
+- PERFORM MFX Structure chains: every unit the sound passes through feeds
+  the chorus/reverb with its own sends (heard 2026-10-11: MFX1's reverb send
+  plays in a 1→2→3 chain). Assumed, not yet verified: a unit's output level
+  feeds the next unit, and only the last unit's output level reaches the mixer.
 
 build_graph() follows the signal from the tones to the output; a wire is
 active only when sound actually travels it.
@@ -122,6 +126,28 @@ def mfx_structure_layout(structure: int) -> dict:
             "rows": rows, "merge": None, "next": {str(k): v for k, v in nxt.items()}}
 
 
+def chain_outputs(units: list[dict]) -> dict:
+    """Combine the MFX units of a chain (in signal order) into what reaches
+    the mixer: {type, dry, cho, rev, reached, choUnits, revUnits}.
+
+    units: [{slot, type, dry, cho, rev}]. A unit only gets sound while the
+    one before it has an output level above 0.
+    """
+    reached, cho, rev, cho_units, rev_units = [], 0, 0, [], []
+    for u in units:
+        reached.append(int(u.get("slot", len(reached) + 1)))
+        if int(u.get("cho", 0)) > 0:
+            cho = max(cho, int(u["cho"])); cho_units.append(reached[-1])
+        if int(u.get("rev", 0)) > 0:
+            rev = max(rev, int(u["rev"])); rev_units.append(reached[-1])
+        if int(u.get("dry", 0)) <= 0:
+            break
+    last = units[len(reached) - 1] if units else {}
+    dry = int(last.get("dry", 0)) if len(reached) == len(units) else 0
+    return {"type": int(last.get("type", 0)), "dry": dry, "cho": cho, "rev": rev,
+            "reached": reached, "choUnits": cho_units, "revUnits": rev_units}
+
+
 def _edge(active: bool, level: int = 0, tones: Optional[list[int]] = None) -> dict:
     return {"active": bool(active), "level": int(level) if active else 0,
             "tones": list(tones or [])}
@@ -135,8 +161,8 @@ def build_graph(state, *, mfx: dict, chorus: dict, reverb: dict,
                 part=None, mfx_label: str = "MFX") -> dict[str, Any]:
     """Follow the sound of `state` (a PatchState) to the output.
 
-    mfx: {type, dry, cho, rev} of the unit whose outputs reach the mixer
-    (the end of the chain in PERFORM). chorus: {type, level, toReverb}.
+    mfx: {type, dry, cho, rev} of what leaves the MFX stage (in PERFORM the
+    chain_outputs() of the part's chain). chorus: {type, level, toReverb}.
     reverb: {type, level}. part: the PerfPartState in PERFORM, else None.
 
     Edge keys: in->part (PERFORM), in->mfx, in->out, in->cho, in->rev,
