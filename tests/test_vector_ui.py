@@ -1380,3 +1380,29 @@ def test_fx_macro_follows_assigned_processor_in_perform():
     bridge.setMacro(1, 0.2)  # +0.2 * 0.5 * 127 = +12.7
     assert ps.perf_fx.chorus_level == pytest.approx(63, abs=1)
     assert ps.effects.chorus_level == 10
+
+
+def test_lpf2_lpf3_reach_the_synth():
+    from unittest.mock import MagicMock
+
+    from src.spectre.core.midi import MidiDeviceManager
+    from src.spectre.core.protocol import JunoClient, SoundMode
+    from src.spectre.ui.bridge import SpectreBridge
+
+    mgr = MagicMock(spec=MidiDeviceManager)
+    client = JunoClient(mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+    bridge = SpectreBridge(VectorEngine(juno_client=client))
+    mgr.send_juno_sysex.reset_mock()
+
+    def type_writes():
+        return [(tuple(c[0][0][6:10]), c[0][0][10]) for c in mgr.send_juno_sysex.call_args_list
+                if c[0][0][9] == 0x48]
+
+    bridge.setTvfType("LPF2")
+    assert bridge.tvfType == "LPF2" and bridge.patch_state.tones[0].tvf_filter_type == 5
+    assert type_writes() == [((0x1F, 0x00, 0x20, 0x48), 5)]  # tone 1 TVF Filter Type
+    mgr.send_juno_sysex.reset_mock()
+    bridge.sculptTvfType("LPF3")
+    assert [v for _, v in type_writes()] == [6, 6, 6, 6]
+    assert all(t.tvf_filter_type == 6 for t in bridge.patch_state.tones)

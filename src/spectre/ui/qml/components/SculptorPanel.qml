@@ -167,7 +167,7 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: ScaleMetrics.dp(3)
                     Repeater {
-                        model: ["OFF", "LPF", "BPF", "HPF", "PKG"]
+                        model: ["OFF", "LPF", "LPF2", "LPF3", "BPF", "HPF", "PKG"]
                         delegate: Rectangle {
                             Layout.fillWidth: true
                             height: ScaleMetrics.dp(22)
