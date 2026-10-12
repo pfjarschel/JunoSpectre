@@ -15,6 +15,7 @@ from typing import Optional
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
+from PyQt6.QtQuick import QQuickWindow
 
 from ..vector.engine import VectorEngine
 from .bridge import SpectreBridge
@@ -37,11 +38,33 @@ def load_fonts(app: QGuiApplication) -> None:
     app.setFont(QFont("Noto Sans"))
 
 
+def _show_ui_after_splash(window: QQuickWindow) -> None:
+    """Build the UI once the splash frame is on screen (see main.qml).
+
+    frameSwapped comes from the render thread, hence the queued connection;
+    it is dropped after the first frame.
+    """
+
+    def on_first_frame() -> None:
+        try:
+            window.frameSwapped.disconnect(on_first_frame)
+        except TypeError:
+            return  # a second queued frame: already handled
+        window.setProperty("splashShown", True)
+
+    window.frameSwapped.connect(on_first_frame, Qt.ConnectionType.QueuedConnection)
+
+
 def create_application(
     engine: Optional[VectorEngine] = None,
     platform: Optional[str] = None,
+    splash: bool = False,
 ) -> tuple[QGuiApplication, QQmlApplicationEngine, SpectreBridge]:
-    """Initialize Qt application and QML engine without entering exec loop."""
+    """Initialize Qt application and QML engine without entering exec loop.
+
+    With ``splash`` the window opens on the splash picture and builds the UI
+    after that first frame, so the event loop must run before the UI exists.
+    """
     if platform:
         os.environ["QT_QPA_PLATFORM"] = platform
 
@@ -113,10 +136,15 @@ def create_application(
     qml_engine.addImportPath(str(qml_dir))
 
     main_qml = qml_dir / "main.qml"
+    if splash:
+        qml_engine.setInitialProperties({"splashStartup": True})
     qml_engine.load(QUrl.fromLocalFile(str(main_qml)))
 
     if not qml_engine.rootObjects():
         raise RuntimeError("Failed to load root QML object from main.qml")
+    root = qml_engine.rootObjects()[0]
+    if splash and isinstance(root, QQuickWindow):
+        _show_ui_after_splash(root)
 
     return app, qml_engine, bridge
 
@@ -127,7 +155,7 @@ def run_app(
     platform: Optional[str] = None,
 ) -> int:
     """Launch the Juno Spectre QML Touch Application."""
-    app, qml_engine, bridge = create_application(engine=engine, platform=platform)
+    app, qml_engine, bridge = create_application(engine=engine, platform=platform, splash=True)
 
     # Hide mouse cursor for touch appliance
     app.setOverrideCursor(Qt.CursorShape.BlankCursor)

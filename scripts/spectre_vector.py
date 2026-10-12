@@ -41,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--platform", type=str, default=None, help="Qt platform plugin (e.g. eglfs, wayland, xcb)")
     parser.add_argument("--juno-port", type=str, default=None, help="MIDI port name for Roland synth")
     parser.add_argument("--list-ports", action="store_true", help="List detected MIDI ports and exit (no UI)")
+    parser.add_argument("--no-splash", action="store_true", help="Build the UI right away, without the startup splash")
     parser.add_argument("--exit-after", type=float, default=None, help="Exit after N seconds (testing)")
     return parser.parse_args()
 
@@ -136,6 +137,7 @@ def main() -> int:
     app, qml_engine, bridge = create_application(
         engine=vector_engine,
         platform=args.platform,
+        splash=not args.no_splash,
     )
 
     # Hardware page: port watcher, reconnect, and attaching a synth powered on later

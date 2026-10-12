@@ -65,3 +65,12 @@ python tools/voice_count_test.py            # recorded and analysed
 python tools/voice_count_test.py --listen   # no audio capture: listen for the low C dropping out
 python tools/voice_count_test.py --switch   # listen: what a Tone Switch change does to held notes
 ```
+
+### 8. `make_splash.py`
+Startup splash generator.
+- **Requirements:** Pillow.
+- **Function:** Scales the master picture (`docs/images/JunoSpectre_splash.jpg`) to cover 1024x600, centre-crops it and writes the app splash `src/spectre/assets/splash_1024x600.jpg` (shown by `main.qml` while the UI loads).
+
+```bash
+python tools/make_splash.py [master.jpg]
+```
