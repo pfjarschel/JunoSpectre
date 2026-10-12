@@ -25,6 +25,7 @@ from .performance import PerformanceBridgeMixin
 from .sequencer import SequencerBridgeMixin
 from .setlist import SetlistBridgeMixin
 from .system import SystemBridgeMixin
+from .tmt import TmtBridgeMixin
 from .vector import VectorBridgeMixin
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ class SpectreBridge(
     HardwareBridgeMixin,
     ControllersBridgeMixin,
     ArpBridgeMixin,
+    TmtBridgeMixin,
     QObject,
 ):
     """Unified bridge exposing workstation engine, patch, performance and system state to QML."""
@@ -165,6 +167,7 @@ class SpectreBridge(
         self._init_hardware()
         self._init_controllers()
         self._init_arp()
+        self._init_tmt()
 
         # Subscribe to engine state updates
         self.engine.subscribe(self._on_engine_state_changed)

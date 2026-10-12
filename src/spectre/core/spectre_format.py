@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from .patch_state import PatchState
+from .sysex import TMT_TONE_RANGE_FIELDS
 
 FORMAT_VERSION = 1
 KINDS = ("patch", "performance", "vector_set", "session", "playlist")
@@ -92,14 +93,30 @@ def _safe_construct(cls: Any, data: Any, default: Any) -> Any:
 
 
 def _fill_routing_from_image(out: PatchState, d: Dict[str, Any]) -> None:
-    """Snapshots older than the routing model lack the structure types and
-    the direct send pair; their raw image has them (TMT 0x00/0x02, tone 0x0F/0x10)."""
+    """Snapshots older than the routing / TMT models lack the TMT fields and
+    the direct send pair; their raw image has them (TMT block, common 0x28,
+    tone 0x0F/0x10)."""
     raw = out.raw_regions or {}
     common = d.get("common") if isinstance(d.get("common"), dict) else {}
     tmt = (raw.get("tmt") or [b""])[0]
     if "structure_12" not in common and len(tmt) > 0x02:
         out.common.structure_12, out.common.structure_34 = int(tmt[0x00]), int(tmt[0x02])
     raw_tones = d.get("tones") if isinstance(d.get("tones"), list) else []
+    # Older snapshots also lack booster, velocity control and the tone ranges
+    if tmt:
+        img = PatchState()
+        PatchState.apply_tmt(bytes(tmt), img.common, img.tones, mutes=False)
+        for attr in ("booster_12", "booster_34", "tmt_velocity_control"):
+            if attr not in common:
+                setattr(out.common, attr, getattr(img.common, attr))
+        for i, (tone, src) in enumerate(zip(out.tones, img.tones)):
+            td = raw_tones[i] if i < len(raw_tones) and isinstance(raw_tones[i], dict) else {}
+            for attr in TMT_TONE_RANGE_FIELDS:
+                if attr not in td:
+                    setattr(tone, attr, getattr(src, attr))
+    raw_common = (raw.get("common") or [b""])[0]
+    if "tmt_control_switch" not in common and len(raw_common) > 0x28:
+        out.common.tmt_control_switch = int(raw_common[0x28])
     for i, tone in enumerate(out.tones, start=1):
         td = raw_tones[i - 1] if i - 1 < len(raw_tones) and isinstance(raw_tones[i - 1], dict) else {}
         main = (raw.get(f"tone_{i}") or [b""])[0]

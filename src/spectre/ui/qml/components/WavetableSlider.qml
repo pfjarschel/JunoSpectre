@@ -90,6 +90,10 @@ Item {
                 anchors.margins: ScaleMetrics.dp(8)
                 spacing: ScaleMetrics.dp(6)
 
+                StructureButton {
+                    Layout.fillWidth: true
+                }
+
                 Text {
                     text: "WAVE SWEEP"
                     font.bold: true

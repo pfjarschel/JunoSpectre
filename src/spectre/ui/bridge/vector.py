@@ -803,6 +803,7 @@ class VectorBridgeMixin(BridgeBaseMixin):
             self.patch_state.tones[3].level,
         )
         self.toneMutesChanged.emit()
+        self._tmt_emit()
         self.masterCutoffChanged.emit(self.masterCutoff)
         self.masterResoChanged.emit(self.masterReso)
         self.masterAttackChanged.emit(self.masterAttack)

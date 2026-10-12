@@ -47,6 +47,10 @@ Item {
                 anchors.margins: ScaleMetrics.dp(8)
                 spacing: ScaleMetrics.dp(6)
 
+                StructureButton {
+                    Layout.fillWidth: true
+                }
+
                 // Header
                 Text {
                     text: "WAVE MOTION"

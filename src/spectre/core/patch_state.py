@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from .sysex import unpack_2nibbles, unpack_4nibbles
+from .sysex import TMT_TONE_RANGE_FIELDS, unpack_2nibbles, unpack_4nibbles
 
 # Canonical initialization template (single source of truth shared by
 # protocol.init_patch, create_init_patch, PatchState.from_template, and bridge.initPatch).
@@ -67,6 +67,16 @@ class ToneState:
     tva_l2: int = 127            # 0..127 (Decay break level)
     tva_l3: int = 127            # 0..127 (Sustain level)
     muted: bool = False
+
+    # Tone Mix Table: where on the keyboard / at which velocity the tone sounds
+    key_range_lower: int = 0     # 0..127 (C-1..G9)
+    key_range_upper: int = 127
+    key_fade_lower: int = 0      # 0..127 (0 = hard edge)
+    key_fade_upper: int = 0
+    velo_range_lower: int = 1    # 1..127
+    velo_range_upper: int = 127
+    velo_fade_lower: int = 0     # 0..127
+    velo_fade_upper: int = 0
 
     # Tone Routing & Sends
     output_assign: int = 0       # 0: MFX, 1: L+R, 5: L, 6: R (see core.routing)
@@ -433,6 +443,10 @@ class PatchCommonState:
     patch_output_assign: int = 13 # 0: MFX, 1: L+R, 5: L, 6: R, 13: TONE (respect per-tone assign)
     structure_12: int = 0        # TMT 0x00, 0..9 = TYPE1..10 (2..10 merge tone 1 into tone 2)
     structure_34: int = 0        # TMT 0x02, 0..9 = TYPE1..10 (2..10 merge tone 3 into tone 4)
+    booster_12: int = 0          # TMT 0x01, 0..3 = 0/+6/+12/+18 dB (structure types 3, 4)
+    booster_34: int = 0          # TMT 0x03
+    tmt_velocity_control: int = 0  # TMT 0x04, 0..3 = OFF/ON/RANDOM/CYCLE
+    tmt_control_switch: int = 0  # common 0x28, 0..1: Matrix Control picks the tones
     matrix_ctrls: list[MatrixCtrlState] = field(default_factory=lambda: [
         # Raw values captured from the user template patch (preserved as-is):
         MatrixCtrlState(source=98, dest1=9, sens1=74),
@@ -832,14 +846,20 @@ class PatchState:
         return unpack_4nibbles(block[offset:offset + 4]) - 32768
 
     @staticmethod
-    def apply_tmt(tmt: bytes, common: PatchCommonState, tones: list) -> None:
-        """TMT bytes -> structure types (0x00/0x02) and tone mutes (switches)."""
-        if len(tmt) > 0x02:
-            common.structure_12 = int(tmt[0x00])
-            common.structure_34 = int(tmt[0x02])
-        for tone, off in zip(tones, (0x05, 0x0E, 0x17, 0x20)):
+    def apply_tmt(tmt: bytes, common: PatchCommonState, tones: list,
+                  mutes: bool = True) -> None:
+        """TMT bytes -> structure/booster/velocity control, tone mutes
+        (switches) and each tone's key/velocity range."""
+        for attr, off in (("structure_12", 0x00), ("booster_12", 0x01), ("structure_34", 0x02),
+                          ("booster_34", 0x03), ("tmt_velocity_control", 0x04)):
             if len(tmt) > off:
+                setattr(common, attr, int(tmt[off]))
+        for tone, off in zip(tones, (0x05, 0x0E, 0x17, 0x20)):
+            if mutes and len(tmt) > off:
                 tone.muted = (tmt[off] == 0)
+            for i, attr in enumerate(TMT_TONE_RANGE_FIELDS, start=1):
+                if len(tmt) > off + i:
+                    setattr(tone, attr, int(tmt[off + i]))
 
     @classmethod
     def _decode_common(cls, b: bytes) -> PatchCommonState:
@@ -868,6 +888,7 @@ class PatchState:
             attack_offset=b[0x24],
             release_offset=b[0x25],
             patch_output_assign=b[0x27],
+            tmt_control_switch=b[0x28],
             matrix_ctrls=matrices,
         )
 

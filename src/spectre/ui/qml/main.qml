@@ -248,6 +248,12 @@ Window {
         objectName: "envEditOverlay"
     }
 
+    // Global Modal: Tone Mix Table (structure types, booster, key/velocity ranges)
+    TmtOverlay {
+        id: tmtOverlay
+        objectName: "tmtOverlay"
+    }
+
     // Global Bridge signal listeners
     Connections {
         target: Bridge
@@ -268,6 +274,9 @@ Window {
         }
         function onRequestOpenEnvOverlay(env) {
             envEditOverlay.open(env);
+        }
+        function onRequestOpenTmtOverlay(tab) {
+            tmtOverlay.open(tab);
         }
     }
 }

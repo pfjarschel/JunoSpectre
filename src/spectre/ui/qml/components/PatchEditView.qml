@@ -71,6 +71,10 @@ Rectangle {
                     font.letterSpacing: 1.2
                     color: Theme.textPrimary
                 }
+
+                StructureButton {
+                    Layout.leftMargin: ScaleMetrics.dp(6)
+                }
             }
 
             Item { Layout.fillWidth: true }

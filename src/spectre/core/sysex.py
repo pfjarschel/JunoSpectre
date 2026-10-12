@@ -295,12 +295,23 @@ PATCH_PARAM_RESONANCE_OFFSET = 0x0023 # 1..127 (-63 .. +63)
 PATCH_PARAM_ATTACK_OFFSET = 0x0024 # 1..127 (-63 .. +63)
 PATCH_PARAM_RELEASE_OFFSET = 0x0025 # 1..127 (-63 .. +63)
 PATCH_PARAM_OUTPUT_ASSIGN = 0x0027  # 0..13 (0: MFX, 1: L+R, 5: L, 6: R, 13: TONE)
+PATCH_PARAM_TMT_CONTROL_SWITCH = 0x0028  # 0..1 (Matrix Control picks the tones)
 PATCH_PARAM_MATRIX_CTRL_1 = 0x002B # Source, Dest 1..4, Sens 1..4 (size 9)
 PATCH_PARAM_MATRIX_CTRL_2 = 0x0034 # Source, Dest 1..4, Sens 1..4 (size 9)
 PATCH_PARAM_MATRIX_CTRL_3 = 0x003D # Source, Dest 1..4, Sens 1..4 (size 9)
 PATCH_PARAM_MATRIX_CTRL_4 = 0x0046 # Source, Dest 1..4, Sens 1..4 (size 9)
 
 # Tone Mix Table (TMT) Offsets (relative to OFFSET_PATCH_TMT)
+TMT_PARAM_STRUCTURE_12 = 0x0000    # 0..9 (TYPE 1..10)
+TMT_PARAM_BOOSTER_12 = 0x0001      # 0..3 (0, +6, +12, +18 dB)
+TMT_PARAM_STRUCTURE_34 = 0x0002    # 0..9 (TYPE 1..10)
+TMT_PARAM_BOOSTER_34 = 0x0003      # 0..3 (0, +6, +12, +18 dB)
+TMT_PARAM_VELOCITY_CONTROL = 0x0004  # 0..3 (OFF, ON, RANDOM, CYCLE)
+# Each tone's block starts at its switch byte; these follow it (+1..+8)
+TMT_TONE_RANGE_FIELDS = (
+    "key_range_lower", "key_range_upper", "key_fade_lower", "key_fade_upper",
+    "velo_range_lower", "velo_range_upper", "velo_fade_lower", "velo_fade_upper",
+)
 TMT_PARAM_TONE1_SWITCH = 0x0005    # 0..1 (OFF, ON)
 TMT_PARAM_TONE2_SWITCH = 0x000E    # 0..1 (OFF, ON)
 TMT_PARAM_TONE3_SWITCH = 0x0017    # 0..1 (OFF, ON)

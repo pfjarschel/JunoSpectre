@@ -50,6 +50,7 @@ from .sysex import (
     PATCH_PARAM_MONO_POLY,
     PATCH_PARAM_NAME,
     PATCH_PARAM_OUTPUT_ASSIGN,
+    PATCH_PARAM_TMT_CONTROL_SWITCH,
     PATCH_PARAM_PAN,
     PATCH_PARAM_PORTAMENTO_MODE,
     PATCH_PARAM_PORTAMENTO_SWITCH,
@@ -462,6 +463,18 @@ class PatchProtocolMixin:
         tmt_base = add_address(base, OFFSET_PATCH_TMT)
         switch_addr = add_address(tmt_base, tmt_switch_offsets[tone_index])
         self.send_data(switch_addr, [1 if enabled else 0])
+
+    def set_tmt_param(self, offset: int, value: int) -> None:
+        """Write one Tone Mix Table byte (offset from the TMT block) of the live patch."""
+        if not 0 <= int(offset) <= 0x28:
+            raise ValueError(f"TMT offset out of range: {offset}")
+        tmt_base = add_address(self.get_active_patch_base(), OFFSET_PATCH_TMT)
+        self.send_data(add_address(tmt_base, int(offset)), [max(0, min(127, int(value)))])
+
+    def set_tmt_control_switch(self, enabled: bool) -> None:
+        """Patch Common TMT Control Switch: Matrix Control picks the tones."""
+        common_base = add_address(self.get_active_patch_base(), OFFSET_PATCH_COMMON)
+        self.send_data(add_address(common_base, PATCH_PARAM_TMT_CONTROL_SWITCH), [1 if enabled else 0])
 
     def ensure_tone_enabled(self, tone_index: int) -> None:
         """Ensure tone switch is enabled (ON) in Tone Mix Table, routed to dry send,
