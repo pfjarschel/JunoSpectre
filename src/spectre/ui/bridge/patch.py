@@ -2254,7 +2254,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
     def _build_routing_graph(self) -> dict:
         inp = self._routing_inputs()
         perform = inp["part"] is not None
-        label = "→".join(f"MFX{n}" for n in inp["chain"]) if perform else "MFX"
+        label = "MFX" + "→".join(map(str, inp["chain"])) if perform else "MFX"
         g = build_graph(self.patch_state, mfx=inp["mfx"], chorus=inp["chorus"],
                         reverb=inp["reverb"], part=inp["part"], mfx_label=label)
         mtype = inp["mfx"]["type"]

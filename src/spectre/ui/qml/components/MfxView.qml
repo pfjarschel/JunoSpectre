@@ -377,6 +377,32 @@ Rectangle {
                     }
                     Item { Layout.fillWidth: true }
 
+                    // PERFORM: MFX1-3 are chained (Performance MFX Structure); tap for Routing
+                    Rectangle {
+                        objectName: "mfxChainTag"
+                        readonly property int st: Bridge.perfStructure
+                        visible: Bridge.soundMode === "PERFORM" && st > 0
+                        width: chainTagText.implicitWidth + ScaleMetrics.dp(16)
+                        height: ScaleMetrics.dp(30)
+                        radius: ScaleMetrics.dp(4)
+                        color: chainTagMa.pressed ? Theme.bgCardActive : "#1c0d16"
+                        border.color: "#ec4899"
+                        border.width: 1
+                        Text {
+                            id: chainTagText
+                            anchors.centerIn: parent
+                            text: "MFX CHAIN · TYPE " + (parent.st + 1) + " · " + Bridge.perfMfxStructures[parent.st].label
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: "#ec4899"
+                        }
+                        MouseArea {
+                            id: chainTagMa
+                            anchors.fill: parent
+                            onClicked: Bridge.setActiveView("ROUTING")
+                        }
+                    }
+
                     // Bypass Button
                     Rectangle {
                         width: ScaleMetrics.dp(84)

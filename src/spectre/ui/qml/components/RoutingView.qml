@@ -558,6 +558,42 @@ Rectangle {
                         current: parent.p ? parent.p.mfxSelect : 1
                         onPicked: (v) => Bridge.setRoutingPartParam("mfxSelect", v)
                     }
+                    // Performance MFX Structure: how MFX1-3 chain (shared by all parts)
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(3)
+                        Text {
+                            text: "CHAIN"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(7)
+                            color: Theme.textDim
+                            Layout.preferredWidth: ScaleMetrics.dp(44)
+                        }
+                        Rectangle {
+                            readonly property int st: Bridge.perfStructure
+                            Layout.fillWidth: true
+                            height: ScaleMetrics.dp(20)
+                            radius: 3
+                            color: chainMa.pressed ? Theme.bgCardActive : (st > 0 ? "#1c0d16" : "#10141d")
+                            border.color: st > 0 ? root.cMfx : Theme.borderCard
+                            border.width: 1
+                            Text {
+                                anchors.centerIn: parent
+                                width: parent.width - ScaleMetrics.dp(6)
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                                text: "TYPE " + (parent.st + 1) + " · " + Bridge.perfMfxStructures[parent.st].label + "  ▸"
+                                font.bold: true
+                                font.pixelSize: ScaleMetrics.sp(7)
+                                color: parent.st > 0 ? root.cMfx : Theme.textSecondary
+                            }
+                            MouseArea {
+                                id: chainMa
+                                anchors.fill: parent
+                                onClicked: chainPicker.visible = true
+                            }
+                        }
+                    }
                     SendSlider {
                         Layout.fillWidth: true
                         label: "OUT LEVEL"
@@ -762,6 +798,138 @@ Rectangle {
                     }
                     Item { Layout.fillHeight: true }
                 }
+            }
+        }
+    }
+
+    // =========================================================================
+    // MFX STRUCTURE PICKER (PERFORM): the 16 ways MFX1-3 connect
+    // =========================================================================
+    Rectangle {
+        id: chainPicker
+        anchors.fill: parent
+        visible: false
+        z: 50
+        radius: ScaleMetrics.dp(8)
+        color: "#f00a0c10"
+        readonly property int entry: root.perform && root.graph.part ? root.graph.part.mfxSelect : 0
+        onVisibleChanged: if (visible && !root.perform) visible = false
+
+        MouseArea { anchors.fill: parent }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: ScaleMetrics.dp(12)
+            spacing: ScaleMetrics.dp(8)
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: ScaleMetrics.dp(8)
+                Rectangle {
+                    width: ScaleMetrics.dp(8); height: ScaleMetrics.dp(8); radius: 4
+                    color: root.cMfx
+                }
+                Text {
+                    text: "MFX STRUCTURE"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(11)
+                    font.letterSpacing: 1.1
+                    color: Theme.textPrimary
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "How MFX1–3 connect, for the whole performance. Part " + (root.graph && root.graph.part ? root.graph.part.index : "")
+                          + " enters MFX" + chainPicker.entry + " (amber); lit units are the ones its sound passes through."
+                    elide: Text.ElideRight
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Theme.textSecondary
+                }
+                Rectangle {
+                    width: ScaleMetrics.dp(36)
+                    height: ScaleMetrics.dp(26)
+                    radius: ScaleMetrics.dp(6)
+                    color: pickClose.pressed ? "#3f1a1a" : Theme.bgApp
+                    border.color: Theme.borderCard
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "✕"
+                        font.bold: true
+                        font.pixelSize: ScaleMetrics.sp(13)
+                        color: pickClose.pressed ? Theme.recording : Theme.textSecondary
+                    }
+                    MouseArea {
+                        id: pickClose
+                        anchors.fill: parent
+                        onClicked: chainPicker.visible = false
+                    }
+                }
+            }
+
+            GridLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                columns: 4
+                rowSpacing: ScaleMetrics.dp(6)
+                columnSpacing: ScaleMetrics.dp(6)
+
+                Repeater {
+                    model: Bridge.perfMfxStructures
+                    delegate: Rectangle {
+                        id: chainTile
+                        required property int index
+                        required property var modelData
+                        readonly property bool sel: Bridge.perfStructure === index
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: ScaleMetrics.dp(5)
+                        color: sel ? "#2a0f20" : (tileMa.pressed ? Theme.bgCardActive : Theme.bgApp)
+                        border.color: sel ? root.cMfx : Theme.borderCard
+                        border.width: sel ? 2 : 1
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: ScaleMetrics.dp(6)
+                            spacing: ScaleMetrics.dp(6)
+                            ColumnLayout {
+                                Layout.preferredWidth: ScaleMetrics.dp(58)
+                                spacing: 0
+                                Text {
+                                    text: "TYPE " + (index < 9 ? "0" : "") + (index + 1)
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: chainTile.sel ? root.cMfx : Theme.textSecondary
+                                }
+                                Text {
+                                    text: modelData.label
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: Theme.textDim
+                                }
+                            }
+                            MfxChainDiagram {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                layout: modelData
+                                entry: chainPicker.entry
+                                accent: root.cMfx
+                                entryColor: root.cPart
+                            }
+                        }
+                        MouseArea {
+                            id: tileMa
+                            anchors.fill: parent
+                            onClicked: Bridge.setPerfStructure(index)
+                        }
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "In a chain, only the last unit's output level and chorus/reverb sends are assumed to reach the mixer (to verify by ear). Change which MFX a part enters with its MFX buttons."
+                wrapMode: Text.WordWrap
+                font.pixelSize: ScaleMetrics.sp(8)
+                color: Theme.textDim
             }
         }
     }

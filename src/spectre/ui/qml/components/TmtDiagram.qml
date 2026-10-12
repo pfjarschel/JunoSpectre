@@ -18,6 +18,7 @@ Canvas {
     onBoosterTextChanged: requestPaint()
     onDimmedChanged: requestPaint()
     onWidthChanged: requestPaint()
+    onVisibleChanged: if (visible) requestPaint()
     onHeightChanged: requestPaint()
 
     function _hex(c, a) {

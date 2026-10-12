@@ -341,7 +341,7 @@ def test_bridge_perform_routing_part_stage(tmp_path):
     assert bridge.editingPerfMfx == 2 and not bridge.routingGraph["mfxMismatch"]
 
     bridge.setPerfStructure(10)                   # TYPE11: MFX1 -> MFX2 -> MFX3
-    assert bridge.routingGraph["nodes"]["mfx"]["label"] == "MFX2→MFX3"
+    assert bridge.routingGraph["nodes"]["mfx"]["label"] == "MFX2→3"
 
     bridge.setRoutingPartParam("assign", 1)
     assert part.output_assign == 1
@@ -413,3 +413,25 @@ def test_old_snapshots_get_routing_from_their_image():
     d["tones"] = [{"chorus_send_direct": 7}] * 4
     st = patch_state_from_dict(d)
     assert st.common.structure_12 == 0 and st.tones[0].chorus_send_direct == 7
+
+
+def test_mfx_structure_layouts_match_parameter_guide():
+    """Labels for TYPE01..16 as drawn on Parameter Guide p.24."""
+    from src.spectre.core.routing import mfx_structure_layout
+
+    labels = [mfx_structure_layout(s)["label"] for s in range(16)]
+    assert labels == ["1 | 2 | 3", "1→2 | 3", "1→3 | 2", "1 | 2→3", "2→1 | 3", "2 | 3→1",
+                      "1 | 3→2", "1+2→3", "2+3→1", "1+3→2", "1→2→3", "1→3→2",
+                      "2→3→1", "2→1→3", "3→1→2", "3→2→1"]
+    lay = mfx_structure_layout(7)
+    assert lay["rows"] == [[1], [2]] and lay["merge"] == 3 and lay["next"] == {"1": 3, "2": 3}
+
+
+def test_bridge_perf_structure_setter():
+    from src.spectre.ui.bridge import SpectreBridge
+    from src.spectre.vector.engine import VectorEngine
+
+    bridge = SpectreBridge(VectorEngine())
+    assert len(bridge.perfMfxStructures) == 16
+    bridge.setPerfStructure(10)  # TYPE11: 1→2→3
+    assert bridge.perfStructure == 10

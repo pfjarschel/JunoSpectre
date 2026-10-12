@@ -8,9 +8,12 @@ from pathlib import Path
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
+from ...core.routing import mfx_structure_layout
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
+
+_MFX_STRUCTURE_LAYOUTS = [mfx_structure_layout(s) for s in range(16)]
 
 # INIT PERF: fresh song layout (Bank MSB, LSB, PC, display name)
 INIT_PERF_NAME = "INIT PERF"
@@ -165,6 +168,11 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         if tgt[0] == "part":
             return f"REV\u00b7P{tgt[1]}"
         return "PATCH"
+
+    @pyqtProperty("QVariantList", constant=True)
+    def perfMfxStructures(self) -> list:
+        """The 16 MFX Structure types as drawable layouts (core.routing)."""
+        return _MFX_STRUCTURE_LAYOUTS
 
     @pyqtProperty(int, notify=perfFxChanged)
     def perfStructure(self) -> int:

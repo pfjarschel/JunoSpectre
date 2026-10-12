@@ -97,6 +97,31 @@ def mfx_chain(entry_slot: int, structure: int) -> list[int]:
     return chain
 
 
+def mfx_structure_layout(structure: int) -> dict:
+    """How MFX1-3 connect in one structure type, for drawing.
+
+    {"label": "1→2 | 3", "rows": [[1, 2], [3]], "merge": None} for chains,
+    {"label": "1+2→3", "rows": [[1], [2]], "merge": 3} when two units feed a third.
+    "next" maps unit -> the unit it feeds (string keys, for QML).
+    """
+    s = max(0, min(15, int(structure)))
+    nxt = MFX_STRUCTURE_NEXT[s]
+    targets = list(nxt.values())
+    merged = next((t for t in set(targets) if targets.count(t) > 1), None)
+    if merged is not None:
+        heads = sorted(u for u, t in nxt.items() if t == merged)
+        return {"type": s, "label": "+".join(map(str, heads)) + f"→{merged}",
+                "rows": [[h] for h in heads], "merge": merged, "next": {str(k): v for k, v in nxt.items()}}
+    rows = []
+    for head in (u for u in (1, 2, 3) if u not in targets):
+        row = [head]
+        while row[-1] in nxt:
+            row.append(nxt[row[-1]])
+        rows.append(row)
+    return {"type": s, "label": " | ".join("→".join(map(str, r)) for r in rows),
+            "rows": rows, "merge": None, "next": {str(k): v for k, v in nxt.items()}}
+
+
 def _edge(active: bool, level: int = 0, tones: Optional[list[int]] = None) -> dict:
     return {"active": bool(active), "level": int(level) if active else 0,
             "tones": list(tones or [])}
