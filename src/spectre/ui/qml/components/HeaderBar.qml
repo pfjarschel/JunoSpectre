@@ -26,7 +26,7 @@ Rectangle {
         // Screens Launcher Trigger Button (fixed width in every mode)
         Rectangle {
             id: screensBtn
-            Layout.preferredWidth: ScaleMetrics.dp(240)
+            Layout.preferredWidth: ScaleMetrics.dp(170)
             height: ScaleMetrics.dp(40)
             radius: ScaleMetrics.dp(6)
             color: screensArea.pressed ? Theme.bgCardActive : Theme.bgApp
@@ -72,13 +72,8 @@ Rectangle {
                 }
 
                 Text {
-                    text: "SCREENS:"
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(9)
-                    color: Theme.textDim
-                }
-
-                Text {
+                    Layout.maximumWidth: screensBtn.width - ScaleMetrics.dp(60)
+                    elide: Text.ElideRight
                     text: Bridge.activeView
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(11)
@@ -410,49 +405,71 @@ Rectangle {
             }
         }
 
+        // Play/Stop. Hold = PANIC: stop everything, all notes off (flashes red)
         Rectangle {
+            id: playBtn
+            property bool flash: false
             height: ScaleMetrics.dp(38)
             width: ScaleMetrics.dp(46)
             radius: ScaleMetrics.dp(4)
-            color: Bridge.seqIsPlaying ? "#064e3b" : (playArea.pressed ? Theme.bgCardActive : Theme.bgApp)
-            border.color: Bridge.seqIsPlaying ? "#10b981" : Theme.borderCard
+            color: flash ? "#591c1c"
+                   : Bridge.seqIsPlaying ? "#064e3b" : (playArea.pressed ? Theme.bgCardActive : Theme.bgApp)
+            border.color: flash || playArea.holding ? Theme.recording
+                          : Bridge.seqIsPlaying ? "#10b981" : Theme.borderCard
             border.width: 1
 
             Text {
                 anchors.centerIn: parent
-                text: Bridge.seqIsPlaying ? "■" : "▶"
+                text: playBtn.flash ? "!!" : Bridge.seqIsPlaying ? "■" : "▶"
+                font.bold: playBtn.flash
                 font.pixelSize: ScaleMetrics.sp(14)
-                color: Bridge.seqIsPlaying ? "#10b981" : Theme.textPrimary
+                color: playBtn.flash ? Theme.recording : Bridge.seqIsPlaying ? "#10b981" : Theme.textPrimary
+            }
+
+            // Fills while held, so the hold reads as "arming" panic
+            Rectangle {
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                anchors.margins: 2
+                height: ScaleMetrics.dp(3)
+                radius: height / 2
+                color: Theme.recording
+                width: playArea.holding ? parent.width - 4 : 0
+                visible: playArea.pressed
+                Behavior on width {
+                    NumberAnimation { duration: playArea.holding ? playArea.pressAndHoldInterval - 120 : 0 }
+                }
+            }
+
+            Timer {
+                id: flashTimer
+                interval: 700
+                onTriggered: playBtn.flash = false
             }
 
             MouseArea {
                 id: playArea
+                property bool holding: false
+                property bool fired: false
                 anchors.fill: parent
-                onClicked: Bridge.seqTogglePlay()
-            }
-        }
-
-        // Panic Button (All Notes Off)
-        Rectangle {
-            height: ScaleMetrics.dp(38)
-            width: ScaleMetrics.dp(60)
-            radius: ScaleMetrics.dp(4)
-            color: panicArea.pressed ? "#591c1c" : "#3f1a1a"
-            border.color: Theme.recording
-            border.width: 1
-
-            Text {
-                anchors.centerIn: parent
-                text: "PANIC"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(9)
-                color: Theme.recording
-            }
-
-            MouseArea {
-                id: panicArea
-                anchors.fill: parent
-                onClicked: Bridge.panic()
+                pressAndHoldInterval: 600
+                onPressed: { fired = false; holdStart.restart(); }
+                onReleased: { holdStart.stop(); holding = false; }
+                onCanceled: { holdStart.stop(); holding = false; }
+                onPressAndHold: {
+                    fired = true;
+                    holding = false;
+                    Bridge.panic();
+                    playBtn.flash = true;
+                    flashTimer.restart();
+                }
+                onClicked: if (!fired) Bridge.seqTogglePlay()
+                // Show the fill only once it's clearly a hold, not a tap
+                Timer {
+                    id: holdStart
+                    interval: 120
+                    onTriggered: playArea.holding = true
+                }
             }
         }
     }
