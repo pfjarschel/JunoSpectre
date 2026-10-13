@@ -11,6 +11,7 @@ from typing import Optional
 from PyQt6.QtCore import QObject, QTimer
 
 from ...core.patch_state import PatchState
+from ...core.protocol import JunoClient
 from ...core.updater import GitUpdater, UpdaterError
 from ...core.waves import WaveCatalogManager
 from ...core.wifi import WifiManager, WifiStatus
@@ -21,6 +22,7 @@ from .follow import FollowBridgeMixin
 from .hardware import HardwareBridgeMixin
 from .jobs import JobsBridgeMixin
 from .librarian import LibrarianBridgeMixin
+from .macros import MacroBridgeMixin
 from .patch import PatchBridgeMixin
 from .performance import PerformanceBridgeMixin
 from .sequencer import SequencerBridgeMixin
@@ -28,6 +30,7 @@ from .setlist import SetlistBridgeMixin
 from .system import SystemBridgeMixin
 from .tmt import TmtBridgeMixin
 from .vector import VectorBridgeMixin
+from .view import ViewBridgeMixin
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,9 @@ class SpectreBridge(
     SequencerBridgeMixin,
     SetlistBridgeMixin,
     SystemBridgeMixin,
+    ViewBridgeMixin,
     VectorBridgeMixin,
+    MacroBridgeMixin,
     PerformanceBridgeMixin,
     LibrarianBridgeMixin,
     PatchBridgeMixin,
@@ -48,12 +53,13 @@ class SpectreBridge(
     FollowBridgeMixin,
     QObject,
 ):
-    """Unified bridge exposing workstation engine, patch, performance and system state to QML."""
+    """Unified bridge exposing the synth, patch, performance, feature engines and system state to QML."""
 
-    def __init__(self, engine: VectorEngine, parent: Optional[QObject] = None):
+    def __init__(self, juno: Optional[JunoClient] = None, parent: Optional[QObject] = None):
 
         super().__init__(parent)
-        self.engine = engine
+        self.vector = VectorEngine()
+        self.juno = juno
         self._sync_busy: bool = False
 
         # Waveform catalog & active tone waveforms (Bank, WaveNum)
@@ -149,11 +155,11 @@ class SpectreBridge(
         self._wifi_last_status_poll: float = 0.0
 
         # Engine state tracking for dirty checks
-        self._last_x: float = self.engine.x
-        self._last_y: float = self.engine.y
-        self._last_w: float = self.engine.w
-        self._last_tone_levels: tuple[int, int, int, int] = self.engine.tone_levels
-        self._last_transport: str = self.engine.motion.state.value
+        self._last_x: float = self.vector.x
+        self._last_y: float = self.vector.y
+        self._last_w: float = self.vector.w
+        self._last_tone_levels: tuple[int, int, int, int] = self.vector.tone_levels
+        self._last_transport: str = self.vector.motion.state.value
 
         # Routing schematic: anything that changes the signal path redraws it
         for sig in (self.routingChanged, self.perfPartsChanged, self.perfFxChanged,
@@ -172,8 +178,8 @@ class SpectreBridge(
         self._init_tmt()
         self._init_follow()
 
-        # Subscribe to engine state updates
-        self.engine.subscribe(self._on_engine_state_changed)
+        # Subscribe to vector engine state updates
+        self.vector.subscribe(self._on_vector_state_changed)
 
         # 60 FPS animation/transport timer
         self._timer = QTimer(self)
@@ -189,12 +195,3 @@ class SpectreBridge(
         self._telemetry_timer = QTimer(self)
         self._telemetry_timer.setInterval(1500)
         self._telemetry_timer.timeout.connect(self._poll_telemetry)
-
-    @property
-    def juno(self):
-        """Direct, typed accessor for the connected JunoClient protocol instance."""
-        engine = getattr(self, "engine", None)
-        juno = getattr(engine, "juno", None) if engine is not None else None
-        if juno is not None and getattr(juno, "on_perf_part_write", None) is None:
-            juno.on_perf_part_write = self._on_perf_part_write
-        return juno

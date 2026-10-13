@@ -203,7 +203,7 @@ juno-spectre/
 │   │       └── bridge.py          # Python-QML reactive properties bridge
 ├── scripts/
 │   ├── spectre_control.py         # Hardware profile inspector & MIDI learn CLI
-│   ├── spectre_vector.py          # Vector Touch Appliance launcher
+│   ├── spectre_app.py             # Touch workstation launcher
 │   ├── wave_harvester.py          # Automated audio sampling & wave classifier
 │   └── extract_wave_names.py      # PDF manual wave table parser
 ├── tests/

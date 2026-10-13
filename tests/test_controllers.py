@@ -8,7 +8,6 @@ import pytest
 
 from src.spectre.control.mapping import Binding, Resolver
 from src.spectre.ui.app import create_application
-from src.spectre.vector.engine import VectorEngine
 
 PORT = "LCXL3 1:LCXL3 1 MIDI In"
 DAW = "LCXL3 1:LCXL3 1 DAW In"
@@ -120,7 +119,7 @@ def test_most_specific_context_wins():
 @pytest.fixture
 def ui(monkeypatch, tmp_path):
     monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
-    app, qml_engine, bridge = create_application(engine=VectorEngine(), platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     bridge._ctl_open[PORT] = object()          # pretend the LCXL3 is connected
     yield app, bridge, tmp_path
     bridge._ctl_open.clear()
@@ -491,7 +490,7 @@ def test_new_catalog_targets(ui):
                             _b(number=24, target="tone.1.pitch_env_depth", takeover="jump")]
     _send(app, bridge, _cc(21, 127), _cc(22, 0), _cc(23, 127), _cc(24, 0))
     assert bridge.sequencer.song.tracks[2].swing == pytest.approx(0.75)
-    assert bridge.engine.motion.center_x == pytest.approx(0.0)
+    assert bridge.vector.motion.center_x == pytest.approx(0.0)
     assert bridge.patch_state.common.matrix_ctrls[1].sens1 == 127
     assert bridge.patch_state.tones[0].pitch_env_depth == 52
 
@@ -505,7 +504,7 @@ def test_context_knobs_follow_the_page(ui):
     titles = [k["title"] for k in bridge.contextKnobs]
     assert titles[:2] == ["Morph X", "Morph Y"] and titles[5] == "Automator"
     bridge.setContextKnob(1, 0.25)
-    assert bridge.engine.x == pytest.approx(0.25)
+    assert bridge.vector.x == pytest.approx(0.25)
     bridge.setContextKnob(6, 1.0)                              # stepped: last automator
     assert bridge.automator == "chaos"
     bridge._ctx_refresh()
@@ -514,7 +513,7 @@ def test_context_knobs_follow_the_page(ui):
     # A controller's context knob drives the same thing, and follows page changes
     bridge._ctl_bindings = [_b(number=21, target="context.1", takeover="jump")]
     _send(app, bridge, _cc(21, 127))
-    assert bridge.engine.x == pytest.approx(1.0)
+    assert bridge.vector.x == pytest.approx(1.0)
     bridge.setActiveView("MASTER FX")
     _send(app, bridge, _cc(21, 0))
     assert bridge.patch_state.effects.chorus_level == 0

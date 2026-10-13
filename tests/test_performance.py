@@ -197,10 +197,8 @@ def _bridge_rig(tmp_path):
     from src.spectre.core.sysex import DEFAULT_DEVICE_ID, JUNO_DS_MODEL_ID, RolandSysEx
     from src.spectre.librarian.repository import PatchRepository
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
     from tests.test_librarian_bridge import FakeJuno
 
-    engine = VectorEngine()
     juno = FakeJuno()
     # FakeJuno skips JunoClient.__init__: attach identity for blob encoding.
     juno.device_id = DEFAULT_DEVICE_ID
@@ -208,8 +206,7 @@ def _bridge_rig(tmp_path):
     juno.sysex = RolandSysEx(device_id=DEFAULT_DEVICE_ID, model_id=JUNO_DS_MODEL_ID)
     juno._cached_patch_part = None
     juno._active_perf_part = 1
-    engine.juno = juno
-    bridge = SpectreBridge(engine)
+    bridge = SpectreBridge(juno)
     repo = PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db",
                            factory_db_path=False)
     bridge._librarian_repo = repo
@@ -398,10 +395,8 @@ def test_part_status_lifecycle(tmp_path):
 def _offline_bridge(tmp_path):
     from src.spectre.librarian.repository import PatchRepository
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
-    engine = VectorEngine()  # no juno: offline
-    bridge = SpectreBridge(engine)
+    bridge = SpectreBridge()
     repo = PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db",
                            factory_db_path=False)
     bridge._librarian_repo = repo
@@ -967,7 +962,7 @@ def test_edit_perf_part_refreshes_editors(tmp_path):
     bridge._refresh_editors_for_part(2, async_mode=False)
 
     assert bridge.patch_state.common.name == "PART2 PATCH"
-    assert bridge.engine.tone_levels == (95, 60, 40, 0)
+    assert bridge.vector.tone_levels == (95, 60, 40, 0)
     assert bridge._tone_waves[0] == ("INTA", 123)
 
 

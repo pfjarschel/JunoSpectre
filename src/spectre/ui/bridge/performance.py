@@ -658,7 +658,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 if idx < len(self._tone_waves):
                     self._tone_waves[idx] = (t.wave_bank_l, t.wave_num_l)
             if len(state.tones) >= 4:
-                self.engine.tone_levels = (
+                self.vector.tone_levels = (
                     state.tones[0].level,
                     state.tones[1].level,
                     state.tones[2].level,
@@ -1416,22 +1416,22 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             parts.append(p)
         state.perf_parts = parts
 
-        motion_was_playing = self.engine.motion.state == RecorderState.PLAYING
+        motion_was_playing = self.vector.motion.state == RecorderState.PLAYING
         if motion_was_playing:
-            self.engine.motion.pause()
-            self.transportStateChanged.emit(self.engine.motion.state.value)
+            self.vector.motion.pause()
+            self.transportStateChanged.emit(self.vector.motion.state.value)
         try:
-            with self.engine.hold_hardware_writes():
+            with self.vector.hold_hardware_writes():
                 if not self._apply_playlist_state(patch_state_to_dict(state), INIT_PERF_NAME, snaps):
                     return
                 self.patch_state.macros = state.macros
                 self._resetMacroBases()
                 self._push_perf_fx_details()
-                self._reset_engine_to_patch_state()
+                self._reset_vector_to_patch_state()
         finally:
-            if motion_was_playing and self.engine.motion.state != RecorderState.PLAYING:
-                self.engine.motion.play()
-                self.transportStateChanged.emit(self.engine.motion.state.value)
+            if motion_was_playing and self.vector.motion.state != RecorderState.PLAYING:
+                self.vector.motion.play()
+                self.transportStateChanged.emit(self.vector.motion.state.value)
 
         self._restore_song_sequence(default_sequencer_song().to_dict())
         if hasattr(self, "seqSelectTrack"):

@@ -17,7 +17,6 @@ from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.protocol import JunoClient
 from src.spectre.core.spectre_format import load_spectre, save_spectre
 from src.spectre.ui.app import create_application
-from src.spectre.vector.engine import VectorEngine
 
 
 def test_style_list_matches_the_parameter_guide():
@@ -120,7 +119,7 @@ def test_clock_out_rate_and_switch():
 @pytest.fixture
 def ui(monkeypatch, tmp_path):
     monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
-    app, qml_engine, bridge = create_application(engine=VectorEngine(), platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     yield app, bridge, tmp_path
     bridge._clock_out.close()
     del qml_engine
@@ -144,7 +143,7 @@ def test_patch_file_carries_and_restores_the_arp(ui):
     bridge.setArpField("motif", 0)
     bridge.setArpField("switch", 0)
     fake = MagicMock()
-    bridge.engine.juno = fake
+    bridge.juno = fake
     assert bridge.loadSpectreFile(path)
     assert bridge.arp["motif"] == 11 and bridge.arp["switch"] is True
     fake.write_arp.assert_called_once()

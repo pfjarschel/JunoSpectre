@@ -201,7 +201,7 @@ class SetlistBridgeMixin(BridgeBaseMixin):
             self.sequencer.stop()
 
         # 2. Emit MIDI Panic down channels 1-16: CC 123 (All Notes Off) + CC 121 (Reset Controllers)
-        juno_mgr = getattr(self.engine, "juno", None)
+        juno_mgr = self.juno
         midi_mgr = getattr(juno_mgr, "midi", None) if juno_mgr else None
         if midi_mgr:
             try:

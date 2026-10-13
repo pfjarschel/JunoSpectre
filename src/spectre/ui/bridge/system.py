@@ -135,7 +135,7 @@ class SystemBridgeMixin(BridgeBaseMixin):
     @pyqtProperty(str, notify=telemetryChanged)
     def controlRateText(self) -> str:
         try:
-            hz = float(getattr(self.engine, "max_update_hz", 50.0))
+            hz = float(self.vector.max_update_hz)
         except (TypeError, ValueError):
             hz = 50.0
         if hz <= 0:

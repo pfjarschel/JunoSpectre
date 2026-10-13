@@ -61,7 +61,6 @@ def test_midi_input_demuxer_routes_notes_and_sysex():
 def test_sequencer_never_touches_kbd_switches():
     """Kbd switches are plain performance settings: sequencer navigation leaves them alone."""
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
     class DummyJuno:
         def __init__(self):
@@ -71,9 +70,7 @@ def test_sequencer_never_touches_kbd_switches():
             self.set_perf_zone = MagicMock()
             self.set_perf_zone_switch = MagicMock()
 
-    engine = VectorEngine()
-    engine.juno = DummyJuno()
-    bridge = SpectreBridge(engine)
+    bridge = SpectreBridge(DummyJuno())
     bridge.setPartZoneSwitch = MagicMock()
     bridge.patch_state.perf_parts[0].zone_switch = True
     bridge.patch_state.perf_parts[1].zone_switch = True
@@ -86,7 +83,7 @@ def test_sequencer_never_touches_kbd_switches():
     bridge.setActiveView("PERFORMANCE")
 
     bridge.setPartZoneSwitch.assert_not_called()
-    engine.juno.set_perf_zone_switch.assert_not_called()
+    bridge.juno.set_perf_zone_switch.assert_not_called()
     assert bridge.patch_state.perf_parts[0].zone_switch is True
     assert bridge.patch_state.perf_parts[1].zone_switch is True
 

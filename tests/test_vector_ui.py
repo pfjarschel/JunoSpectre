@@ -3,14 +3,12 @@
 import pytest
 
 from src.spectre.ui.app import create_application
-from src.spectre.vector.engine import VectorEngine
 
 pytestmark = pytest.mark.ui
 
 
 def test_ui_application_creation():
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     assert len(qml_engine.rootObjects()) == 1
     root = qml_engine.rootObjects()[0]
@@ -21,8 +19,7 @@ def test_ui_application_creation():
 
 
 def test_ui_bridge_slots_and_properties():
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     # Test coordinate update via slot
     bridge.setCoordinates(0.25, 0.75)
@@ -91,8 +88,7 @@ def test_ui_bridge_slots_and_properties():
 
 
 def test_workstation_views_switching():
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     # Initial boot view must be JUNO PCM
     assert bridge.activeView == "JUNO PCM"
@@ -123,8 +119,7 @@ def test_workstation_views_switching():
 
 
 def test_sound_sculptor_and_mod_properties():
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     # TVF Envelope & Filter
     bridge.setTvfType("BPF")
@@ -198,8 +193,7 @@ def test_sound_sculptor_and_mod_properties():
 def test_ui_rendering_performance():
     """Verify coordinate and wavetable changes process rapidly without bridge bottlenecks."""
     import time
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     t0 = time.perf_counter()
     for i in range(60):
@@ -225,8 +219,7 @@ def test_ui_rendering_performance():
 
 def test_bridge_get_filtered_waves():
     """Verify getFilteredWaves filters accurately across categories, banks, and search."""
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     # 1. Filter by category
     pianos = bridge.getFilteredWaves("piano", "ALL", "")
@@ -260,8 +253,7 @@ def test_bridge_sync_patch_from_synth():
         ("INTA", 1816),
     ]
 
-    engine = VectorEngine(juno_client=mock_client)
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(juno=mock_client, platform="offscreen")
 
     bridge.syncPatchFromSynth()
     assert bridge.patchName == "Test Patch"
@@ -286,8 +278,7 @@ def test_bridge_sync_patch_from_synth_async():
     mock_client.get_sound_mode.return_value = SoundMode.PATCH
     mock_client.get_all_tone_waves.return_value = [("INTA", 579)] * 4
 
-    engine = VectorEngine(juno_client=mock_client)
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(juno=mock_client, platform="offscreen")
 
     assert not bridge.syncBusy
     busy_states = []
@@ -309,8 +300,7 @@ def test_wave_modal_and_virtual_keyboard():
     """Verify WaveBrowserModal and VirtualKeyboard integrate properly into QML tree."""
     from PyQt6.QtCore import QObject
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     root = qml_engine.rootObjects()[0]
 
     modal = root.findChild(QObject, "waveBrowserModal")
@@ -342,8 +332,7 @@ def test_bridge_open_wave_browser():
     """Verify Bridge.openWaveBrowser emits signal and opens waveBrowserModal in QML."""
     from PyQt6.QtCore import QObject
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     root = qml_engine.rootObjects()[0]
 
     modal = root.findChild(QObject, "waveBrowserModal")
@@ -359,8 +348,7 @@ def test_vaview_pw_pwm():
     """Verify VaView properties and PWM/PW initial state."""
     from PyQt6.QtCore import QObject
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     root = qml_engine.rootObjects()[0]
 
     va_view = root.findChild(QObject, "vaView")
@@ -379,8 +367,7 @@ def test_modmatrix_picker():
     """Verify ModMatrixView sources, destinations, and modal picker overlay state."""
     from PyQt6.QtCore import QObject
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     root = qml_engine.rootObjects()[0]
 
     matrix_view = root.findChild(QObject, "modMatrixView")
@@ -408,8 +395,7 @@ def test_modmatrix_picker():
 
 def test_modmatrix_tone_switches():
     """Verify Bridge matrix controller tone switch properties and slots."""
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     ctrl1 = bridge.matrixCtrl1
     assert "dest1_sw" in ctrl1
@@ -432,8 +418,7 @@ def test_mseg_env_editor_view():
     """Verify the full-page MSEG Envelope Editor (EnvEditorView) properties."""
     from PyQt6.QtCore import QObject
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     root = qml_engine.rootObjects()[0]
 
     env_view = root.findChild(QObject, "envEditorView")
@@ -485,8 +470,7 @@ def test_eq_curve_panel_for_equalizer_algo():
     """EqCurvePanel shows for MFX 01 EQUALIZER / 02 SPECTRUM; its APIs round-trip."""
     from PyQt6.QtCore import QObject
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     root = qml_engine.rootObjects()[0]
     bridge.setActiveView("MFX")
     app.processEvents()
@@ -525,8 +509,7 @@ def test_mfx_view_features():
     """Verify MfxView category filtering, search, 4-8 param grid, and bypass state."""
     from PyQt6.QtCore import QObject
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     root = qml_engine.rootObjects()[0]
 
     mfx_view = root.findChild(QObject, "mfxView")
@@ -601,8 +584,7 @@ def test_master_fx_view_controls():
     """Verify MasterFxView scaled sliders and chorus/reverb controls."""
     from PyQt6.QtCore import QObject
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     root = qml_engine.rootObjects()[0]
 
     master_fx_view = root.findChild(QObject, "masterFxView")
@@ -643,8 +625,7 @@ def test_init_patch_workflow():
     """Verify Patch Init modal, Bridge.initPatch state reset, and QML view synchronization."""
     from PyQt6.QtCore import QObject
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     root = qml_engine.rootObjects()[0]
 
     # Check modal exists
@@ -738,23 +719,21 @@ def test_init_patch_preserves_motion_playback():
 
     from src.spectre.vector.motion import AutomatorType, RecorderState
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
-    bridge.engine.motion.automator = AutomatorType.CIRCLE
-    bridge.engine.motion.play()
-    assert bridge.engine.motion.state is RecorderState.PLAYING
+    app, qml_engine, bridge = create_application(platform="offscreen")
+    bridge.vector.motion.automator = AutomatorType.CIRCLE
+    bridge.vector.motion.play()
+    assert bridge.vector.motion.state is RecorderState.PLAYING
 
-    bridge.engine.juno = MagicMock()
-    bridge.engine.juno.init_patch.return_value = True
+    bridge.juno = MagicMock()
+    bridge.juno.init_patch.return_value = True
     bridge.initPatch()
 
-    assert bridge.engine.motion.state is RecorderState.PLAYING
+    assert bridge.vector.motion.state is RecorderState.PLAYING
     assert bridge.patch_state.effects.routing_preset == ""
 
 
 def test_pcm_sound_designer_enhancements():
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     # 1. Test tvaLevel and tone switching
     bridge.setToneLevel(1, 105)
@@ -819,8 +798,7 @@ def test_pcm_sound_designer_enhancements():
 
 def test_analog_feel_dedicated_control_rebases_macro6():
     """Direct edits rebase (semantics ii); macro-to-0 restores the new base exactly."""
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     # Fresh base is 0; engage macro halfway
     bridge.setMacro(6, 0.5)
@@ -845,8 +823,7 @@ def test_analog_feel_dedicated_control_rebases_macro6():
 
 def test_customizable_multitarget_macros():
     """Rename, add/remove links, polarity/depth, stacking sum, clamp-restore."""
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     # Rename (14-char cap, uppercased)
     bridge.setMacroName(1, "space sweep 123456789")
@@ -935,25 +912,23 @@ def test_customizable_multitarget_macros():
 
 def test_macro_morph_wavetable_link():
     """MORPH wavetable link fans out through the engine with exact restore."""
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     bridge.removeMacroTarget(4, 0)
     bridge.addMacroTarget(4, "vector.w")
     bridge.setMacroLink(4, 0, 1, 0.5)  # +/-0.5
-    assert bridge.engine.w == pytest.approx(0.0)
+    assert bridge.vector.w == pytest.approx(0.0)
     bridge.setMacro(4, 1.0)
-    assert bridge.engine.w == pytest.approx(0.5)
+    assert bridge.vector.w == pytest.approx(0.5)
     bridge.setMacro(4, -1.0)
-    assert bridge.engine.w == pytest.approx(0.0)  # base 0 - 0.5 -> clamp
+    assert bridge.vector.w == pytest.approx(0.0)  # base 0 - 0.5 -> clamp
     bridge.setMacro(4, 0.0)
-    assert bridge.engine.w == pytest.approx(0.0)
+    assert bridge.vector.w == pytest.approx(0.0)
 
 
 def test_sculptor_mutates_all_four_tones():
     """Verify that Sculptor methods sculpt ALL 4 tones regardless of selectedTone or linkedMode."""
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     # Tone 2 is selected on Juno PCM, linkedMode is False
     bridge.setSelectedTone(2)
@@ -999,8 +974,7 @@ def test_sculptor_mutates_all_four_tones():
 
 def test_va_auto_detune_mode():
     """Verify Auto Detune mode caches custom fine tunes, locks faders, and restores them when disabled."""
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     # 1. Initial state is OFF
     assert bridge.autoDetune is False
@@ -1047,8 +1021,7 @@ def test_va_auto_detune_mode():
 
 
 def test_ui_bridge_step_lfo():
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     # Initial state on Tone 1
     bridge.setSelectedTone(1)
@@ -1121,8 +1094,7 @@ def test_envelope_overlay_bridge_api():
     """Generic MSEG editing API: segments, lossless rules, presets, overlay request."""
     from PyQt6.QtCore import QObject
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     root = qml_engine.rootObjects()[0]
 
     # Global overlay + thumbnails are instantiated
@@ -1194,8 +1166,7 @@ def test_envelope_overlay_bridge_api():
 
 def test_tone_switch_refreshes_env_shapes():
     """envShapeChanged fires on tone switch so thumbs/overlays repaint per tone."""
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     received = []
     bridge.envShapeChanged.connect(lambda e: received.append(e))
@@ -1212,8 +1183,7 @@ def test_tone_switch_refreshes_env_shapes():
 
 def test_env_modifier_bridge_api():
     """Shared signed-modifier API across TVF / TVA / Pitch envelopes."""
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     tone = bridge.patch_state.tones[0]
 
     # TVF: signed input maps to raw 64-center, time-KF snaps to 10% steps
@@ -1255,10 +1225,8 @@ def test_env_modifier_bridge_api():
 def test_bridge_set_effect_param_table_driven():
     """Verify table-driven setEffectParam and setChorusParam/setReverbParam clamping and signals."""
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
-    engine = VectorEngine()
-    bridge = SpectreBridge(engine)
+    bridge = SpectreBridge()
 
     chorus_signals = []
     reverb_signals = []
@@ -1294,7 +1262,7 @@ def test_bridge_no_duplicate_signals():
     from collections import defaultdict
     from src.spectre.ui.bridge import SpectreBridge
 
-    bridge = SpectreBridge(VectorEngine())
+    bridge = SpectreBridge()
     mo = bridge.metaObject()
 
     signals = defaultdict(list)
@@ -1314,8 +1282,7 @@ def test_bridge_qml_cutoff_and_mode_bindings():
     from PyQt6.QtCore import QUrl
     from PyQt6.QtQml import QQmlComponent
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
 
     comp = QQmlComponent(qml_engine)
     comp.setData(
@@ -1367,8 +1334,7 @@ def test_fx_macro_follows_assigned_processor_in_perform():
     """PERFORM: FX macros read and write the assigned processor, not the part patch FX."""
     from src.spectre.core.patch_state import MacroLink, MacroSlot
 
-    engine = VectorEngine()
-    app, qml_engine, bridge = create_application(engine=engine, platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     ps = bridge.patch_state
     bridge._sound_mode = "PERFORM"
     ps.perf_fx.chorus_source = 0
@@ -1392,7 +1358,7 @@ def test_lpf2_lpf3_reach_the_synth():
     mgr = MagicMock(spec=MidiDeviceManager)
     client = JunoClient(mgr)
     client._cached_sound_mode = SoundMode.PATCH
-    bridge = SpectreBridge(VectorEngine(juno_client=client))
+    bridge = SpectreBridge(client)
     mgr.send_juno_sysex.reset_mock()
 
     def type_writes():

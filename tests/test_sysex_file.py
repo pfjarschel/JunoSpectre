@@ -74,10 +74,8 @@ def test_apply_rebases_and_skips_invalid():
 def test_bridge_usb_slots(tmp_path):
     from src.spectre.librarian.repository import PatchRepository
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
-    engine = VectorEngine()
-    bridge = SpectreBridge(engine)
+    bridge = SpectreBridge()
     repo = PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db",
                            factory_db_path=False)
     bridge._librarian_repo = repo
@@ -103,10 +101,8 @@ def test_bridge_usb_slots(tmp_path):
 
 def test_bridge_export_apply_syx(tmp_path):
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
-    engine = VectorEngine()
-    bridge = SpectreBridge(engine)
+    bridge = SpectreBridge()
     real = _real_client()
     state = _template_state()
     juno = MagicMock()
@@ -116,7 +112,7 @@ def test_bridge_export_apply_syx(tmp_path):
     applied = []
     juno.apply_sysex_blob.side_effect = (
         lambda blob, base=None, timeout=1.0, write_gap=0.02: applied.append(blob) or 13)
-    engine.juno = juno
+    bridge.juno = juno
     drive = tmp_path / "usb"
     drive.mkdir()
     assert bridge.exportLiveSyx(str(drive), "live") == ""

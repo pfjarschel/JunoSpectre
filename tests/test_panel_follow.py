@@ -76,7 +76,6 @@ def test_client_tells_own_traffic():
 @pytest.fixture
 def bridge(monkeypatch, tmp_path):
     from src.spectre.ui.bridge import SpectreBridge, follow
-    from src.spectre.vector.engine import VectorEngine
 
     class SyncThread:
         def __init__(self, target, args=(), **kw):
@@ -90,7 +89,7 @@ def bridge(monkeypatch, tmp_path):
     mgr = MagicMock(spec=MidiDeviceManager)
     client = JunoClient(mgr)
     client._cached_sound_mode = SoundMode.PERFORM
-    b = SpectreBridge(VectorEngine(juno_client=client))
+    b = SpectreBridge(client)
     b._hw_settings = {}
     b._sound_mode = "PERFORM"
     mgr.send_juno_sysex.reset_mock()

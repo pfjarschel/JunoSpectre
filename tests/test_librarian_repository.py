@@ -165,3 +165,15 @@ def test_syx_indexed_by_filename(tmp_path):
     assert stats["added"] == 1
     assert repo.search("raw")[0]["name"] == "raw"
     repo.close()
+
+
+def test_init_slots_list_last_in_slot_order(tmp_path):
+    repo = _make_repo(tmp_path)
+    repo.upsert_synth_user(87, 0, 9, "INIT PATCH")
+    repo.upsert_synth_user(87, 0, 2, "INIT PATCH")
+    repo.upsert_synth_user(87, 0, 5, "ZAP BASS")
+    repo.upsert_synth_user(87, 0, 7, "ARP LEAD")
+    repo.upsert_synth_user(87, 0, 3, "Init Patch")
+    names = [(d["name"], d["pc"]) for d in repo.search("")]
+    assert names == [("ARP LEAD", 7), ("ZAP BASS", 5),
+                     ("INIT PATCH", 2), ("Init Patch", 3), ("INIT PATCH", 9)]

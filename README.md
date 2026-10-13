@@ -131,7 +131,7 @@ synth needed — when nothing is connected the full UI still works offline
 
 ```bash
 ./scripts/start_spectre.sh
-# equivalent to: python scripts/spectre_vector.py
+# equivalent to: python scripts/spectre_app.py
 ```
 
 Behavior: on a desktop (X11/Wayland) it opens windowed and lets Qt pick the
@@ -170,7 +170,7 @@ unaffected).
 | Script | Purpose |
 |--------|---------|
 | `scripts/start_spectre.sh` | Production launch wrapper with display/platform detection |
-| `scripts/spectre_vector.py` | Main touch UI launcher (`juno-spectre` command) |
+| `scripts/spectre_app.py` | Main touch UI launcher (`juno-spectre` command) |
 | `scripts/spectre_probe.py` | SysEx device probe and identity verification |
 
 ### Developer & Data Tools (`tools/`)

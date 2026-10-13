@@ -4,7 +4,6 @@ import pytest
 
 from src.spectre.core.waves import WaveCatalogManager
 from src.spectre.ui.bridge import SpectreBridge
-from src.spectre.vector.engine import VectorEngine
 
 
 def test_wave_catalog_manager_singleton():
@@ -102,8 +101,7 @@ def test_basic_synth_waves_priority():
 
 
 def test_bridge_tone_wave_integration():
-    engine = VectorEngine()
-    bridge = SpectreBridge(engine)
+    bridge = SpectreBridge()
 
     waves = bridge.toneWaveData
     assert len(waves) == 4

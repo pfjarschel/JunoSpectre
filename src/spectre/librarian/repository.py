@@ -32,6 +32,23 @@ SCHEMA_VERSION = 1
 AUTO_BACKUP_PREFIXES = ("BACKUP_", "BEFORE-REINIT_")
 
 
+#: Names the Juno gives empty slots (and the factory init templates). The
+#: browser lists them after the named sounds, in slot order.
+INIT_NAMES = ("INIT PATCH", "INIT PERFORM", "INIT DRUMKIT")
+_INIT_SQL = "(UPPER(TRIM(name)) IN (%s))" % ",".join("'%s'" % n for n in INIT_NAMES)
+_SLOT_ORDER_SQL = "COALESCE(msb, -1), COALESCE(lsb, -1), COALESCE(pc, -1)"
+
+
+def is_init_name(name: str) -> bool:
+    return (name or "").strip().upper() in INIT_NAMES
+
+
+def _list_order(d: dict[str, Any]) -> tuple:
+    """Favourites first, then names A-Z, then INIT slots by slot number."""
+    slot = tuple(-1 if d.get(k) is None else d[k] for k in ("msb", "lsb", "pc"))
+    return (not d["favorite"], is_init_name(d["name"]), d["name"].casefold(), slot)
+
+
 def is_auto_backup(path: str | Path) -> bool:
     """True for automatic slot-backup files (never indexed)."""
     from pathlib import Path as _P
@@ -353,7 +370,7 @@ class PatchRepository:
             sql += " AND (name LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')"
             like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
             args += [like, like]
-        sql += " ORDER BY name COLLATE NOCASE ASC LIMIT ?"
+        sql += f" ORDER BY {_INIT_SQL}, name COLLATE NOCASE ASC, {_SLOT_ORDER_SQL} LIMIT ?"
         args.append(int(limit))
         try:
             rows = self._factory.execute(sql, args).fetchall()
@@ -614,7 +631,8 @@ class PatchRepository:
             sql += " AND (name LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')"
             like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
             args += [like, like]
-        sql += " ORDER BY favorite DESC, name COLLATE NOCASE ASC LIMIT ?"
+        sql += (f" ORDER BY favorite DESC, {_INIT_SQL}, name COLLATE NOCASE ASC,"
+                f" {_SLOT_ORDER_SQL} LIMIT ?")
         args.append(int(limit))
         rows = self._conn.execute(sql, args).fetchall()
         user_rows = [self._row_to_dict(r) for r in rows]
@@ -625,7 +643,7 @@ class PatchRepository:
         factory_rows = self._factory_search(query, cats or None, category,
                                             favorites_only, kind, limit)
         merged = user_rows + factory_rows
-        merged.sort(key=lambda d: (not d["favorite"], d["name"].casefold()))
+        merged.sort(key=_list_order)
         return merged[: int(limit)]
 
     def get(self, path: str) -> Optional[dict[str, Any]]:

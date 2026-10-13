@@ -63,17 +63,14 @@ class FakeJuno(JunoClient):
 def rig(tmp_path):
     from src.spectre.librarian.repository import PatchRepository
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
-    engine = VectorEngine()
     juno = FakeJuno()
-    engine.juno = juno
-    bridge = SpectreBridge(engine)
+    bridge = SpectreBridge(juno)
     repo = PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db",
                            factory_db_path=False)
     bridge._librarian_repo = repo
     JunoClient.FLASH_SETTLE_S, saved = 0.0, JunoClient.FLASH_SETTLE_S
-    yield SimpleNamespace(engine=engine, juno=juno, bridge=bridge, repo=repo)
+    yield SimpleNamespace(juno=juno, bridge=bridge, repo=repo)
     JunoClient.FLASH_SETTLE_S = saved
     repo.close()
 
@@ -256,7 +253,7 @@ def test_toggle_librarian_returns_to_previous_view(rig):
 
 
 def test_refresh_without_synth_returns_minus_one(rig):
-    rig.bridge.engine.juno = None
+    rig.bridge.juno = None
     assert rig.bridge.refreshUserSlotNames() == -1
     assert rig.bridge.getUserSlots("patch") == []
 

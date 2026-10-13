@@ -11,12 +11,11 @@ from src.spectre.core.protocol import JunoClient, SoundMode
 @pytest.fixture
 def bridge(monkeypatch, tmp_path):
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
     monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
     client = JunoClient(MagicMock(spec=MidiDeviceManager))
     client._cached_sound_mode = SoundMode.PERFORM
-    b = SpectreBridge(VectorEngine(juno_client=client))
+    b = SpectreBridge(client)
     b._sound_mode = "PERFORM"
     b._refresh_editors_for_part = lambda part, async_mode=True: True
     return b

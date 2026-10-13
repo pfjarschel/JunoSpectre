@@ -210,9 +210,8 @@ def test_mfx_chain_follows_structure():
 
 def test_bridge_routing_presets():
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
-    bridge = SpectreBridge(VectorEngine())
+    bridge = SpectreBridge()
     assert bridge.routingPreset == ""
 
     bridge.setPatchOutputAssign(0)
@@ -257,9 +256,8 @@ def test_bridge_routing_presets():
 
 def test_bridge_tone_assign_rejects_fake_values():
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
-    bridge = SpectreBridge(VectorEngine())
+    bridge = SpectreBridge()
     bridge.setToneRoutingParam(1, "assign", 2)     # old fake "BOTH"
     assert bridge.toneOutputAssigns[0] == 0
     bridge.setToneRoutingParam(1, "assign", 6)     # R
@@ -270,12 +268,10 @@ def test_bridge_tone_assign_rejects_fake_values():
 
 def test_bridge_routing_hardware_sysex_transmission(mock_midi_mgr):
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PATCH
-    engine = VectorEngine(juno_client=client)
-    bridge = SpectreBridge(engine)
+    bridge = SpectreBridge(client)
 
     mock_midi_mgr.send_juno_sysex.reset_mock()
     bridge.applyRoutingPreset("SERIAL_CHAIN")
@@ -429,9 +425,8 @@ def test_mfx_structure_layouts_match_parameter_guide():
 
 def test_bridge_perf_structure_setter():
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
-    bridge = SpectreBridge(VectorEngine())
+    bridge = SpectreBridge()
     assert len(bridge.perfMfxStructures) == 16
     bridge.setPerfStructure(10)  # TYPE11: 1→2→3
     assert bridge.perfStructure == 10

@@ -13,11 +13,18 @@ if TYPE_CHECKING:
 class BridgeBaseMixin:
     """Base mixin with core accessors shared by all bridge mixin domains."""
 
-    engine: Optional[VectorEngine]
+    vector: VectorEngine
     patch_state: PatchState
 
     @property
     def juno(self) -> Optional[JunoClient]:
-        """Direct accessor for the connected JunoClient protocol instance."""
-        engine = getattr(self, "engine", None)
-        return getattr(engine, "juno", None) if engine is not None else None
+        """The connected synth, or None when offline."""
+        return getattr(self, "_juno", None)
+
+    @juno.setter
+    def juno(self, client: Optional[JunoClient]) -> None:
+        """Attach (or drop) the synth; the vector engine sends tone levels through it."""
+        self._juno = client
+        self.vector.juno = client
+        if client is not None and getattr(client, "on_perf_part_write", None) is None:
+            client.on_perf_part_write = self._on_perf_part_write

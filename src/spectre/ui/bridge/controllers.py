@@ -707,9 +707,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         elif t.startswith("action.seq.stop_track."):
             color = (127, 0, 0)
         elif t == "action.motion.toggle_play":
-            on, color = self.engine.motion.state.value == "playing", (0, 127, 0)
+            on, color = self.vector.motion.state.value == "playing", (0, 127, 0)
         elif t == "action.motion.toggle_record":
-            on, color = self.engine.motion.state.value == "recording", (127, 0, 0)
+            on, color = self.vector.motion.state.value == "recording", (127, 0, 0)
         elif t == "action.arp.toggle":
             on, color = self._arp.switch, (0, 100, 127)
         elif t == "action.arp.hold":
@@ -915,10 +915,10 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             elif action.startswith("seq.stop_track."):
                 self.seqStopTrack(n - 1)
             elif action == "motion.toggle_play":
-                state = self.engine.motion.state.value
+                state = self.vector.motion.state.value
                 self.stopMotion() if state == "playing" else self.playMotion()
             elif action == "motion.toggle_record":
-                state = self.engine.motion.state.value
+                state = self.vector.motion.state.value
                 self.stopRecording() if state == "recording" else self.startRecording()
             elif action.startswith("tone.mute."):
                 self.toggleToneMute(n)

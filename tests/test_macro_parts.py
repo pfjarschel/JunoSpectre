@@ -10,7 +10,6 @@ from src.spectre.core.patch_state import MacroLink, MacroSlot, PatchCommonState,
 from src.spectre.core.protocol import JunoClient, SoundMode
 from src.spectre.core.sysex import temp_perf_patch_base
 from src.spectre.ui.app import create_application
-from src.spectre.vector.engine import VectorEngine
 
 pytestmark = pytest.mark.ui
 
@@ -38,9 +37,9 @@ def _fake_juno(other_cutoff=50):
 
 @pytest.fixture
 def perf_bridge():
-    app, qml_engine, bridge = create_application(engine=VectorEngine(), platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     juno = _fake_juno()
-    bridge.engine.juno = juno
+    bridge.juno = juno
     bridge._sound_mode = "PERFORM"
     ps = bridge.patch_state
     ps.sound_mode = "PERFORM"

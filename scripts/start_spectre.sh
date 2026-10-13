@@ -2,7 +2,7 @@
 # Juno Spectre unified launcher (Raspberry Pi appliance + desktop PC)
 #
 # Usage: ./scripts/start_spectre.sh [--fullscreen] [--windowed] [--platform NAME] [...]
-#   All extra args are passed through to scripts/spectre_vector.py
+#   All extra args are passed through to scripts/spectre_app.py
 #   (--juno-port, --controller-port, --profile, --list-ports, --exit-after, ...).
 #
 # Behaviour:
@@ -129,4 +129,4 @@ echo "  qt     : ${QT_QPA_PLATFORM:-(auto)}"
 if [[ -n "${QT_QPA_EGLFS_KMS_CONFIG:-}" ]]; then
     echo "  kms    : $QT_QPA_EGLFS_KMS_CONFIG"
 fi
-exec "$PYTHON" scripts/spectre_vector.py "${EXTRA_ARGS[@]}" "$@"
+exec "$PYTHON" scripts/spectre_app.py "${EXTRA_ARGS[@]}" "$@"

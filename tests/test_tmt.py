@@ -93,11 +93,10 @@ def test_client_tmt_writes(mock_midi_mgr):
 @pytest.fixture
 def bridge_and_mgr(mock_midi_mgr):
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PATCH
-    bridge = SpectreBridge(VectorEngine(juno_client=client))
+    bridge = SpectreBridge(client)
     mock_midi_mgr.send_juno_sysex.reset_mock()
     return bridge, mock_midi_mgr
 

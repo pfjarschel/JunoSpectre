@@ -272,7 +272,7 @@ class HardwareBridgeMixin(BridgeBaseMixin):
             client = getattr(self, "_new_client", None)
             self._new_client = None
             if client is not None:
-                self.engine.juno = client
+                self.juno = client
                 self._attach_seq_midi(self._midi_mgr)
             logger.info(f"Synth connected: {self._synth_identity}")
             self.syncPatchFromSynth(async_mode=True)

@@ -50,7 +50,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     def _init_sequencer(self) -> None:
         """Initialize sequencer engine, recorder, and subscriptions."""
-        midi_mgr = getattr(self.engine, "juno", None)
+        midi_mgr = self.juno
         midi_mgr = getattr(midi_mgr, "midi", None) if midi_mgr else None
 
         self.sequencer = SequencerEngine(
@@ -60,7 +60,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         )
         self.recorder = SequencerRecorder(self.sequencer)
         # One global tempo: vector motion follows the sequencer song's BPM
-        self.engine.motion.bpm = self.sequencer.bpm
+        self.vector.motion.bpm = self.sequencer.bpm
 
         self._active_seq_track: int = 0
         # Rx channel of the panel's current part, learned from keyboard notes

@@ -19,7 +19,7 @@ from PyQt6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PyQt6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 from PyQt6.QtQuick import QQuickWindow
 
-from ..vector.engine import VectorEngine
+from ..core.protocol import JunoClient
 from .bridge import SpectreBridge
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ def _show_ui_after_splash(window: QQuickWindow) -> None:
 
 
 def create_application(
-    engine: Optional[VectorEngine] = None,
+    juno: Optional[JunoClient] = None,
     platform: Optional[str] = None,
     splash: bool = False,
 ) -> tuple[QGuiApplication, QQmlApplicationEngine, SpectreBridge]:
@@ -94,9 +94,6 @@ def create_application(
     if platform:
         os.environ["QT_QPA_PLATFORM"] = platform
 
-    if engine is None:
-        engine = VectorEngine()
-
     app = QGuiApplication.instance()
     if app is None:
         app = QGuiApplication(sys.argv)
@@ -105,7 +102,7 @@ def create_application(
     qml_engine = QQmlApplicationEngine()
 
     # Create bridge with qml_engine as parent to prevent GC
-    bridge = SpectreBridge(engine, parent=qml_engine)
+    bridge = SpectreBridge(juno, parent=qml_engine)
     qml_engine._bridge = bridge
 
     # Patch Librarian: file-backed user patches + SQLite index over them.
@@ -176,12 +173,12 @@ def create_application(
 
 
 def run_app(
-    engine: Optional[VectorEngine] = None,
+    juno: Optional[JunoClient] = None,
     fullscreen: bool = False,
     platform: Optional[str] = None,
 ) -> int:
     """Launch the Juno Spectre QML Touch Application."""
-    app, qml_engine, bridge = create_application(engine=engine, platform=platform, splash=True)
+    app, qml_engine, bridge = create_application(juno=juno, platform=platform, splash=True)
 
     # Hide mouse cursor for touch appliance
     app.setOverrideCursor(Qt.CursorShape.BlankCursor)

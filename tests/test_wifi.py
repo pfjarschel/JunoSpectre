@@ -337,9 +337,8 @@ def _wait_for(cond, timeout=5.0):
 @pytest.fixture()
 def wifi_bridge():
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
-    bridge = SpectreBridge(VectorEngine())
+    bridge = SpectreBridge()
     bridge._wifi = FakeWifiBackend()
     yield bridge
 

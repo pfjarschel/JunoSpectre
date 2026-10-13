@@ -81,9 +81,8 @@ def _apply_spectrum(bridge, preset):
 
 def _offline_bridge():
     from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.vector.engine import VectorEngine
 
-    return SpectreBridge(VectorEngine())
+    return SpectreBridge()
 
 
 def test_bridge_exposes_presets():

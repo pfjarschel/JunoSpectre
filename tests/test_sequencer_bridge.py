@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.spectre.ui.bridge import SpectreBridge
-from src.spectre.vector.engine import VectorEngine
 
 
 class DummyJuno:
@@ -23,9 +22,7 @@ class DummyJuno:
 
 @pytest.fixture
 def bridge():
-    engine = VectorEngine()
-    engine.juno = DummyJuno()
-    return SpectreBridge(engine)
+    return SpectreBridge(DummyJuno())
 
 
 def test_sequencer_transport_properties_and_slots(bridge):
@@ -36,7 +33,7 @@ def test_sequencer_transport_properties_and_slots(bridge):
     bridge.setBpm(132.0)
     assert bridge.bpm == 132.0
     assert bridge.sequencer.clock.bpm == 132.0
-    assert bridge.engine.motion.bpm == 132.0
+    assert bridge.vector.motion.bpm == 132.0
 
     bridge.seqPlay()
     assert bridge.seqIsPlaying is True
@@ -134,7 +131,7 @@ def test_setlist_crud_and_safe_transition(bridge, tmp_path):
     # Transport must be stopped after song transition
     assert bridge.seqIsPlaying is False
     # Panic CC 123 + CC 121 sent
-    assert bridge.engine.juno.midi.send_all_notes_off.called is True
+    assert bridge.juno.midi.send_all_notes_off.called is True
 
     # Load setlist back
     bridge.newSetlist()
@@ -346,7 +343,7 @@ def test_loading_a_performance_applies_its_sequence_and_tempo(bridge, tmp_path):
     assert bridge.sequencer.song.tracks[1].selected_clip_idx == 4
     assert bridge.bpm == 97.0
     assert bridge.sequencer.clock.bpm == 97.0
-    assert bridge.engine.motion.bpm == 97.0
+    assert bridge.vector.motion.bpm == 97.0
 
 
 def test_track_layers(bridge):

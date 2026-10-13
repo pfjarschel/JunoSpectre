@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive touch appliance launcher for Juno Spectre Vector Engine.
+"""Juno Spectre launcher: the touch workstation app.
 
 Unified entry point for Raspberry Pi appliance and desktop PC: always probes
 for the Roland synth and MIDI controllers, and keeps the full UI usable
@@ -25,13 +25,12 @@ from PyQt6.QtCore import QTimer
 from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.protocol import JunoClient
 from src.spectre.ui.app import create_application, quit_boot_splash
-from src.spectre.vector.engine import VectorEngine
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger("spectre_vector")
+logger = logging.getLogger("spectre_app")
 
 
 def parse_args() -> argparse.Namespace:
@@ -130,12 +129,9 @@ def main() -> int:
     if juno_client is None:
         logger.info("No MIDI hardware detected: running offline, full editing/saving remains available.")
 
-    # Initialize VectorEngine
-    vector_engine = VectorEngine(juno_client=juno_client)
-
     # Launch Qt Quick Application
     app, qml_engine, bridge = create_application(
-        engine=vector_engine,
+        juno=juno_client,
         platform=args.platform,
         splash=not args.no_splash,
     )

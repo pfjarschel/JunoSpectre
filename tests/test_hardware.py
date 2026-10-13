@@ -8,7 +8,6 @@ import pytest
 
 from src.spectre.core.midi import port_key
 from src.spectre.ui.app import create_application
-from src.spectre.vector.engine import VectorEngine
 
 pytestmark = pytest.mark.ui
 
@@ -71,7 +70,7 @@ class FakeMidi:
 @pytest.fixture
 def ui(monkeypatch, tmp_path):
     monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
-    app, qml_engine, bridge = create_application(engine=VectorEngine(), platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     syncs = []
     bridge.syncPatchFromSynth = lambda async_mode=False: syncs.append(async_mode)
     yield app, bridge, syncs, tmp_path

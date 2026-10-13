@@ -734,9 +734,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         targets = self._target_tones()
         for t in targets:
             t.tvf_resonance = clamped
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, resonance=clamped)
+                    self.juno.set_tone_tvf(t.tone_index, resonance=clamped)
                 except Exception as e:
                     logger.error(f"Error setting resonance on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.tvf_resonance", clamped) for t in targets])
@@ -750,9 +750,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             self.patch_state.common.level = clamped
             self._rebaseDirect([("common.level", clamped)])
             self.masterLevelChanged.emit(clamped)
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_patch_param("level", clamped)
+                    self.juno.set_patch_param("level", clamped)
                 except Exception as e:
                     logger.error(f"Error setting patch level: {e}")
 
@@ -765,9 +765,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         targets = self._target_tones()
         for t in targets:
             t.tvf_filter_type = val_idx
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, filter_type=val_idx)
+                    self.juno.set_tone_tvf(t.tone_index, filter_type=val_idx)
                 except Exception as e:
                     logger.error(f"Error setting TVF filter type on synth: {e}")
         self.tvfTypeChanged.emit(type_str)
@@ -780,9 +780,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         targets = self._target_tones()
         for t in targets:
             t.tvf_cutoff_keyfollow = raw_val
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_param(t.tone_index, 0x004A, raw_val)
+                    self.juno.set_tone_param(t.tone_index, 0x004A, raw_val)
                 except Exception as e:
                     logger.error(f"Error setting TVF keyfollow on synth: {e}")
         self.tvfKeyFollowChanged.emit(clamped)
@@ -795,9 +795,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         targets = self._target_tones()
         for t in targets:
             t.tvf_env_depth = raw_val
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, env_depth=raw_val)
+                    self.juno.set_tone_tvf(t.tone_index, env_depth=raw_val)
                 except Exception as e:
                     logger.error(f"Error setting TVF env depth on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.tvf_env_depth", raw_val) for t in targets])
@@ -811,9 +811,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         targets = self._target_tones()
         for t in targets:
             t.tvf_env_velo_sens = clamped
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, env_vel_sens=clamped)
+                    self.juno.set_tone_tvf(t.tone_index, env_vel_sens=clamped)
                 except Exception as e:
                     logger.error(f"Error setting TVF velo sens on synth: {e}")
         self.tvfVeloSensChanged.emit(clamped)
@@ -927,9 +927,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         targets = self._target_tones()
         for t in targets:
             t.pan = raw_val
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_tva(t.tone_index, pan=raw_val)
+                    self.juno.set_tone_tva(t.tone_index, pan=raw_val)
                 except Exception as e:
                     logger.error(f"Error setting TVA pan on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.tva_pan", raw_val) for t in targets])
@@ -942,9 +942,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         targets = self._target_tones()
         for t in targets:
             t.tva_velo_sens = clamped
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_param(t.tone_index, 0x0062, clamped)
+                    self.juno.set_tone_param(t.tone_index, 0x0062, clamped)
                 except Exception as e:
                     logger.error(f"Error setting TVA velo sens on synth: {e}")
         self.tvaVeloSensChanged.emit(clamped)
@@ -958,9 +958,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         targets = self._target_tones()
         for t in targets:
             t.coarse_tune = raw_val
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_pitch(t.tone_index, coarse=raw_val)
+                    self.juno.set_tone_pitch(t.tone_index, coarse=raw_val)
                 except Exception as e:
                     logger.error(f"Error setting coarse tune on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.pitch_coarse", raw_val) for t in targets])
@@ -976,9 +976,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             t.fine_tune = raw_val
             if not self.patch_state.auto_detune:
                 self.patch_state.custom_detune_cache[t.tone_index - 1] = raw_val
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_pitch(t.tone_index, fine=raw_val)
+                    self.juno.set_tone_pitch(t.tone_index, fine=raw_val)
                 except Exception as e:
                     logger.error(f"Error setting fine tune on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.pitch_fine", raw_val) for t in targets])
@@ -994,9 +994,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             self._rebaseDirect([("common.portamento_time", clamped)])
             self.portamentoTimeChanged.emit(clamped)
             self.macrosChanged.emit()
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_portamento(self.patch_state.common.portamento_switch, time=clamped)
+                    self.juno.set_portamento(self.patch_state.common.portamento_switch, time=clamped)
                 except Exception as e:
                     logger.error(f"Error setting portamento time on synth: {e}")
 
@@ -1006,9 +1006,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         if self.patch_state.common.portamento_switch != enabled:
             self.patch_state.common.portamento_switch = enabled
             self.portamentoSwitchChanged.emit(enabled)
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_portamento(enabled)
+                    self.juno.set_portamento(enabled)
                 except Exception as e:
                     logger.error(f"Error setting portamento switch on synth: {e}")
 
@@ -1020,9 +1020,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             self.patch_state.common.mono_poly = 0 if enabled else 1
             self.patch_state.common.portamento_mode = 1 if enabled else 0
             self.legatoSwitchChanged.emit(enabled)
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_legato(enabled)
+                    self.juno.set_legato(enabled)
                 except Exception as e:
                     logger.error(f"Error setting legato switch on synth: {e}")
 
@@ -1034,9 +1034,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             self.patch_state.common.analog_feel = clamped
             self._rebaseDirect([("common.analog_feel", clamped)])
             self.analogFeelChanged.emit(clamped)
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_patch_analog_feel(clamped)
+                    self.juno.set_patch_analog_feel(clamped)
                 except Exception as e:
                     logger.error(f"Error setting analog feel on synth: {e}")
 
@@ -1050,77 +1050,77 @@ class PatchBridgeMixin(BridgeBaseMixin):
             if lfo_idx == 1:
                 if param == "wave" and val in LFO_WAVE_NAMES:
                     t.lfo1_waveform = LFO_WAVE_NAMES.index(val)
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, waveform=t.lfo1_waveform)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, waveform=t.lfo1_waveform)
                 elif param == "rate":
                     t.lfo1_rate = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, rate=t.lfo1_rate)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, rate=t.lfo1_rate)
                 elif param == "pitch_depth":
                     t.lfo1_pitch_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, pitch_depth=t.lfo1_pitch_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, pitch_depth=t.lfo1_pitch_depth)
                 elif param == "tvf_depth":
                     t.lfo1_tvf_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, tvf_depth=t.lfo1_tvf_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, tvf_depth=t.lfo1_tvf_depth)
                 elif param == "tva_depth":
                     t.lfo1_tva_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, tva_depth=t.lfo1_tva_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, tva_depth=t.lfo1_tva_depth)
                 elif param == "pan_depth":
                     t.lfo1_pan_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, pan_depth=t.lfo1_pan_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, pan_depth=t.lfo1_pan_depth)
                 elif param == "delay_time":
                     t.lfo1_delay_time = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0072, t.lfo1_delay_time)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0072, t.lfo1_delay_time)
                 elif param == "fade_mode" and val in LFO_FADE_MODE_NAMES:
                     t.lfo1_fade_mode = LFO_FADE_MODE_NAMES.index(val)
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0074, t.lfo1_fade_mode)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0074, t.lfo1_fade_mode)
                 elif param == "fade_time":
                     t.lfo1_fade_time = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0075, t.lfo1_fade_time)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0075, t.lfo1_fade_time)
             elif lfo_idx == 2:
                 if param == "wave" and val in LFO_WAVE_NAMES:
                     t.lfo2_waveform = LFO_WAVE_NAMES.index(val)
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, waveform=t.lfo2_waveform)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, waveform=t.lfo2_waveform)
                 elif param == "rate":
                     t.lfo2_rate = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, rate=t.lfo2_rate)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, rate=t.lfo2_rate)
                 elif param == "pitch_depth":
                     t.lfo2_pitch_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, pitch_depth=t.lfo2_pitch_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, pitch_depth=t.lfo2_pitch_depth)
                 elif param == "tvf_depth":
                     t.lfo2_tvf_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, tvf_depth=t.lfo2_tvf_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, tvf_depth=t.lfo2_tvf_depth)
                 elif param == "tva_depth":
                     t.lfo2_tva_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, tva_depth=t.lfo2_tva_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, tva_depth=t.lfo2_tva_depth)
                 elif param == "pan_depth":
                     t.lfo2_pan_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, pan_depth=t.lfo2_pan_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, pan_depth=t.lfo2_pan_depth)
                 elif param == "delay_time":
                     t.lfo2_delay_time = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0100, t.lfo2_delay_time)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0100, t.lfo2_delay_time)
                 elif param == "fade_mode" and val in LFO_FADE_MODE_NAMES:
                     t.lfo2_fade_mode = LFO_FADE_MODE_NAMES.index(val)
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0102, t.lfo2_fade_mode)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0102, t.lfo2_fade_mode)
                 elif param == "fade_time":
                     t.lfo2_fade_time = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0103, t.lfo2_fade_time)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0103, t.lfo2_fade_time)
 
         self._rebaseLfoParam(lfo_idx, param, targets)
         self.lfoParamsChanged.emit()
@@ -1131,9 +1131,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tvf_cutoff = clamped
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, cutoff=clamped)
+                    self.juno.set_tone_tvf(t.tone_index, cutoff=clamped)
                 except Exception as e:
                     logger.error(f"Error sculpting cutoff on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.tvf_cutoff", clamped) for t in self.patch_state.tones])
@@ -1145,9 +1145,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tvf_resonance = clamped
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, resonance=clamped)
+                    self.juno.set_tone_tvf(t.tone_index, resonance=clamped)
                 except Exception as e:
                     logger.error(f"Error sculpting resonance on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.tvf_resonance", clamped) for t in self.patch_state.tones])
@@ -1161,9 +1161,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             val_idx = TVF_TYPE_NAMES.index(type_str)
         for t in self.patch_state.tones:
             t.tvf_filter_type = val_idx
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, filter_type=val_idx)
+                    self.juno.set_tone_tvf(t.tone_index, filter_type=val_idx)
                 except Exception as e:
                     logger.error(f"Error sculpting TVF filter type on synth: {e}")
         self.tvfTypeChanged.emit(type_str)
@@ -1175,9 +1175,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         raw_val = 64 + (clamped // 10)
         for t in self.patch_state.tones:
             t.tvf_cutoff_keyfollow = raw_val
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_param(t.tone_index, 0x004A, raw_val)
+                    self.juno.set_tone_param(t.tone_index, 0x004A, raw_val)
                 except Exception as e:
                     logger.error(f"Error sculpting TVF keyfollow on synth: {e}")
         self.tvfKeyFollowChanged.emit(clamped)
@@ -1189,9 +1189,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         raw_val = 64 + clamped
         for t in self.patch_state.tones:
             t.tvf_env_depth = raw_val
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_tvf(t.tone_index, env_depth=raw_val)
+                    self.juno.set_tone_tvf(t.tone_index, env_depth=raw_val)
                 except Exception as e:
                     logger.error(f"Error sculpting TVF env depth on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.tvf_env_depth", raw_val) for t in self.patch_state.tones])
@@ -1204,9 +1204,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tvf_env_velo_sens = clamped
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_param(t.tone_index, 0x0051, clamped)
+                    self.juno.set_tone_param(t.tone_index, 0x0051, clamped)
                 except Exception as e:
                     logger.error(f"Error sculpting TVF velo sens on synth: {e}")
         self.tvfVeloSensChanged.emit(clamped)
@@ -1263,9 +1263,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         raw_val = clamped + 64
         for t in self.patch_state.tones:
             t.pan = raw_val
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_tva(t.tone_index, pan=raw_val)
+                    self.juno.set_tone_tva(t.tone_index, pan=raw_val)
                 except Exception as e:
                     logger.error(f"Error sculpting TVA pan on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.tva_pan", raw_val) for t in self.patch_state.tones])
@@ -1277,9 +1277,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         clamped = max(0, min(127, int(val)))
         for t in self.patch_state.tones:
             t.tva_velo_sens = clamped
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_param(t.tone_index, 0x0062, clamped)
+                    self.juno.set_tone_param(t.tone_index, 0x0062, clamped)
                 except Exception as e:
                     logger.error(f"Error sculpting TVA velo sens on synth: {e}")
         self.tvaVeloSensChanged.emit(clamped)
@@ -1340,77 +1340,77 @@ class PatchBridgeMixin(BridgeBaseMixin):
             if lfo_idx == 1:
                 if param == "wave" and val in LFO_WAVE_NAMES:
                     t.lfo1_waveform = LFO_WAVE_NAMES.index(val)
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, waveform=t.lfo1_waveform)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, waveform=t.lfo1_waveform)
                 elif param == "rate":
                     t.lfo1_rate = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, rate=t.lfo1_rate)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, rate=t.lfo1_rate)
                 elif param == "pitch_depth":
                     t.lfo1_pitch_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, pitch_depth=t.lfo1_pitch_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, pitch_depth=t.lfo1_pitch_depth)
                 elif param == "tvf_depth":
                     t.lfo1_tvf_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, tvf_depth=t.lfo1_tvf_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, tvf_depth=t.lfo1_tvf_depth)
                 elif param == "tva_depth":
                     t.lfo1_tva_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, tva_depth=t.lfo1_tva_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, tva_depth=t.lfo1_tva_depth)
                 elif param == "pan_depth":
                     t.lfo1_pan_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=1, pan_depth=t.lfo1_pan_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, pan_depth=t.lfo1_pan_depth)
                 elif param == "delay_time":
                     t.lfo1_delay_time = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0072, t.lfo1_delay_time)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0072, t.lfo1_delay_time)
                 elif param == "fade_mode" and val in LFO_FADE_MODE_NAMES:
                     t.lfo1_fade_mode = LFO_FADE_MODE_NAMES.index(val)
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0074, t.lfo1_fade_mode)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0074, t.lfo1_fade_mode)
                 elif param == "fade_time":
                     t.lfo1_fade_time = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0075, t.lfo1_fade_time)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0075, t.lfo1_fade_time)
             elif lfo_idx == 2:
                 if param == "wave" and val in LFO_WAVE_NAMES:
                     t.lfo2_waveform = LFO_WAVE_NAMES.index(val)
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, waveform=t.lfo2_waveform)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, waveform=t.lfo2_waveform)
                 elif param == "rate":
                     t.lfo2_rate = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, rate=t.lfo2_rate)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, rate=t.lfo2_rate)
                 elif param == "pitch_depth":
                     t.lfo2_pitch_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, pitch_depth=t.lfo2_pitch_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, pitch_depth=t.lfo2_pitch_depth)
                 elif param == "tvf_depth":
                     t.lfo2_tvf_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, tvf_depth=t.lfo2_tvf_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, tvf_depth=t.lfo2_tvf_depth)
                 elif param == "tva_depth":
                     t.lfo2_tva_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, tva_depth=t.lfo2_tva_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, tva_depth=t.lfo2_tva_depth)
                 elif param == "pan_depth":
                     t.lfo2_pan_depth = max(1, min(127, int(val) + 64))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_lfo(t.tone_index, lfo_index=2, pan_depth=t.lfo2_pan_depth)
+                    if self.juno:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, pan_depth=t.lfo2_pan_depth)
                 elif param == "delay_time":
                     t.lfo2_delay_time = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0100, t.lfo2_delay_time)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0100, t.lfo2_delay_time)
                 elif param == "fade_mode" and val in LFO_FADE_MODE_NAMES:
                     t.lfo2_fade_mode = LFO_FADE_MODE_NAMES.index(val)
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0102, t.lfo2_fade_mode)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0102, t.lfo2_fade_mode)
                 elif param == "fade_time":
                     t.lfo2_fade_time = max(0, min(127, int(val)))
-                    if self.engine.juno:
-                        self.engine.juno.set_tone_param(t.tone_index, 0x0103, t.lfo2_fade_time)
+                    if self.juno:
+                        self.juno.set_tone_param(t.tone_index, 0x0103, t.lfo2_fade_time)
 
         self._rebaseLfoParam(lfo_idx, param, list(self.patch_state.tones))
         self.lfoParamsChanged.emit()
@@ -1422,9 +1422,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         raw_val = clamped + 64
         for t in self.patch_state.tones:
             t.coarse_tune = raw_val
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_pitch(t.tone_index, coarse=raw_val)
+                    self.juno.set_tone_pitch(t.tone_index, coarse=raw_val)
                 except Exception as e:
                     logger.error(f"Error sculpting coarse tune on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.pitch_coarse", raw_val) for t in self.patch_state.tones])
@@ -1439,9 +1439,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             t.fine_tune = raw_val
             if not self.patch_state.auto_detune:
                 self.patch_state.custom_detune_cache[t.tone_index - 1] = raw_val
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_pitch(t.tone_index, fine=raw_val)
+                    self.juno.set_tone_pitch(t.tone_index, fine=raw_val)
                 except Exception as e:
                     logger.error(f"Error sculpting fine tune on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.pitch_fine", raw_val) for t in self.patch_state.tones])
@@ -1489,23 +1489,23 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     def _push_tvf_env(self, t: ToneState) -> None:
         """Send the raw TVF MSEG block [T1..T4, L0..L4] for a tone."""
-        if self.engine.juno:
+        if self.juno:
             try:
-                self.engine.juno.set_tone_tvf_env(t.tone_index, t.tvf_env_block())
+                self.juno.set_tone_tvf_env(t.tone_index, t.tvf_env_block())
             except Exception as e:
                 logger.error(f"Error setting TVF envelope block on synth: {e}")
 
     def _push_tva_env(self, t: ToneState) -> None:
         """Send the raw TVA MSEG block [T1..T4, L1..L3] for a tone."""
-        if self.engine.juno:
+        if self.juno:
             try:
-                self.engine.juno.set_tone_tva_env(t.tone_index, t.tva_env_block())
+                self.juno.set_tone_tva_env(t.tone_index, t.tva_env_block())
             except Exception as e:
                 logger.error(f"Error setting TVA envelope block on synth: {e}")
 
     def _push_pitch_env(self, t: ToneState) -> None:
         """Send all Pitch Envelope parameters for a tone."""
-        if self.engine.juno:
+        if self.juno:
             try:
                 kwargs = {
                     "depth": t.pitch_env_depth, "vel_sens": t.pitch_env_vel_sens,
@@ -1515,7 +1515,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                     "l0": t.pitch_env_l0, "l1": t.pitch_env_l1, "l2": t.pitch_env_l2,
                     "l3": t.pitch_env_l3, "l4": t.pitch_env_l4,
                 }
-                self.engine.juno.set_tone_pitch_env(t.tone_index, **kwargs)
+                self.juno.set_tone_pitch_env(t.tone_index, **kwargs)
             except Exception as e:
                 logger.error(f"Error setting pitch env on synth: {e}")
 
@@ -1631,10 +1631,10 @@ class PatchBridgeMixin(BridgeBaseMixin):
                 logger.warning(f"Unknown envelope modifier: {env}/{param}")
                 return
 
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    setter = (self.engine.juno.set_tone_tvf if env == "TVF"
-                              else self.engine.juno.set_tone_tva)
+                    setter = (self.juno.set_tone_tvf if env == "TVF"
+                              else self.juno.set_tone_tva)
                     setter(t.tone_index, **kwargs)
                 except Exception as e:
                     logger.error(f"Error setting {env} env modifier {param} on synth: {e}")
@@ -2020,8 +2020,8 @@ class PatchBridgeMixin(BridgeBaseMixin):
                 return
         eff = self.patch_state.effects
         clamped = self._apply_mfx_algo(eff, algo_id)
-        if self.engine.juno:
-            self._push_mfx_algo(self.engine.juno, "patch", 0, eff, clamped)
+        if self.juno:
+            self._push_mfx_algo(self.juno, "patch", 0, eff, clamped)
 
         self.mfxValuesChanged.emit()
         self.mfxParamsChanged.emit()
@@ -2068,9 +2068,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         eff = self.patch_state.effects
         eff.mfx_params[param_index] = int(val)
 
-        if self.engine.juno:
+        if self.juno:
             try:
-                self.engine.juno.set_mfx_param(param_index, int(val))
+                self.juno.set_mfx_param(param_index, int(val))
             except Exception as e:
                 logger.error(f"Error setting MFX param {param_index} on synth: {e}")
 
@@ -2120,9 +2120,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         target_type = 0 if bypassed else eff.mfx_last_active_type
         eff.mfx_type = target_type
 
-        if self.engine.juno:
+        if self.juno:
             try:
-                self.engine.juno.set_mfx(target_type)
+                self.juno.set_mfx(target_type)
             except Exception as e:
                 logger.error(f"Error toggling MFX bypass on synth: {e}")
 
@@ -2193,9 +2193,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         elif send_type == "reverb":
             eff.mfx_reverb_send = clamped
 
-        if self.engine.juno:
+        if self.juno:
             try:
-                self.engine.juno.set_mfx(
+                self.juno.set_mfx(
                     eff.mfx_type,
                     dry_send=eff.mfx_dry_send,
                     chorus_send=eff.mfx_chorus_send,
@@ -2563,9 +2563,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             elif param == "sens4":
                 c.sens4 = max(1, min(127, int(val) + 64))
 
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_matrix_control(
+                    self.juno.set_matrix_control(
                         ctrl_index,
                         source=c.source,
                         dest1=c.dest1, sens1=c.sens1,
@@ -2584,9 +2584,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         if 1 <= tone_index <= 4 and 1 <= ctrl_index <= 4 and 1 <= dest_index <= 4:
             sw_val = 1 if enable else 0
             self.patch_state.tones[tone_index - 1].matrix_switches[ctrl_index - 1][dest_index - 1] = sw_val
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_matrix_switch(tone_index, ctrl_index, dest_index, sw_val)
+                    self.juno.set_tone_matrix_switch(tone_index, ctrl_index, dest_index, sw_val)
                 except Exception as e:
                     logger.error(f"Error setting tone matrix switch on synth: {e}")
             self.matrixCtrlChanged.emit()
@@ -2601,9 +2601,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
                 new_steps = list(tone.step_lfo_steps)
                 new_steps[step_index] = clamped
                 tone.step_lfo_steps = new_steps
-                if self.engine.juno:
+                if self.juno:
                     try:
-                        self.engine.juno.set_tone_step_lfo_step(tone.tone_index, step_index, clamped)
+                        self.juno.set_tone_step_lfo_step(tone.tone_index, step_index, clamped)
                     except Exception as e:
                         logger.error(f"Error setting Step LFO step {step_index} on tone {tone.tone_index}: {e}")
             self.stepLfoChanged.emit()
@@ -2617,9 +2617,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         targets = self._target_tones()
         for tone in targets:
             tone.step_lfo_steps = list(clamped_steps)
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_step_lfo_steps(tone.tone_index, clamped_steps)
+                    self.juno.set_tone_step_lfo_steps(tone.tone_index, clamped_steps)
                 except Exception as e:
                     logger.error(f"Error setting all Step LFO steps on tone {tone.tone_index}: {e}")
         self.stepLfoChanged.emit()
@@ -2632,9 +2632,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             targets = self._target_tones()
             for tone in targets:
                 tone.step_lfo_type = step_type
-                if self.engine.juno:
+                if self.juno:
                     try:
-                        self.engine.juno.set_tone_step_lfo_type(tone.tone_index, step_type)
+                        self.juno.set_tone_step_lfo_type(tone.tone_index, step_type)
                     except Exception as e:
                         logger.error(f"Error setting Step LFO type on tone {tone.tone_index}: {e}")
             self.stepLfoChanged.emit()
@@ -2658,17 +2658,17 @@ class PatchBridgeMixin(BridgeBaseMixin):
             if lfo_num == 1:
                 new_wave = 1 if tone.lfo1_waveform == 12 else 12  # 1: TRI, 12: STEP
                 tone.lfo1_waveform = new_wave
-                if self.engine.juno:
+                if self.juno:
                     try:
-                        self.engine.juno.set_tone_lfo(tone.tone_index, lfo_index=1, waveform=new_wave)
+                        self.juno.set_tone_lfo(tone.tone_index, lfo_index=1, waveform=new_wave)
                     except Exception as e:
                         logger.error(f"Error assigning LFO 1 wave on tone {tone.tone_index}: {e}")
             else:
                 new_wave = 0 if tone.lfo2_waveform == 12 else 12  # 0: SIN, 12: STEP
                 tone.lfo2_waveform = new_wave
-                if self.engine.juno:
+                if self.juno:
                     try:
-                        self.engine.juno.set_tone_lfo(tone.tone_index, lfo_index=2, waveform=new_wave)
+                        self.juno.set_tone_lfo(tone.tone_index, lfo_index=2, waveform=new_wave)
                     except Exception as e:
                         logger.error(f"Error assigning LFO 2 wave on tone {tone.tone_index}: {e}")
         self.lfoParamsChanged.emit()
@@ -2691,9 +2691,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             raw = clamped + 64
             t = self.patch_state.tones[osc_index - 1]
             t.coarse_tune = raw
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_pitch(osc_index, coarse=raw)
+                    self.juno.set_tone_pitch(osc_index, coarse=raw)
                 except Exception as e:
                     logger.error(f"Error setting OSC coarse on synth: {e}")
             self.pitchCoarseChanged.emit(self.pitchCoarse)
@@ -2711,9 +2711,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             t = self.patch_state.tones[osc_index - 1]
             t.fine_tune = raw
             self.patch_state.custom_detune_cache[osc_index - 1] = raw
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_pitch(osc_index, fine=raw)
+                    self.juno.set_tone_pitch(osc_index, fine=raw)
                 except Exception as e:
                     logger.error(f"Error setting OSC fine on synth: {e}")
             self.pitchFineChanged.emit(self.pitchFine)
@@ -2763,9 +2763,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             # Restore cached custom fine detunings
             for idx, raw in enumerate(self.patch_state.custom_detune_cache, start=1):
                 self.patch_state.tones[idx - 1].fine_tune = raw
-                if self.engine.juno:
+                if self.juno:
                     try:
-                        self.engine.juno.set_tone_pitch(idx, fine=raw)
+                        self.juno.set_tone_pitch(idx, fine=raw)
                     except Exception as e:
                         logger.error(f"Error restoring custom fine tune on synth: {e}")
         self.pitchFineChanged.emit(self.pitchFine)
@@ -2790,9 +2790,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
         for idx, offset in enumerate(spreads, start=1):
             raw = max(14, min(114, 64 + offset))
             self.patch_state.tones[idx - 1].fine_tune = raw
-            if self.engine.juno:
+            if self.juno:
                 try:
-                    self.engine.juno.set_tone_pitch(idx, fine=raw)
+                    self.juno.set_tone_pitch(idx, fine=raw)
                 except Exception as e:
                     logger.error(f"Error applying auto detune on synth: {e}")
         self.pitchFineChanged.emit(self.pitchFine)
@@ -2832,7 +2832,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(bool)
     def syncPatchFromSynth(self, async_mode: bool = False) -> None:
         """Query active patch and all workstation parameters from Roland hardware."""
-        if not self.engine.juno:
+        if not self.juno:
             logger.info("Cannot sync: No Roland synthesizer connected.")
             return
 
@@ -2845,9 +2845,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
             try:
                 logger.info("Syncing entire patch and workstation state from Roland hardware...")
                 full_sync_ok = False
-                if hasattr(self.engine.juno, "read_full_patch"):
+                if hasattr(self.juno, "read_full_patch"):
                     try:
-                        state = self.engine.juno.read_full_patch(timeout=1.0)
+                        state = self.juno.read_full_patch(timeout=1.0)
                         if isinstance(state, PatchState):
                             # Preserve customizable macro assignments (names/links/values);
                             # bases re-capture lazily from the fresh hardware truth.
@@ -2866,7 +2866,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                             for idx in range(4):
                                 t = state.tones[idx]
                                 self._tone_waves[idx] = (t.wave_bank_l, t.wave_num_l)
-                            self.engine.tone_levels = (
+                            self.vector.tone_levels = (
                                 state.tones[0].level,
                                 state.tones[1].level,
                                 state.tones[2].level,
@@ -2880,18 +2880,18 @@ class PatchBridgeMixin(BridgeBaseMixin):
                 # Legacy fallback only when the full image read failed/unavailable,
                 # so partial queries never clobber the complete decoded state.
                 if not full_sync_ok:
-                    if hasattr(self.engine.juno, "get_patch_name"):
+                    if hasattr(self.juno, "get_patch_name"):
                         try:
-                            name = self.engine.juno.get_patch_name(timeout=0.8)
+                            name = self.juno.get_patch_name(timeout=0.8)
                             if isinstance(name, str):
                                 self._patch_name = name
                                 self.patch_state.common.name = name
                         except Exception as e:
                             logger.warning(f"Could not read patch name: {e}")
 
-                    if hasattr(self.engine.juno, "get_sound_mode"):
+                    if hasattr(self.juno, "get_sound_mode"):
                         try:
-                            mode = self.engine.juno.get_sound_mode(timeout=0.8)
+                            mode = self.juno.get_sound_mode(timeout=0.8)
                             mode_str = mode.name if hasattr(mode, "name") else str(mode)
                             if isinstance(mode_str, str):
                                 self._sound_mode = mode_str
@@ -2901,9 +2901,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
                     self.patchInfoChanged.emit(str(self._patch_name), str(self._sound_mode))
 
-                    if hasattr(self.engine.juno, "get_all_tone_waves"):
+                    if hasattr(self.juno, "get_all_tone_waves"):
                         try:
-                            active_waves = self.engine.juno.get_all_tone_waves(timeout=0.8)
+                            active_waves = self.juno.get_all_tone_waves(timeout=0.8)
                             if isinstance(active_waves, (list, tuple)):
                                 for idx, item in enumerate(active_waves):
                                     if idx < 4 and isinstance(item, (list, tuple)) and len(item) == 2:

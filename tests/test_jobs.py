@@ -6,14 +6,13 @@ import time
 import pytest
 
 from src.spectre.ui.app import create_application
-from src.spectre.vector.engine import VectorEngine
 
 pytestmark = pytest.mark.ui
 
 
 @pytest.fixture
 def ui():
-    app, qml_engine, bridge = create_application(engine=VectorEngine(), platform="offscreen")
+    app, qml_engine, bridge = create_application(platform="offscreen")
     yield app, bridge
     del qml_engine
 
