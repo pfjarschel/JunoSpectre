@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import random
 import threading
@@ -9,8 +10,19 @@ import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from ..core.midi import MidiDeviceManager
+from . import automation as auto
 from .clock import SequencerClock
-from .models import NUM_TRACKS, Clip, NoteEvent, SequencerSong, Step, Track, default_sequencer_song
+from .models import (
+    NUM_AUTOMATION_LANES,
+    NUM_TRACKS,
+    AutomationLane,
+    Clip,
+    NoteEvent,
+    SequencerSong,
+    Step,
+    Track,
+    default_sequencer_song,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +73,19 @@ class SequencerEngine:
         self._overdub_suppress: Set[Tuple[int, int, int, int]] = set()
         self._lock = threading.Lock()
 
+        # Automation lanes: tick their active clip's step 0 started on, the
+        # level each one outputs (None = not driving its target), and when a
+        # glide last sent. automation_listener() is called from the clock
+        # thread whenever a level changes or a lane lets go.
+        self._lane_anchor: List[int] = [0] * NUM_AUTOMATION_LANES
+        # Tick each track's clip restarted on (linked lanes follow it)
+        self._track_anchor: List[int] = [0] * NUM_TRACKS
+        self.automation_levels: List[Optional[int]] = [None] * NUM_AUTOMATION_LANES
+        self._lane_last_send: List[int] = [0] * NUM_AUTOMATION_LANES
+        self._lane_segment: List[Optional[tuple]] = [None] * NUM_AUTOMATION_LANES
+        self.lane_steps: List[int] = [0] * NUM_AUTOMATION_LANES
+        self.automation_listener: Optional[Callable[[], None]] = None
+
         # UI updates downsampler (30-60 Hz)
         self._last_ui_dispatch: float = 0.0
         self._ui_subscribers: List[Callable[[dict], None]] = []
@@ -93,12 +118,15 @@ class SequencerEngine:
         starts on its selected clip, except tracks queued to stop."""
         if self.clock.is_stopped:
             with self._lock:
-                for track in self.song.tracks:
+                for track in (*self.song.tracks, *self.song.automation):
                     if track.queued_clip_idx == -2:
                         track.active_clip_idx = -1
                     else:
                         track.active_clip_idx = track.selected_clip_idx
                     track.queued_clip_idx = -1
+                self._lane_anchor = [0] * NUM_AUTOMATION_LANES
+                self._track_anchor = [0] * NUM_TRACKS
+                self._lane_segment = [None] * NUM_AUTOMATION_LANES
         self.clock.start()
 
     @property
@@ -121,6 +149,11 @@ class SequencerEngine:
             self._track_step_ticks = [DIVIDER_TICKS.get(t.clock_divider, 24) for t in self.song.tracks]
             self._track_tick_accum = list(self._track_step_ticks)
             self._track_step_started = [False] * NUM_TRACKS
+            self.lane_steps = [0] * NUM_AUTOMATION_LANES
+            released = any(v is not None for v in self.automation_levels)
+            self.automation_levels = [None] * NUM_AUTOMATION_LANES
+        if released:
+            self._notify_automation()
         self._dispatch_ui(force=True)
 
     def launch_clip(self, track_idx: int, clip_idx: int) -> None:
@@ -132,11 +165,24 @@ class SequencerEngine:
                 track.selected_clip_idx = clip_idx
 
     def launch_scene(self, scene_idx: int) -> None:
-        """Queue every track to the designated scene row."""
-        for t in self.song.tracks:
+        """Queue every track and automation lane to the designated scene row."""
+        for t in (*self.song.tracks, *self.song.automation):
             if 0 <= scene_idx < len(t.clips):
                 t.queued_clip_idx = scene_idx
                 t.selected_clip_idx = scene_idx
+
+    def launch_lane_clip(self, lane_idx: int, clip_idx: int) -> None:
+        """Queue an automation clip to launch on the next measure boundary."""
+        if 0 <= lane_idx < len(self.song.automation):
+            lane = self.song.automation[lane_idx]
+            if 0 <= clip_idx < len(lane.clips):
+                lane.queued_clip_idx = clip_idx
+                lane.selected_clip_idx = clip_idx
+
+    def stop_lane(self, lane_idx: int) -> None:
+        """Queue an automation lane to stop (let go of its target) at the next bar."""
+        if 0 <= lane_idx < len(self.song.automation):
+            self.song.automation[lane_idx].queued_clip_idx = -2
 
     def stop_track(self, track_idx: int) -> None:
         """Queue a track to stop at the next measure boundary."""
@@ -156,6 +202,7 @@ class SequencerEngine:
                 if total_ticks > 0 and total_ticks % bar_ticks == 0:
                     for i in range(len(self.song.tracks)):
                         self.track_steps[i] = 0
+                        self._track_anchor[i] = total_ticks
                         self._track_tick_accum[i] = self._track_step_ticks[i]
                         self._track_step_started[i] = False
 
@@ -173,6 +220,7 @@ class SequencerEngine:
                         track.active_clip_idx = track.queued_clip_idx
                     track.queued_clip_idx = -1
                     self.track_steps[t_idx] = 0
+                    self._track_anchor[t_idx] = total_ticks
                     self._track_tick_accum[t_idx] = step_len_ticks
                     self._track_step_started[t_idx] = False
 
@@ -196,8 +244,129 @@ class SequencerEngine:
             # 4. Fire note-ons whose (swung / micro-timed / strummed) time has come
             self._fire_pending_notes(total_ticks)
 
-        # 5. Dispatch UI status at 30-60 Hz
+            # 5. Automation lanes
+            changed = self._run_automation(tick_in_bar, total_ticks)
+
+        if changed:
+            self._notify_automation()
+        # 6. Dispatch UI status at 30-60 Hz
         self._dispatch_ui()
+
+    # -- automation ------------------------------------------------------------
+
+    def _tick_s(self) -> float:
+        return 60.0 / (self.clock.bpm * self.clock.ppqn)
+
+    def lane_driver(self, lane_idx: int):
+        """What decides a lane's clip launches: its linked track, or itself."""
+        lane = self.song.automation[lane_idx]
+        if lane.is_linked and lane.link_track < len(self.song.tracks):
+            return self.song.tracks[lane.link_track]
+        return lane
+
+    def _lane_anchor_at(self, lane_idx: int, lane: AutomationLane, tick_in_bar: int,
+                        total_ticks: int, tick: int) -> Tuple[int, int]:
+        """(clip_idx, anchor) lane `lane_idx` plays at `tick` (>= total_ticks),
+        applying a launch, stop or realign that the next bar line brings."""
+        driver = self.lane_driver(lane_idx)
+        linked = driver is not lane
+        clip_idx = driver.active_clip_idx
+        anchor = self._track_anchor[lane.link_track] if linked else self._lane_anchor[lane_idx]
+        bar = self.clock.ppqn * 4
+        downbeat = total_ticks + (bar - tick_in_bar) % bar
+        if downbeat <= tick:
+            if driver.queued_clip_idx != -1:
+                clip_idx = -1 if driver.queued_clip_idx == -2 else driver.queued_clip_idx
+                anchor = downbeat
+            elif self.song.master_resync_bars > 0 and downbeat > 0 \
+                    and downbeat % (bar * self.song.master_resync_bars) == 0:
+                anchor = downbeat
+        return clip_idx, anchor
+
+    def _run_automation(self, tick_in_bar: int, total_ticks: int) -> bool:
+        """Advance the lanes (call under lock). True when a level changed."""
+        tick_s = self._tick_s()
+        ahead = total_ticks + int(round(auto.LOOKAHEAD_S / tick_s))
+        cap = auto.seconds_to_ticks(auto.GLIDE_MIN_INTERVAL_S, tick_s)
+        bar = self.clock.ppqn * 4
+        resync = (self.song.master_resync_bars > 0 and tick_in_bar == 0 and total_ticks > 0
+                  and total_ticks % (bar * self.song.master_resync_bars) == 0)
+        changed = False
+        for i, lane in enumerate(self.song.automation):
+            # The bar line itself: launches and realigns take effect
+            # (a linked lane's track already did this in step 3)
+            if not lane.is_linked:
+                if tick_in_bar == 0 and lane.queued_clip_idx != -1:
+                    lane.active_clip_idx = -1 if lane.queued_clip_idx == -2 else lane.queued_clip_idx
+                    lane.queued_clip_idx = -1
+                    self._lane_anchor[i] = total_ticks
+                    self._lane_segment[i] = None
+                elif resync:
+                    self._lane_anchor[i] = total_ticks
+            level, mid_glide, step = self._lane_level(i, lane, tick_in_bar, total_ticks, ahead)
+            self.lane_steps[i] = step
+            if level == self.automation_levels[i]:
+                continue
+            # Mid-glide sends are rate capped; a lane taking its target sends at once
+            if mid_glide and self.automation_levels[i] is not None \
+                    and ahead - self._lane_last_send[i] < cap:
+                continue
+            self.automation_levels[i] = level
+            self._lane_last_send[i] = ahead
+            changed = True
+        return changed
+
+    def _lane_level(self, i: int, lane: AutomationLane, tick_in_bar: int,
+                    total_ticks: int, tick: int) -> Tuple[Optional[int], bool, int]:
+        """(level, mid_glide, step) of lane i at `tick`."""
+        if not lane.target:
+            return None, False, 0
+        clip_idx, anchor = self._lane_anchor_at(i, lane, tick_in_bar, total_ticks, tick)
+        if not 0 <= clip_idx < len(lane.clips):
+            return None, False, 0
+        clip = lane.clips[clip_idx]
+        step_ticks = DIVIDER_TICKS.get(lane.clock_divider, 24)
+        pos = max(0, tick - anchor) % (clip.length * step_ticks)
+        step, in_step = divmod(pos, step_ticks)
+        # Segments are found once per step (edits apply from the next step)
+        key = (clip_idx, step, step_ticks, clip.length)
+        cached = self._lane_segment[i]
+        if cached is None or cached[0] != key:
+            cached = (key, auto.segment_at(clip, step, step_ticks))
+            self._lane_segment[i] = cached
+        seg = cached[1]
+        if seg is None:
+            return None, False, step
+        level, mid = auto.level_in_segment(seg, clip.length, step, in_step, step_ticks)
+        return level, mid, step
+
+    def _notify_automation(self) -> None:
+        cb = self.automation_listener
+        if cb is not None:
+            try:
+                cb()
+            except Exception as e:
+                logger.debug(f"automation listener failed: {e}")
+
+    def automation_load(self, writes_per_change: Callable[[int], int]) -> List[float]:
+        """Estimated SysEx writes/s per lane: what plays now, or what would
+        play from a stop. writes_per_change(lane_idx) = DT1s per value change."""
+        tick_s = self._tick_s()
+        playing = not self.clock.is_stopped
+        out = []
+        for i, lane in enumerate(self.song.automation):
+            driver = self.lane_driver(i)
+            if playing:
+                idx = driver.active_clip_idx
+            else:
+                idx = -1 if driver.queued_clip_idx == -2 else driver.selected_clip_idx
+            if not lane.target or not 0 <= idx < len(lane.clips):
+                out.append(0.0)
+                continue
+            step_ticks = DIVIDER_TICKS.get(lane.clock_divider, 24)
+            rate = auto.clip_writes_per_second(lane.clips[idx], step_ticks, tick_s)
+            out.append(rate * max(0, int(writes_per_change(i))))
+        return out
 
     def _trigger_step(
         self,
@@ -222,13 +391,13 @@ class SequencerEngine:
         pre = self._prescheduled[t_idx] if t_idx < len(self._prescheduled) else None
         early_done = pre is not None and pre[0] == clip_idx and pre[1] == step_idx
         plays = pre[2] if early_done else self._roll(step)
-        if plays and step.notes and not step.tie:
-            duration = self._note_duration(clip, step_idx, step_len_ticks)
+        if plays and step.notes:
             timed = pre[3] if early_done else self._note_offsets(track, step, step_idx, step_len_ticks)
             for note, offset in timed:
                 if note.pitch in suppressed or (offset < 0 and early_done):
                     continue
                 # Negative offsets not pre-scheduled (first step after start/launch) play on time.
+                duration = self._note_duration(clip, step_idx, note, step_len_ticks)
                 self._schedule_note(total_ticks + max(0, offset), channels, note, duration)
 
         # Lookahead: notes of the next step that sit *before* its grid position must be
@@ -244,10 +413,10 @@ class SequencerEngine:
         next_plays = self._roll(next_step)
         next_timed = self._note_offsets(track, next_step, next_idx, step_len_ticks)
         self._prescheduled[t_idx] = (clip_idx, next_idx, next_plays, next_timed)
-        if next_plays and next_step.notes and not next_step.tie:
-            duration = self._note_duration(clip, next_idx, step_len_ticks)
+        if next_plays and next_step.notes:
             for note, offset in next_timed:
                 if offset < 0:
+                    duration = self._note_duration(clip, next_idx, note, step_len_ticks)
                     self._schedule_note(total_ticks + step_len_ticks + offset, channels, note, duration)
 
     @staticmethod
@@ -293,7 +462,7 @@ class SequencerEngine:
             offset = base + i * spread + self._dice(track.dice_timing)
             if track.dice_velocity > 0:
                 vel = n.velocity + self._dice(track.dice_velocity * 127 / 100)
-                n = NoteEvent(pitch=n.pitch, velocity=max(1, min(127, vel)))
+                n = dataclasses.replace(n, velocity=max(1, min(127, vel)))
             out.append((n, max(lo, min(hi, offset))))
         return out
 
@@ -305,17 +474,12 @@ class SequencerEngine:
         return int(round(random.triangular(-amount, amount, 0.0)))
 
     @staticmethod
-    def _note_duration(clip: Clip, step_idx: int, step_len_ticks: int) -> int:
-        """Gate length in ticks, extended across any following tied steps."""
-        last = step_idx
-        tied = 0
-        while tied < clip.length - 1:
-            nxt = (last + 1) % clip.length
-            if nxt >= len(clip.steps) or not clip.steps[nxt].tie:
-                break
-            last = nxt
-            tied += 1
-        return max(1, tied * step_len_ticks + int(clip.steps[last].gate_length * step_len_ticks))
+    def _note_duration(clip: Clip, step_idx: int, note: NoteEvent, step_len_ticks: int) -> int:
+        """Gate length in ticks: the steps the note is held (cut at the clip end),
+        the last one shortened by its starting step's gate."""
+        held = max(1, min(int(note.length), clip.length - step_idx))
+        gate = clip.steps[step_idx].gate_length
+        return max(1, (held - 1) * step_len_ticks + int(gate * step_len_ticks))
 
     def _schedule_note(self, fire_tick: int, channels: List[int], note: NoteEvent, duration: int) -> None:
         for ch in channels:
@@ -394,6 +558,9 @@ class SequencerEngine:
             "bpm": self.song.bpm,
             "active_clips": [t.active_clip_idx for t in self.song.tracks],
             "queued_clips": [t.queued_clip_idx for t in self.song.tracks],
+            "lane_steps": list(self.lane_steps),
+            "lane_active_clips": [a.active_clip_idx for a in self.song.automation],
+            "lane_queued_clips": [a.queued_clip_idx for a in self.song.automation],
         }
 
         for sub in list(self._ui_subscribers):

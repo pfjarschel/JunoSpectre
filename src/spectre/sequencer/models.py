@@ -9,7 +9,10 @@ from typing import Any, Dict, List, Optional
 
 # Most notes one step can hold (fills the pad's 3 x 4 note grid)
 MAX_STEP_NOTES = 12
+# Longest clip, in steps (also the longest a note can be held)
+MAX_CLIP_STEPS = 128
 NUM_TRACKS = 8
+NUM_AUTOMATION_LANES = 8
 # Dice (humanize) ranges: timing in +/- clock ticks, velocity in +/- % of 127
 MAX_DICE_TIMING = 24
 MAX_DICE_VELOCITY = 50
@@ -23,15 +26,17 @@ class NoteEvent:
     """A single note event within a sequencer step."""
     pitch: int = 60          # 0..127 MIDI note number
     velocity: int = 100      # 1..127 MIDI velocity
+    length: int = 1          # Steps the note is held (1 = its own step); the step's gate cuts the last one
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"pitch": int(self.pitch), "velocity": int(self.velocity)}
+        return {"pitch": int(self.pitch), "velocity": int(self.velocity), "length": int(self.length)}
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> NoteEvent:
         return cls(
             pitch=max(0, min(127, int(d.get("pitch", 60)))),
             velocity=max(1, min(127, int(d.get("velocity", 100)))),
+            length=max(1, min(MAX_CLIP_STEPS, int(d.get("length", 1)))),
         )
 
 
@@ -42,13 +47,12 @@ class Step:
     micro_timing: int = 0           # -24 .. +24 clock ticks offset
     strum: int = 0                  # Strum / flam delay in ticks (<0 down, >0 up, 0 instant)
     probability: float = 1.0        # 0.0 .. 1.0 (trigger probability)
-    tie: bool = False               # Sustain active notes without retriggering envelopes
     notes: List[NoteEvent] = dataclasses.field(default_factory=list)
 
     @property
     def is_active(self) -> bool:
-        """True if the step has active note triggers or is tied."""
-        return bool(self.notes or self.tie)
+        """True if notes start on the step."""
+        return bool(self.notes)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -56,7 +60,6 @@ class Step:
             "micro_timing": int(self.micro_timing),
             "strum": int(self.strum),
             "probability": float(self.probability),
-            "tie": bool(self.tie),
             "notes": [n.to_dict() for n in self.notes],
         }
 
@@ -69,36 +72,17 @@ class Step:
             micro_timing=max(-24, min(24, int(d.get("micro_timing", 0)))),
             strum=max(-24, min(24, int(d.get("strum", 0)))),
             probability=max(0.0, min(1.0, float(d.get("probability", 1.0)))),
-            tie=bool(d.get("tie", False)),
             notes=sorted(notes[:MAX_STEP_NOTES], key=lambda n: n.pitch),
         )
 
 
 @dataclasses.dataclass
-class MotionStep:
-    """Automation payload for a continuous parameter track."""
-    value: float = 0.0              # 0.0 .. 1.0 normalized value
-    glide: bool = False             # True if interpolating / slewing to next step
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {"value": float(self.value), "glide": bool(self.glide)}
-
-    @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> MotionStep:
-        return cls(
-            value=max(0.0, min(1.0, float(d.get("value", 0.0)))),
-            glide=bool(d.get("glide", False)),
-        )
-
-
-@dataclasses.dataclass
 class Clip:
-    """A pattern container with arbitrary step count for polymetric loops."""
+    """A pattern of steps (16, 32, 64 or 128 in the editor)."""
     clip_id: str = dataclasses.field(default_factory=lambda: str(uuid.uuid4())[:8])
     name: str = "Clip"
-    length: int = 16                # Arbitrary step count (e.g. 3, 7, 16, 32, 64)
+    length: int = 16                # Step count, 1..MAX_CLIP_STEPS
     steps: List[Step] = dataclasses.field(default_factory=list)
-    motion_tracks: Dict[str, List[MotionStep]] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self):
         # Guarantee steps list matches length
@@ -109,7 +93,7 @@ class Clip:
 
     def set_length(self, new_length: int) -> None:
         """Resize clip length non-destructively."""
-        new_len = max(1, min(128, int(new_length)))
+        new_len = max(1, min(MAX_CLIP_STEPS, int(new_length)))
         if new_len > len(self.steps):
             self.steps.extend(Step() for _ in range(new_len - len(self.steps)))
         elif new_len < len(self.steps):
@@ -122,31 +106,39 @@ class Clip:
             "name": self.name,
             "length": self.length,
             "steps": [s.to_dict() for s in self.steps],
-            "motion_tracks": {
-                k: [ms.to_dict() for ms in v]
-                for k, v in self.motion_tracks.items()
-            },
         }
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> Clip:
-        length = max(1, min(128, int(d.get("length", 16))))
+        length = max(1, min(MAX_CLIP_STEPS, int(d.get("length", 16))))
         steps_data = d.get("steps", [])
-        steps = [Step.from_dict(s) for s in steps_data] if isinstance(steps_data, list) else []
-        motion_raw = d.get("motion_tracks", {})
-        motion_tracks: Dict[str, List[MotionStep]] = {}
-        if isinstance(motion_raw, dict):
-            for k, steps_list in motion_raw.items():
-                if isinstance(steps_list, list):
-                    motion_tracks[k] = [MotionStep.from_dict(ms) for ms in steps_list]
+        steps_data = steps_data if isinstance(steps_data, list) else []
+        steps = [Step.from_dict(s) for s in steps_data]
+        _fold_step_ties(steps_data, steps)
 
         return cls(
             clip_id=str(d.get("clip_id") or str(uuid.uuid4())[:8]),
             name=str(d.get("name", "Clip")),
             length=length,
             steps=steps,
-            motion_tracks=motion_tracks,
         )
+
+
+def _fold_step_ties(steps_data: List[Any], steps: List[Step]) -> None:
+    """Songs saved before per-note lengths tied whole steps: a step with "tie"
+    held the notes of the last untied step through it (its own notes were
+    silent). Turn that into note lengths."""
+    anchor: Optional[Step] = None
+    span = 0
+    for raw, step in zip(steps_data, steps):
+        if isinstance(raw, dict) and raw.get("tie"):
+            step.notes.clear()
+            if anchor is not None:
+                span += 1
+                for n in anchor.notes:
+                    n.length = span
+        else:
+            anchor, span = (step, 1) if step.notes else (None, 0)
 
 
 @dataclasses.dataclass
@@ -210,23 +202,150 @@ class Track:
 
 
 @dataclasses.dataclass
+class AutomationStep:
+    """One step of an automation clip."""
+    value: Optional[float] = None   # 0..1 over the target's range; None = hold the last value
+    glide: bool = False             # ramp from this value to the next set step's
+
+    @property
+    def is_set(self) -> bool:
+        return self.value is not None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"value": None if self.value is None else float(self.value), "glide": bool(self.glide)}
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> AutomationStep:
+        v = d.get("value") if isinstance(d, dict) else None
+        return cls(
+            value=None if v is None else max(0.0, min(1.0, float(v))),
+            glide=bool(d.get("glide", False)) if isinstance(d, dict) else False,
+        )
+
+
+@dataclasses.dataclass
+class AutomationClip:
+    """A loop of automation steps (its own length, like a note clip)."""
+    clip_id: str = dataclasses.field(default_factory=lambda: str(uuid.uuid4())[:8])
+    name: str = "Clip"
+    length: int = 16
+    steps: List[AutomationStep] = dataclasses.field(default_factory=list)
+
+    def __post_init__(self):
+        self.set_length(self.length)
+
+    def set_length(self, new_length: int) -> None:
+        """Resize clip length non-destructively."""
+        new_len = max(1, min(128, int(new_length)))
+        if new_len > len(self.steps):
+            self.steps.extend(AutomationStep() for _ in range(new_len - len(self.steps)))
+        elif new_len < len(self.steps):
+            self.steps = self.steps[:new_len]
+        self.length = new_len
+
+    @property
+    def has_values(self) -> bool:
+        return any(s.is_set for s in self.steps)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "clip_id": self.clip_id,
+            "name": self.name,
+            "length": self.length,
+            "steps": [s.to_dict() for s in self.steps],
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> AutomationClip:
+        steps_data = d.get("steps", [])
+        steps = [AutomationStep.from_dict(s) for s in steps_data] if isinstance(steps_data, list) else []
+        return cls(
+            clip_id=str(d.get("clip_id") or str(uuid.uuid4())[:8]),
+            name=str(d.get("name", "Clip")),
+            length=max(1, min(128, int(d.get("length", 16)))),
+            steps=steps,
+        )
+
+
+@dataclasses.dataclass
+class AutomationLane:
+    """An automation track: drives one parameter (a macro catalog key or
+    "macro.N") independently of the note tracks. Its clips launch like note
+    clips, or follow a note track's launches while linked to it."""
+    target: str = ""                    # "" = unassigned
+    # Performance parts a part-scoped target (common./tone./part.) acts on;
+    # a linked lane uses its track's parts instead
+    parts: List[int] = dataclasses.field(default_factory=lambda: [1])
+    link_track: int = -1                # note track index it follows, -1 = none
+    clock_divider: str = "1/16"
+    active_clip_idx: int = 0
+    queued_clip_idx: int = -1
+    selected_clip_idx: int = 0
+    clips: List[AutomationClip] = dataclasses.field(default_factory=list)
+
+    def __post_init__(self):
+        if not self.clips:
+            self.clips = [AutomationClip(name=f"Scene {i+1}") for i in range(8)]
+        self.selected_clip_idx = max(0, min(len(self.clips) - 1, int(self.selected_clip_idx)))
+        self.parts = sorted({max(1, min(16, int(p))) for p in self.parts}) or [1]
+
+    @property
+    def is_linked(self) -> bool:
+        return 0 <= self.link_track < NUM_TRACKS
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "target": self.target,
+            "parts": list(self.parts),
+            "link_track": int(self.link_track),
+            "clock_divider": self.clock_divider,
+            "active_clip_idx": int(self.active_clip_idx),
+            "queued_clip_idx": int(self.queued_clip_idx),
+            "selected_clip_idx": int(self.selected_clip_idx),
+            "clips": [c.to_dict() for c in self.clips],
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> AutomationLane:
+        clips_data = d.get("clips", [])
+        clips = [AutomationClip.from_dict(c) for c in clips_data] if isinstance(clips_data, list) else []
+        return cls(
+            target=str(d.get("target", "") or ""),
+            parts=[int(p) for p in d.get("parts", [1]) if isinstance(p, (int, float))] or [1],
+            link_track=max(-1, min(NUM_TRACKS - 1, int(d.get("link_track", -1)))),
+            clock_divider=str(d.get("clock_divider", "1/16")),
+            active_clip_idx=int(d.get("active_clip_idx", 0)),
+            queued_clip_idx=int(d.get("queued_clip_idx", -1)),
+            selected_clip_idx=int(d.get("selected_clip_idx", 0)),
+            clips=clips,
+        )
+
+
+@dataclasses.dataclass
 class SequencerSong:
     """Complete 8-track sequencer state container."""
     bpm: float = 120.0
     master_resync_bars: int = 0         # Realign period: 0 = Off, 1, 2, 4, 8, 16, 32 bars
     tracks: List[Track] = dataclasses.field(default_factory=list)
+    automation: List[AutomationLane] = dataclasses.field(default_factory=list)
 
     def __post_init__(self):
         # Always NUM_TRACKS tracks: missing ones get their defaults, extras are dropped
         if len(self.tracks) != NUM_TRACKS:
             defaults = default_tracks()
             self.tracks = (list(self.tracks) + defaults[len(self.tracks):])[:NUM_TRACKS]
+        # Lane N follows track N until told otherwise
+        self.automation = (list(self.automation) + [
+            AutomationLane(link_track=i % NUM_TRACKS)
+            for i in range(len(self.automation), NUM_AUTOMATION_LANES)
+        ])[:NUM_AUTOMATION_LANES]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "bpm": float(self.bpm),
             "master_resync_bars": int(self.master_resync_bars),
             "tracks": [t.to_dict() for t in self.tracks],
+            "automation": [a.to_dict() for a in self.automation],
         }
 
     @classmethod
@@ -235,11 +354,15 @@ class SequencerSong:
             return cls()
         tracks_data = d.get("tracks", [])
         tracks = [Track.from_dict(t) for t in tracks_data] if isinstance(tracks_data, list) else []
+        auto_data = d.get("automation", [])
+        lanes = [AutomationLane.from_dict(a) for a in auto_data if isinstance(a, dict)] \
+            if isinstance(auto_data, list) else []
 
         return cls(
             bpm=max(20.0, min(300.0, float(d.get("bpm", 120.0)))),
             master_resync_bars=max(0, min(64, int(d.get("master_resync_bars", 0)))),
             tracks=tracks,
+            automation=lanes,
         )
 
 

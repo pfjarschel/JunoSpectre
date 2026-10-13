@@ -416,6 +416,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
                     hit = True
         if hit:
             self.macrosChanged.emit()
+        self._auto_kick()
 
     @contextmanager
     def _macroWrites(self):
@@ -440,6 +441,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
         """Re-capture every macro base from the synth (e.g. after a mode switch)."""
         self.patch_state.macro_bases = {}
         self._macro_part_states = {}
+        self._auto_forget()
 
     def _applyPatchKey(self, key: str, iv: int, ps, edited: bool = True) -> None:
         """Common/tone macro write into `ps` + the synth's current patch base."""

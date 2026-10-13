@@ -78,14 +78,12 @@ def test_sequencer_tracks_and_step_editing(bridge):
     bridge.seqSetStepParam(0, "microTiming", -10)
     bridge.seqSetStepParam(0, "strum", -30)
     bridge.seqSetStepParam(0, "probability", 0.75)
-    bridge.seqSetStepParam(0, "tie", True)
 
     steps_updated = bridge.seqActiveClipSteps
     assert steps_updated[0]["gateLength"] == pytest.approx(0.5)
     assert steps_updated[0]["microTiming"] == -10
     assert steps_updated[0]["strum"] == -24  # clamped
     assert steps_updated[0]["probability"] == pytest.approx(0.75)
-    assert steps_updated[0]["tie"] is True
 
 
 def test_sequencer_clip_and_scene_launching(bridge):
@@ -452,3 +450,23 @@ def test_rename_track(bridge):
     assert bridge.seqTracks[1]["name"] == "A very long "
     bridge.seqRenameTrack(1, "   ")
     assert bridge.seqTracks[1]["name"] == "Track 2"
+
+
+def test_piano_roll_notes_and_lengths(bridge):
+    bridge.seqSelectTrack(0)
+    assert bridge.seqAddRollNote(0, 60) == 60
+    assert bridge.seqAddRollNote(0, 60) == -1  # already there
+    assert bridge.seqAddRollNote(4, 60) == 60
+
+    # Held up to the next C on step 4, not over it
+    assert bridge.seqSetNoteLength(0, 60, 8) == 4
+    assert bridge.seqSetNoteLength(0, 60, 0) == 1
+    assert bridge.seqSetNoteLength(0, 62, 2) == -1  # no such note
+    # Cut at the clip end
+    assert bridge.seqSetNoteLength(4, 60, 99) == 12
+
+    bridge.seqSetNoteLength(0, 60, 3)
+    steps = bridge.seqActiveClipSteps
+    assert steps[0]["notes"][0]["length"] == 3
+    assert [s["held"] for s in steps[:5]] == [0, 1, 1, 0, 0]
+    assert steps[5]["held"] == 1

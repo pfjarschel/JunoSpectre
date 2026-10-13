@@ -3,8 +3,10 @@
 from .clock import SequencerClock
 from .engine import SequencerEngine
 from .models import (
+    AutomationClip,
+    AutomationLane,
+    AutomationStep,
     Clip,
-    MotionStep,
     NoteEvent,
     SequencerSong,
     Step,
@@ -19,7 +21,9 @@ from .recording import SequencerRecorder
 __all__ = [
     "NoteEvent",
     "Step",
-    "MotionStep",
+    "AutomationStep",
+    "AutomationClip",
+    "AutomationLane",
     "Clip",
     "Track",
     "SequencerSong",

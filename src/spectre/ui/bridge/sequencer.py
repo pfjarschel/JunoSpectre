@@ -15,6 +15,7 @@ from ...sequencer.models import (
     MAX_STEP_NOTES,
     MAX_TRACK_NAME,
     NUM_TRACKS,
+    Clip,
     NoteEvent,
     Step,
     default_sequencer_song,
@@ -90,7 +91,8 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     def _on_seq_ui_update(self, snapshot: dict) -> None:
         """Receive downsampled playback updates from SequencerEngine (clock thread)."""
-        clips = (tuple(snapshot.get("active_clips", ())), tuple(snapshot.get("queued_clips", ())))
+        clips = tuple(tuple(snapshot.get(k, ())) for k in (
+            "active_clips", "queued_clips", "lane_active_clips", "lane_queued_clips"))
         if clips != getattr(self, "_last_seq_clips", None):
             # A queued launch/stop took effect on the bar: refresh clip states too.
             self._last_seq_clips = clips
@@ -115,6 +117,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             self.seqPlayheadsChanged.emit()
         elif kind == self._SYNC_CLIPS:
             self.seqTracksChanged.emit()
+            self.seqAutomationChanged.emit()
         elif kind == self._SYNC_RECORDER:
             self.seqCursorStepChanged.emit()
             self.seqActiveClipChanged.emit()
@@ -177,6 +180,11 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             return [0, 0, 0, 0, 0]
         return list(self.sequencer.track_steps)
 
+    @pyqtProperty("QVariantList", notify=seqPlayheadsChanged)
+    def seqLanePlayheads(self) -> list:
+        """Current step of each automation lane."""
+        return list(self.sequencer.lane_steps)
+
     @pyqtProperty("QVariantList", notify=seqTracksChanged)
     def seqTracks(self) -> list:
         if not hasattr(self, "sequencer"):
@@ -222,11 +230,17 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             track = self.sequencer.song.tracks[t_idx]
             if 0 <= c_idx < len(track.clips):
                 clip = track.clips[c_idx]
-                return [self._seq_step_dict(i, s, track.is_drum) for i, s in enumerate(clip.steps)]
+                # Notes from earlier steps still held on each step
+                held = [0] * len(clip.steps)
+                for i, s in enumerate(clip.steps):
+                    for n in s.notes:
+                        for k in range(i + 1, min(len(held), i + n.length)):
+                            held[k] += 1
+                return [self._seq_step_dict(i, s, track.is_drum, held[i]) for i, s in enumerate(clip.steps)]
         return []
 
     @staticmethod
-    def _seq_step_dict(i: int, s: Step, is_drum: bool) -> Dict[str, Any]:
+    def _seq_step_dict(i: int, s: Step, is_drum: bool, held: int = 0) -> Dict[str, Any]:
         notes = sorted(s.notes, key=lambda n: n.pitch)
         return {
             "index": i,
@@ -234,7 +248,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             "microTiming": s.micro_timing,
             "strum": s.strum,
             "probability": s.probability,
-            "tie": s.tie,
+            "held": held,
             "isActive": s.is_active,
             "noteCount": len(notes),
             "notes": [n.to_dict() for n in notes],  # low to high
@@ -328,6 +342,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             track = self.sequencer.song.tracks[track_idx]
             track.target_parts = [part] + [p for p in track.target_parts[1:] if p != part]
             self.seqTracksChanged.emit()
+            self._auto_lane_edited()  # linked lanes write to the track's parts
             self.seqActiveClipChanged.emit()  # drum-ness (chord names) may have changed
 
     @pyqtSlot(int, str)
@@ -353,6 +368,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
                 layers.append(part)
             track.target_parts = [main] + sorted(layers)
             self.seqTracksChanged.emit()
+            self._auto_lane_edited()  # linked lanes write to the track's parts
 
     @pyqtSlot(int, bool)
     def seqSetTrackKbd(self, track_idx: int, enabled: bool) -> None:
@@ -391,6 +407,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             self._seq_retarget_recorder()
             self.seqActiveClipChanged.emit()
         self.seqTracksChanged.emit()
+        self.seqAutomationChanged.emit()
 
     @pyqtSlot(int)
     def seqStopTrack(self, track_idx: int) -> None:
@@ -441,8 +458,6 @@ class SequencerBridgeMixin(BridgeBaseMixin):
                         step.strum = max(-24, min(24, int(value)))
                     elif param == "probability":
                         step.probability = max(0.0, min(1.0, float(value)))
-                    elif param == "tie":
-                        step.tie = bool(value)
                     elif param == "velocity":
                         vel = max(1, min(127, int(value)))
                         if step.notes:
@@ -472,7 +487,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot()
     def seqClearActiveClip(self) -> None:
-        """Clear all notes and ties from all steps in the current active clip."""
+        """Clear all notes from the current active clip."""
         t_idx = getattr(self, "_active_seq_track", 0)
         c_idx = self._seq_selected_clip(t_idx)
         if hasattr(self, "recorder"):
@@ -482,7 +497,6 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             if 0 <= c_idx < len(track.clips):
                 for s in track.clips[c_idx].steps:
                     s.notes.clear()
-                    s.tie = False
         self.seqActiveClipChanged.emit()
         self.seqTracksChanged.emit()
 
@@ -529,14 +543,21 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     # since a step never holds the same pitch twice; slots that move a note
     # return its new pitch so the UI selection can follow it.
 
-    def _seq_edit_step(self, step_idx: int) -> Optional[Step]:
-        """The step at step_idx in the active track's selected clip, if any."""
+    def _seq_edit_clip(self) -> Optional[Clip]:
+        """The active track's selected clip, if any."""
         t_idx = getattr(self, "_active_seq_track", 0)
         c_idx = self._seq_selected_clip(t_idx)
         if hasattr(self, "sequencer") and 0 <= t_idx < len(self.sequencer.song.tracks):
             track = self.sequencer.song.tracks[t_idx]
-            if 0 <= c_idx < len(track.clips) and 0 <= step_idx < len(track.clips[c_idx].steps):
-                return track.clips[c_idx].steps[step_idx]
+            if 0 <= c_idx < len(track.clips):
+                return track.clips[c_idx]
+        return None
+
+    def _seq_edit_step(self, step_idx: int) -> Optional[Step]:
+        """The step at step_idx in the active track's selected clip, if any."""
+        clip = self._seq_edit_clip()
+        if clip is not None and 0 <= step_idx < len(clip.steps):
+            return clip.steps[step_idx]
         return None
 
     def _seq_step_edited(self, step: Step) -> None:
@@ -614,6 +635,40 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             return -1
         self._seq_step_edited(step)
         return new_pitch
+
+    @pyqtSlot(int, int, result=int)
+    def seqAddRollNote(self, step_idx: int, pitch: int) -> int:
+        """Add a one-step note at a pitch (piano roll tap), with the velocity of
+        the step's top note. Returns the pitch, or -1 if taken or the step is full."""
+        step = self._seq_edit_step(step_idx)
+        pitch = int(pitch)
+        if (step is None or not 0 <= pitch <= 127 or len(step.notes) >= MAX_STEP_NOTES
+                or any(n.pitch == pitch for n in step.notes)):
+            return -1
+        velocity = max(step.notes, key=lambda n: n.pitch).velocity if step.notes else 100
+        step.notes.append(NoteEvent(pitch=pitch, velocity=velocity))
+        self._seq_step_edited(step)
+        return pitch
+
+    @pyqtSlot(int, int, int, result=int)
+    def seqSetNoteLength(self, step_idx: int, pitch: int, length: int) -> int:
+        """Hold one note for length steps, up to the clip end or the next note
+        of the same pitch. Returns the length set, or -1 if the note is missing."""
+        clip = self._seq_edit_clip()
+        step = self._seq_edit_step(step_idx)
+        note = next((n for n in step.notes if n.pitch == pitch), None) if step else None
+        if note is None:
+            return -1
+        limit = clip.length - step_idx
+        for k in range(step_idx + 1, min(len(clip.steps), clip.length)):
+            if any(n.pitch == pitch for n in clip.steps[k].notes):
+                limit = k - step_idx
+                break
+        new = max(1, min(limit, int(length)))
+        if new != note.length:
+            note.length = new
+            self._seq_step_edited(step)
+        return new
 
     @pyqtSlot(int, int, int)
     def seqSetNoteVelocity(self, step_idx: int, pitch: int, velocity: int) -> None:

@@ -6,6 +6,7 @@ import ".."
 
 // Pick the parts a sequencer track sends to. MAIN sets the part the track
 // plays (and closes); LAYERS toggles extra parts it also sends to.
+// laneMode: the parts an automation lane's parameter is written to.
 // Fills its parent to catch taps outside the panel, which close it.
 Item {
     id: root
@@ -13,11 +14,12 @@ Item {
     visible: false
     z: 50
 
-    property int trackIdx: 0
+    property int trackIdx: 0     // the lane in laneMode
     property string mode: "main"  // "main" | "layers"
+    property bool laneMode: false
 
-    readonly property var trackData: (Bridge.seqTracks && Bridge.seqTracks.length > trackIdx)
-                                     ? Bridge.seqTracks[trackIdx] : null
+    readonly property var source: laneMode ? Bridge.seqAutomationLanes : Bridge.seqTracks
+    readonly property var trackData: (source && source.length > trackIdx) ? source[trackIdx] : null
     readonly property color trackColor: Theme.trackColors[trackIdx % Theme.trackColors.length]
     readonly property int mainPart: (trackData && trackData.targetPart) ? trackData.targetPart : (trackIdx + 1)
     readonly property var layers: (trackData && trackData.layerParts) ? trackData.layerParts : []
@@ -69,7 +71,9 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.trackData ? root.trackData.name : ""
+                    text: !root.trackData ? ""
+                          : root.laneMode ? (root.trackData.tabName || ("LANE " + (root.trackIdx + 1)))
+                                          : root.trackData.name
                     elide: Text.ElideRight
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(9)
@@ -92,8 +96,9 @@ Item {
             }
 
             Text {
-                text: root.mode === "main" ? "PLAYS ON"
-                                           : "ALSO SEND TO (main: P" + root.mainPart + ")"
+                text: root.mode === "main" ? (root.laneMode ? "WRITES TO" : "PLAYS ON")
+                                           : (root.laneMode ? "ALSO WRITE TO" : "ALSO SEND TO")
+                                             + " (main: P" + root.mainPart + ")"
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(8)
                 font.letterSpacing: 1.0
@@ -131,8 +136,13 @@ Item {
                             enabled: !parent.locked
                             onClicked: {
                                 if (root.mode === "main") {
-                                    Bridge.seqSetTrackTargetPart(root.trackIdx, parent.part);
+                                    if (root.laneMode)
+                                        Bridge.seqSetLanePart(root.trackIdx, parent.part);
+                                    else
+                                        Bridge.seqSetTrackTargetPart(root.trackIdx, parent.part);
                                     root.close();
+                                } else if (root.laneMode) {
+                                    Bridge.seqToggleLaneLayer(root.trackIdx, parent.part);
                                 } else {
                                     Bridge.seqToggleTrackLayer(root.trackIdx, parent.part);
                                 }

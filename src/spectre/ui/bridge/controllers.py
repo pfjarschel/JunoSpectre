@@ -54,7 +54,7 @@ def _action(key: str, title: str) -> dict:
 # Button actions: run on press. "toggle" ones flip app state (mute, play...).
 ACTIONS: list[dict] = (
     [_action("seq.toggle_play", "Sequencer Play/Stop"), _action("seq.play", "Sequencer Play"),
-     _action("seq.stop", "Sequencer Stop"), _action("seq.live_record", "Sequencer Overdub On/Off")]
+     _action("seq.stop", "Sequencer Stop"), _action("seq.live_record", "Sequencer Record On/Off (track or lane)")]
     + [_action(f"seq.scene.{n}", f"Launch Scene {n}") for n in range(1, 9)]
     + [_action(f"seq.stop_track.{n}", f"Stop Track {n}") for n in range(1, 9)]
     + [_action("motion.toggle_play", "Motion Play/Stop"), _action("motion.toggle_record", "Motion Record On/Off")]
@@ -432,6 +432,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             if not eff:
                 self._ctl_set_activity(f"{label} = {raw} → {self._ctl_target_title(b.target)}  (unused on this page)")
                 continue
+            if self._auto_owns(eff):
+                self._ctl_set_activity(f"{label} = {raw} → {self._ctl_target_title(eff)}  (automated)")
+                continue
             # Stepped targets switch right away: their value is quantized, so
             # pickup would always see it as "moved elsewhere"
             current = None if eff in STEPPED else self._ctl_current(eff)
@@ -699,7 +702,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         elif t in ("action.seq.toggle_play", "action.seq.play"):
             on, color = bool(getattr(self.sequencer, "is_playing", False)), (0, 127, 0)
         elif t == "action.seq.live_record":
-            on, color = bool(self.seqLiveRecordEnabled), (127, 0, 0)
+            on, color = bool(self.seqRecArmed), (127, 0, 0)
         elif t.startswith("action.view.goto."):
             on, color = str(getattr(self, "_active_view", "")) == t[len("action.view.goto."):], (110, 110, 127)
         elif t.startswith("action.seq.scene."):
@@ -909,7 +912,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             elif action == "seq.stop":
                 self.seqStop()
             elif action == "seq.live_record":
-                self.seqToggleLiveRecord(not self.seqLiveRecordEnabled)
+                self.seqToggleRecord()
             elif action.startswith("seq.scene."):
                 self.seqLaunchScene(n - 1)
             elif action.startswith("seq.stop_track."):

@@ -140,11 +140,26 @@ def test_recorder_rest_and_tie():
     recorder.record_rest()
     assert recorder.cursor_step == 1
 
-    # Tie sets tie on step 1 and advances to 2
+    # Tie after a rest holds nothing, just advances
     recorder.record_tie()
     clip = song.tracks[0].clips[0]
-    assert clip.steps[1].tie is True
     assert recorder.cursor_step == 2
+
+    # Enter a chord on step 2, then tie twice: the chord is held 3 steps
+    recorder.toggle_step_record(True)
+    for note in (60, 64):
+        recorder.handle_midi_message(mido.Message("note_on", note=note, velocity=100))
+    for note in (60, 64):
+        recorder.handle_midi_message(mido.Message("note_off", note=note, velocity=0))
+    recorder.record_tie()
+    recorder.record_tie()
+    assert [n.length for n in clip.steps[2].notes] == [3, 3]
+    assert recorder.cursor_step == 5
+
+    # Moving the cursor away breaks the chain
+    recorder.cursor_step = 7
+    recorder.record_tie()
+    assert [n.length for n in clip.steps[2].notes] == [3, 3]
 
 
 # ---------------------------------------------------------------------------
@@ -171,20 +186,33 @@ def _engine_with_log(song=None, **kwargs):
     return engine, song, log, run
 
 
-def test_tie_extends_note_without_retrigger():
+def test_note_length_holds_each_note_on_its_own():
     engine, song, log, run = _engine_with_log()
     clip = song.tracks[0].clips[0]
-    clip.steps[0].notes = [NoteEvent(60, 100)]
+    # C held 3 steps while E changes to G under it
+    clip.steps[0].notes = [NoteEvent(60, 100, length=3), NoteEvent(64, 100)]
     clip.steps[0].gate_length = 0.5
-    clip.steps[1].tie = True
-    clip.steps[2].tie = True
-    clip.steps[2].gate_length = 0.5
+    clip.steps[1].notes = [NoteEvent(67, 100)]
     run(24 * 4)
-    ons = [e for e in log if e[1] == "note_on" and e[3] == 60]
-    offs = [e for e in log if e[1] == "note_off" and e[3] == 60]
-    assert [e[0] for e in ons] == [0]
-    # 2 full tied steps + half of the last one
-    assert [e[0] for e in offs] == [24 * 2 + 12]
+    ons = [(e[0], e[3]) for e in log if e[1] == "note_on"]
+    offs = {e[3]: e[0] for e in log if e[1] == "note_off"}
+    assert ons == [(0, 60), (0, 64), (24, 67)]
+    # 2 full steps + the gate (half) of the last one
+    assert offs[60] == 24 * 2 + 12
+    assert offs[64] == 12
+    assert offs[67] == 24 + int(0.75 * 24)
+
+
+def test_note_length_is_cut_at_the_clip_end():
+    engine, song, log, run = _engine_with_log()
+    clip = song.tracks[0].clips[0]
+    clip.set_length(4)
+    clip.steps[3].notes = [NoteEvent(60, 100, length=8)]
+    clip.steps[3].gate_length = 1.0
+    run(24 * 5)
+    offs = [e[0] for e in log if e[1] == "note_off" and e[3] == 60]
+    # Released at the loop point, not 8 steps later
+    assert offs == [24 * 4]
 
 
 def test_notes_follow_part_receive_channel():
@@ -367,3 +395,142 @@ def test_track_selected_clip_round_trip_and_legacy_default():
     assert Track.from_dict(legacy).selected_clip_idx == 3
 
     assert Track(selected_clip_idx=99).selected_clip_idx == 7
+
+
+# -- automation lanes ----------------------------------------------------------
+
+from src.spectre.sequencer import AutomationStep
+from src.spectre.sequencer import automation as auto
+
+
+def _auto_engine(bpm=120.0):
+    song = default_sequencer_song()
+    engine = SequencerEngine(song=song, midi_mgr=None, clock=SequencerClock(bpm=bpm))
+    changes = []
+    engine.automation_listener = lambda: changes.append(list(engine.automation_levels))
+    return engine, song, changes
+
+
+def _run(engine, start, end, log):
+    """Tick [start, end) and record (tick, level of lane 0) on every change."""
+    last = engine.automation_levels[0]
+    for tick in range(start, end):
+        engine._on_clock_tick(tick % 384, tick)
+        if engine.automation_levels[0] != last:
+            last = engine.automation_levels[0]
+            log.append((tick, last))
+
+
+def test_automation_stepped_values_land_ahead_of_their_step():
+    engine, song, changes = _auto_engine()
+    lane = song.automation[0]
+    lane.target = "tone.1.tvf_cutoff"
+    clip = lane.clips[0]
+    clip.steps[0] = AutomationStep(value=0.0)
+    clip.steps[4] = AutomationStep(value=1.0)
+    log = []
+    _run(engine, 0, 16 * 24 + 1, log)
+    ahead = round(auto.LOOKAHEAD_S / (60.0 / (120.0 * 96)))   # 2 ticks at 120 BPM
+    # Step 4 (tick 96) is sent `ahead` ticks early; empty steps hold; the loop wraps to 0
+    assert log == [(0, 0), (96 - ahead, 127), (384 - ahead, 0)]
+    assert changes  # the listener heard every change
+
+
+def test_automation_glide_ramps_at_a_capped_rate():
+    engine, song, _ = _auto_engine()
+    lane = song.automation[0]
+    lane.target = "tone.1.tvf_cutoff"
+    clip = lane.clips[0]
+    clip.steps[0] = AutomationStep(value=0.0, glide=True)
+    clip.steps[8] = AutomationStep(value=1.0)
+    log = []
+    _run(engine, 0, 8 * 24 + 1, log)
+    ticks = [t for t, _ in log]
+    levels = [v for _, v in log]
+    cap = auto.seconds_to_ticks(auto.GLIDE_MIN_INTERVAL_S, 60.0 / (120.0 * 96))
+    # Starts right away (a couple of ticks into the ramp: lookahead), ends on the target
+    assert ticks[0] == 0 and levels[0] <= 2 and levels[-1] == 127
+    assert levels == sorted(levels)
+    # Mid-ramp sends are >= cap apart; the arrival lands on its step regardless
+    assert min(b - a for a, b in zip(ticks[:-1], ticks[1:-1])) >= cap
+    assert ticks[-1] == 8 * 24 - 2
+    # The analytic load estimate matches what the ramp actually sent
+    est = auto.clip_writes_per_loop(clip, 24, cap)
+    assert abs(est - len(log)) <= 2
+
+
+def test_automation_launch_stop_and_release():
+    engine, song, changes = _auto_engine()
+    lane = song.automation[0]
+    lane.link_track = -1                      # launched on its own
+    lane.target = "tone.1.tvf_cutoff"
+    lane.clips[0].steps[0] = AutomationStep(value=0.0)
+    lane.clips[1].steps[0] = AutomationStep(value=1.0)
+    log = []
+    _run(engine, 0, 100, log)
+    engine.launch_lane_clip(0, 1)            # takes over on the next bar
+    _run(engine, 100, 390, log)
+    assert log[-1] == (384 - 2, 127)        # lookahead reaches across the bar line
+    assert lane.active_clip_idx == 1
+    engine.stop_lane(0)                       # lets go on the next bar
+    _run(engine, 390, 800, log)
+    assert log[-1] == (768 - 2, None)
+    assert lane.active_clip_idx == -1
+
+
+def test_automation_stop_releases_and_unassigned_lanes_stay_quiet():
+    engine, song, changes = _auto_engine()
+    song.automation[1].clips[0].steps[0] = AutomationStep(value=0.5)   # no target
+    lane = song.automation[0]
+    lane.target = "common.level"
+    lane.clips[0].steps[3] = AutomationStep(value=0.5)
+    engine._on_clock_tick(0, 0)
+    # Empty steps before the first set value hold the last one, wrapping around
+    assert engine.automation_levels[:2] == [64, None]
+    changes.clear()
+    engine.stop()
+    assert engine.automation_levels[0] is None
+    assert changes and changes[-1][0] is None
+
+
+def test_automation_load_estimate():
+    engine, song, _ = _auto_engine()
+    lane = song.automation[0]
+    lane.target = "tone.all.tvf_cutoff"
+    clip = lane.clips[0]
+    for i in range(16):
+        clip.steps[i] = AutomationStep(value=float(i % 2))
+    # 16 changes per 2 s loop at 120 BPM, 4 writes each (one per tone)
+    loads = engine.automation_load(lambda i: 4 if "all" in song.automation[i].target else 1)
+    assert loads[0] == pytest.approx(32.0)
+    assert loads[1:] == [0.0] * 7
+    # A constant lane costs nothing after its first value
+    for i in range(16):
+        clip.steps[i] = AutomationStep(value=0.5)
+    assert engine.automation_load(lambda t: 1)[0] == 0.0
+
+
+def test_linked_lane_follows_its_track_launches():
+    engine, song, _ = _auto_engine()
+    lane = song.automation[0]
+    assert lane.link_track == 0 and engine.lane_driver(0) is song.tracks[0]
+    lane.target = "tone.1.tvf_cutoff"
+    lane.clips[0].steps[0] = AutomationStep(value=0.0)
+    lane.clips[2].steps[0] = AutomationStep(value=1.0)
+    lane.clips[2].steps[1] = AutomationStep(value=0.5)
+    log = []
+    engine.play()
+    engine.clock.stop()                       # ticks are driven by hand
+    _run(engine, 0, 100, log)
+    engine.launch_lane_clip(0, 1)             # ignored: the track decides
+    engine.launch_clip(0, 2)                  # the track's C3 brings the lane's C3
+    _run(engine, 100, 420, log)
+    assert log[-1] == (384 + 24 - 2, 64)      # anchored on the track's launch bar
+    assert (384 - 2, 127) in log
+    engine.stop_track(0)                      # the track stops: the lane lets go
+    _run(engine, 420, 800, log)
+    assert log[-1] == (768 - 2, None)
+    # Load follows what the track would play
+    engine.stop()
+    song.tracks[0].selected_clip_idx = 2
+    assert engine.automation_load(lambda i: 1)[0] > 0

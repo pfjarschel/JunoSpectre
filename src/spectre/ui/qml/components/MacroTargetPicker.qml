@@ -22,6 +22,8 @@ Rectangle {
     property bool keyboardVisible: false
     // MIDI controller assignment: targets also include the macros
     property bool midiMode: false
+    // Sequencer automation lane: one parameter (or a macro) per lane
+    property bool laneMode: false
 
     signal addRequested(string key)
     signal closeRequested()
@@ -44,6 +46,7 @@ Rectangle {
 
     function refreshTargets() {
         targetList = midiMode ? Bridge.getControlTargets(selectedCategory, searchText)
+                   : laneMode ? Bridge.getLaneTargets(selectedCategory, searchText)
                               : Bridge.getMacroTargets(selectedCategory, searchText);
     }
 
@@ -89,7 +92,9 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 Text {
-                    text: root.midiMode ? "ASSIGN A CONTROL TO…" : "ADD PARAMETER • M" + root.targetMacro
+                    text: root.midiMode ? "ASSIGN A CONTROL TO…"
+                        : root.laneMode ? "AUTOMATE • LANE " + root.targetMacro
+                                        : "ADD PARAMETER • M" + root.targetMacro
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(12)
                     font.letterSpacing: 1.0
@@ -185,6 +190,8 @@ Rectangle {
                     spacing: ScaleMetrics.dp(4)
                     readonly property var categories: root.midiMode
                         ? ["ALL", "MACRO", "EDITOR", "ACTION", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART", "MATRIX", "SEQ"]
+                        : root.laneMode
+                        ? ["ALL", "MACRO", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART", "MATRIX", "SEQ"]
                         : ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART", "MATRIX", "SEQ"]
 
                     Repeater {
@@ -268,7 +275,7 @@ Rectangle {
                             Text {
                                 anchors.centerIn: parent
                                 visible: !assigned
-                                text: root.midiMode ? "LEARN" : "+ ADD"
+                                text: root.midiMode ? "LEARN" : root.laneMode ? "SELECT" : "+ ADD"
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(10)
                                 color: Theme.textOnFill

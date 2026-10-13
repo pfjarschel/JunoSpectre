@@ -32,7 +32,9 @@ Rectangle {
         return first;
     }
 
-    visible: kbdPart > 0 && trackParts.indexOf(kbdPart) < 0
+    // Hidden while the sequencer page shows automation lanes
+    property bool suppressed: false
+    visible: !suppressed && kbdPart > 0 && trackParts.indexOf(kbdPart) < 0
     height: ScaleMetrics.dp(26)
     implicitWidth: row.implicitWidth + ScaleMetrics.dp(12)
     width: implicitWidth

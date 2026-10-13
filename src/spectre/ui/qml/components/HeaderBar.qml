@@ -329,11 +329,12 @@ Rectangle {
             }
         }
 
-        // Master Transport: sequencer overdub arm (doubles as the REC indicator on
-        // every screen, naming the track it records into) and Play/Stop.
+        // Master Transport: sequencer record arm (doubles as the REC indicator on
+        // every screen, naming what it records into: note track and/or lanes)
+        // and Play/Stop. Arms the active note track, or the active lane in MOTION mode.
         Rectangle {
             id: recBtn
-            readonly property bool armed: Bridge.seqLiveRecordEnabled
+            readonly property bool armed: Bridge.seqRecArmed
             height: ScaleMetrics.dp(38)
             width: ScaleMetrics.dp(54)
             radius: ScaleMetrics.dp(4)
@@ -364,7 +365,7 @@ Rectangle {
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     visible: recBtn.armed
-                    text: Bridge.seqLiveRecordWaiting ? "WAIT" : "T" + (Bridge.seqActiveTrack + 1)
+                    text: Bridge.seqRecText
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(8)
                     color: Bridge.seqLiveRecordWaiting ? Theme.warning : Theme.textPrimary
@@ -374,7 +375,7 @@ Rectangle {
             MouseArea {
                 id: recArea
                 anchors.fill: parent
-                onClicked: Bridge.seqToggleLiveRecord(!Bridge.seqLiveRecordEnabled)
+                onClicked: Bridge.seqToggleRecord()
             }
         }
 

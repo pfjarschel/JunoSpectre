@@ -31,6 +31,8 @@ class SequencerRecorder:
         # Step entry buffer: tracks currently held notes and captured velocities
         self._held_notes: Dict[int, int] = {}  # pitch -> velocity
         self._buffered_chord: List[NoteEvent] = []
+        # Step of the last chord entered, which TIE holds longer (None after a rest)
+        self._last_entry: Optional[int] = None
         self._ui_callbacks: List[Callable[[str, Any], None]] = []
 
     def subscribe_ui(self, callback: Callable[[str, Any], None]) -> None:
@@ -91,33 +93,37 @@ class SequencerRecorder:
         clip = self._get_active_clip()
         if clip:
             self.cursor_step = (self.cursor_step + 1) % clip.length
+        self._last_entry = None
         self._notify_ui("rest", self.cursor_step)
         return self.cursor_step
 
     def record_tie(self) -> int:
-        """Set tie flag on the active step and advance cursor."""
+        """Hold the last entered chord through the cursor step and advance."""
         clip = self._get_active_clip()
-        if clip and self.cursor_step < len(clip.steps):
-            clip.steps[self.cursor_step].tie = True
+        if clip:
+            start = self._last_entry
+            if start is not None and start < len(clip.steps):
+                for n in clip.steps[start].notes:
+                    # Only notes that still end right at the cursor
+                    if start + n.length == self.cursor_step:
+                        n.length += 1
             self.cursor_step = (self.cursor_step + 1) % clip.length
         self._notify_ui("tie", self.cursor_step)
         return self.cursor_step
 
     def clear_step(self, step_idx: int) -> None:
-        """Clear notes and tie on a designated step."""
+        """Clear the notes starting on a designated step."""
         clip = self._get_active_clip()
         if clip and 0 <= step_idx < len(clip.steps):
             clip.steps[step_idx].notes.clear()
-            clip.steps[step_idx].tie = False
             self._notify_ui("clear", step_idx)
 
     def clear_clip(self) -> None:
-        """Clear all notes and ties across all steps on the active clip."""
+        """Clear all notes on the active clip."""
         clip = self._get_active_clip()
         if clip:
             for s in clip.steps:
                 s.notes.clear()
-                s.tie = False
             self._notify_ui("clear_clip")
 
     def handle_midi_message(self, msg: mido.Message) -> None:
@@ -177,6 +183,7 @@ class SequencerRecorder:
                     key=lambda n: n.pitch,
                 )
                 self._buffered_chord.clear()
+                self._last_entry = self.cursor_step
                 # Auto-advance
                 self.cursor_step = (self.cursor_step + 1) % clip.length
                 self._notify_ui("committed", self.cursor_step)

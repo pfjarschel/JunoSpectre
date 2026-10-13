@@ -17,6 +17,7 @@ from ...core.waves import WaveCatalogManager
 from ...core.wifi import WifiManager, WifiStatus
 from ...vector.engine import VectorEngine
 from .arpeggio import ArpBridgeMixin
+from .automation import AutomationBridgeMixin
 from .controllers import ControllersBridgeMixin
 from .follow import FollowBridgeMixin
 from .hardware import HardwareBridgeMixin
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 class SpectreBridge(
     SequencerBridgeMixin,
+    AutomationBridgeMixin,
     SetlistBridgeMixin,
     SystemBridgeMixin,
     ViewBridgeMixin,
@@ -174,6 +176,7 @@ class SpectreBridge(
         self._init_jobs()
         self._init_hardware()
         self._init_controllers()
+        self._init_automation()
         self._init_arp()
         self._init_tmt()
         self._init_follow()

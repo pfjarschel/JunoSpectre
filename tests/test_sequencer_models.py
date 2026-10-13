@@ -11,8 +11,11 @@ from src.spectre.core.spectre_format import (
     save_spectre,
 )
 from src.spectre.sequencer.models import (
+    NUM_AUTOMATION_LANES,
+    AutomationClip,
+    AutomationLane,
+    AutomationStep,
     Clip,
-    MotionStep,
     NoteEvent,
     SequencerSong,
     Step,
@@ -25,7 +28,7 @@ from src.spectre.sequencer.models import (
 def test_note_event_roundtrip():
     n = NoteEvent(pitch=64, velocity=110)
     d = n.to_dict()
-    assert d == {"pitch": 64, "velocity": 110}
+    assert d == {"pitch": 64, "velocity": 110, "length": 1}
     n2 = NoteEvent.from_dict(d)
     assert n2.pitch == 64
     assert n2.velocity == 110
@@ -37,7 +40,6 @@ def test_step_polyphony_and_roundtrip():
         micro_timing=-4,
         strum=2,
         probability=0.8,
-        tie=False,
         notes=[NoteEvent(60, 100), NoteEvent(64, 90), NoteEvent(67, 85)],
     )
     assert step.is_active is True
@@ -60,15 +62,46 @@ def test_clip_resize_and_motion():
     assert len(clip.steps) == 16
     assert clip.length == 16
 
-    # Add motion
-    clip.motion_tracks["filter_cutoff"] = [MotionStep(value=0.5, glide=True) for _ in range(16)]
     d = clip.to_dict()
     clip2 = Clip.from_dict(d)
     assert clip2.name == "Bassline"
     assert clip2.length == 16
     assert len(clip2.steps) == 16
-    assert "filter_cutoff" in clip2.motion_tracks
-    assert clip2.motion_tracks["filter_cutoff"][0].glide is True
+
+
+def test_automation_lanes_roundtrip():
+    song = default_sequencer_song()
+    assert len(song.automation) == NUM_AUTOMATION_LANES
+    lane = song.automation[2]
+    lane.target = "tone.1.tvf_cutoff@3"
+    lane.clock_divider = "1/8"
+    clip = lane.clips[1]
+    clip.set_length(12)
+    clip.steps[0] = AutomationStep(value=0.25, glide=True)
+    clip.steps[6] = AutomationStep(value=1.0)
+
+    song2 = SequencerSong.from_dict(song.to_dict())
+    lane2 = song2.automation[2]
+    assert lane2.target == "tone.1.tvf_cutoff@3"
+    assert lane2.clock_divider == "1/8"
+    clip2 = lane2.clips[1]
+    assert clip2.length == 12 and len(clip2.steps) == 12
+    assert (clip2.steps[0].value, clip2.steps[0].glide) == (0.25, True)
+    assert clip2.steps[6].value == 1.0
+    assert clip2.steps[1].value is None and clip2.has_values
+    assert not song2.automation[0].clips[0].has_values
+
+
+def test_songs_without_automation_get_empty_lanes():
+    d = default_sequencer_song().to_dict()
+    del d["automation"]
+    song = SequencerSong.from_dict(d)
+    assert len(song.automation) == NUM_AUTOMATION_LANES
+    assert all(lane.target == "" and len(lane.clips) == 8 for lane in song.automation)
+    # Out-of-range values are clamped
+    assert AutomationStep.from_dict({"value": 1.7}).value == 1.0
+    assert AutomationClip.from_dict({"length": 500}).length == 128
+    assert AutomationLane.from_dict({}).target == ""
 
 
 def test_default_tracks_and_routing():
@@ -157,3 +190,17 @@ def test_track_dice_roundtrip_and_clamping():
     assert (t3.dice_timing, t3.dice_velocity) == (24, 0)
     # Songs saved before dice existed load with it off
     assert (Track.from_dict({}).dice_timing, Track.from_dict({}).dice_velocity) == (0, 0)
+
+
+def test_old_step_ties_become_note_lengths():
+    raw = {"length": 16, "steps": [
+        {"notes": [{"pitch": 60, "velocity": 100}, {"pitch": 64, "velocity": 90}]},
+        {"tie": True},
+        {"tie": True, "notes": [{"pitch": 70, "velocity": 100}]},  # silent under a tie
+        {"notes": [{"pitch": 62, "velocity": 100}]},
+        {"tie": True},
+    ]}
+    clip = Clip.from_dict(raw)
+    assert [n.length for n in clip.steps[0].notes] == [3, 3]
+    assert clip.steps[2].notes == []
+    assert [n.length for n in clip.steps[3].notes] == [2]
