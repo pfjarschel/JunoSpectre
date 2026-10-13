@@ -38,6 +38,30 @@ from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
 
+# VA oscillator chips: INTA wave numbers each chip covers. SQR includes the
+# JP8 pulse widths and the PWM waves the PULSE WIDTH / PWM faders pick.
+VA_WAVE_CHIPS = (
+    (579,),                                                       # SAW
+    (600, 612, 613, 614, 615, 616, 617, 1326, 1327, 1328, 1329),  # SQR
+    (621, 622),                                                   # TRI
+    (625, 1322),                                                  # SIN
+    (637,),                                                       # NOISE
+)
+VA_WAVE_PLUS = len(VA_WAVE_CHIPS)  # any other wave, picked in the wave browser
+VA_SQR = 1
+VA_CHIP_WAVES = (579, None, 621, 1322, 637)  # SQR follows PULSE WIDTH / PWM
+VA_PW_WAVES = {10: 612, 15: 613, 25: 614, 30: 615, 40: 616, 45: 617, 50: 600}
+VA_PWM_ON = 20  # PWM depth from which a PWM wave replaces the fixed pulse
+
+
+def va_wave_chip(bank: str, wave_num: int) -> int:
+    """VA chip index for a tone's wave (VA_WAVE_PLUS for any other wave)."""
+    if (bank or "").upper() == "INTA":
+        for i, nums in enumerate(VA_WAVE_CHIPS):
+            if wave_num in nums:
+                return i
+    return VA_WAVE_PLUS
+
 
 class PatchBridgeMixin(BridgeBaseMixin):
     """Patch parameter editing, 4-tone sculpting, envelopes, master FX, and routing."""
@@ -688,25 +712,25 @@ class PatchBridgeMixin(BridgeBaseMixin):
     def vaOsc4Pwm(self) -> int:
         return self.patch_state.va_pwm[3]
 
-    @pyqtProperty(int, notify=vaParamsChanged)
+    @pyqtProperty(int, notify=toneWavesChanged)
     def vaOsc1Wave(self) -> int:
-        w = self.patch_state.tones[0].wave_num_l
-        return 0 if w == 579 else (1 if w in (600, 612, 613, 614, 615, 616, 617, 1326, 1327, 1328, 1329) else (2 if w in (621, 622) else (3 if w in (625, 1322) else 4)))
+        t = self.patch_state.tones[0]
+        return va_wave_chip(t.wave_bank_l, t.wave_num_l)
 
-    @pyqtProperty(int, notify=vaParamsChanged)
+    @pyqtProperty(int, notify=toneWavesChanged)
     def vaOsc2Wave(self) -> int:
-        w = self.patch_state.tones[1].wave_num_l
-        return 0 if w == 579 else (1 if w in (600, 612, 613, 614, 615, 616, 617, 1326, 1327, 1328, 1329) else (2 if w in (621, 622) else (3 if w in (625, 1322) else 4)))
+        t = self.patch_state.tones[1]
+        return va_wave_chip(t.wave_bank_l, t.wave_num_l)
 
-    @pyqtProperty(int, notify=vaParamsChanged)
+    @pyqtProperty(int, notify=toneWavesChanged)
     def vaOsc3Wave(self) -> int:
-        w = self.patch_state.tones[2].wave_num_l
-        return 0 if w == 579 else (1 if w in (600, 612, 613, 614, 615, 616, 617, 1326, 1327, 1328, 1329) else (2 if w in (621, 622) else (3 if w in (625, 1322) else 4)))
+        t = self.patch_state.tones[2]
+        return va_wave_chip(t.wave_bank_l, t.wave_num_l)
 
-    @pyqtProperty(int, notify=vaParamsChanged)
+    @pyqtProperty(int, notify=toneWavesChanged)
     def vaOsc4Wave(self) -> int:
-        w = self.patch_state.tones[3].wave_num_l
-        return 0 if w == 579 else (1 if w in (600, 612, 613, 614, 615, 616, 617, 1326, 1327, 1328, 1329) else (2 if w in (621, 622) else (3 if w in (625, 1322) else 4)))
+        t = self.patch_state.tones[3]
+        return va_wave_chip(t.wave_bank_l, t.wave_num_l)
 
     @pyqtProperty(int, notify=analogFeelChanged)
     def analogFeel(self) -> int:
@@ -2675,15 +2699,6 @@ class PatchBridgeMixin(BridgeBaseMixin):
         self.stepLfoChanged.emit()
 
     @pyqtSlot(int, int)
-    def setVaOscWave(self, osc_index: int, wave_idx: int) -> None:
-        """Assign VA bread-and-butter waveform to tone 1..4."""
-        # Wave mapping: 0: Saw HD (579), 1: Sqr HD (600), 2: Tri (621), 3: Sin (1322), 4: Pink Noise (637)
-        va_wave_map = {0: 579, 1: 600, 2: 621, 3: 1322, 4: 637}
-        wnum = va_wave_map.get(wave_idx, 579)
-        self.setToneWave(osc_index, "INTA", wnum)
-        self.vaParamsChanged.emit()
-
-    @pyqtSlot(int, int)
     def setVaOscCoarse(self, osc_index: int, val: int) -> None:
         """Set coarse tune in semitones for oscillator 1..4."""
         if 1 <= osc_index <= 4:
@@ -2725,25 +2740,40 @@ class PatchBridgeMixin(BridgeBaseMixin):
         self.setToneLevel(osc_index, val)
         self.vaParamsChanged.emit()
 
+    def _va_square_wave(self, i: int) -> int:
+        """SQR wave for oscillator index 0..3: a PWM wave, else the fixed pulse width."""
+        m = self.patch_state.va_pwm[i]
+        if m >= VA_PWM_ON:
+            return 1326 if m < 40 else (1327 if m < 60 else (1328 if m < 80 else 1329))
+        return VA_PW_WAVES.get(self.patch_state.va_pw[i], 600)
+
+    def _va_chip(self, osc_index: int) -> int:
+        t = self.patch_state.tones[osc_index - 1]
+        return va_wave_chip(t.wave_bank_l, t.wave_num_l)
+
+    @pyqtSlot(int, int)
+    def setVaOscWave(self, osc_index: int, chip: int) -> None:
+        """Pick a VA chip wave (SAW/SQR/TRI/SIN/NOISE) for oscillator 1..4."""
+        if 1 <= osc_index <= 4 and 0 <= chip < VA_WAVE_PLUS:
+            wnum = self._va_square_wave(osc_index - 1) if chip == VA_SQR else VA_CHIP_WAVES[chip]
+            self.setToneWave(osc_index, "INTA", wnum)
+
     @pyqtSlot(int, int)
     def setVaOscPw(self, osc_index: int, val: int) -> None:
-        """Set Pulse Width for oscillator 1..4."""
+        """Set Pulse Width for oscillator 1..4 (re-picks the SQR wave)."""
         if 1 <= osc_index <= 4:
             self.patch_state.va_pw[osc_index - 1] = int(val)
-            pw_map = {10: 612, 15: 613, 25: 614, 30: 615, 40: 616, 45: 617, 50: 600}
-            wnum = pw_map.get(int(val), 600)
-            self.setToneWave(osc_index, "INTA", wnum)
+            if self._va_chip(osc_index) == VA_SQR:
+                self.setVaOscWave(osc_index, VA_SQR)
             self.vaParamsChanged.emit()
 
     @pyqtSlot(int, int)
     def setVaOscPwm(self, osc_index: int, val: int) -> None:
-        """Set Pulse Width Modulation depth for oscillator 1..4."""
+        """Set Pulse Width Modulation depth for oscillator 1..4 (re-picks the SQR wave)."""
         if 1 <= osc_index <= 4:
-            m = max(0, min(100, int(val)))
-            self.patch_state.va_pwm[osc_index - 1] = m
-            if m >= 20:
-                wnum = 1326 if m < 40 else (1327 if m < 60 else (1328 if m < 80 else 1329))
-                self.setToneWave(osc_index, "INTA", wnum)
+            self.patch_state.va_pwm[osc_index - 1] = max(0, min(100, int(val)))
+            if self._va_chip(osc_index) == VA_SQR:
+                self.setVaOscWave(osc_index, VA_SQR)
             self.vaParamsChanged.emit()
 
     @pyqtSlot(bool)

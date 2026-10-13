@@ -363,6 +363,49 @@ def test_vaview_pw_pwm():
     assert va_view.property("osc1Pwm") == 35
 
 
+def test_va_plus_waves():
+    """VA chips follow the tone wave; any other wave is PLUS, and the view shows its name."""
+    from PyQt6.QtCore import QObject
+
+    from src.spectre.ui.bridge.patch import VA_WAVE_PLUS, va_wave_chip
+
+    assert va_wave_chip("INTA", 579) == 0
+    assert va_wave_chip("INTA", 1327) == 1   # PWM wave counts as SQR
+    assert va_wave_chip("INTA", 637) == 4
+    assert va_wave_chip("INTA", 1) == VA_WAVE_PLUS
+    assert va_wave_chip("INTB", 579) == VA_WAVE_PLUS  # same number, other bank
+
+    app, qml_engine, bridge = create_application(platform="offscreen")
+    va_view = qml_engine.rootObjects()[0].findChild(QObject, "vaView")
+
+    bridge.setToneWave(2, "INTA", 1)  # e.g. picked in the wave browser or on JUNO PCM
+    assert bridge.vaOsc2Wave == VA_WAVE_PLUS
+    assert va_view.property("osc2Wave") == VA_WAVE_PLUS
+    assert va_view.property("waveNames").toVariant()[1] == bridge.getWaveInfo("INTA", 1)["name"]
+
+    bridge.setVaOscWave(2, 2)
+    assert bridge.patch_state.tones[1].wave_num_l == 621
+    assert va_view.property("osc2Wave") == 2
+    bridge.setVaOscWave(2, VA_WAVE_PLUS)  # PLUS goes through the browser, not this slot
+    assert bridge.patch_state.tones[1].wave_num_l == 621
+
+
+def test_va_square_follows_pw_and_pwm():
+    app, qml_engine, bridge = create_application(platform="offscreen")
+    tone = bridge.patch_state.tones[0]
+
+    bridge.setVaOscPw(1, 25)
+    bridge.setVaOscWave(1, 1)
+    assert tone.wave_num_l == 614            # JP8 Pls 25HD
+    bridge.setVaOscPwm(1, 65)
+    assert tone.wave_num_l == 1328           # PWM Wave C
+    bridge.setVaOscPwm(1, 10)
+    assert tone.wave_num_l == 614            # back to the fixed pulse
+    bridge.setVaOscWave(1, 0)
+    bridge.setVaOscPw(1, 40)                 # PW only re-picks the wave on SQR
+    assert tone.wave_num_l == 579
+
+
 def test_modmatrix_picker():
     """Verify ModMatrixView sources, destinations, and modal picker overlay state."""
     from PyQt6.QtCore import QObject

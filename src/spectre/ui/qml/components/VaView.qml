@@ -36,6 +36,7 @@ Rectangle {
     property int osc3Pwm: Bridge.vaOsc3Pwm
     property int osc4Pwm: Bridge.vaOsc4Pwm
     property bool unisonActive: Bridge.autoDetune
+    property var waveNames: (Bridge.toneWaveData || []).map(w => w ? w.name : "")
     property int unisonDetune: Bridge.autoDetuneCents
 
     RowLayout {
@@ -175,12 +176,12 @@ Rectangle {
                         accent: Theme.tone1
                         autoDetuneActive: root.unisonActive
                         waveIdx: root.osc1Wave
+                        waveName: root.waveNames[0] || ""
                         coarseVal: root.osc1Coarse
                         fineVal: root.osc1Fine
                         lvlVal: root.osc1Level
                         pwVal: root.osc1Pw
                         pwmVal: root.osc1Pwm
-                        onWaveChanged: (w) => Bridge.setVaOscWave(1, w)
                         onCoarseChanged: (c) => Bridge.setVaOscCoarse(1, c)
                         onFineChanged: (f) => Bridge.setVaOscFine(1, f)
                         onLvlChanged: (l) => Bridge.setVaOscLevel(1, l)
@@ -197,12 +198,12 @@ Rectangle {
                         accent: Theme.tone2
                         autoDetuneActive: root.unisonActive
                         waveIdx: root.osc2Wave
+                        waveName: root.waveNames[1] || ""
                         coarseVal: root.osc2Coarse
                         fineVal: root.osc2Fine
                         lvlVal: root.osc2Level
                         pwVal: root.osc2Pw
                         pwmVal: root.osc2Pwm
-                        onWaveChanged: (w) => Bridge.setVaOscWave(2, w)
                         onCoarseChanged: (c) => Bridge.setVaOscCoarse(2, c)
                         onFineChanged: (f) => Bridge.setVaOscFine(2, f)
                         onLvlChanged: (l) => Bridge.setVaOscLevel(2, l)
@@ -219,12 +220,12 @@ Rectangle {
                         accent: Theme.tone3
                         autoDetuneActive: root.unisonActive
                         waveIdx: root.osc3Wave
+                        waveName: root.waveNames[2] || ""
                         coarseVal: root.osc3Coarse
                         fineVal: root.osc3Fine
                         lvlVal: root.osc3Level
                         pwVal: root.osc3Pw
                         pwmVal: root.osc3Pwm
-                        onWaveChanged: (w) => Bridge.setVaOscWave(3, w)
                         onCoarseChanged: (c) => Bridge.setVaOscCoarse(3, c)
                         onFineChanged: (f) => Bridge.setVaOscFine(3, f)
                         onLvlChanged: (l) => Bridge.setVaOscLevel(3, l)
@@ -241,12 +242,12 @@ Rectangle {
                         accent: Theme.tone4
                         autoDetuneActive: root.unisonActive
                         waveIdx: root.osc4Wave
+                        waveName: root.waveNames[3] || ""
                         coarseVal: root.osc4Coarse
                         fineVal: root.osc4Fine
                         lvlVal: root.osc4Level
                         pwVal: root.osc4Pw
                         pwmVal: root.osc4Pwm
-                        onWaveChanged: (w) => Bridge.setVaOscWave(4, w)
                         onCoarseChanged: (c) => Bridge.setVaOscCoarse(4, c)
                         onFineChanged: (f) => Bridge.setVaOscFine(4, f)
                         onLvlChanged: (l) => Bridge.setVaOscLevel(4, l)
@@ -275,13 +276,13 @@ Rectangle {
         property string title: "OSC"
         property color accent: Theme.tone1
         property bool autoDetuneActive: false
-        property int waveIdx: 0
+        property int waveIdx: 0          // chip index; 5 = PLUS (any other wave)
+        property string waveName: ""
         property int coarseVal: 0
         property int fineVal: 0
         property int lvlVal: 100
         property int pwVal: 50
         property int pwmVal: 0
-        signal waveChanged(int w)
         signal coarseChanged(int c)
         signal fineChanged(int f)
         signal lvlChanged(int l)
@@ -304,39 +305,6 @@ Rectangle {
             if (osc.pwmVal < 60) return "PWM B (" + osc.pwmVal + "%)";
             if (osc.pwmVal < 80) return "PWM C (" + osc.pwmVal + "%)";
             return "PWM WAVE (" + osc.pwmVal + "%)";
-        }
-
-        function resolveWaveId() {
-            if (osc.waveIdx === 0) return 579; // Juno Saw HD
-            if (osc.waveIdx === 1) {
-                if (osc.pwmVal >= 20) {
-                    if (osc.pwmVal < 40) return 1326; // PWM Wave A
-                    if (osc.pwmVal < 60) return 1327; // PWM Wave B
-                    if (osc.pwmVal < 80) return 1328; // PWM Wave C
-                    return 1329;                     // PWM Wave
-                } else {
-                    const pwMap = {
-                        10: 612, // JP8 Pls 10HD
-                        15: 613, // JP8 Pls 15HD
-                        25: 614, // JP8 Pls 25HD
-                        30: 615, // JP8 Pls 30HD
-                        40: 616, // JP8 Pls 40HD
-                        45: 617, // JP8 Pls 45HD
-                        50: 600  // Juno Sqr HD
-                    };
-                    return pwMap[osc.pwVal] || 600;
-                }
-            }
-            if (osc.waveIdx === 2) return 621; // Syn Triangle
-            if (osc.waveIdx === 3) return 1322; // ARP Sine HD
-            if (osc.waveIdx === 4) return 637; // Pink Noise
-            return 579;
-        }
-
-        function dispatchWave() {
-            if (typeof Bridge !== "undefined" && Bridge.setToneWave) {
-                Bridge.setToneWave(osc.oscIndex, "INTA", resolveWaveId());
-            }
         }
 
         radius: ScaleMetrics.dp(6)
@@ -366,7 +334,13 @@ Rectangle {
                     color: osc.accent
                 }
 
-                Item { Layout.fillWidth: true }
+                Text {
+                    Layout.fillWidth: true
+                    text: osc.waveIdx === 5 ? osc.waveName : ""
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Theme.textPrimary
+                    elide: Text.ElideRight
+                }
 
                 Text {
                     text: "VOL: " + osc.lvlVal
@@ -390,11 +364,18 @@ Rectangle {
                         fontSize: 8
                         accent: osc.accent
                         checked: osc.waveIdx === index
-                        onClicked: {
-                            osc.waveChanged(index);
-                            osc.dispatchWave();
-                        }
+                        onClicked: Bridge.setVaOscWave(osc.oscIndex, index)
                     }
+                }
+                // PLUS: any Juno wave, from the wave browser
+                SpButton {
+                    implicitHeight: ScaleMetrics.dp(20)
+                    implicitWidth: ScaleMetrics.dp(28)
+                    icon: "add"
+                    iconSize: 11
+                    accent: osc.accent
+                    checked: osc.waveIdx === 5
+                    onClicked: Bridge.openWaveBrowser(osc.oscIndex)
                 }
             }
 
@@ -445,7 +426,6 @@ Rectangle {
                 onMoved: (n) => {
                     const idx = Math.min(osc.pwSteps.length - 1, Math.max(0, Math.floor(n * osc.pwSteps.length)));
                     osc.pwChanged(osc.pwSteps[idx]);
-                    osc.dispatchWave();
                 }
             }
 
@@ -460,7 +440,6 @@ Rectangle {
                 opacity: osc.waveIdx === 1 ? 1.0 : 0.25
                 onMoved: (n) => {
                     osc.pwmChanged(Math.round(n * 100));
-                    osc.dispatchWave();
                 }
             }
 

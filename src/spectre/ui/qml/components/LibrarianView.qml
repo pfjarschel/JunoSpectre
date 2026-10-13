@@ -26,23 +26,11 @@ Rectangle {
     property bool refreshingSlots: false
     property var kinds: ["", "patch", "drum", "performance", "playlist"]
     property var kindLabels: ["ALL", "PATCH", "DRUM", "PERF", "SETLIST"]
-    // Live library model. Bound declaratively (onCompleted proved unreliable
-    // for nested views): app.py always sets the `patchLibrary` context
-    // property, even to an empty model on failure. Null/undefined = demo.
-    property var patchModel: (typeof patchLibrary !== "undefined") ? patchLibrary : null
+    // Library model. Bound declaratively (onCompleted proved unreliable for
+    // nested views): app.py always sets the `patchLibrary` context property,
+    // to an empty model when the library fails (Bridge.libraryError says why).
+    readonly property var patchModel: patchLibrary
     property string searchText: ""
-    property var patchList: [
-        { num: "0001", name: "Grand Pno DS", cat: "PNO", fav: true },
-        { num: "0002", name: "Bright Grand", cat: "PNO", fav: false },
-        { num: "0025", name: "Pure EP", cat: "EP", fav: true },
-        { num: "0104", name: "Juno 106 Lead", cat: "HLD", fav: true },
-        { num: "0112", name: "JP-8000 Saw", cat: "HLD", fav: false },
-        { num: "0180", name: "Warm Lush Pad", cat: "SPD", fav: true },
-        { num: "0210", name: "Spectre Vector 1", cat: "USER FILE", fav: true },
-        { num: "0211", name: "Wavetable Morph A", cat: "USER FILE", fav: false }
-    ]
-    // Filtered fallback view (demo data only, when no live model is bound)
-    property var filteredFallback: root.patchList
 
     Component.onCompleted: {
         // Model arrives pre-refreshed from app.py; just re-apply local state.
@@ -50,7 +38,6 @@ Rectangle {
     }
 
     function applyFilter() {
-        if (!root.patchModel) return
         var kind = root.kinds[root.activeKindIdx]
         var source = root.userSlotsOnly ? "synth-user" : (root.userFilesOnly ? "file" : "")
         var codes = root.activeCode !== "" ? [root.activeCode] : []
@@ -75,7 +62,6 @@ Rectangle {
     }
 
     function rowCountText() {
-        if (!root.patchModel) return root.filteredFallback.length + " patches"
         var n = root.patchModel.rowCount()
         return n + (n === 1 ? " sound" : " sounds")
     }
@@ -131,7 +117,7 @@ Rectangle {
             }
             Item { Layout.fillWidth: true }
             Rectangle {
-                visible: root.patchModel === null || root.patchModel === undefined || (Bridge.libraryError || "") !== ""
+                visible: (Bridge.libraryError || "") !== ""
                 color: Theme.tint(Theme.favorite, 0.2)
                 radius: 3
                 border.color: Theme.favorite
@@ -141,7 +127,7 @@ Rectangle {
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - ScaleMetrics.dp(8)
-                    text: "DEMO DATA — LIBRARY OFFLINE" + (((Bridge.libraryError || "") !== "") ? (": " + Bridge.libraryError) : "")
+                    text: "LIBRARY OFFLINE: " + Bridge.libraryError
                     font.bold: true
                     font.pixelSize: ScaleMetrics.sp(7)
                     color: Theme.favorite
@@ -149,7 +135,6 @@ Rectangle {
                 }
             }
             Text {
-                visible: root.patchModel !== null
                 text: "DISK & SYSEX STORAGE"
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(9)
@@ -266,7 +251,6 @@ Rectangle {
             color: Theme.bgApp
             border.color: Theme.borderCard
             border.width: 1
-            visible: root.patchModel !== null
             Flickable {
                 anchors.fill: parent
                 anchors.margins: ScaleMetrics.dp(5)
@@ -332,7 +316,6 @@ Rectangle {
             color: Theme.bgControl
             border.color: Theme.borderCard
             border.width: 1
-            visible: root.patchModel !== null
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: ScaleMetrics.dp(8)
@@ -386,7 +369,7 @@ Rectangle {
         VirtualKeyboard {
             Layout.fillWidth: true
             Layout.preferredHeight: ScaleMetrics.dp(140)
-            visible: root.searchKbVisible && root.patchModel !== null
+            visible: root.searchKbVisible
             accentColor: Theme.pageAccent
             onKeyClicked: (key) => {
                 searchField.text += key
@@ -418,7 +401,7 @@ Rectangle {
                     anchors.fill: parent
                     anchors.margins: ScaleMetrics.dp(6)
                     clip: true
-                    model: root.patchModel !== null ? root.patchModel : root.filteredFallback
+                    model: root.patchModel
                     spacing: ScaleMetrics.dp(4)
 
                     // Always-visible touch scrollbar: drag the thumb to jump
@@ -449,16 +432,12 @@ Rectangle {
                         border.color: _selected ? Theme.pageAccent : Theme.borderCard
                         border.width: _selected ? 2 : 1
 
-                        // Resolve display fields for both models:
-                        // - live PatchListModel roles: name/category/favorite/msb/lsb/pc/source/path/kind
-                        // - fallback JS array: modelData.{num,name,cat,fav}
-                        property bool _live: root.patchModel !== null
-                        property string _path: _live ? path : ""
-                        property bool _selected: _live && root.selectedPath !== "" && root.selectedPath === path
-                        property string _num: _live ? (msb >= 0 ? (lsb + ":" + pc) : "FILE") : modelData.num
-                        property string _name: _live ? name : modelData.name
-                        property string _cat: _live ? (((category || "—") + (kind && kind !== "patch" ? " " + kind : "") + (source ? " • " + source : ""))) : modelData.cat
-                        property bool _fav: _live ? favorite : modelData.fav
+                        // PatchListModel roles: name/category/favorite/msb/lsb/pc/source/path/kind
+                        property bool _selected: root.selectedPath !== "" && root.selectedPath === path
+                        property string _num: msb >= 0 ? (lsb + ":" + pc) : "FILE"
+                        property string _name: name
+                        property string _cat: (category || "—") + (kind && kind !== "patch" ? " " + kind : "") + (source ? " • " + source : "")
+                        property bool _fav: favorite
 
                         RowLayout {
                             anchors.fill: parent
@@ -495,7 +474,7 @@ Rectangle {
                                     anchors.fill: parent
                                     onClicked: function(mouse) {
                                         mouse.accepted = true
-                                        if (root.patchModel !== null) root.patchModel.toggleFavorite(index)
+                                        root.patchModel.toggleFavorite(index)
                                     }
                                 }
                             }
@@ -504,48 +483,44 @@ Rectangle {
                             id: rowMouse
                             anchors.fill: parent
                             onClicked: {
-                                if (root.patchModel !== null) {
-                                    root.selectedPath = path
-                                    root.selectedIndex = index
-                                    root.selectedRow = root.patchModel.get(index)
-                                    root.pendingAction = ""
-                                    var ok = true
-                                    var wasPicking = Bridge.librarianPickTarget > 0
-                                    if (wasPicking) {
-                                        if (kind === "performance" || kind === "playlist") {
-                                            root.statusText = "Pick a patch or drum for Part " + Bridge.librarianPickTarget + " — not a " + kind + "."
-                                        } else {
-                                            var tgt = Bridge.librarianPickTarget
-                                            ok = Bridge.pickPartPatch(msb, lsb, pc, path, name, kind)
-                                            root.statusText = ok ? ("Part " + tgt + " ← " + name + ".") : "Assign failed."
-                                        }
-                                    } else if (kind !== undefined && kind === "playlist") {
-                                        ok = Bridge.loadPlaylist(path)
-                                        root.statusText = ok ? "Playlist loaded — see PERFORMANCE setlist." : "Playlist load failed."
-                                    } else if (kind !== undefined && kind === "performance"
-                                               && path !== undefined && String(path).slice(-8) === ".spectre") {
-                                        // Pi file: the whole song (parts, snapshots, sequence)
-                                        ok = Bridge.loadSpectreFile(path)
-                                    } else if (msb !== undefined && msb >= 0) {
-                                        // Bank/PC audition + full read: a background job;
-                                        // the result lands in onJobFinished("load")
-                                        var isPerf = kind !== undefined && kind === "performance"
-                                        if (Bridge.startLibraryLoad(isPerf ? "performance" : "patch", msb, lsb, pc, name)) {
-                                            root.statusText = "Loading " + name + "…"
-                                            return
-                                        }
-                                        root.statusText = "Busy with another keyboard job — try again in a moment."
-                                        return
-                                    } else if (path !== undefined && String(path).slice(-8) === ".spectre") {
-                                        ok = Bridge.loadSpectreFile(path)
+                                root.selectedPath = path
+                                root.selectedIndex = index
+                                root.selectedRow = root.patchModel.get(index)
+                                root.pendingAction = ""
+                                var ok = true
+                                var wasPicking = Bridge.librarianPickTarget > 0
+                                if (wasPicking) {
+                                    if (kind === "performance" || kind === "playlist") {
+                                        root.statusText = "Pick a patch or drum for Part " + Bridge.librarianPickTarget + " — not a " + kind + "."
                                     } else {
-                                        Bridge.setPatchName(name, "PATCH")
+                                        var tgt = Bridge.librarianPickTarget
+                                        ok = Bridge.pickPartPatch(msb, lsb, pc, path, name, kind)
+                                        root.statusText = ok ? ("Part " + tgt + " ← " + name + ".") : "Assign failed."
                                     }
-                                    if (!wasPicking) {
-                                        root.statusText = ok ? "" : "No synthesizer connected — browsing only."
+                                } else if (kind !== undefined && kind === "playlist") {
+                                    ok = Bridge.loadPlaylist(path)
+                                    root.statusText = ok ? "Playlist loaded — see PERFORMANCE setlist." : "Playlist load failed."
+                                } else if (kind !== undefined && kind === "performance"
+                                           && path !== undefined && String(path).slice(-8) === ".spectre") {
+                                    // Pi file: the whole song (parts, snapshots, sequence)
+                                    ok = Bridge.loadSpectreFile(path)
+                                } else if (msb !== undefined && msb >= 0) {
+                                    // Bank/PC audition + full read: a background job;
+                                    // the result lands in onJobFinished("load")
+                                    var isPerf = kind !== undefined && kind === "performance"
+                                    if (Bridge.startLibraryLoad(isPerf ? "performance" : "patch", msb, lsb, pc, name)) {
+                                        root.statusText = "Loading " + name + "…"
+                                        return
                                     }
+                                    root.statusText = "Busy with another keyboard job — try again in a moment."
+                                    return
+                                } else if (path !== undefined && String(path).slice(-8) === ".spectre") {
+                                    ok = Bridge.loadSpectreFile(path)
                                 } else {
-                                    Bridge.setPatchName(modelData.num + " " + modelData.name, "PATCH")
+                                    Bridge.setPatchName(name, "PATCH")
+                                }
+                                if (!wasPicking) {
+                                    root.statusText = ok ? "" : "No synthesizer connected — browsing only."
                                 }
                             }
                         }
