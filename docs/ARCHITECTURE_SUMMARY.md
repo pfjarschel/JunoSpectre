@@ -253,13 +253,13 @@ juno-spectre/
   * Multi-oscillator Virtual Analog workflow.
   * Internally hardwired/always ganged master TVF filter & master TVA/TVF ADSR envelopes.
   * 4-oscillator detune & mixer (octaves, semitones, cents detune, analog bread-and-butter waveforms).
-* [ ] **Dynamic Buffer Target Router:**
+* [x] **Dynamic Buffer Target Router:**
   * Automatic SysEx target routing between Patch mode (`0x1F`) and Performance parts (`0x19 [PartOffset]`).
-* [ ] **MIDI Program Change Auto-Sync:**
+* [x] **MIDI Program Change Auto-Sync:**
   * Detect patch/performance changes initiated on the keyboard and update UI state.
-* [ ] **Clean "Init Patch" Generator:**
+* [x] **Clean "Init Patch" Generator:**
   * 1-touch clean template for unmodulated sound sculpting.
-* [ ] **UI Screens & Shell Revamp (1024×600 Touch - Self-Contained Synth Architecture):**
+* [x] **UI Screens & Shell Revamp (1024×600 Touch - Self-Contained Synth Architecture):**
   * [x] Base QML touch shell & persistent Top Bar (sync, patch name, LEDs)
   * [x] Screen Real Estate Revamp: Remove fixed right-hand tone strip and fixed bottom row to liberate full $1024 \times 540$ canvas; make tone mixer contextual/on-demand
   * [x] Vector View Revamped (Large $>400\text{px}$ 2D pad, left orbit/loop panel, right-flank Quick Sculptor touch faders, curve drawer)
@@ -267,13 +267,13 @@ juno-spectre/
   * [x] 4-OSC VA View (dedicated 3-column analog synth console: 4-OSC mixer/detune $\to$ Master TVF $\to$ Master ADSR)
   * [x] Standard 4-Tone View (classic Roland 4-tone sound designer, wave browser, velocity splits, optional Gang/Link toggle)
   * [x] Wave Browser Modal with touch virtual keyboard
-  * [ ] Performance Layer & Zone Mixer (16-part volume/pan/mutes, patch selector per part, direct Part "EDIT" buttons)
-  * [ ] Macro Play Deck (8 customizable macro dials, panic button)
+  * [x] Performance Layer & Zone Mixer (16-part volume/pan/mutes, patch selector per part, direct Part "EDIT" buttons)
+  * [x] Macro Play Deck (8 customizable macro dials, panic button)
   * [x] Effects (MFX) Studio (visual signal chain & parameters)
-  * [ ] MIDI Controller Map & Quick-Touch Learn Screen
-  * [ ] Patch Librarian & Preset Browser (`.spectre` and `.syx` management)
-  * [ ] Appliance Options & Maintenance Screen (touch reboot/shutdown, brightness, system update)
-  * [ ] Splash / Startup Screen
+  * [x] MIDI Controller Map & Quick-Touch Learn Screen
+  * [x] Patch Librarian & Preset Browser (`.spectre` and `.syx` management)
+  * [x] Appliance Options & Maintenance Screen (touch reboot/shutdown, brightness, system update)
+  * [x] Splash / Startup Screen
 
 ---
 
