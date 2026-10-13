@@ -15,7 +15,7 @@ env/
 .idea/
 .vscode/
 *.syx.bak
-ideas.md
+roadmap.md
 *.wav
 scratch/
 Resources/
