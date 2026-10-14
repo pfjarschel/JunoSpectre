@@ -119,6 +119,8 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         elif kind == self._SYNC_CLIPS:
             self.seqTracksChanged.emit()
             self.seqAutomationChanged.emit()
+            if hasattr(self, "_audio_release_tempo"):
+                self._audio_release_tempo()   # synced audio may have stopped on the bar
         elif kind == self._SYNC_RECORDER:
             self.seqCursorStepChanged.emit()
             self.seqActiveClipChanged.emit()
@@ -316,6 +318,8 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             self.sequencer.stop()
             self.seqStateChanged.emit()
             self.seqPlayheadsChanged.emit()
+            if hasattr(self, "_audio_release_tempo"):
+                self._audio_release_tempo()
 
     @pyqtSlot()
     def seqTogglePlay(self) -> None:

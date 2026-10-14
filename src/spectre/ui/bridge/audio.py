@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from pathlib import Path
+
+import numpy as np
 
 from PyQt6.QtCore import Qt, QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
@@ -26,11 +29,15 @@ from ...sequencer.models import (
     AudioClip,
 )
 from .base import BridgeBaseMixin
+from .hardware import save_hardware_settings
 
 logger = logging.getLogger(__name__)
 
 # Clip names a file assignment may replace (the defaults, not user names)
 _DEFAULT_CLIP_PREFIXES = ("Scene ", "Pattern ", "Clip")
+AUDIO_OFFSET_RANGE_MS = (-100.0, 300.0)
+CAL_KEY = "calclick"                # cache entry of the calibration click
+CAL_PERIOD_S = 0.5
 
 
 class AudioBridgeMixin(BridgeBaseMixin):
@@ -59,6 +66,15 @@ class AudioBridgeMixin(BridgeBaseMixin):
         self._audio_render_timer.setInterval(600)
         self._audio_render_timer.timeout.connect(self.audio_player.refresh_renders)
         self.bpmChanged.connect(self._on_audio_bpm)
+        # Drift lock: the sequencer clock follows the audio device's measured rate
+        self._audio_drift_lock = bool(hw.get("audio_drift_lock", True))
+        self._audio_drift_timer = QTimer(self)
+        self._audio_drift_timer.setInterval(2000)
+        self._audio_drift_timer.timeout.connect(self._apply_audio_drift)
+        self._audio_drift_timer.start()
+        # A BPM change asked for while synced audio plays (0 = none)
+        self._pending_bpm = 0.0
+        self._audio_cal_stop: threading.Event | None = None
         if hasattr(self, "sequencer"):
             self.sequencer.audio = self.audio_player
             self.audio_player.song_bpm = self.sequencer.bpm
@@ -70,8 +86,128 @@ class AudioBridgeMixin(BridgeBaseMixin):
         self.seqTracksChanged.emit()          # clip tempos / stretch amounts shown
 
     def close_audio(self) -> None:
+        if self._audio_cal_stop is not None:
+            self._audio_cal_stop.set()
         if hasattr(self, "audio_player"):
             self.audio_player.close()
+
+    # -- drift lock ------------------------------------------------------------------
+
+    def _apply_audio_drift(self) -> None:
+        ratio = self.audio_player.drift.ratio() if self._audio_drift_lock and self.audio_player.ready else 1.0
+        clock = self.sequencer.clock
+        if abs(clock.rate_trim - ratio) > 1e-7:
+            clock.set_rate_trim(ratio)
+        ppm = self.audio_player.drift.ppm()
+        shown = (None if ppm is None else round(ppm, 1), int(self.audio_player.drift.span // 10))
+        if shown != getattr(self, "_audio_drift_shown", None):
+            self._audio_drift_shown = shown
+            self.audioChanged.emit()
+
+    @pyqtSlot(bool)
+    def setAudioDriftLock(self, on: bool) -> None:
+        self._audio_drift_lock = bool(on)
+        self._hw_settings["audio_drift_lock"] = self._audio_drift_lock
+        save_hardware_settings(self._hw_settings)
+        self._apply_audio_drift()
+
+    @pyqtSlot(float)
+    def setAudioOffsetMs(self, ms: float) -> None:
+        """Audio offset: + plays audio later than the notes it is timed with."""
+        lo, hi = AUDIO_OFFSET_RANGE_MS
+        ms = round(max(lo, min(hi, float(ms))), 1)
+        self.audio_player.offset_s = ms / 1000.0
+        self._hw_settings["audio_offset_ms"] = ms
+        save_hardware_settings(self._hw_settings)
+        self.audioChanged.emit()
+
+    # -- offset calibration --------------------------------------------------------
+
+    @pyqtSlot(bool)
+    def audioCalibrate(self, on: bool) -> None:
+        """Click test: an audio click and a JUNO note on every half second, timed
+        alike. Adjust the offset until they sound as one."""
+        if self._audio_cal_stop is not None:
+            self._audio_cal_stop.set()
+            self._audio_cal_stop = None
+        if on:
+            self._audio_cal_stop = threading.Event()
+            self.audio_player.ensure_worker()
+            threading.Thread(target=self._audio_cal_loop, args=(self._audio_cal_stop,), daemon=True,
+                             name="AudioCalibrate").start()
+        self.audioChanged.emit()
+
+    def _audio_cal_target(self) -> tuple:
+        """(channel, note) the JUNO plays: the drum part's side stick in PERFORM
+        mode, a high C on the patch otherwise."""
+        if self._in_perform():
+            return self._part_rx_channel(10), 37
+        kbd = getattr(self, "_kbd_channel", -1)
+        return (kbd if kbd >= 0 else 0), 84
+
+    def _audio_cal_loop(self, stop: threading.Event) -> None:
+        p = self.audio_player
+        deadline = time.time() + 6
+        while not p.ready and time.time() < deadline and not stop.is_set():
+            stop.wait(0.05)
+        if not p.ready or stop.is_set():
+            return
+        if media.cache_info(CAL_KEY, p.cache) is None:
+            t = np.arange(int(0.03 * media.SAMPLE_RATE)) / media.SAMPLE_RATE
+            blip = (0.6 * np.sin(2 * np.pi * 1760 * t) * np.exp(-t * 150)).astype(np.float32)
+            media._save_entry(np.stack([blip, blip], axis=1), CAL_KEY, p.cache, {"source": "calibration"})
+        p._load(CAL_KEY)
+        channel, note = self._audio_cal_target()
+        at = time.perf_counter() + 0.4
+        while not stop.is_set():
+            p.client.play("cal", CAL_KEY, at=at + p.offset_s)
+            # Wait for the beat (sleep, then spin the last moment) and play the note
+            while at - time.perf_counter() > 0.002:
+                if stop.wait(at - time.perf_counter() - 0.0015):
+                    return
+            while time.perf_counter() < at:
+                pass
+            self.sequencer._send_note_on(channel, note, 110)
+            stop.wait(0.05)
+            self.sequencer._send_note_off(channel, note)
+            at += CAL_PERIOD_S
+
+    # -- tempo changes while synced audio plays --------------------------------------
+
+    def _audio_tempo_locked(self) -> bool:
+        """Synced audio is playing: a tempo change now would break it (loops are cut
+        to the old tempo, MATCH SONG renders are for it, the drift lock follows it)."""
+        if not self.sequencer.is_playing:
+            return False
+        for t in self.sequencer.song.tracks:
+            clip = self.sequencer._audio_active_clip(t)
+            if clip is not None and clip.audio.sync:
+                return True
+        return False
+
+    def _audio_hold_tempo(self, bpm: float) -> bool:
+        """Hold a requested tempo until synced audio stops. True = held."""
+        if not self._audio_tempo_locked():
+            return False
+        self._pending_bpm = max(20.0, min(300.0, float(bpm)))
+        self.audioChanged.emit()
+        return True
+
+    def _audio_release_tempo(self) -> None:
+        """Apply a held tempo once no synced audio plays."""
+        if self._pending_bpm and not self._audio_tempo_locked():
+            bpm, self._pending_bpm = self._pending_bpm, 0.0
+            self.setBpm(bpm)
+            self.audioChanged.emit()
+
+    @pyqtProperty(float, notify=audioChanged)
+    def pendingBpm(self) -> float:
+        return self._pending_bpm
+
+    @pyqtSlot()
+    def cancelPendingBpm(self) -> None:
+        self._pending_bpm = 0.0
+        self.audioChanged.emit()
 
     def _on_audio_sync(self) -> None:
         self.audioChanged.emit()
@@ -80,6 +216,7 @@ class AudioBridgeMixin(BridgeBaseMixin):
     def _on_audio_ended(self, track_idx: int) -> None:
         if self.sequencer.audio_ended(track_idx):
             self.seqTracksChanged.emit()
+            self._audio_release_tempo()
 
     def _audio_song_changed(self) -> None:
         """A song was loaded (or a track became AUDIO): get its files ready."""
@@ -99,8 +236,13 @@ class AudioBridgeMixin(BridgeBaseMixin):
         p = getattr(self, "audio_player", None)
         if p is None:
             return {}
+        ppm = p.drift.ppm()
         return {"ready": p.ready, "device": p.client.device_name, "error": p.client.error,
-                "xruns": p.client.xruns, "folder": str(p.folder), "importing": self._audio_importing}
+                "xruns": p.client.xruns, "folder": str(p.folder), "importing": self._audio_importing,
+                "ppm": round(ppm, 1) if ppm is not None else None, "measured": round(p.drift.span),
+                "driftLock": self._audio_drift_lock, "offsetMs": round(p.offset_s * 1000.0, 1),
+                "calibrating": self._audio_cal_stop is not None,
+                "rubberband": media.rubberband_path() is not None}
 
     def _audio_clip_dict(self, clip) -> dict:
         """Audio fields of a clip for seqTracks (empty slot when it has none)."""

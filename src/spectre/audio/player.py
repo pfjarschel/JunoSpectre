@@ -19,6 +19,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from . import media
 from .client import AudioClient
+from .drift import DriftEstimator
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class AudioPlayer:
         self.auditioning = ""                # clip_id playing in the preview slot
         self._audition_range = (0, 0)
         self._positions: Tuple[dict, float] = ({}, 0.0)
+        self.drift = DriftEstimator(RATE)
         self._jobs: "queue.Queue[tuple]" = queue.Queue()
         threading.Thread(target=self._job_loop, daemon=True, name="AudioConvert").start()
 
@@ -373,6 +375,7 @@ class AudioPlayer:
                 self.on_ended(int(slot[1:]))
         elif kind == "clock":
             self._positions = (dict(ev.get("slots") or {}), float(ev.get("dac", 0.0)))
+            self.drift.add(int(ev.get("frames", 0)), float(ev.get("dac", 0.0)), int(ev.get("xruns", 0)))
         elif kind in ("ready", "error", "exit"):
             self._changed()
 

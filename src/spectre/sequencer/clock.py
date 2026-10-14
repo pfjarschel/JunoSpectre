@@ -20,6 +20,8 @@ class SequencerClock:
         self._bpm: float = max(20.0, min(300.0, float(bpm)))
         self._tick_interval: float = 60.0 / (self._bpm * self.ppqn)
         self._swing: float = 0.50  # 0.50 (neutral) .. 0.75 (max swing)
+        # Drift lock: runs this much faster than nominal (audio device rate / nominal)
+        self._rate_trim: float = 1.0
 
         self._running: bool = False
         self._paused: bool = False
@@ -43,8 +45,16 @@ class SequencerClock:
 
     @property
     def tick_interval(self) -> float:
-        """Seconds per tick (without swing)."""
-        return self._tick_interval
+        """Seconds per tick (without swing, with the drift trim)."""
+        return self._tick_interval / self._rate_trim
+
+    @property
+    def rate_trim(self) -> float:
+        return self._rate_trim
+
+    def set_rate_trim(self, ratio: float) -> None:
+        """Run `ratio` times the nominal speed (drift lock: a few ppm, clamped to 0.1%)."""
+        self._rate_trim = max(0.999, min(1.001, float(ratio)))
 
     @property
     def swing(self) -> float:
@@ -137,9 +147,9 @@ class SequencerClock:
             if self._swing != 0.50:
                 # Swing scaling: 0.5 is neutral, 0.67 is triplet swing
                 swing_mult = (self._swing * 2.0) if step_16th == 0 else ((1.0 - self._swing) * 2.0)
-                tick_step = self._tick_interval * swing_mult
+                tick_step = self._tick_interval * swing_mult / self._rate_trim
             else:
-                tick_step = self._tick_interval
+                tick_step = self._tick_interval / self._rate_trim
 
             tick_num = self._tick_counter
             tot_num = self._total_ticks

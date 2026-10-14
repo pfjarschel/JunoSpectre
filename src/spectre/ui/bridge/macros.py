@@ -268,7 +268,8 @@ class MacroBridgeMixin(BridgeBaseMixin):
                 self.vector.motion.speed = max(0.25, min(4.0, val))
                 self.speedChanged.emit(self.vector.motion.speed)
             elif key == "vector.bpm":
-                self._apply_tempo(val)
+                if not (hasattr(self, "_audio_hold_tempo") and self._audio_hold_tempo(val)):
+                    self._apply_tempo(val)
             return
         iv = int(round(max(0, val))) if is_int else val
         if key in self._PERF_FX_MACROS and self._in_perform():

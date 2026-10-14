@@ -617,3 +617,109 @@ def test_bridge_fit_end_and_song_bpm_from_clip(tmp_path):
         assert len(b.audioPeaks(0, 0, 100)) == 200
     finally:
         player.close()
+
+
+# -- step 5: drift lock, held tempo, offset ----------------------------------------
+
+from src.spectre.audio.drift import DriftEstimator  # noqa: E402
+
+
+def test_drift_estimator_measures_ppm_through_jitter():
+    rng = np.random.default_rng(1)
+    est = DriftEstimator(RATE)
+    true_rate = RATE * (1 + 37e-6)                       # device 37 ppm fast
+    for i in range(4 * 120):                             # 2 minutes at 4 reports/s
+        dac = 1000.0 + i * 0.25
+        frames = int((dac - 1000.0) * true_rate)
+        est.add(frames, dac + rng.normal(0, 0.0005))     # 0.5 ms timestamp jitter
+        if i == 4 * 20:
+            assert est.ppm() is None                     # under 30 s: no correction yet
+    assert est.ppm() == pytest.approx(37, abs=3)
+    assert est.ratio() == pytest.approx(1 + 37e-6, abs=3e-6)
+    est.add(frames + 100, dac + 0.3, xruns=1)            # an underrun starts over
+    assert est.ppm() is None and len(est.points) == 1
+
+
+def test_clock_trim_scales_the_tick_interval():
+    from src.spectre.sequencer.clock import SequencerClock
+    c = SequencerClock(bpm=120)
+    nominal = c.tick_interval
+    c.set_rate_trim(1.00005)
+    assert c.tick_interval == pytest.approx(nominal / 1.00005)
+    c.set_rate_trim(1.5)                                 # clamped to 0.1%
+    assert c.rate_trim == 1.001
+
+
+def test_tempo_waits_while_synced_audio_plays(tmp_path, monkeypatch):
+    monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
+    from src.spectre.ui.bridge import SpectreBridge
+    from tests.test_sequencer_bridge import DummyJuno
+
+    b = SpectreBridge(DummyJuno())
+    b.close_audio()
+    eng = b.sequencer
+    track = eng.song.tracks[2]
+    track.kind = "audio"
+    track.clips[0].audio = AudioClip(file="x.wav", sync=True)
+    track.active_clip_idx = 0
+    monkeypatch.setattr(type(eng), "is_playing", property(lambda self: playing[0]))
+    playing = [True]
+    b.setBpm(130)
+    assert b.bpm == 120 and b.pendingBpm == 130          # held
+    b.cancelPendingBpm()
+    b.setBpm(128)
+    playing[0] = False
+    b._audio_release_tempo()
+    assert b.bpm == 128 and b.pendingBpm == 0            # applied once audio stopped
+    # Pads (AT ONCE clips) don't hold the tempo
+    playing[0] = True
+    track.clips[0].audio.sync = False
+    b.setBpm(110)
+    assert b.bpm == 110
+
+
+def test_offset_and_drift_lock_settings(tmp_path, monkeypatch):
+    monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
+    from src.spectre.ui.bridge import SpectreBridge
+    from src.spectre.ui.bridge.hardware import load_hardware_settings
+    from tests.test_sequencer_bridge import DummyJuno
+
+    b = SpectreBridge(DummyJuno())
+    b.close_audio()
+    b.setAudioOffsetMs(12.34)
+    assert b.audio_player.offset_s == pytest.approx(0.0123) and b.audioStatus["offsetMs"] == 12.3
+    b.setAudioOffsetMs(9999)
+    assert b.audioStatus["offsetMs"] == 300.0
+    b.setAudioDriftLock(False)
+    assert load_hardware_settings()["audio_drift_lock"] is False
+    assert b._audio_cal_target()[1] in (37, 84)
+
+
+def test_calibration_clicks_audio_and_juno_together(tmp_path, monkeypatch):
+    monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
+    from src.spectre.ui.bridge import SpectreBridge
+    from tests.test_sequencer_bridge import DummyJuno
+
+    b = SpectreBridge(DummyJuno())
+    player = b.audio_player
+    player.close()
+    events = []
+    player.client = AudioClient(null=True)
+    player.client.on_event = lambda ev: (events.append(ev), player._on_event(ev))
+    player.cache = tmp_path / "cache"
+    notes = []
+    monkeypatch.setattr(b.sequencer, "_send_note_on", lambda ch, n, v: notes.append((time.perf_counter(), ch, n)))
+    monkeypatch.setattr(b.sequencer, "_send_note_off", lambda ch, n: None)
+    try:
+        b.audioCalibrate(True)
+        assert b.audioStatus["calibrating"]
+        deadline = time.time() + 8
+        while len(notes) < 3 and time.time() < deadline:
+            time.sleep(0.05)
+        b.audioCalibrate(False)
+        assert len(notes) >= 3
+        gaps = [notes[i + 1][0] - notes[i][0] for i in range(2)]
+        assert gaps == [pytest.approx(0.5, abs=0.01)] * 2
+        assert sum(1 for e in events if e.get("ev") == "started" and e.get("slot") == "cal") >= 2
+    finally:
+        b.close_audio()

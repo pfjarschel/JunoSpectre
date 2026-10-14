@@ -293,7 +293,9 @@ class VectorBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(float)
     def setBpm(self, bpm_val: float) -> None:
-        """Update the global tempo BPM."""
+        """Update the global tempo BPM (held while synced audio plays)."""
+        if hasattr(self, "_audio_hold_tempo") and self._audio_hold_tempo(bpm_val):
+            return
         bpm_val = self._apply_tempo(bpm_val)
         self._rebaseDirect([("vector.bpm", bpm_val)])
 

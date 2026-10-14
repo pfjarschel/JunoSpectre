@@ -23,7 +23,11 @@ Rectangle {
             if (ctlPorts[i].key === key) return ctlPorts[i]
         return null
     }
+    property var audio: Bridge.audioStatus
     property bool busy: Bridge.jobBusy
+
+    // Leaving the page ends the calibration clicks
+    onVisibleChanged: if (!visible && audio.calibrating) Bridge.audioCalibrate(false)
     property bool hwJob: busy && (Bridge.jobName === "connect" || Bridge.jobName === "ping")
 
     ColumnLayout {
@@ -248,6 +252,91 @@ Rectangle {
                             text: "No MIDI ports found"
                             font.pixelSize: ScaleMetrics.sp(9)
                             color: Theme.textDim
+                        }
+                    }
+
+                    // Audio clips: output, drift lock, offset calibration
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: audioCol.implicitHeight + ScaleMetrics.dp(16)
+                        radius: 4
+                        color: Theme.bgControl
+                        border.color: Theme.borderCard
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: audioCol
+                            anchors.fill: parent
+                            anchors.margins: ScaleMetrics.dp(8)
+                            spacing: ScaleMetrics.dp(6)
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "AUDIO CLIPS · JUNO USB"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.pageAccent }
+                                Item { Layout.fillWidth: true }
+                                Tag {
+                                    text: root.audio.ready ? "ON" : (root.audio.error ? "ERROR" : "OFF")
+                                    tint: root.audio.ready ? Theme.playing : (root.audio.error ? Theme.recording : Theme.textSecondary)
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                                text: root.audio.ready ? "OUT: " + root.audio.device + (root.audio.xruns ? "  ·  " + root.audio.xruns + " DROPOUTS" : "")
+                                      : (root.audio.error || "Starts with the first AUDIO track")
+                                font.bold: true
+                                font.pixelSize: ScaleMetrics.sp(8)
+                                color: root.audio.error && !root.audio.ready ? Theme.recording : Theme.textSecondary
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: ScaleMetrics.dp(4)
+                                Text { text: "DRIFT LOCK"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
+                                Chip { text: "ON"; active: !!root.audio.driftLock; onClicked: Bridge.setAudioDriftLock(true) }
+                                Chip { text: "OFF"; active: !root.audio.driftLock; onClicked: Bridge.setAudioDriftLock(false) }
+                                Text {
+                                    Layout.fillWidth: true
+                                    horizontalAlignment: Text.AlignRight
+                                    text: !root.audio.ready ? ""
+                                          : (root.audio.ppm === null || root.audio.ppm === undefined
+                                             ? "MEASURING… " + (root.audio.measured || 0) + " S"
+                                             : "JUNO CLOCK " + (root.audio.ppm >= 0 ? "+" : "") + root.audio.ppm.toFixed(1) + " PPM")
+                                    font.bold: true
+                                    font.family: Theme.fontMono
+                                    font.pixelSize: ScaleMetrics.sp(8)
+                                    color: Theme.textSecondary
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: ScaleMetrics.dp(6)
+                                SeqStepper {
+                                    label: "OFFSET:"
+                                    count: 401
+                                    index: Math.round((root.audio.offsetMs || 0) + 100)
+                                    valueText: (index - 100 > 0 ? "+" : "") + (index - 100) + " ms"
+                                    valueColor: Theme.pageAccent
+                                    pxPerStep: ScaleMetrics.dp(4)
+                                    onRequested: (i) => Bridge.setAudioOffsetMs(i - 100)
+                                }
+                                SpButton {
+                                    Layout.fillWidth: true
+                                    implicitHeight: ScaleMetrics.dp(30)
+                                    icon: root.audio.calibrating ? "stop" : "play"
+                                    text: root.audio.calibrating ? "STOP CLICKS" : "CALIBRATE"
+                                    fontSize: 8
+                                    checked: !!root.audio.calibrating
+                                    onClicked: Bridge.audioCalibrate(!root.audio.calibrating)
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                text: "CALIBRATE plays an audio click and a Juno note together (drum part in PERFORM, the patch in PATCH mode). Adjust OFFSET until they sound as one: + delays the audio."
+                                      + (root.audio.rubberband ? "" : " Stretch / pitch need Rubber Band: sudo apt install rubberband-cli.")
+                                font.pixelSize: ScaleMetrics.sp(7)
+                                color: Theme.textDim
+                            }
                         }
                     }
 

@@ -284,10 +284,13 @@ Rectangle {
             }
         }
 
-        // BPM (the one global tempo)
+        // BPM (the one global tempo). A change asked for while synced audio plays
+        // waits for it to stop: shown as "120 → 124", tap to cancel it.
         Rectangle {
+            readonly property bool pending: Bridge.pendingBpm > 0
             height: ScaleMetrics.dp(38)
-            width: ScaleMetrics.dp(70)
+            width: ScaleMetrics.dp(pending ? 104 : 70)
+            Layout.preferredWidth: width
             radius: ScaleMetrics.dp(4)
             color: Theme.bgApp
             border.color: bpmArea.pressed ? Theme.catPerform : Theme.borderCard
@@ -309,6 +312,13 @@ Rectangle {
                     font.pixelSize: ScaleMetrics.sp(12)
                     color: Theme.catPerform
                 }
+                Text {
+                    visible: Bridge.pendingBpm > 0
+                    text: "→ " + Math.round(Bridge.pendingBpm)
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(12)
+                    color: Theme.warning
+                }
             }
 
             // Global tempo (sequencer + vector motion): drag right/up or left/down, 1 BPM per 4px
@@ -319,13 +329,18 @@ Rectangle {
                 property real startX: 0
                 property real startY: 0
                 property real startBpm: 120
-                onPressed: (mouse) => { startX = mouse.x; startY = mouse.y; startBpm = Math.round(Bridge.bpm); }
+                property bool moved: false
+                // Drags start from the held value when there is one
+                readonly property real shownBpm: Bridge.pendingBpm > 0 ? Bridge.pendingBpm : Bridge.bpm
+                onPressed: (mouse) => { startX = mouse.x; startY = mouse.y; startBpm = Math.round(shownBpm); moved = false; }
                 onPositionChanged: (mouse) => {
                     // Right/up increases: at the top edge the horizontal axis is always free
                     const d = (mouse.x - startX) + (startY - mouse.y);
+                    if (Math.abs(d) >= ScaleMetrics.dp(4)) moved = true;
                     const next = Math.max(20, Math.min(300, startBpm + Math.round(d / ScaleMetrics.dp(4))));
-                    if (next !== Math.round(Bridge.bpm)) Bridge.setBpm(next);
+                    if (next !== Math.round(shownBpm)) Bridge.setBpm(next);
                 }
+                onReleased: if (!moved && Bridge.pendingBpm > 0) Bridge.cancelPendingBpm()
             }
         }
 
