@@ -257,6 +257,8 @@ class SetlistBridgeMixin(BridgeBaseMixin):
             self.sequencer.stop()
             if hasattr(self, "_seq_retarget_recorder"):
                 self._seq_retarget_recorder()
+            if hasattr(self, "_audio_song_changed"):
+                self._audio_song_changed()
             self.seqTracksChanged.emit()
             self.seqActiveClipChanged.emit()
             self.seqStateChanged.emit()

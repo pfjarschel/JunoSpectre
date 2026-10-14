@@ -7,7 +7,7 @@ import logging
 import random
 import threading
 import time
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Protocol, Set, Tuple
 
 from ..core.midi import MidiDeviceManager
 from . import automation as auto
@@ -35,6 +35,30 @@ DIVIDER_TICKS: Dict[str, int] = {
     "1/8T": 32,
     "1/16T": 16,
 }
+
+# Audio clips: launches on the bar are sent to the audio worker this many
+# ticks ahead (an eighth note, so a swung pair never splits the estimate);
+# Play from a stop waits AUDIO_PREROLL_S so audio starts on tick 0 exactly.
+AUDIO_LOOKAHEAD_TICKS = 48
+AUDIO_PREROLL_S = 0.12
+AUDIO_RATE = 44100
+
+
+class AudioSink(Protocol):
+    """What the engine drives audio tracks through (spectre.audio.player.AudioPlayer).
+    Called with the engine lock held, from the clock or GUI thread: must not block."""
+
+    def clip_frames(self, clip: Clip) -> int:
+        """Frames the clip's slice plays (0 = nothing playable yet)."""
+
+    def start(self, track_idx: int, clip: Clip, at: Optional[float], loop: bool) -> None:
+        """Play clip on the track at perf time `at` (None = now), replacing what it plays."""
+
+    def stop(self, track_idx: int, at: Optional[float]) -> None:
+        ...
+
+    def stop_all(self) -> None:
+        ...
 
 
 class SequencerEngine:
@@ -86,6 +110,11 @@ class SequencerEngine:
         self.lane_steps: List[int] = [0] * NUM_AUTOMATION_LANES
         self.automation_listener: Optional[Callable[[], None]] = None
 
+        # Audio tracks: the sink playing them, and per track the (downbeat tick,
+        # action) last sent, so each launch/stop/loop restart is sent once
+        self.audio: Optional[AudioSink] = None
+        self._audio_plan: List[Optional[tuple]] = [None] * NUM_TRACKS
+
         # UI updates downsampler (30-60 Hz)
         self._last_ui_dispatch: float = 0.0
         self._ui_subscribers: List[Callable[[dict], None]] = []
@@ -115,7 +144,9 @@ class SequencerEngine:
 
     def play(self) -> None:
         """Start (or resume) the transport. From a full stop, every track
-        starts on its selected clip, except tracks queued to stop."""
+        starts on its selected clip, except tracks queued to stop (and audio
+        tracks whose selected clip starts at once: those are pads)."""
+        start_at = None
         if self.clock.is_stopped:
             with self._lock:
                 for track in (*self.song.tracks, *self.song.automation):
@@ -127,7 +158,8 @@ class SequencerEngine:
                 self._lane_anchor = [0] * NUM_AUTOMATION_LANES
                 self._track_anchor = [0] * NUM_TRACKS
                 self._lane_segment = [None] * NUM_AUTOMATION_LANES
-        self.clock.start()
+                start_at = self._audio_on_play()
+        self.clock.start(start_at)
 
     @property
     def lock(self) -> threading.Lock:
@@ -138,11 +170,13 @@ class SequencerEngine:
         self.clock.pause()
         with self._lock:
             self._silence_sounding_notes()
+            self._audio_stop_all()
 
     def stop(self) -> None:
         self.clock.stop()
         with self._lock:
             self._silence_sounding_notes()
+            self._audio_stop_all()
             self._prescheduled = [None] * len(self.song.tracks)
             self._overdub_suppress.clear()
             self.track_steps = [0] * NUM_TRACKS
@@ -157,16 +191,27 @@ class SequencerEngine:
         self._dispatch_ui(force=True)
 
     def launch_clip(self, track_idx: int, clip_idx: int) -> None:
-        """Queue a specific clip on a track to launch on the next measure boundary."""
+        """Queue a specific clip on a track to launch on the next measure boundary
+        (an audio clip that doesn't sync starts at once, transport running or not)."""
         if 0 <= track_idx < len(self.song.tracks):
             track = self.song.tracks[track_idx]
             if 0 <= clip_idx < len(track.clips):
-                track.queued_clip_idx = clip_idx
                 track.selected_clip_idx = clip_idx
+                clip = track.clips[clip_idx]
+                if track.is_audio and clip.audio is not None and not clip.audio.sync:
+                    with self._lock:
+                        self._audio_start_now(track_idx, track, clip_idx)
+                else:
+                    track.queued_clip_idx = clip_idx
 
     def launch_scene(self, scene_idx: int) -> None:
-        """Queue every track and automation lane to the designated scene row."""
-        for t in (*self.song.tracks, *self.song.automation):
+        """Queue every track and automation lane to the designated scene row.
+        An audio track playing a FULL clip (a backing track) keeps playing it."""
+        for i, t in enumerate(self.song.tracks):
+            if 0 <= scene_idx < len(t.clips) and not self._audio_holds_scene(t):
+                t.queued_clip_idx = scene_idx
+                t.selected_clip_idx = scene_idx
+        for t in self.song.automation:
             if 0 <= scene_idx < len(t.clips):
                 t.queued_clip_idx = scene_idx
                 t.selected_clip_idx = scene_idx
@@ -185,9 +230,20 @@ class SequencerEngine:
             self.song.automation[lane_idx].queued_clip_idx = -2
 
     def stop_track(self, track_idx: int) -> None:
-        """Queue a track to stop at the next measure boundary."""
+        """Queue a track to stop at the next measure boundary (audio that
+        started at once stops at once)."""
         if 0 <= track_idx < len(self.song.tracks):
-            self.song.tracks[track_idx].queued_clip_idx = -2  # -2 means queued stop
+            track = self.song.tracks[track_idx]
+            clip = self._audio_active_clip(track)
+            if clip is not None and not clip.audio.sync:
+                with self._lock:
+                    track.active_clip_idx = -1
+                    track.queued_clip_idx = -1
+                    self._audio_plan[track_idx] = None
+                    if self.audio is not None:
+                        self.audio.stop(track_idx, None)
+                return
+            track.queued_clip_idx = -2  # -2 means queued stop
 
     def _on_clock_tick(self, tick_in_bar: int, total_ticks: int) -> None:
         """Executed on each PPQN pulse in the dedicated clock thread."""
@@ -208,6 +264,9 @@ class SequencerEngine:
 
             # 3. Polymetric track step advancement
             for t_idx, track in enumerate(self.song.tracks):
+                if track.is_audio:
+                    self._run_audio_track(t_idx, track, tick_in_bar, total_ticks)
+                    continue
                 step_len_ticks = DIVIDER_TICKS.get(track.clock_divider, 24)
                 self._track_step_ticks[t_idx] = step_len_ticks
                 self._track_tick_accum[t_idx] += 1
@@ -251,6 +310,118 @@ class SequencerEngine:
             self._notify_automation()
         # 6. Dispatch UI status at 30-60 Hz
         self._dispatch_ui()
+
+    # -- audio tracks ----------------------------------------------------------
+
+    def _audio_active_clip(self, track: Track) -> Optional[Clip]:
+        """The audio clip an audio track is playing, if any."""
+        if track.is_audio and 0 <= track.active_clip_idx < len(track.clips):
+            clip = track.clips[track.active_clip_idx]
+            if clip.audio is not None and clip.audio.file:
+                return clip
+        return None
+
+    def _audio_holds_scene(self, track: Track) -> bool:
+        clip = self._audio_active_clip(track)
+        return clip is not None and clip.audio.mode == "full" and self.is_playing
+
+    def _audio_cycle_ticks(self, clip: Clip) -> int:
+        """A synced loop restarts every this many ticks: its bars, or its
+        length rounded to whole bars at the song tempo."""
+        bar_ticks = self.clock.ppqn * 4
+        bars = clip.audio.bars
+        if bars <= 0:
+            frames = self.audio.clip_frames(clip) if self.audio is not None else 0
+            bar_s = 240.0 / max(1.0, self.song.bpm)
+            bars = max(1, round(frames / AUDIO_RATE / bar_s)) if frames else 1
+        return bars * bar_ticks
+
+    def _audio_send(self, t_idx: int, track: Track, action: Optional[tuple], at: Optional[float]) -> None:
+        if self.audio is None or action is None:
+            return
+        kind, clip_idx = action
+        clip = track.clips[clip_idx] if 0 <= clip_idx < len(track.clips) else None
+        if kind == "start" and clip is not None and clip.audio is not None and clip.audio.file:
+            self.audio.start(t_idx, clip, at, clip.audio.mode == "loop")
+        else:  # a stop, or a launch of an empty slot
+            self.audio.stop(t_idx, at)
+
+    def _run_audio_track(self, t_idx: int, track: Track, tick_in_bar: int, total_ticks: int) -> None:
+        """Send what happens at the next downbeat once it is AUDIO_LOOKAHEAD_TICKS
+        away (or at once, for a launch queued later), then apply the queue on it."""
+        bar_ticks = self.clock.ppqn * 4
+        ahead = (bar_ticks - tick_in_bar) % bar_ticks
+        if ahead <= AUDIO_LOOKAHEAD_TICKS:
+            downbeat = total_ticks + ahead
+            action = None
+            if track.queued_clip_idx == -2:
+                action = ("stop", -1)
+            elif track.queued_clip_idx >= 0:
+                action = ("start", track.queued_clip_idx)
+            else:
+                clip = self._audio_active_clip(track)
+                since = downbeat - self._track_anchor[t_idx]
+                if (clip is not None and clip.audio.mode == "loop" and clip.audio.sync and since > 0
+                        and since % self._audio_cycle_ticks(clip) == 0):
+                    action = ("start", track.active_clip_idx)  # restart the loop on its bar
+            plan = (downbeat, action)
+            if action is not None and self._audio_plan[t_idx] != plan:
+                self._audio_plan[t_idx] = plan
+                self._audio_send(t_idx, track, action, self.clock.tick_time + ahead * self.clock.tick_interval)
+        if tick_in_bar == 0 and track.queued_clip_idx != -1:
+            track.active_clip_idx = -1 if track.queued_clip_idx == -2 else track.queued_clip_idx
+            track.queued_clip_idx = -1
+            self._track_anchor[t_idx] = total_ticks
+
+    def _audio_start_now(self, t_idx: int, track: Track, clip_idx: int) -> None:
+        """Launch an audio clip that doesn't wait for the bar."""
+        track.active_clip_idx = clip_idx
+        track.queued_clip_idx = -1
+        self._audio_plan[t_idx] = None
+        self._audio_send(t_idx, track, ("start", clip_idx), None)
+
+    def _audio_on_play(self) -> Optional[float]:
+        """Play from a stop: synced audio clips start with tick 0, which waits
+        AUDIO_PREROLL_S for them. Returns tick 0's time (None = no audio, now)."""
+        starting = []
+        for t_idx, track in enumerate(self.song.tracks):
+            self._audio_plan[t_idx] = None
+            clip = self._audio_active_clip(track)
+            if clip is None:
+                continue
+            if clip.audio.sync:
+                starting.append((t_idx, track))
+            else:
+                track.active_clip_idx = -1   # pads only play when tapped
+        if not starting or self.audio is None:
+            return None
+        start_at = time.perf_counter() + AUDIO_PREROLL_S
+        for t_idx, track in starting:
+            action = ("start", track.active_clip_idx)
+            self._audio_plan[t_idx] = (0, action)
+            self._audio_send(t_idx, track, action, start_at)
+        return start_at
+
+    def _audio_stop_all(self) -> None:
+        self._audio_plan = [None] * NUM_TRACKS
+        for track in self.song.tracks:
+            clip = self._audio_active_clip(track)
+            if clip is not None and not clip.audio.sync:
+                track.active_clip_idx = -1        # a pad that was sounding
+        if self.audio is not None:
+            self.audio.stop_all()
+
+    def audio_ended(self, track_idx: int) -> bool:
+        """The audio worker finished the track's one-shot: the track stops.
+        Returns whether anything changed."""
+        with self._lock:
+            if 0 <= track_idx < len(self.song.tracks):
+                track = self.song.tracks[track_idx]
+                clip = self._audio_active_clip(track)
+                if clip is not None and clip.audio.mode != "loop" and track.queued_clip_idx == -1:
+                    track.active_clip_idx = -1
+                    return True
+        return False
 
     # -- automation ------------------------------------------------------------
 

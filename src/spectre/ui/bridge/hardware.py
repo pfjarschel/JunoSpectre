@@ -83,6 +83,8 @@ class HardwareBridgeMixin(BridgeBaseMixin):
         if self._hw_watch_stop is not None:
             self._hw_watch_stop.set()
         self.close_controllers()
+        if hasattr(self, "close_audio"):
+            self.close_audio()
 
     # -- port watcher ------------------------------------------------------
 

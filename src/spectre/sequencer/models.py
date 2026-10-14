@@ -21,6 +21,45 @@ MAX_DICE_VELOCITY = 50
 # Performance part of the JUNO-DS rhythm set: tracks sending to it are drum tracks
 DRUM_PART = 10
 MAX_TRACK_NAME = 12
+# Track kinds: note steps sent to Juno parts, or audio files played by the audio worker
+TRACK_KINDS = ("notes", "audio")
+# Audio clip modes: LOOP repeats, ONE-SHOT plays once, FULL plays once and
+# keeps playing through scene launches (a backing track)
+AUDIO_MODES = ("loop", "oneshot", "full")
+# Whether a mode starts on the bar by default (one-shots fire at once, like pads)
+AUDIO_MODE_SYNC = {"loop": True, "oneshot": False, "full": True}
+AUDIO_GAIN_RANGE = (-60.0, 6.0)         # dB
+
+
+@dataclasses.dataclass
+class AudioClip:
+    """The audio side of a clip (used when its track is an AUDIO track).
+    Frames are 44.1 kHz frames of the converted file."""
+    file: str = ""                      # path inside the media folder ("" = empty slot)
+    mode: str = "loop"
+    sync: bool = True                   # start on the bar and stay locked; False = start at once
+    start: int = 0                      # slice start frame (beat 1 for synced clips)
+    end: int = 0                        # slice end frame, 0 = end of file
+    gain_db: float = 0.0
+    bars: int = 0                       # slice length in bars, 0 = from the length at the song BPM
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"file": self.file, "mode": self.mode, "sync": self.sync, "start": self.start,
+                "end": self.end, "gain_db": self.gain_db, "bars": self.bars}
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> AudioClip:
+        mode = str(d.get("mode", "loop"))
+        lo, hi = AUDIO_GAIN_RANGE
+        return cls(
+            file=str(d.get("file", "")),
+            mode=mode if mode in AUDIO_MODES else "loop",
+            sync=bool(d.get("sync", True)),
+            start=max(0, int(d.get("start", 0))),
+            end=max(0, int(d.get("end", 0))),
+            gain_db=max(lo, min(hi, float(d.get("gain_db", 0.0)))),
+            bars=max(0, min(1024, int(d.get("bars", 0)))),
+        )
 
 
 @dataclasses.dataclass
@@ -85,6 +124,7 @@ class Clip:
     name: str = "Clip"
     length: int = 16                # Step count, 1..MAX_CLIP_STEPS
     steps: List[Step] = dataclasses.field(default_factory=list)
+    audio: Optional[AudioClip] = None   # what it plays on an AUDIO track (kept on NOTES ones)
 
     def __post_init__(self):
         # Guarantee steps list matches length
@@ -103,12 +143,15 @@ class Clip:
         self.length = new_len
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "clip_id": self.clip_id,
             "name": self.name,
             "length": self.length,
             "steps": [s.to_dict() for s in self.steps],
         }
+        if self.audio is not None:
+            d["audio"] = self.audio.to_dict()
+        return d
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> Clip:
@@ -117,12 +160,14 @@ class Clip:
         steps_data = steps_data if isinstance(steps_data, list) else []
         steps = [Step.from_dict(s) for s in steps_data]
         _fold_step_ties(steps_data, steps)
+        audio = d.get("audio")
 
         return cls(
             clip_id=str(d.get("clip_id") or str(uuid.uuid4())[:8]),
             name=str(d.get("name", "Clip")),
             length=length,
             steps=steps,
+            audio=AudioClip.from_dict(audio) if isinstance(audio, dict) else None,
         )
 
 
@@ -148,6 +193,7 @@ class Track:
     """One of the NUM_TRACKS fixed tracks in the performance sequencer."""
     track_id: int = 1                   # 1..NUM_TRACKS
     name: str = "Track"
+    kind: str = "notes"                 # one of TRACK_KINDS
     target_parts: List[int] = dataclasses.field(default_factory=lambda: [1])
     clock_divider: str = "1/16"         # "1/32", "1/16", "1/8", "1/4", "1/8T", "1/16T"
     swing: float = 0.50                 # 0.50 (neutral) .. 0.75 (max swing)
@@ -164,6 +210,10 @@ class Track:
         self.selected_clip_idx = max(0, min(len(self.clips) - 1, int(self.selected_clip_idx)))
 
     @property
+    def is_audio(self) -> bool:
+        return self.kind == "audio"
+
+    @property
     def is_drum(self) -> bool:
         """True when the track's main part is the rhythm part (drum names, drum buttons)."""
         return bool(self.target_parts) and self.target_parts[0] == DRUM_PART
@@ -172,6 +222,7 @@ class Track:
         return {
             "track_id": int(self.track_id),
             "name": self.name,
+            "kind": self.kind,
             "target_parts": list(self.target_parts),
             "clock_divider": self.clock_divider,
             "swing": float(self.swing),
@@ -190,6 +241,7 @@ class Track:
         return cls(
             track_id=max(1, min(NUM_TRACKS, int(d.get("track_id", 1)))),
             name=str(d.get("name", "Track"))[:MAX_TRACK_NAME],
+            kind=str(d.get("kind")) if d.get("kind") in TRACK_KINDS else "notes",
             target_parts=[int(p) for p in d.get("target_parts", [1])] or [1],
             clock_divider=str(d.get("clock_divider", "1/16")),
             swing=max(0.50, min(0.75, float(d.get("swing", 0.50)))),

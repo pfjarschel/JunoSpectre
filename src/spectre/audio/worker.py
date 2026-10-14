@@ -12,7 +12,8 @@ Commands:
   {"cmd": "load", "key": k, "path": "/cache/k.npy"}       memory-map a cache entry
   {"cmd": "unload", "key": k}
   {"cmd": "play", "slot": s, "key": k, "at": t|null, "begin": f, "end": f,
-   "loop": bool, "gain": g, "offset": f}                   a new voice (replaces the slot's at t)
+   "loop": bool, "gain": g, "offset": f, "id": n}          a new voice (replaces the slot's at t;
+                                                           cancels its voices still waiting)
   {"cmd": "stop", "slot": s, "at": t|null}                 fade the slot's voice out at t
   {"cmd": "stop_all"}
   {"cmd": "gain", "slot": s, "gain": g}                    ramped over one block
@@ -21,7 +22,7 @@ Commands:
 Events:
   {"ev": "ready", "device": name, "rate": 44100, "latency": s, "block": n}
   {"ev": "error", "msg": text}
-  {"ev": "started" | "ended", "slot": s}
+  {"ev": "started" | "ended", "slot": s, "id": n}
   {"ev": "clock", "frames": n, "dac": t, "xruns": n, "slots": {slot: frame}}  (4 per second)
 
 Only stdlib + numpy (+ sounddevice for a real device): this file runs as a script.
@@ -49,9 +50,10 @@ class Voice:
     """One clip playing (or waiting to start) in a slot."""
 
     def __init__(self, slot: str, source: np.ndarray, at: Optional[float], begin: int, end: int,
-                 loop: bool, gain: float, offset: int = 0):
+                 loop: bool, gain: float, offset: int = 0, vid: int = 0):
         frames = len(source)
         self.slot = slot
+        self.vid = vid
         self.source = source
         self.at = at                          # None = as soon as possible
         self.begin = max(0, min(frames, int(begin)))
@@ -104,9 +106,13 @@ class Mixer:
             if src is None:
                 self.events.append({"ev": "error", "msg": f"not loaded: {cmd.get('key')}"})
                 return
-            self.voices.append(Voice(str(cmd.get("slot")), src, cmd.get("at"), int(cmd.get("begin", 0)),
+            slot = str(cmd.get("slot"))
+            for v in self.voices:
+                if v.slot == slot and not v.started:
+                    v.done = True             # a newer launch wins
+            self.voices.append(Voice(slot, src, cmd.get("at"), int(cmd.get("begin", 0)),
                                      int(cmd.get("end", 0)), bool(cmd.get("loop")), float(cmd.get("gain", 1.0)),
-                                     int(cmd.get("offset", 0))))
+                                     int(cmd.get("offset", 0)), int(cmd.get("id", 0))))
         elif kind == "stop":
             slot, at = str(cmd.get("slot")), cmd.get("at")
             for v in self.voices:
@@ -153,7 +159,7 @@ class Mixer:
                 off = 0
             v.started = True
             v.start_off = off
-            self.events.append({"ev": "started", "slot": v.slot})
+            self.events.append({"ev": "started", "slot": v.slot, "id": v.vid})
             for old in self.voices:
                 if old is not v and old.slot == v.slot and old.started and not old.done:
                     stop = t0 + off / self.rate
@@ -165,7 +171,7 @@ class Mixer:
             if v.started and not v.done:
                 self._mix(v, out, n, t0)
                 if v.done:
-                    self.events.append({"ev": "ended", "slot": v.slot})
+                    self.events.append({"ev": "ended", "slot": v.slot, "id": v.vid})
         self.voices = [v for v in self.voices if not v.done]
         if self.master != 1.0:
             out *= self.master

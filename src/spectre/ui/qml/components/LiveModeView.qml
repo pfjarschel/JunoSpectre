@@ -337,6 +337,7 @@ Rectangle {
         readonly property color trackColor: root.trackColors[trackIdx % root.trackColors.length]
         readonly property int mainPart: (trackData && trackData.targetPart) ? trackData.targetPart : (trackIdx + 1)
         readonly property int layerCount: (trackData && trackData.layerParts) ? trackData.layerParts.length : 0
+        readonly property bool isAudio: trackData ? trackData.kind === "audio" : false
         readonly property bool kbdOn: (root.perfParts && root.perfParts.length >= mainPart)
                                       ? root.perfParts[mainPart - 1].zoneOn : false
 
@@ -410,10 +411,25 @@ Rectangle {
                         Layout.fillHeight: true
                         spacing: ScaleMetrics.dp(3)
 
+                        // Audio tracks play files, not parts
+                        SpButton {
+                            visible: colRoot.isAudio
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            icon: "track.audio"
+                            iconSize: 11
+                            text: "AUDIO"
+                            fontSize: 8
+                            variant: "outline"
+                            accent: colRoot.trackColor
+                            onClicked: Bridge.seqSelectTrack(colRoot.trackIdx)
+                        }
+
                         // Parts: main part + layer count; tap to pick them
                         SpButton {
                             id: partBadge
                             objectName: "partBadge"
+                            visible: !colRoot.isAudio
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             text: "P" + colRoot.mainPart + (colRoot.layerCount > 0 ? "+" + colRoot.layerCount : "")
@@ -425,6 +441,7 @@ Rectangle {
 
                         // Kbd switch of the track's part(s): also play them from the keyboard
                         SpButton {
+                            visible: !colRoot.isAudio
                             Layout.preferredWidth: ScaleMetrics.dp(26)
                             Layout.fillHeight: true
                             text: "KBD"
@@ -474,8 +491,14 @@ Rectangle {
 
         readonly property var clipData: (trackData && trackData.clips && trackData.clips.length > clipIndex)
                                         ? trackData.clips[clipIndex] : null
-        readonly property bool hasNotes: clipData ? clipData.hasNotes : false
-        readonly property bool isPlaying: trackData ? (trackData.activeClipIdx === clipIndex && Bridge.seqIsPlaying) : false
+        readonly property bool isAudio: trackData ? trackData.kind === "audio" : false
+        // An audio clip with a file counts as content; its state can flag a problem
+        readonly property string audioState: (isAudio && clipData && clipData.audioState) || ""
+        readonly property bool audioProblem: audioState === "missing" || audioState === "error"
+        readonly property bool hasNotes: clipData ? (isAudio ? !!clipData.audioFile : clipData.hasNotes) : false
+        // Audio clips that start at once (pads) play without the transport
+        readonly property bool isPlaying: trackData ? (trackData.activeClipIdx === clipIndex
+                                                       && (Bridge.seqIsPlaying || (isAudio && clipData && !clipData.audioSync))) : false
         readonly property bool isQueued: trackData ? (trackData.queuedClipIdx === clipIndex) : false
         readonly property bool isSelected: trackData ? trackData.selectedClipIdx === clipIndex : false
 
@@ -494,8 +517,8 @@ Rectangle {
 
             // Play / launch icon
             Icon {
-                name: isPlaying ? "play" : (isQueued ? "busy" : (hasNotes ? "dotFilled" : ""))
-                size: hasNotes && !isPlaying && !isQueued ? 7 : 11
+                name: isPlaying ? "play" : (isQueued ? "busy" : (hasNotes ? (isAudio ? "track.audio" : "dotFilled") : ""))
+                size: hasNotes && !isPlaying && !isQueued && !isAudio ? 7 : 11
                 color: isPlaying ? trackColor : (isQueued ? Theme.warning : Theme.textDim)
             }
 
@@ -511,11 +534,13 @@ Rectangle {
 
             // Status label
             Text {
-                visible: isQueued || isPlaying
-                text: isQueued ? "QUEUED" : "PLAY"
+                visible: isQueued || isPlaying || audioProblem || audioState === "converting"
+                text: isQueued ? "QUEUED" : (isPlaying ? "PLAY"
+                      : (audioState === "converting" ? "PREP" : (audioState === "missing" ? "MISSING" : "ERROR")))
                 font.bold: true
                 font.pixelSize: ScaleMetrics.sp(6)
-                color: isQueued ? Theme.warning : trackColor
+                color: isQueued || audioState === "converting" ? Theme.warning
+                       : (audioProblem && !isPlaying ? Theme.recording : trackColor)
             }
         }
 

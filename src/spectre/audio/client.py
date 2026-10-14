@@ -96,9 +96,10 @@ class AudioClient:
         return self.send({"cmd": "unload", "key": key})
 
     def play(self, slot: str, key: str, at: Optional[float] = None, begin: int = 0, end: int = 0,
-             loop: bool = False, gain: float = 1.0, offset: int = 0) -> bool:
+             loop: bool = False, gain: float = 1.0, offset: int = 0, vid: int = 0) -> bool:
         return self.send({"cmd": "play", "slot": slot, "key": key, "at": at, "begin": int(begin),
-                          "end": int(end), "loop": bool(loop), "gain": float(gain), "offset": int(offset)})
+                          "end": int(end), "loop": bool(loop), "gain": float(gain), "offset": int(offset),
+                          "id": int(vid)})
 
     def stop(self, slot: str, at: Optional[float] = None) -> bool:
         return self.send({"cmd": "stop", "slot": slot, "at": at})

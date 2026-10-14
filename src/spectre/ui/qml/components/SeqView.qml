@@ -24,6 +24,11 @@ Rectangle {
     readonly property color currentTrackColor: trackColors[Bridge.seqActiveTrack % trackColors.length]
     // Tracks sending to the rhythm part show drum names and drum buttons
     readonly property bool isDrumTrack: activeTrackData ? activeTrackData.isDrum : false
+    // AUDIO tracks play files: the clip editor replaces the step grid
+    readonly property bool isAudioTrack: activeTrackData ? activeTrackData.kind === "audio" : false
+    readonly property var activeClipData: (activeTrackData && activeTrackData.clips
+                                           && activeTrackData.clips.length > Bridge.seqActiveClip)
+                                          ? activeTrackData.clips[Bridge.seqActiveClip] : null
     readonly property var stepsList: Bridge.seqActiveClipSteps || []
     readonly property int currentPlayhead: (Bridge.seqPlayheads && Bridge.seqPlayheads.length > Bridge.seqActiveTrack)
                                            ? Bridge.seqPlayheads[Bridge.seqActiveTrack] : 0
@@ -241,7 +246,7 @@ Rectangle {
                             readonly property int trackIdx: Bridge.seqTrackBank * 8 + index
                             readonly property string trackName: root.seqTracks[trackIdx] ? root.seqTracks[trackIdx].name : ""
                             implicitHeight: ScaleMetrics.dp(26)
-                            implicitWidth: ScaleMetrics.dp(54)
+                            implicitWidth: ScaleMetrics.dp(50)
                             text: trackName
                             fontSize: 8
                             variant: "outline"
@@ -268,8 +273,33 @@ Rectangle {
 
                 Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard }
 
+                // Track kind: NOTES (steps to Juno parts) or AUDIO (files); tap to switch
+                SpButton {
+                    objectName: "trackKindChip"
+                    implicitHeight: ScaleMetrics.dp(30)
+                    implicitWidth: ScaleMetrics.dp(30)
+                    icon: root.isAudioTrack ? "track.audio" : "track.notes"
+                    variant: "outline"
+                    accent: root.currentTrackColor
+                    onClicked: Bridge.seqSetTrackKind(Bridge.seqActiveTrack, root.isAudioTrack ? "notes" : "audio")
+                }
+
+                // Audio output state (AUDIO tracks have no part / timing settings)
+                Text {
+                    visible: root.isAudioTrack
+                    Layout.fillWidth: true
+                    readonly property var st: Bridge.audioStatus
+                    text: st.ready ? "AUDIO TRACK  ·  OUT: " + st.device
+                          : (st.error ? "AUDIO: " + st.error : "AUDIO TRACK  ·  STARTING AUDIO…")
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: st.ready ? Theme.textSecondary : (st.error ? Theme.recording : Theme.warning)
+                    elide: Text.ElideRight
+                }
+
                 // Target Part Selector
                 SeqStepper {
+                    visible: !root.isAudioTrack
                     label: "PART:"
                     count: 16
                     index: (root.activeTrackData && root.activeTrackData.targetPart ? root.activeTrackData.targetPart : (Bridge.seqActiveTrack + 1)) - 1
@@ -283,6 +313,7 @@ Rectangle {
                 SpButton {
                     id: layerChip
                     objectName: "layerChip"
+                    visible: !root.isAudioTrack
                     readonly property var layers: (root.activeTrackData && root.activeTrackData.layerParts) ? root.activeTrackData.layerParts : []
                     implicitHeight: ScaleMetrics.dp(30)
                     Layout.fillWidth: true
@@ -297,10 +328,11 @@ Rectangle {
                 }
 
                 // DIV, SWING and DICE sit at the right edge
-                Item { Layout.fillWidth: true }
+                Item { Layout.fillWidth: true; visible: !root.isAudioTrack }
 
                 // Clock Divider (ordered shortest -> longest step)
                 SeqStepper {
+                    visible: !root.isAudioTrack
                     readonly property var divs: ["1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4"]
                     label: "DIV:"
                     count: divs.length
@@ -313,6 +345,7 @@ Rectangle {
 
                 // Swing: 50% = straight, 66% ≈ triplet shuffle, 75% = hard swing (1% steps)
                 SeqStepper {
+                    visible: !root.isAudioTrack
                     label: "SWING:"
                     count: 26
                     index: Math.round(((root.activeTrackData ? root.activeTrackData.swing : 0.50) - 0.50) * 100)
@@ -326,6 +359,7 @@ Rectangle {
                 SpButton {
                     id: diceChip
                     objectName: "diceChip"
+                    visible: !root.isAudioTrack
                     readonly property bool on: root.activeTrackData ? (root.activeTrackData.diceTiming > 0 || root.activeTrackData.diceVelocity > 0) : false
                     implicitHeight: ScaleMetrics.dp(30)
                     implicitWidth: ScaleMetrics.dp(56)
@@ -385,17 +419,20 @@ Rectangle {
                                     Bridge.seqSelectClip(index);
                                     // Editing a clip also makes it the track's playing clip
                                     // (applied on the next bar when running, at Play when stopped).
-                                    Bridge.seqLaunchClip(Bridge.seqActiveTrack, index);
+                                    // Audio clips only launch from LAUNCH or the live grid.
+                                    if (!root.isAudioTrack)
+                                        Bridge.seqLaunchClip(Bridge.seqActiveTrack, index);
                                 }
                             }
                         }
                     }
                 }
 
-                Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard }
+                Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard; visible: !root.isAudioTrack }
 
                 // Clip Length
                 SeqStepper {
+                    visible: !root.isAudioTrack
                     readonly property var lens: [16, 32, 64, 128]
                     label: "LEN:"
                     count: lens.length
@@ -409,14 +446,16 @@ Rectangle {
                     }
                 }
 
-                // Bar Pages (always shown, one tab per 16 steps)
+                // Bar Pages (always shown on note tracks, one tab per 16 steps)
                 Rectangle {
+                    visible: !root.isAudioTrack
                     width: 1
                     height: ScaleMetrics.dp(20)
                     color: Theme.borderCard
                 }
 
                 RowLayout {
+                    visible: !root.isAudioTrack
                     spacing: ScaleMetrics.dp(4)
                     Text {
                         text: "PAGES:"
@@ -442,6 +481,7 @@ Rectangle {
 
                 // Clear Clip Button
                 Rectangle {
+                    visible: !root.isAudioTrack
                     height: ScaleMetrics.dp(26)
                     width: ScaleMetrics.dp(95)
                     radius: 3
@@ -470,10 +510,18 @@ Rectangle {
             // =====================================================================
             // 4. 16-STEP GRID MATRIX (2 Rows of 8 Steps) or PIANO ROLL
             // =====================================================================
+            SeqAudioClipView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: root.isAudioTrack
+                clipData: root.activeClipData
+                trackColor: root.currentTrackColor
+            }
+
             SeqPianoRoll {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                visible: root.rollView
+                visible: root.rollView && !root.isAudioTrack
                 stepsList: root.stepsList
                 page: root.currentStepPage
                 trackColor: root.currentTrackColor
@@ -489,7 +537,7 @@ Rectangle {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                visible: !root.rollView
+                visible: !root.rollView && !root.isAudioTrack
                 radius: ScaleMetrics.dp(6)
                 color: Theme.bgApp
                 border.color: Theme.borderCard
@@ -537,6 +585,7 @@ Rectangle {
             // =====================================================================
             Rectangle {
                 Layout.fillWidth: true
+                visible: !root.isAudioTrack
                 height: ScaleMetrics.dp(82)
                 radius: ScaleMetrics.dp(6)
                 color: Theme.bgApp

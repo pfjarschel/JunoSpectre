@@ -17,6 +17,7 @@ from ...core.waves import WaveCatalogManager
 from ...core.wifi import WifiManager, WifiStatus
 from ...vector.engine import VectorEngine
 from .arpeggio import ArpBridgeMixin
+from .audio import AudioBridgeMixin
 from .automation import AutomationBridgeMixin
 from .controllers import ControllersBridgeMixin
 from .follow import FollowBridgeMixin
@@ -38,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 class SpectreBridge(
     SequencerBridgeMixin,
+    AudioBridgeMixin,
     AutomationBridgeMixin,
     SetlistBridgeMixin,
     SystemBridgeMixin,
@@ -180,6 +182,7 @@ class SpectreBridge(
         self._init_arp()
         self._init_tmt()
         self._init_follow()
+        self._init_audio()
 
         # Subscribe to vector engine state updates
         self.vector.subscribe(self._on_vector_state_changed)

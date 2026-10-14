@@ -209,6 +209,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             out.append({
                 "trackId": t.track_id,
                 "name": t.name,
+                "kind": t.kind,
                 "isDrum": t.is_drum,
                 "targetParts": list(t.target_parts),
                 "targetPart": target_part,
@@ -228,6 +229,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
                         "name": c.name,
                         "length": c.length,
                         "hasNotes": any(s.is_active for s in c.steps),
+                        **(self._audio_clip_dict(c) if t.is_audio else {}),
                     }
                     for c in t.clips
                 ],
@@ -734,14 +736,23 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     # QML Recording Slots
     # -------------------------------------------------------------------------
 
+    def _seq_active_is_audio(self) -> bool:
+        tracks = self.sequencer.song.tracks if hasattr(self, "sequencer") else []
+        t_idx = getattr(self, "_active_seq_track", 0)
+        return 0 <= t_idx < len(tracks) and tracks[t_idx].is_audio
+
     @pyqtSlot(bool)
     def seqToggleStepRecord(self, enabled: bool) -> None:
+        if enabled and self._seq_active_is_audio():
+            return  # audio tracks don't record notes
         if hasattr(self, "recorder"):
             self.recorder.toggle_step_record(enabled)
             self.seqRecordModeChanged.emit()
 
     @pyqtSlot(bool)
     def seqToggleLiveRecord(self, enabled: bool) -> None:
+        if enabled and self._seq_active_is_audio():
+            return
         if hasattr(self, "recorder"):
             self.recorder.toggle_live_record(enabled)
             self.seqRecordModeChanged.emit()

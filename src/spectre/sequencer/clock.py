@@ -27,6 +27,9 @@ class SequencerClock:
 
         self._tick_counter: int = 0
         self._total_ticks: int = 0
+        # perf_counter() time the tick being fired was due (callbacks schedule from it)
+        self.tick_time: float = 0.0
+        self._start_at: Optional[float] = None
 
         self._tick_callbacks: list[Callable[[int, int], None]] = []
 
@@ -37,6 +40,11 @@ class SequencerClock:
     def set_bpm(self, bpm: float) -> None:
         self._bpm = max(20.0, min(300.0, float(bpm)))
         self._tick_interval = 60.0 / (self._bpm * self.ppqn)
+
+    @property
+    def tick_interval(self) -> float:
+        """Seconds per tick (without swing)."""
+        return self._tick_interval
 
     @property
     def swing(self) -> float:
@@ -70,10 +78,12 @@ class SequencerClock:
         if callback in self._tick_callbacks:
             self._tick_callbacks.remove(callback)
 
-    def start(self) -> None:
+    def start(self, at: Optional[float] = None) -> None:
+        """Run from tick 0, the first tick at perf_counter() time `at` (None = now)."""
         if self._running:
             self._paused = False
             return
+        self._start_at = at
         self._running = True
         self._paused = False
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name="SequencerPPQNClock")
@@ -103,7 +113,7 @@ class SequencerClock:
 
     def _run_loop(self) -> None:
         """High-resolution hybrid sleep / spin-wait loop."""
-        target_time = time.perf_counter()
+        target_time = self._start_at if self._start_at is not None else time.perf_counter()
         ticks_per_16th = self.ppqn // 4  # 24 ticks per 16th note at 96 PPQN
 
         while self._running:
@@ -133,6 +143,7 @@ class SequencerClock:
 
             tick_num = self._tick_counter
             tot_num = self._total_ticks
+            self.tick_time = target_time
 
             # Advance tick counters
             bar_ticks = self.ppqn * 4  # 384 ticks per 4/4 bar

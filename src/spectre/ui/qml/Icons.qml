@@ -78,6 +78,8 @@ QtObject {
         "down": "\ue136",  // caret-down
         "forward": "\ue06c",  // arrow-right
         // Waves
+        "track.notes": "\ue340",  // music-notes (NOTES track)
+        "track.audio": "\ue802",  // waveform (AUDIO track / audio file)
         "wave.sine": "\uea9a",  // wave-sine
         "wave.saw": "\uea9c",  // wave-sawtooth
         "wave.square": "\uea9e",  // wave-square
