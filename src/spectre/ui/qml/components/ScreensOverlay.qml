@@ -271,7 +271,7 @@ Rectangle {
                             Layout.fillWidth: true
                             viewKey: "LIVE"
                             title: "LIVE MODE"
-                            subtitle: "8-track session matrix & 8 live macros"
+                            subtitle: "16-track clip & scene launcher, motion lanes"
                             accentColor: Theme.catPerform
                         }
 

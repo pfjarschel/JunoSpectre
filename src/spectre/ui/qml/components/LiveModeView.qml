@@ -35,19 +35,9 @@ Rectangle {
             Layout.fillWidth: true
             spacing: ScaleMetrics.dp(8)
 
-            Rectangle {
-                width: ScaleMetrics.dp(8)
-                height: ScaleMetrics.dp(8)
-                radius: 4
-                color: Bridge.seqIsPlaying ? Theme.playing : Theme.pageAccent
-            }
-
-            Text {
-                text: "LIVE SESSION MATRIX"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(12)
-                font.letterSpacing: 1.2
-                color: Theme.textPrimary
+            PageTitle {
+                text: "LIVE MODE"
+                accent: Bridge.seqIsPlaying ? Theme.playing : Theme.pageAccent
             }
 
             // Note tracks or automation lanes
@@ -133,59 +123,7 @@ Rectangle {
                 }
             }
 
-            // Switch to Sequencer
-            Rectangle {
-                height: ScaleMetrics.dp(28)
-                width: ScaleMetrics.dp(100)
-                radius: 4
-                color: Theme.bgApp
-                border.color: Theme.pageAccent
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(4)
-                    Icon { name: "screen.seq"; size: 12; color: Theme.pageAccent }
-                    Text {
-                        text: "SEQUENCER"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.pageAccent
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Bridge.setActiveView("SEQUENCER")
-                }
-            }
-
-            // Switch to Setlist
-            Rectangle {
-                height: ScaleMetrics.dp(28)
-                width: ScaleMetrics.dp(75)
-                radius: 4
-                color: Theme.bgApp
-                border.color: Theme.pageAccent
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(4)
-                    Icon { name: "screen.setlist"; size: 12; color: Theme.pageAccent }
-                    Text {
-                        text: "SETLIST"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.pageAccent
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Bridge.setActiveView("SETLIST")
-                }
-            }
+            PageLinks { group: "perform" }
         }
 
         // =====================================================================

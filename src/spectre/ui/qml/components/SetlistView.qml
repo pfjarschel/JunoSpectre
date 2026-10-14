@@ -11,7 +11,18 @@ Rectangle {
     border.color: Theme.borderCard
     border.width: 1
 
-    property int selectedIndex: Bridge.setlistIndex >= 0 ? Bridge.setlistIndex : 0
+    // Read once per change (each Bridge read rebuilds every entry)
+    readonly property var entries: Bridge.setlistEntries
+    // The song LOAD & ACTIVATE plays; follows the sounding song on every change
+    property int selectedIndex: Math.max(0, Bridge.setlistIndex)
+
+    Connections {
+        target: Bridge
+        function onSongActivated(index) { root.selectedIndex = index }
+        function onSetlistChanged() {
+            root.selectedIndex = Math.max(0, Math.min(root.selectedIndex, Bridge.setlistCount - 1))
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -23,46 +34,26 @@ Rectangle {
             Layout.fillWidth: true
             spacing: ScaleMetrics.dp(8)
 
-            Rectangle {
-                width: ScaleMetrics.dp(8); height: ScaleMetrics.dp(8); radius: 4
-                color: Theme.pageAccent
-            }
+            PageTitle { text: "SETLIST" }
             Text {
-                text: "SETLIST & REPERTOIRE"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(12)
-                font.letterSpacing: 1.2
-                color: Theme.textPrimary
-            }
-            Text {
-                text: "• " + (Bridge.setlistPath !== "" ? Bridge.setlistPath : "Untitled Setlist")
+                Layout.fillWidth: true
+                text: "• " + (Bridge.setlistPath !== "" ? Bridge.setlistPath : "Unsaved setlist")
                 font.pixelSize: ScaleMetrics.sp(9)
                 font.italic: true
                 color: Theme.pageAccent
+                elide: Text.ElideRight
             }
-            Item { Layout.fillWidth: true }
 
             // + Add Current Song
-            Rectangle {
-                height: ScaleMetrics.dp(28)
-                implicitWidth: ScaleMetrics.dp(120)
-                radius: 4
-                color: addMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: Theme.pageAccent
-                border.width: 1
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: 4
-                    Text { text: "+"; font.bold: true; font.pixelSize: ScaleMetrics.sp(11); color: Theme.pageAccent }
-                    Text { text: "ADD CURRENT"; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.pageAccent }
-                }
-                MouseArea {
-                    id: addMouse
-                    anchors.fill: parent
-                    onClicked: {
-                        Bridge.addCurrentToSetlist("")
+            SpButton {
+                implicitHeight: ScaleMetrics.dp(28)
+                icon: "add"
+                text: "ADD CURRENT"
+                fontSize: 8
+                variant: "outline"
+                onClicked: {
+                    if (Bridge.addCurrentToSetlist(""))
                         root.selectedIndex = Bridge.setlistCount - 1
-                    }
                 }
             }
 
@@ -83,6 +74,10 @@ Rectangle {
                 fontSize: 8
                 onClicked: Bridge.saveSetlistAuto()
             }
+
+            Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard }
+
+            PageLinks { group: "perform" }
         }
 
         // 2. Main Workspace: 2-Column Layout
@@ -106,7 +101,7 @@ Rectangle {
                     anchors.fill: parent
                     anchors.margins: ScaleMetrics.dp(6)
                     spacing: ScaleMetrics.dp(5)
-                    model: Bridge.setlistEntries
+                    model: root.entries
                     boundsBehavior: Flickable.StopAtBounds
 
                     delegate: Rectangle {
@@ -165,7 +160,7 @@ Rectangle {
                                     elide: Text.ElideRight
                                 }
                                 Text {
-                                    text: modelData.songPath !== "" ? modelData.songPath : "Embedded Snapshot"
+                                    text: modelData.songFile !== "" ? modelData.songFile : "Snapshot only (no song file)"
                                     font.pixelSize: ScaleMetrics.sp(7)
                                     color: Theme.textDim
                                     elide: Text.ElideRight
@@ -186,9 +181,14 @@ Rectangle {
                                 }
                             }
 
-                            // Health status badge
+                            // Link health badge (UPDATED: tap to take the song file's new version)
                             Rectangle {
                                 width: ScaleMetrics.dp(56); height: ScaleMetrics.dp(20); radius: 3
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: modelData.status === "updated"
+                                    onClicked: Bridge.refreshSetlistEntry(modelData.index)
+                                }
                                 color: {
                                     if (modelData.status === "ok") return Theme.tint(Theme.playing, 0.25)
                                     if (modelData.status === "updated") return Theme.tint(Theme.warning, 0.25)
@@ -250,7 +250,7 @@ Rectangle {
                     Text {
                         anchors.centerIn: parent
                         visible: Bridge.setlistCount === 0
-                        text: "Setlist is empty.\nTap '+ ADD CURRENT' to snapshot active songs into this repertoire."
+                        text: "Setlist is empty.\nTap ADD CURRENT to add the song playing now."
                         font.pixelSize: ScaleMetrics.sp(9)
                         font.italic: true
                         color: Theme.textDim
@@ -294,8 +294,8 @@ Rectangle {
                             anchors.centerIn: parent
                             spacing: 2
                             Text {
-                                text: Bridge.setlistCount > 0 && root.selectedIndex < Bridge.setlistCount
-                                      ? Bridge.setlistEntries[root.selectedIndex].name
+                                text: root.selectedIndex < root.entries.length
+                                      ? root.entries[root.selectedIndex].name
                                       : "No Song Selected"
                                 font.bold: true
                                 font.pixelSize: ScaleMetrics.sp(12)
@@ -364,10 +364,7 @@ Rectangle {
                             MouseArea {
                                 id: prevMouse
                                 anchors.fill: parent
-                                onClicked: {
-                                    if (root.selectedIndex > 0) root.selectedIndex--
-                                    Bridge.prevSong()
-                                }
+                                onClicked: Bridge.prevSong()
                             }
                         }
 
@@ -385,42 +382,12 @@ Rectangle {
                             MouseArea {
                                 id: nextMouse
                                 anchors.fill: parent
-                                onClicked: {
-                                    if (root.selectedIndex + 1 < Bridge.setlistCount) root.selectedIndex++
-                                    Bridge.nextSong()
-                                }
+                                onClicked: Bridge.nextSong()
                             }
                         }
                     }
 
                     Item { Layout.fillHeight: true }
-
-                    // Navigation Quick Links
-                    Rectangle { width: parent.width; height: 1; color: Theme.borderCard }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: ScaleMetrics.dp(6)
-
-                        SpButton {
-                            Layout.fillWidth: true
-                            implicitHeight: ScaleMetrics.dp(32)
-                            icon: "screen.live"
-                            text: "LIVE MODE"
-                            fontSize: 8
-                            variant: "outline"
-                            onClicked: Bridge.setActiveView("LIVE")
-                        }
-
-                        SpButton {
-                            Layout.fillWidth: true
-                            implicitHeight: ScaleMetrics.dp(32)
-                            icon: "screen.perf"
-                            text: "MIXER"
-                            fontSize: 8
-                            onClicked: Bridge.setActiveView("PERFORMANCE")
-                        }
-                    }
                 }
             }
         }

@@ -162,8 +162,11 @@ def test_playlist_entry_status_lifecycle(tmp_path: Path):
     loaded = load_spectre(perf_file)
     assert loaded["kind"] == "performance"
     entry = make_playlist_entry("Opener", patch_state_to_dict(loaded["patch_state"]),
-                                perf_path=str(perf_file))
+                                song_path=str(perf_file))
     assert playlist_entry_status(entry) == "ok"
+    # Entries from older setlist files name the link perf_path
+    legacy = dict(entry, perf_path=entry["song_path"], song_path="")
+    assert playlist_entry_status(legacy) == "ok"
     # Touch the linked file -> stale badge until refreshed
     state2 = PatchState()
     state2.perf_name = "GIG V2"
@@ -436,36 +439,40 @@ def test_librarian_cancel_returns_to_previous(tmp_path):
     assert bridge._pending_view == ""
 
 
-def test_playlist_load_navigates_to_mixer(tmp_path):
+def test_setlist_file_load_opens_setlist(tmp_path):
     bridge, _ = _offline_bridge(tmp_path)
-    assert bridge.addCurrentToPlaylist() is True
-    assert bridge.savePlaylistAuto() is True
-    path = bridge._playlist_path
+    assert bridge.addCurrentToSetlist("") is True
+    assert bridge.saveSetlistAuto() is True
+    path = bridge._setlist_path
+    bridge.newSetlist()
     bridge.setActiveView("LIBRARIAN")
-    assert bridge.loadPlaylist(path) is True
-    assert bridge.playlistCount == 1
-    assert bridge._pending_view == "PERFORMANCE"
+    assert bridge.loadSpectreFile(path) is True
+    assert bridge.setlistCount == 1
+    assert bridge.setlistIndex == -1  # nothing sounds until a song is activated
+    assert bridge._pending_view == "SETLIST"
     bridge.toggleLibrarian()
-    assert bridge._active_view == "PERFORMANCE"
+    assert bridge._active_view == "SETLIST"
 
 
-def test_playlist_save_new_cycle(tmp_path):
+def test_setlist_save_new_cycle(tmp_path):
     bridge, _, _ = _bridge_rig(tmp_path)
-    assert bridge.playlistPath == ""
-    assert bridge.addCurrentToPlaylist() is True
-    assert bridge.savePlaylistAuto() is True
-    assert bridge.playlistPath.endswith(".spectre")
-    assert bridge.newPlaylist() is None
-    assert bridge.playlistCount == 0
-    assert bridge.playlistPath == ""
+    assert bridge.setlistPath == ""
+    assert bridge.addCurrentToSetlist("") is True
+    assert bridge.saveSetlistAuto() is True
+    assert bridge.setlistPath == "Setlist 1.spectre"
+    assert bridge.saveSetlistAuto() is True  # overwrites, no Setlist 2
+    assert bridge.setlistPath == "Setlist 1.spectre"
+    assert bridge.newSetlist() is None
+    assert bridge.setlistCount == 0
+    assert bridge.setlistPath == ""
 
 
 def test_setlist_filter_finds_saved_playlist(tmp_path):
     bridge, _, repo = _bridge_rig(tmp_path)
-    assert bridge.addCurrentToPlaylist() is True
-    assert bridge.savePlaylistAuto() is True
+    assert bridge.addCurrentToSetlist("") is True
+    assert bridge.saveSetlistAuto() is True
     hits = repo.search("", kind="playlist")
-    assert any(h["path"] == bridge._playlist_path for h in hits)
+    assert any(h["path"] == bridge._setlist_path for h in hits)
     # A patch file must not leak into the setlist filter.
     out = bridge.saveCurrentToFile("PLAIN", "", "", False, "")
     assert out
@@ -540,40 +547,139 @@ def test_ok_keeps_auditioned_sound(tmp_path):
 def _three_song_bridge(tmp_path):
     bridge, _, _ = _bridge_rig(tmp_path)
     for title in ("Song A", "Song B", "Song C"):
-        bridge.patch_state.perf_name = title
-        assert bridge.addCurrentToPlaylist() is True
-    assert bridge.playlistCount == 3
+        assert bridge.addCurrentToSetlist(title) is True
+    assert bridge.setlistCount == 3
     return bridge
 
 
 def _pl_names(bridge):
-    return [e["name"] for e in bridge.playlistEntries]
+    return [e["name"] for e in bridge.setlistEntries]
 
 
-def test_playlist_move_keeps_highlight(tmp_path):
+def test_setlist_move_keeps_highlight(tmp_path):
     bridge = _three_song_bridge(tmp_path)
-    bridge._playlist_index = 1  # Song B highlighted
-    assert bridge.movePlaylistEntry(0, 2) is True
+    bridge._setlist_index = 1  # Song B highlighted
+    assert bridge.reorderSetlistEntry(0, 2) is True
     assert _pl_names(bridge) == ["Song B", "Song C", "Song A"]
-    assert bridge.playlistIndex == 0  # highlight followed Song B
-    assert bridge.movePlaylistEntry(2, 0) is True
+    assert bridge.setlistIndex == 0  # highlight followed Song B
+    assert bridge.reorderSetlistEntry(2, 0) is True
     assert _pl_names(bridge) == ["Song A", "Song B", "Song C"]
-    assert bridge.movePlaylistEntry(0, 0) is False
-    assert bridge.movePlaylistEntry(5, 0) is False
-    assert bridge.movePlaylistEntry(0, 9) is False
+    assert bridge.reorderSetlistEntry(0, 0) is False
+    assert bridge.reorderSetlistEntry(5, 0) is False
+    assert bridge.reorderSetlistEntry(0, 9) is False
     assert _pl_names(bridge) == ["Song A", "Song B", "Song C"]
 
 
-def test_playlist_remove_tracks_highlight(tmp_path):
+def test_setlist_move_highlight_follows_identity(tmp_path):
+    # Two entries of the same song are equal dicts: the highlight must follow
+    # the one that was sounding, not the first look-alike
+    bridge, _, _ = _bridge_rig(tmp_path)
+    for _ in range(3):
+        assert bridge.addCurrentToSetlist("Same") is True
+    bridge._setlist_index = 2
+    assert bridge.reorderSetlistEntry(0, 1) is True
+    assert bridge.setlistIndex == 2
+
+
+def test_setlist_remove_tracks_highlight(tmp_path):
     bridge = _three_song_bridge(tmp_path)
-    assert bridge.removePlaylistEntry(5) is False
-    bridge._playlist_index = 2  # Song C highlighted
-    assert bridge.removePlaylistEntry(0) is True
+    assert bridge.removeSetlistEntry(5) is False
+    bridge._setlist_index = 2  # Song C highlighted
+    assert bridge.removeSetlistEntry(0) is True
     assert _pl_names(bridge) == ["Song B", "Song C"]
-    assert bridge.playlistIndex == 1  # highlight followed Song C
-    assert bridge.removePlaylistEntry(1) is True  # remove highlighted
+    assert bridge.setlistIndex == 1  # highlight followed Song C
+    assert bridge.removeSetlistEntry(1) is True  # remove the sounding song
     assert _pl_names(bridge) == ["Song B"]
-    assert bridge.playlistIndex == 0
+    assert bridge.setlistIndex == -1  # Song B is not what sounds
+
+
+def test_setlist_midi_actions_step_songs(tmp_path):
+    bridge = _three_song_bridge(tmp_path)
+    bridge._setlist_index = -1
+    bridge._ctl_run_action("playlist.next")
+    assert bridge.setlistIndex == 0
+    bridge._ctl_run_action("playlist.next")
+    assert bridge.setlistIndex == 1
+    bridge._ctl_run_action("playlist.prev")
+    assert bridge.setlistIndex == 0
+    bridge._setlist_index = 2
+    assert bridge.nextSong() is False  # stops at the last song
+    assert bridge.setlistIndex == 2
+
+
+def test_setlist_song_restores_its_macros(tmp_path):
+    from src.spectre.core.patch_state import MacroLink, MacroSlot
+
+    bridge, _, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    bridge.patch_state.macros[0] = MacroSlot(
+        name="SONG A", value=0.5, links=[MacroLink("common.cutoff_offset", 1, 0.5, [])])
+    bridge.patch_state.macro_bases = {"common.cutoff_offset": 64.0}
+    assert bridge.addCurrentToSetlist("A") is True
+    bridge.patch_state.macros[0] = MacroSlot(name="SONG B", value=-1.0, links=[])
+    bridge.patch_state.macro_bases = {}
+    assert bridge.addCurrentToSetlist("B") is True
+
+    assert bridge.activateSong(0) is True
+    m = bridge.patch_state.macros[0]
+    assert (m.name, m.value) == ("SONG A", 0.5)
+    assert [lk.target_key for lk in m.links] == ["common.cutoff_offset"]
+    # Bases come with the song: the image already sounds base + macro
+    assert bridge.patch_state.macro_bases == {"common.cutoff_offset": 64.0}
+    assert bridge.activateSong(1) is True
+    assert (bridge.patch_state.macros[0].name, bridge.patch_state.macros[0].value) == ("SONG B", -1.0)
+
+
+def test_song_file_load_restores_macros_and_panics(tmp_path):
+    from src.spectre.core.patch_state import MacroSlot
+
+    bridge, juno, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    bridge.patch_state.macros[0] = MacroSlot(name="FILE", value=0.25, links=[])
+    out = bridge.saveCurrentToFile("SONGF", "", "", False, "")
+    assert out
+    bridge.patch_state.macros[0] = MacroSlot(name="OTHER", value=0.0, links=[])
+    juno.midi.send_all_notes_off = MagicMock()
+    assert bridge.loadSpectreFile(out) is True
+    assert (bridge.patch_state.macros[0].name, bridge.patch_state.macros[0].value) == ("FILE", 0.25)
+    juno.midi.send_all_notes_off.assert_called_once_with(include_reset=True)
+
+
+def test_setlist_add_current_links_the_song_file(tmp_path):
+    bridge, _, _ = _bridge_rig(tmp_path)
+    bridge.setSoundMode("PERFORM")
+    out = bridge.saveCurrentToFile("LINKED", "", "", False, "")
+    assert out
+    assert bridge.addCurrentToSetlist("") is True
+    e = bridge.setlistEntries[0]
+    assert e["songPath"] == out
+    assert e["status"] == "ok"
+    # The song file changes on disk: opening the page shows UPDATED, tap refreshes
+    loaded = load_spectre(out)
+    loaded["patch_state"].perf_name = "LINKED V2"
+    save_spectre(out, loaded["patch_state"], kind="performance", spectre=loaded.get("spectre"))
+    bridge.setActiveView("SETLIST")
+    assert bridge.setlistEntries[0]["status"] == "updated"
+    assert bridge.refreshSetlistEntry(0) is True
+    assert bridge.setlistEntries[0]["status"] == "ok"
+    # Activating a linked song makes that file the current song
+    bridge._current_ref = None
+    assert bridge.activateSong(0) is True
+    assert bridge._current_ref == {"source": "file", "kind": "performance", "path": out}
+
+
+def test_setlist_add_current_snapshots_unsaved_song(tmp_path):
+    bridge, _, _ = _bridge_rig(tmp_path)
+    bridge._current_ref = None
+    bridge.seqSelectTrack(0)
+    bridge.seqSetStepParam(2, "pitch", 67)
+    assert bridge.addCurrentToSetlist("JAM") is True
+    e = bridge.setlistEntries[0]
+    assert (e["songPath"], e["status"]) == ("", "unsaved")
+    assert bridge._setlist_entries[0]["sequencer"]["bpm"] == bridge.bpm
+    bridge.seqClearStep(2)
+    assert bridge.activateSong(0) is True
+    assert bridge.seqActiveClipSteps[2]["primaryPitch"] == 67  # the sequence came back
 
 
 def _sysex_addr(mock_midi_mgr):
@@ -778,7 +884,7 @@ def test_part_mfx_select_indexing(tmp_path):
         assert juno._store[(0x10, 0x00, 0x20, 0x20)] == bytes([expect])
 
 
-def test_playlist_load_pushes_part_and_common_fx(tmp_path):
+def test_setlist_song_pushes_part_and_common_fx(tmp_path):
     bridge, juno, _ = _bridge_rig(tmp_path)
     bridge.patch_state.perf_name = "FXGIG"
     bridge.patch_state.perf_parts[0].dry_send = 90
@@ -786,14 +892,14 @@ def test_playlist_load_pushes_part_and_common_fx(tmp_path):
     bridge.patch_state.perf_fx.mfx1.source = 4
     bridge.patch_state.perf_fx.mfx_structure = 7
     bridge.patch_state.perf_fx.chorus_type = 2
-    assert bridge.addCurrentToPlaylist() is True
-    assert bridge.savePlaylistAuto() is True
-    path = bridge._playlist_path
+    assert bridge.addCurrentToSetlist("") is True
+    assert bridge.saveSetlistAuto() is True
+    path = bridge._setlist_path
     # Reset hardware store markers, reload from file
     juno._store.pop((0x10, 0x00, 0x20, 0x1C), None)
     juno._store.pop((0x10, 0x00, 0x20, 0x20), None)
-    assert bridge.loadPlaylist(path) is True
-    assert bridge.loadPlaylistEntry(0) is True
+    assert bridge.loadSetlist(path) is True
+    assert bridge.activateSong(0) is True
     assert juno._store[(0x10, 0x00, 0x20, 0x1C)] == bytes([90])
     assert juno._store[(0x10, 0x00, 0x20, 0x20)] == bytes([2])
     assert juno._store[(0x10, 0x00, 0x00, 0x30)] == bytes([4])

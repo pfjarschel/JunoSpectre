@@ -91,15 +91,10 @@ class SpectreBridge(
         # {source, kind, msb, lsb, pc} for slots, or {source: "file", path}
         # for Pi files. Drives the save dialog defaults.
         self._current_ref: Optional[dict] = None
-        # Playlist / live setlist: ordered song entries (see spectre_format
-        # make_playlist_entry). Pure data; persisted as kind="playlist" files.
-        self._playlist: list = []
-        self._playlist_index: int = -1
 
         # Initialize sequencer & setlist subsystems
         self._init_sequencer()
         self._init_setlist()
-        self._playlist_path: str = ""
         # Librarian pick mode: 0 = normal audition, N = picking a patch for part N.
         self._pick_target: int = 0
         # Destination view proposed after Librarian closes (set by auditions,

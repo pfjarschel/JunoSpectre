@@ -498,8 +498,8 @@ Rectangle {
                                         root.statusText = ok ? ("Part " + tgt + " ← " + name + ".") : "Assign failed."
                                     }
                                 } else if (kind !== undefined && kind === "playlist") {
-                                    ok = Bridge.loadPlaylist(path)
-                                    root.statusText = ok ? "Playlist loaded — see PERFORMANCE setlist." : "Playlist load failed."
+                                    ok = Bridge.loadSpectreFile(path)
+                                    root.statusText = ok ? "Setlist loaded — OK opens the SETLIST page." : "Setlist load failed."
                                 } else if (kind !== undefined && kind === "performance"
                                            && path !== undefined && String(path).slice(-8) === ".spectre") {
                                     // Pi file: the whole song (parts, snapshots, sequence)

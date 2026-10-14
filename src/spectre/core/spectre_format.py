@@ -375,17 +375,19 @@ def describe_for_index(loaded: Dict[str, Any]) -> Tuple[str, str, list[str], boo
 
 
 # ---------------------------------------------------------------------------
-# Playlists (kind="playlist"): ordered songs for live use.
-# Hybrid link + snapshot design: each entry links a performance file AND embeds
-# a snapshot of it, so a moved/deleted file degrades to a stale badge instead
-# of a dead song. Entry shape:
+# Playlists (kind="playlist"): the setlist, ordered songs for live use.
+# Hybrid link + snapshot design: each entry links a song (performance) file AND
+# embeds a snapshot of it, so a moved/deleted file degrades to a stale badge
+# instead of a dead song. Entry shape:
 # {
-#   "name": "Song title", "perf_path": "/path/to/perf.spectre" | "",
-#   "synth_ref": {...} | None, "snapshot_hash": "sha1:..." | "",
-#   "cached": {<patch_state dict>} | None,   # embedded fallback image
-#   "macros": [...],                          # song-local macro values
-#   "seq_pattern": [bool x16] | None,
+#   "name": "Song title", "song_path": "/path/to/song.spectre" | "",
+#   "snapshot_hash": "sha1:..." | "",
+#   "cached": {<patch_state dict>} | None,   # embedded fallback image (macros included)
+#   "part_snapshots": {"<part>": <patch_state dict>},
+#   "sequencer": {<SequencerSong dict>} | None,
+#   "bpm": 120.0, "arp": {...} (optional),
 # }
+# Older entries name the link "perf_path"; entry_song_path() reads both.
 # ---------------------------------------------------------------------------
 
 def _canonical_json(obj: Any) -> str:
@@ -402,22 +404,46 @@ def snapshot_hash_of(patch_dict: Any) -> str:
         return ""
 
 
-def make_playlist_entry(name: str, patch_dict: Optional[Dict[str, Any]] = None,
-                        perf_path: str = "",
-                        synth_ref: Optional[Dict[str, Any]] = None,
-                        macros: Optional[list] = None,
-                        seq_pattern: Optional[list] = None) -> Dict[str, Any]:
-    """Build one playlist entry with an embedded snapshot of the performance."""
+def entry_song_path(entry: Dict[str, Any]) -> str:
+    """The song file a setlist entry links ('' when snapshot only)."""
+    if not isinstance(entry, dict):
+        return ""
+    return str(entry.get("song_path") or entry.get("perf_path") or "")
+
+
+def _set_entry_snapshot(entry: Dict[str, Any], patch_dict: Optional[Dict[str, Any]],
+                        spectre: Optional[Dict[str, Any]]) -> None:
+    """Embed a song (image + part sounds + sequence + arp) into the entry."""
     cached = copy.deepcopy(patch_dict) if isinstance(patch_dict, dict) else None
-    return {
-        "name": str(name or "Untitled")[:48],
-        "perf_path": str(perf_path or ""),
-        "synth_ref": normalize_synth_ref(synth_ref),
-        "snapshot_hash": snapshot_hash_of(cached) if cached is not None else "",
-        "cached": cached,
-        "macros": list(macros) if isinstance(macros, list) else [],
-        "seq_pattern": [bool(x) for x in seq_pattern[:16]] if isinstance(seq_pattern, list) else None,
-    }
+    extras = spectre if isinstance(spectre, dict) else {}
+    snaps = extras.get("part_snapshots")
+    seq = extras.get("sequencer")
+    entry["cached"] = cached
+    entry["snapshot_hash"] = snapshot_hash_of(cached) if cached is not None else ""
+    entry["part_snapshots"] = copy.deepcopy(snaps) if isinstance(snaps, dict) else {}
+    entry["sequencer"] = copy.deepcopy(seq) if isinstance(seq, dict) else None
+    try:
+        entry["bpm"] = float((seq or {}).get("bpm") or entry.get("bpm") or 120.0)
+    except (TypeError, ValueError):
+        entry["bpm"] = 120.0
+    if isinstance(extras.get("arp"), dict):
+        entry["arp"] = copy.deepcopy(extras["arp"])
+    else:
+        entry.pop("arp", None)
+
+
+def make_playlist_entry(name: str, patch_dict: Optional[Dict[str, Any]] = None,
+                        song_path: str = "",
+                        spectre: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Build one setlist entry: a link to the song file plus its embedded snapshot.
+
+    `spectre` carries the song's extras ("part_snapshots", "sequencer", "arp"),
+    as a performance file stores them.
+    """
+    entry: Dict[str, Any] = {"name": str(name or "Untitled")[:48],
+                             "song_path": str(song_path or "")}
+    _set_entry_snapshot(entry, patch_dict, spectre)
+    return entry
 
 
 def playlist_entry_status(entry: Dict[str, Any]) -> str:
@@ -430,7 +456,7 @@ def playlist_entry_status(entry: Dict[str, Any]) -> str:
     """
     if not isinstance(entry, dict):
         return "unsaved"
-    path = str(entry.get("perf_path") or "")
+    path = entry_song_path(entry)
     if not path:
         return "unsaved" if entry.get("cached") is not None else "missing"
     p = Path(path)
@@ -445,13 +471,9 @@ def playlist_entry_status(entry: Dict[str, Any]) -> str:
 
 
 def refresh_entry_snapshot(entry: Dict[str, Any]) -> Dict[str, Any]:
-    """Re-read the linked file into the entry snapshot. Returns the entry."""
-    path = str(entry.get("perf_path") or "")
-    loaded = load_spectre(path)  # raises when unreadable; caller reports
-    cached = patch_state_to_dict(loaded["patch_state"])
-    entry["cached"] = cached
-    entry["snapshot_hash"] = snapshot_hash_of(cached)
-    entry["synth_ref"] = normalize_synth_ref(loaded.get("synth_ref"))
+    """Re-read the linked song file into the entry snapshot. Returns the entry."""
+    loaded = load_spectre(entry_song_path(entry))  # raises when unreadable; caller reports
+    _set_entry_snapshot(entry, patch_state_to_dict(loaded["patch_state"]), loaded.get("spectre"))
     if not str(entry.get("name") or ""):
         entry["name"] = str((loaded.get("meta") or {}).get("name") or "Untitled")[:48]
     return entry

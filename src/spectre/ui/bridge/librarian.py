@@ -346,6 +346,8 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
             self._current_ref = {"source": "file", "kind": kind, "path": str(out)}
             self.currentRefChanged.emit()
             self.librarianChanged.emit()
+            if is_perf:
+                self._setlist_recheck()  # a linked song may now differ from its snapshot
             try:
                 self._patch_name = state.perf_name if is_perf else state.common.name
                 self.patchInfoChanged.emit(self._patch_name, self._sound_mode)

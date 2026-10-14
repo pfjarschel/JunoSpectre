@@ -117,20 +117,7 @@ Rectangle {
             Layout.fillWidth: true
             spacing: ScaleMetrics.dp(8)
 
-            Rectangle {
-                width: ScaleMetrics.dp(8)
-                height: ScaleMetrics.dp(8)
-                radius: 4
-                color: Theme.pageAccent
-            }
-
-            Text {
-                text: "STEP SEQUENCER & MOTION"
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(12)
-                font.letterSpacing: 1.2
-                color: Theme.textPrimary
-            }
+            PageTitle { text: "SEQUENCER" }
 
             // Note tracks (step pads or piano roll) or automation lanes
             Row {
@@ -196,31 +183,7 @@ Rectangle {
 
             Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard }
 
-            // Switch to Live Session Matrix
-            Rectangle {
-                height: ScaleMetrics.dp(28)
-                width: ScaleMetrics.dp(105)
-                radius: 4
-                color: Theme.bgApp
-                border.color: Theme.pageAccent
-                border.width: 1
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(4)
-                    Icon { name: "screens"; size: 12; color: Theme.pageAccent }
-                    Text {
-                        text: "LIVE MATRIX"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.pageAccent
-                    }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: Bridge.setActiveView("LIVE")
-                }
-            }
+            PageLinks { group: "perform" }
         }
 
         // Notes mode: rows 2-5. Motion mode (automation lanes) replaces them.

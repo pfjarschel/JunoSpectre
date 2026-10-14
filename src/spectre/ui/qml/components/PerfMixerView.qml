@@ -71,30 +71,7 @@ Rectangle {
                 checked: Bridge.soundMode === "PERFORM"
                 onClicked: Bridge.setSoundMode(Bridge.soundMode === "PERFORM" ? "PATCH" : "PERFORM")
             }
-            // Open Setlist View
-            Rectangle {
-                width: ScaleMetrics.dp(80); height: ScaleMetrics.dp(26)
-                radius: ScaleMetrics.dp(4)
-                color: setlistMouse.pressed ? Theme.bgCardActive : Theme.bgSurface
-                border.color: Theme.pageAccent
-                border.width: 1
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: ScaleMetrics.dp(4)
-                    Icon { name: "screen.setlist"; size: 12; color: Theme.pageAccent }
-                    Text {
-                        text: "SETLIST"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.pageAccent
-                    }
-                }
-                MouseArea {
-                    id: setlistMouse
-                    anchors.fill: parent
-                    onClicked: Bridge.setActiveView("SETLIST")
-                }
-            }
+            PageLinks { group: "perform" }
         }
 
         // Background part-image push progress (thin bar, controls lock meanwhile)

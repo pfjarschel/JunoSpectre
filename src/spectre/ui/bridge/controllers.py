@@ -68,7 +68,7 @@ ACTIONS: list[dict] = (
     + [_action(f"mfx.edit.{n}", f"Edit MFX {n}") for n in range(1, 4)]
     + [_action("mfx.next", "Next MFX"), _action("mfx.prev", "Previous MFX"),
        _action("edit_target.open", "Part / MFX Picker")]
-    + [_action("playlist.next", "Playlist Next"), _action("playlist.prev", "Playlist Previous"),
+    + [_action("playlist.next", "Setlist Next"), _action("playlist.prev", "Setlist Previous"),
        _action("panic", "Panic (All Notes Off)"),
        _action("view.next", "Next Page"), _action("view.prev", "Previous Page"),
        _action("select.next", "Next Tone / Part"), _action("select.prev", "Previous Tone / Part"),
@@ -981,9 +981,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             elif action == "edit_target.open":
                 self.openEditTarget()
             elif action == "playlist.next":
-                self.nextPlaylistEntry()
+                self.nextSong()
             elif action == "playlist.prev":
-                self.prevPlaylistEntry()
+                self.prevSong()
             elif action == "panic":
                 self.panic()
             elif action == "arp.toggle":

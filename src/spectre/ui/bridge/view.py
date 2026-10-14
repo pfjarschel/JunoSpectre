@@ -77,10 +77,6 @@ class ViewBridgeMixin(BridgeBaseMixin):
         except Exception:
             pass
         self.vaParamsChanged.emit()
-        try:
-            self.playlistChanged.emit()
-        except Exception:
-            pass
         self.macrosChanged.emit()
         self.routingChanged.emit()
 
@@ -137,6 +133,8 @@ class ViewBridgeMixin(BridgeBaseMixin):
                 self.librarianPickChanged.emit()
 
             self._active_view = v
+            if v == "SETLIST":
+                self._setlist_recheck()  # song files may have changed meanwhile
             if v == "VECTOR":
                 self.setMorphMode("vector_2d")
             elif v == "WAVETABLE":
