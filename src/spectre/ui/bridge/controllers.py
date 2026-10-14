@@ -140,7 +140,10 @@ STEPPED.update({f"arp.{f}": ("Arp " + ("Oct Range" if f == "octave" else f.title
 
 ACTIONS += [_action(f"view.goto.{v}", "Go to " + _PAGE_TITLES.get(v, v.title()))
             for v in CONTEXT_PAGES]
-_ACTION_TITLES = {a["key"]: a["title"] for a in ACTIONS}
+# Clip launchers: one per track and clip slot (their own CLIP category in the picker)
+CLIP_ACTIONS: list[dict] = [{**_action(f"seq.launch.{t}.{c}", f"Launch Track {t} Clip {c}"), "category": "CLIP"}
+                            for t in range(1, NUM_TRACKS + 1) for c in range(1, 9)]
+_ACTION_TITLES = {a["key"]: a["title"] for a in ACTIONS + CLIP_ACTIONS}
 
 
 
@@ -736,6 +739,11 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             color = (0, 127, 0)
         elif t.startswith("action.seq.stop_track."):
             color = (127, 0, 0)
+        elif t.startswith("action.seq.launch."):
+            tr, c = (int(x) - 1 for x in t.split(".")[3:5])
+            track = self.sequencer.song.tracks[tr]
+            on, color = track.active_clip_idx == c, (0, 127, 0)
+            on = on and (self.sequencer.is_playing or self.sequencer._audio_active_clip(track) is not None)
         elif t == "action.seq.track_bank":
             on, color = self.seqTrackBank == 1, (110, 110, 127)
         elif t == "action.motion.toggle_play":
@@ -946,6 +954,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self.seqLaunchScene(n - 1)
             elif action.startswith("seq.stop_track."):
                 self.seqStopTrack(n - 1)
+            elif action.startswith("seq.launch.") and len(parts) == 4:
+                self.seqLaunchClip(int(parts[2]) - 1, n - 1)
             elif action == "seq.track_bank":
                 self.seqSetTrackBank(1 - self.seqTrackBank)
             elif action == "motion.toggle_play":
@@ -1218,11 +1228,12 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         if category == "EDITOR":
             return editor
         actions = []
-        if category in ("ALL", "ACTION", ""):
-            actions = [a for a in ACTIONS if not q or q in a["title"].lower() or q in a["key"]]
+        if category in ("ALL", "ACTION", "CLIP", ""):
+            pool = {"ACTION": ACTIONS, "CLIP": CLIP_ACTIONS}.get(category, ACTIONS + CLIP_ACTIONS)
+            actions = [a for a in pool if not q or q in a["title"].lower() or q in a["key"]]
         if category == "MACRO":
             return macros
-        if category == "ACTION":
+        if category in ("ACTION", "CLIP"):
             return actions
         # Fixed parts for mixer-style controls (the catalog's part.* follow the edited part)
         fixed = []
@@ -1237,7 +1248,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(result="QVariantList")
     def getControlCategories(self) -> list:
         cats = get_macro_categories()
-        return cats[:1] + ["MACRO", "EDITOR", "ACTION"] + cats[1:]
+        return cats[:1] + ["MACRO", "EDITOR", "ACTION", "CLIP"] + cats[1:]
 
     @pyqtSlot(int, str, str)
     def setControlBindingOption(self, index: int, option: str, value: str) -> None:

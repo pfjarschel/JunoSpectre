@@ -1,8 +1,9 @@
 """Audio tracks' player: the sequencer engine's AudioSink.
 
 Keeps the state of every file the song uses (cached and loaded into the
-worker, converting, missing...), converts files one at a time in the
-background, starts the worker on demand and turns clip launches into worker
+worker, converting, missing...) and of the stretch / transpose renders its
+clips need, makes them one at a time in the background (each in its own
+process), starts the worker on demand and turns clip launches into worker
 commands. No Qt: on_change() / on_ended(track) are called from background
 threads, so a GUI listener must hand them to its own thread.
 """
@@ -12,16 +13,20 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from . import media
 from .client import AudioClient
 
 logger = logging.getLogger(__name__)
 
-# File states
-READY, CONVERTING, MISSING, ERROR = "ready", "converting", "missing", "error"
+# File / render states
+READY, CONVERTING, RENDERING, MISSING, ERROR = "ready", "converting", "rendering", "missing", "error"
+RATE = media.SAMPLE_RATE
+STRETCH_RANGE = (0.5, 1.5)
+PREVIEW_SLOT = "pv"
 
 
 class AudioPlayer:
@@ -35,14 +40,22 @@ class AudioPlayer:
         self.on_change = on_change
         self.on_ended = on_ended
         self.offset_s = 0.0                  # audio offset: + plays audio later
+        self.song_bpm = 120.0                # MATCH SONG renders to this tempo
         self.files: Dict[str, dict] = {}     # rel path -> {state, key, frames, error}
+        self.renders: Dict[str, dict] = {}   # render key -> {state, frames, error}
+        self._clips: Dict[str, object] = {}  # clip_id -> Clip of the song (renders follow them)
+        self._wanted: Dict[str, str] = {}    # clip_id -> render key it needs now
+        self._last_ready: Dict[str, str] = {}  # clip_id -> last ready render (played while a new one renders)
         self._lock = threading.Lock()
         self._loaded: set = set()            # cache keys the worker has mapped
-        self._voice: Dict[int, int] = {}     # track -> id of its current voice
+        self._voice: Dict[str, int] = {}     # slot -> id of its current voice
         self._next_vid = 1
         self._starting = False
-        self._jobs: "queue.Queue[str]" = queue.Queue()
-        threading.Thread(target=self._convert_loop, daemon=True, name="AudioConvert").start()
+        self.auditioning = ""                # clip_id playing in the preview slot
+        self._audition_range = (0, 0)
+        self._positions: Tuple[dict, float] = ({}, 0.0)
+        self._jobs: "queue.Queue[tuple]" = queue.Queue()
+        threading.Thread(target=self._job_loop, daemon=True, name="AudioConvert").start()
 
     # -- worker --------------------------------------------------------------
 
@@ -64,7 +77,7 @@ class AudioPlayer:
             with self._lock:
                 self._loaded.clear()
             if ok:
-                for rel, st in list(self.files.items()):
+                for st in list(self.files.values()) + list(self.renders.values()):
                     if st["state"] == READY:
                         self._load(st["key"])
         finally:
@@ -83,7 +96,7 @@ class AudioPlayer:
     # -- files ---------------------------------------------------------------
 
     def file_state(self, rel: str) -> dict:
-        return dict(self.files.get(rel) or {"state": MISSING if rel else "", "frames": 0, "error": ""})
+        return dict(self.files.get(rel) or {"state": MISSING if rel else "", "key": "", "frames": 0, "error": ""})
 
     def prepare(self, rel: str) -> None:
         """Make a file playable: load its cache entry, or convert it first."""
@@ -98,7 +111,6 @@ class AudioPlayer:
             path = media.resolve(self.folder, rel)
             if path is None:
                 self.files[rel] = {"state": MISSING, "key": "", "frames": 0, "error": ""}
-                changed = True
             else:
                 key = media.cache_key(path)
                 info = media.cache_info(key, self.cache)
@@ -107,10 +119,8 @@ class AudioPlayer:
                     self._load(key)
                 else:
                     self.files[rel] = {"state": CONVERTING, "key": key, "frames": 0, "error": ""}
-                    self._jobs.put(rel)
-                changed = True
-        if changed:
-            self._changed()
+                    self._jobs.put(("convert", rel))
+        self._changed()
 
     def forget_missing(self) -> None:
         """Let missing/failed files be looked up again (e.g. after copying them in)."""
@@ -118,30 +128,17 @@ class AudioPlayer:
             for rel in [r for r, st in self.files.items() if st["state"] in (MISSING, ERROR)]:
                 del self.files[rel]
 
-    def _convert_loop(self) -> None:
-        while True:
-            rel = self._jobs.get()
-            st = self.files.get(rel)
-            path = media.resolve(self.folder, rel)
-            if st is None or path is None:
-                continue
-            proc = media.convert_in_subprocess(path, st["key"], self.cache)
-            err = proc.stderr.read().decode(errors="replace").strip() if proc.stderr else ""
-            code = proc.wait()
-            info = media.cache_info(st["key"], self.cache) if code == 0 else None
-            with self._lock:
-                if info is not None:
-                    self.files[rel] = {"state": READY, "key": st["key"], "frames": int(info["frames"]), "error": ""}
-                    self._load(st["key"])
-                else:
-                    self.files[rel] = {"state": ERROR, "key": st["key"], "frames": 0,
-                                       "error": err.splitlines()[-1] if err else f"exit {code}"}
-                    logger.warning("audio: converting %s failed: %s", rel, self.files[rel]["error"])
-            self._changed()
+    # -- clips: tempo, renders -------------------------------------------------
 
-    # -- AudioSink (engine lock held: never block) ----------------------------
+    def set_clips(self, clips: List) -> None:
+        """The audio clips of the song (renders are kept for these)."""
+        self._clips = {c.clip_id: c for c in clips}
+        for c in clips:
+            self.prepare(c.audio.file)
+        self.refresh_renders()
 
-    def clip_frames(self, clip) -> int:
+    def base_frames(self, clip) -> int:
+        """Frames of the clip's slice in the source file (0 = not ready)."""
         a = clip.audio
         st = self.files.get(a.file) if a is not None else None
         if st is None or st["state"] != READY:
@@ -151,28 +148,182 @@ class AudioPlayer:
         end = min(a.end, frames) if a.end > 0 else frames
         return max(0, end - begin)
 
-    def start(self, track_idx: int, clip, at: Optional[float], loop: bool) -> None:
+    def clip_bars(self, clip) -> int:
+        """The slice's bars: set by the user, else its length rounded at the song tempo."""
+        if clip.audio.bars > 0:
+            return clip.audio.bars
+        frames = self.base_frames(clip)
+        return max(1, round(frames / RATE / (240.0 / max(1.0, self.song_bpm)))) if frames else 0
+
+    def clip_bpm(self, clip) -> float:
+        """The tempo the slice plays at unstretched (its bars over its length)."""
+        frames, bars = self.base_frames(clip), self.clip_bars(clip)
+        return bars * 240.0 / (frames / RATE) if frames and bars else 0.0
+
+    def render_spec(self, clip) -> Optional[Tuple[float, float]]:
+        """(tempo factor, semitones) the clip needs rendered, None = plays its source."""
         a = clip.audio
+        tempo = 1.0
+        if a.stretch:
+            bpm = self.clip_bpm(clip)
+            if bpm > 0:
+                lo, hi = STRETCH_RANGE
+                tempo = round(max(lo, min(hi, self.song_bpm / bpm)), 6)
+        pitch = round(a.semitones + a.cents / 100.0, 4)
+        if abs(tempo - 1.0) < 1e-5 and pitch == 0:
+            return None
+        return tempo, pitch
+
+    def _render_key(self, clip, spec) -> Optional[str]:
+        path = media.resolve(self.folder, clip.audio.file)
+        if path is None:
+            return None
+        a = clip.audio
+        return media.cache_key(path, f"{a.start}:{a.end}:{spec[0]:.6f}:{spec[1]:.4f}")
+
+    def refresh_renders(self) -> None:
+        """Queue the renders the clips need now (after an edit, a load or a tempo change)."""
+        changed = False
+        with self._lock:
+            for cid, clip in self._clips.items():
+                if clip.audio is None or not clip.audio.file:
+                    self._wanted.pop(cid, None)
+                    continue
+                if (self.files.get(clip.audio.file) or {}).get("state") != READY:
+                    continue                 # renders start once the source is converted
+                spec = self.render_spec(clip)
+                key = self._render_key(clip, spec) if spec is not None else None
+                if key is None:
+                    self._wanted.pop(cid, None)
+                    continue
+                self._wanted[cid] = key
+                st = self.renders.get(key)
+                if st is not None and st["state"] in (READY, RENDERING, ERROR):  # a failure isn't retried
+                    if st["state"] == READY:
+                        self._last_ready[cid] = key
+                        self._load(key)
+                    continue
+                info = media.cache_info(key, self.cache)
+                if info is not None:
+                    self.renders[key] = {"state": READY, "key": key, "frames": int(info["frames"]), "error": ""}
+                    self._last_ready[cid] = key
+                    self._load(key)
+                else:
+                    base = self.files[clip.audio.file]
+                    a = clip.audio
+                    self.renders[key] = {"state": RENDERING, "key": key, "frames": 0, "error": ""}
+                    self._jobs.put(("render", key, base["key"], a.start, a.end, spec[0], spec[1]))
+                changed = True
+        if changed:
+            self._changed()
+
+    def clip_state(self, clip) -> dict:
+        """What the clip editor shows: {state, error} of what the clip plays."""
+        st = self.file_state(clip.audio.file)
+        if st["state"] != READY:
+            return {"state": st["state"], "error": st["error"]}
+        key = self._wanted.get(clip.clip_id) if self.render_spec(clip) is not None else None
+        if key is None:
+            return {"state": READY, "error": ""}
+        r = self.renders.get(key) or {"state": RENDERING, "error": ""}
+        return {"state": r["state"], "error": r["error"]}
+
+    def _playable(self, clip) -> Optional[Tuple[str, int, int, int]]:
+        """(cache key, begin, end, frames) the clip plays now, None = nothing yet."""
+        a = clip.audio
+        if a is None or not a.file:
+            return None
         st = self.files.get(a.file)
         if st is None or st["state"] != READY:
+            return None
+        if self.render_spec(clip) is None:
+            return st["key"], a.start, a.end, self.base_frames(clip)
+        for key in (self._wanted.get(clip.clip_id), self._last_ready.get(clip.clip_id)):
+            r = self.renders.get(key) if key else None
+            if r is not None and r["state"] == READY:
+                return key, 0, 0, r["frames"]
+        return None
+
+    def _job_loop(self) -> None:
+        while True:
+            job = self._jobs.get()
+            if job[0] == "convert":
+                self._run_convert(job[1])
+            else:
+                self._run_render(*job[1:])
+            self.refresh_renders()           # a converted file may let renders start
+            self._changed()
+
+    def _finish(self, proc) -> Tuple[int, str]:
+        err = proc.stderr.read().decode(errors="replace").strip() if proc.stderr else ""
+        code = proc.wait()
+        return code, (err.splitlines()[-1] if err else f"exit {code}")
+
+    def _run_convert(self, rel: str) -> None:
+        st = self.files.get(rel)
+        path = media.resolve(self.folder, rel)
+        if st is None or path is None:
+            return
+        code, err = self._finish(media.convert_in_subprocess(path, st["key"], self.cache))
+        info = media.cache_info(st["key"], self.cache) if code == 0 else None
+        with self._lock:
+            if info is not None:
+                self.files[rel] = {"state": READY, "key": st["key"], "frames": int(info["frames"]), "error": ""}
+                self._load(st["key"])
+            else:
+                self.files[rel] = {"state": ERROR, "key": st["key"], "frames": 0, "error": err}
+                logger.warning("audio: converting %s failed: %s", rel, err)
+
+    def _run_render(self, key, base_key, begin, end, tempo, pitch) -> None:
+        if key not in self._wanted.values():
+            self.renders.pop(key, None)      # superseded by a newer edit
+            return
+        t = time.perf_counter()
+        code, err = self._finish(media.render_in_subprocess(base_key, begin, end, tempo, pitch, key, self.cache))
+        info = media.cache_info(key, self.cache) if code == 0 else None
+        with self._lock:
+            if info is not None:
+                self.renders[key] = {"state": READY, "key": key, "frames": int(info["frames"]), "error": ""}
+                for cid, k in self._wanted.items():
+                    if k == key:
+                        self._last_ready[cid] = key
+                self._load(key)
+                logger.info("audio: rendered x%.4f %+.2f st in %.1f s", tempo, pitch, time.perf_counter() - t)
+            else:
+                self.renders[key] = {"state": ERROR, "key": key, "frames": 0, "error": err}
+                logger.warning("audio: render failed: %s", err)
+
+    # -- AudioSink (engine lock held: never block) ----------------------------
+
+    def clip_frames(self, clip) -> int:
+        p = self._playable(clip)
+        return p[3] if p else 0
+
+    def start(self, track_idx: int, clip, at: Optional[float], loop: bool) -> None:
+        p = self._playable(clip)
+        if p is None:
             self.stop(track_idx, at)          # nothing to play yet: the slot goes quiet
             return
         if not self.ready:
             self.ensure_worker()
             return
-        self._load(st["key"])
+        self._play(f"t{track_idx}", p, self._shift(at), loop, clip.audio.gain_db)
+
+    def _play(self, slot: str, p, at: Optional[float], loop: bool, gain_db: float) -> None:
+        key, begin, end, _frames = p
+        self._load(key)
         vid = self._next_vid
         self._next_vid += 1
-        self._voice[track_idx] = vid
-        self.client.play(f"t{track_idx}", st["key"], at=self._shift(at), begin=a.start, end=a.end, loop=loop,
-                         gain=10 ** (a.gain_db / 20.0), vid=vid)
+        self._voice[slot] = vid
+        self.client.play(slot, key, at=at, begin=begin, end=end, loop=loop, gain=10 ** (gain_db / 20.0), vid=vid)
 
     def stop(self, track_idx: int, at: Optional[float]) -> None:
-        self._voice.pop(track_idx, None)
+        self._voice.pop(f"t{track_idx}", None)
         self.client.stop(f"t{track_idx}", self._shift(at))
 
     def stop_all(self) -> None:
         self._voice.clear()
+        self.auditioning = ""
         self.client.stop_all()
 
     def set_gain(self, track_idx: int, gain_db: float) -> None:
@@ -181,18 +332,47 @@ class AudioPlayer:
     def _shift(self, at: Optional[float]) -> Optional[float]:
         return None if at is None else at + self.offset_s
 
+    # -- audition (clip editor) ---------------------------------------------------
+
+    def audition(self, clip, on: bool) -> bool:
+        """Play the clip's slice at once on the preview slot (looped in LOOP mode)."""
+        self.client.stop(PREVIEW_SLOT, None)
+        self._voice.pop(PREVIEW_SLOT, None)
+        self.auditioning = ""
+        p = self._playable(clip) if on else None
+        if p is None or not self.ready:
+            if on:
+                self.ensure_worker()
+            return False
+        self.auditioning = clip.clip_id
+        self._audition_range = (p[1], p[1] + p[3])
+        self._play(PREVIEW_SLOT, p, None, clip.audio.mode == "loop", clip.audio.gain_db)
+        return True
+
+    def position(self, slot: str) -> int:
+        """Estimated frame of the slot's file now leaving the DAC (-1 = not playing)."""
+        slots, dac = self._positions
+        if slot not in slots or slot not in self._voice:
+            return -1
+        block = self.client.block
+        return int(slots[slot] - block + (time.perf_counter() - dac) * RATE)
+
     # -- events --------------------------------------------------------------
 
     def _on_event(self, ev: dict) -> None:
         kind = ev.get("ev")
         if kind == "ended":
             slot = str(ev.get("slot", ""))
-            if slot.startswith("t") and slot[1:].isdigit():
-                t = int(slot[1:])
-                if self._voice.get(t) == ev.get("id"):
-                    self._voice.pop(t, None)
-                    if self.on_ended is not None:
-                        self.on_ended(t)
+            if self._voice.get(slot) != ev.get("id"):
+                return
+            self._voice.pop(slot, None)
+            if slot == PREVIEW_SLOT:
+                self.auditioning = ""
+                self._changed()
+            elif slot.startswith("t") and slot[1:].isdigit() and self.on_ended is not None:
+                self.on_ended(int(slot[1:]))
+        elif kind == "clock":
+            self._positions = (dict(ev.get("slots") or {}), float(ev.get("dac", 0.0)))
         elif kind in ("ready", "error", "exit"):
             self._changed()
 

@@ -11,12 +11,20 @@ import logging
 import threading
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import Qt, QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...audio import media
 from ...audio.client import AudioClient
 from ...audio.player import AudioPlayer
-from ...sequencer.models import AUDIO_GAIN_RANGE, AUDIO_MODE_SYNC, AUDIO_MODES, TRACK_KINDS, AudioClip
+from ...sequencer.models import (
+    AUDIO_CENTS,
+    AUDIO_GAIN_RANGE,
+    AUDIO_MODE_SYNC,
+    AUDIO_MODES,
+    AUDIO_SEMITONES,
+    TRACK_KINDS,
+    AudioClip,
+)
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -45,9 +53,21 @@ class AudioBridgeMixin(BridgeBaseMixin):
         self._audioSync.connect(self._on_audio_sync, Qt.ConnectionType.QueuedConnection)
         self._audioEnded.connect(self._on_audio_ended, Qt.ConnectionType.QueuedConnection)
         self._audioImported.connect(self._on_audio_imported, Qt.ConnectionType.QueuedConnection)
+        # Edits that change a stretch/transpose render are applied once they settle
+        self._audio_render_timer = QTimer(self)
+        self._audio_render_timer.setSingleShot(True)
+        self._audio_render_timer.setInterval(600)
+        self._audio_render_timer.timeout.connect(self.audio_player.refresh_renders)
+        self.bpmChanged.connect(self._on_audio_bpm)
         if hasattr(self, "sequencer"):
             self.sequencer.audio = self.audio_player
+            self.audio_player.song_bpm = self.sequencer.bpm
         self._audio_song_changed()
+
+    def _on_audio_bpm(self, bpm: float) -> None:
+        self.audio_player.song_bpm = float(bpm)
+        self._audio_render_timer.start()
+        self.seqTracksChanged.emit()          # clip tempos / stretch amounts shown
 
     def close_audio(self) -> None:
         if hasattr(self, "audio_player"):
@@ -67,10 +87,8 @@ class AudioBridgeMixin(BridgeBaseMixin):
         if player is None or not hasattr(self, "sequencer"):
             return
         audio_tracks = [t for t in self.sequencer.song.tracks if t.is_audio]
-        for t in audio_tracks:
-            for c in t.clips:
-                if c.audio is not None and c.audio.file:
-                    player.prepare(c.audio.file)
+        player.song_bpm = self.sequencer.bpm
+        player.set_clips([c for t in audio_tracks for c in t.clips if c.audio is not None and c.audio.file])
         if audio_tracks:
             player.ensure_worker()
 
@@ -91,11 +109,19 @@ class AudioBridgeMixin(BridgeBaseMixin):
             return {"audioFile": "", "audioName": "", "audioMode": a.mode if a else "loop",
                     "audioSync": a.sync if a else True, "audioState": "", "audioSeconds": 0.0,
                     "audioGainDb": a.gain_db if a else 0.0}
-        st = self.audio_player.file_state(a.file)
-        frames = self.audio_player.clip_frames(clip)
+        p = self.audio_player
+        st = p.clip_state(clip)
+        frames = p.base_frames(clip)
+        file_frames = p.file_state(a.file)["frames"]
+        spec = p.render_spec(clip)
         return {"audioFile": a.file, "audioName": Path(a.file).stem, "audioMode": a.mode, "audioSync": a.sync,
-                "audioState": st["state"], "audioSeconds": round(frames / media.SAMPLE_RATE, 2),
-                "audioGainDb": a.gain_db}
+                "audioState": st["state"], "audioError": st["error"],
+                "audioSeconds": round(frames / media.SAMPLE_RATE, 3), "audioGainDb": a.gain_db,
+                "audioFileFrames": file_frames, "audioStart": a.start,
+                "audioEnd": (min(a.end, file_frames) if a.end > 0 else file_frames),
+                "audioBars": p.clip_bars(clip), "audioBarsAuto": a.bars == 0,
+                "audioBpm": round(p.clip_bpm(clip), 2), "audioStretch": a.stretch,
+                "audioTempo": spec[0] if spec else 1.0, "audioSemitones": a.semitones, "audioCents": a.cents}
 
     # -- QML: track kind -----------------------------------------------------------
 
@@ -191,7 +217,7 @@ class AudioBridgeMixin(BridgeBaseMixin):
         if clip.name.startswith(_DEFAULT_CLIP_PREFIXES):
             clip.name = Path(rel).stem[:16]
         self.audio_player.forget_missing()
-        self.audio_player.prepare(rel)
+        self._audio_song_changed()
         self.audio_player.ensure_worker()
         self.seqTracksChanged.emit()
         self.seqActiveClipChanged.emit()
@@ -207,6 +233,7 @@ class AudioBridgeMixin(BridgeBaseMixin):
                 self.audio_player.stop(t_idx, None)
                 track.active_clip_idx = -1
             clip.audio.file = ""
+        self._audio_song_changed()
         self.seqTracksChanged.emit()
         self.seqActiveClipChanged.emit()
 
@@ -219,6 +246,8 @@ class AudioBridgeMixin(BridgeBaseMixin):
         if clip.audio is None:
             clip.audio = AudioClip()
         a = clip.audio
+        frames = self.audio_player.file_state(a.file)["frames"]
+        render = False                         # changes what a stretch/transpose render holds
         if param == "mode" and value in AUDIO_MODES:
             a.mode = str(value)
             a.sync = AUDIO_MODE_SYNC[a.mode]
@@ -229,7 +258,99 @@ class AudioBridgeMixin(BridgeBaseMixin):
             a.gain_db = round(max(lo, min(hi, float(value))), 1)
             if self.sequencer.song.tracks[t_idx].active_clip_idx == c_idx:
                 self.audio_player.set_gain(t_idx, a.gain_db)
+        elif param == "start":
+            end = a.end if a.end > 0 else frames
+            a.start = max(0, min(int(value), end - 1))
+            render = True
+        elif param == "end":
+            v = max(a.start + 1, int(value))
+            a.end = 0 if frames and v >= frames else v
+            render = True
+        elif param == "bars":
+            a.bars = max(0, min(1024, int(value)))
+            render = True
+        elif param == "stretch":
+            a.stretch = bool(value)
+            render = True
+        elif param == "semitones":
+            a.semitones = max(-AUDIO_SEMITONES, min(AUDIO_SEMITONES, int(value)))
+            render = True
+        elif param == "cents":
+            a.cents = max(-AUDIO_CENTS, min(AUDIO_CENTS, int(value)))
+            render = True
         else:
             return
+        if render:
+            self._audio_render_timer.start()
         self.seqTracksChanged.emit()
         self.seqActiveClipChanged.emit()
+
+    @pyqtSlot()
+    def seqFitClipEnd(self) -> None:
+        """FIT END: the slice ends its bars after the start, at the song tempo."""
+        t_idx, c_idx, clip = self._audio_edit_clip()
+        if clip is None or clip.audio is None:
+            return
+        p = self.audio_player
+        bars = p.clip_bars(clip) or 1
+        clip.audio.bars = bars
+        end = clip.audio.start + round(bars * 240.0 / self.sequencer.bpm * media.SAMPLE_RATE)
+        self.seqSetClipAudio("end", end)
+
+    @pyqtSlot()
+    def seqSetSongBpmFromClip(self) -> None:
+        """SET SONG BPM: the song takes the selected clip's tempo."""
+        t_idx, c_idx, clip = self._audio_edit_clip()
+        if clip is not None and clip.audio is not None:
+            bpm = self.audio_player.clip_bpm(clip)
+            if bpm > 0:
+                self.setBpm(round(bpm, 2))
+
+    # -- QML: waveform, audition, playhead -----------------------------------------
+
+    @pyqtSlot(int, int, int, result="QVariantList")
+    def audioPeaks(self, begin: int, end: int, columns: int) -> list:
+        """Waveform of the selected clip's file, frames [begin, end): [min0, max0, min1, ...]."""
+        t_idx, c_idx, clip = self._audio_edit_clip()
+        if clip is None or clip.audio is None:
+            return []
+        st = self.audio_player.file_state(clip.audio.file)
+        if st["state"] != "ready":
+            return []
+        pk = media.peaks_window(st["key"], begin, end, columns, self.audio_player.cache)
+        return [round(float(v), 4) for v in pk.reshape(-1)]
+
+    @pyqtSlot(bool)
+    def audioAudition(self, on: bool) -> None:
+        """Play the selected clip at once (editor preview), or stop it."""
+        t_idx, c_idx, clip = self._audio_edit_clip()
+        if clip is not None and clip.audio is not None:
+            self.audio_player.audition(clip, on)
+        self.audioChanged.emit()
+
+    @pyqtProperty(bool, notify=audioChanged)
+    def audioAuditioning(self) -> bool:
+        t_idx, c_idx, clip = self._audio_edit_clip()
+        return bool(clip is not None and self.audio_player.auditioning == clip.clip_id)
+
+    @pyqtSlot(result=int)
+    def audioPlayhead(self) -> int:
+        """Frame of the selected clip's file playing now (audition or its track), -1 = none."""
+        t_idx, c_idx, clip = self._audio_edit_clip()
+        if clip is None or clip.audio is None:
+            return -1
+        p = self.audio_player
+        track = self.sequencer.song.tracks[t_idx]
+        slot = "pv" if p.auditioning == clip.clip_id else (
+            f"t{t_idx}" if track.is_audio and track.active_clip_idx == c_idx else "")
+        pos = p.position(slot) if slot else -1
+        if pos < 0:
+            return -1
+        a = clip.audio
+        spec = p.render_spec(clip)
+        length = max(1, p.base_frames(clip))
+        # Renders start at the slice start and run `tempo` times faster
+        offset = (pos * spec[0] if spec else pos - a.start)
+        if a.mode == "loop":
+            offset %= length
+        return int(a.start + min(offset, length))

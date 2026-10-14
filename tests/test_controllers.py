@@ -607,3 +607,19 @@ def test_automatic_macro_names_survive_save_and_load():
     ps.macros[1].name = "WOBBLE"
     back = patch_state_from_dict(patch_state_to_dict(ps))
     assert [m.name for m in back.macros[:2]] == ["", "WOBBLE"]
+
+
+def test_clip_launch_actions(tmp_path, monkeypatch):
+    monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
+    from src.spectre.ui.bridge import SpectreBridge
+
+    b = SpectreBridge()
+    clips = b.getControlTargets("CLIP", "")
+    assert len(clips) == 16 * 8 and clips[0]["key"] == "action.seq.launch.1.1"
+    assert clips[-1]["title"] == "Launch Track 16 Clip 8"
+    assert "CLIP" in b.getControlCategories()
+    assert any(a["key"] == "action.seq.launch.12.3" for a in b.getControlTargets("ALL", "track 12 clip 3"))
+    b._ctl_run_action("seq.launch.12.3")
+    track = b.sequencer.song.tracks[11]
+    assert (track.queued_clip_idx, track.selected_clip_idx) == (2, 2)
+    b.close_audio()

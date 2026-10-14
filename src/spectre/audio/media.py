@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from fractions import Fraction
 from pathlib import Path
 from typing import List, Optional
@@ -25,7 +26,7 @@ import numpy as np
 
 SAMPLE_RATE = 44100          # the JUNO-DS USB audio rate (the only one it takes)
 CHANNELS = 2
-PEAK_COLUMNS = 2048          # waveform overview resolution (min/max pairs)
+PEAK_COLUMNS = 16384         # waveform overview resolution (min/max pairs); closer zooms read the audio
 AUDIO_EXTENSIONS = (".wav", ".flac", ".ogg", ".mp3", ".aif", ".aiff")
 DEFAULT_AUDIO_DIR = Path.home() / "SpectreAudio"
 # Where USB sticks get mounted (desktop automount, then manual mounts)
@@ -168,12 +169,15 @@ def convert(src: Path, key: str, folder: Optional[Path] = None) -> dict:
     """Decode src into cache entry `key`; returns its info. Writes atomically."""
     import soundfile as sf
 
+    raw, rate = sf.read(str(src), dtype="float32", always_2d=True)
+    return _save_entry(to_stereo_44k(raw, rate), key, folder,
+                       {"source_rate": int(rate), "source_channels": int(raw.shape[1]), "source": str(src)})
+
+
+def _save_entry(data: np.ndarray, key: str, folder: Optional[Path], info: dict) -> dict:
     paths = cache_paths(key, folder)
     paths["audio"].parent.mkdir(parents=True, exist_ok=True)
-    raw, rate = sf.read(str(src), dtype="float32", always_2d=True)
-    data = to_stereo_44k(raw, rate)
-    info = {"frames": int(len(data)), "seconds": len(data) / SAMPLE_RATE,
-            "source_rate": int(rate), "source_channels": int(raw.shape[1]), "source": str(src)}
+    info = {"frames": int(len(data)), "seconds": len(data) / SAMPLE_RATE, **info}
     for name, arr in (("audio", data), ("peaks", peaks(data))):
         tmp = paths[name].with_suffix(".tmp.npy")
         np.save(tmp, arr)
@@ -184,6 +188,72 @@ def convert(src: Path, key: str, folder: Optional[Path] = None) -> dict:
     return info
 
 
+def rubberband_path() -> Optional[str]:
+    return shutil.which("rubberband")
+
+
+def render(base_key: str, begin: int, end: int, tempo: float, pitch: float, key: str,
+           folder: Optional[Path] = None) -> dict:
+    """Stretch / transpose a slice of a cache entry into a new entry with Rubber
+    Band: `tempo` is a tempo factor (1.05 = 5% faster), `pitch` in semitones.
+    Pitch is kept when stretching and tempo when transposing."""
+    import soundfile as sf
+
+    exe = rubberband_path()
+    if exe is None:
+        raise RuntimeError("Stretch needs Rubber Band (rubberband-cli)")
+    base = np.load(cache_paths(base_key, folder)["audio"], mmap_mode="r")
+    end = len(base) if end <= 0 else min(end, len(base))
+    data = np.asarray(base[max(0, begin):end], dtype=np.float32)
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst = Path(tmp) / "in.wav", Path(tmp) / "out.wav"
+        sf.write(src, data, SAMPLE_RATE, subtype="FLOAT")
+        cmd = [exe, "-q"]
+        if abs(tempo - 1.0) > 1e-6:
+            cmd += ["-T", f"{tempo:.6f}"]
+        if abs(pitch) > 1e-6:
+            cmd += ["-p", f"{pitch:.4f}"]
+        done = subprocess.run(cmd + [str(src), str(dst)], capture_output=True, text=True)
+        if done.returncode != 0:
+            raise RuntimeError((done.stderr or "rubberband failed").strip().splitlines()[-1])
+        out, rate = sf.read(dst, dtype="float32", always_2d=True)
+    return _save_entry(to_stereo_44k(out, rate), key, folder,
+                       {"source_rate": SAMPLE_RATE, "source_channels": 2, "tempo": tempo, "pitch": pitch})
+
+
+def peaks_window(key: str, begin: int, end: int, columns: int, folder: Optional[Path] = None) -> np.ndarray:
+    """(columns, 2) min/max of frames [begin, end) of an entry, for drawing.
+    Wide windows use the stored overview; close zooms read the audio itself."""
+    paths = cache_paths(key, folder)
+    columns = max(1, int(columns))
+    try:
+        overview = np.load(paths["peaks"], mmap_mode="r")
+        audio = np.load(paths["audio"], mmap_mode="r")
+    except (OSError, ValueError):
+        return np.zeros((columns, 2), dtype=np.float32)
+    frames = len(audio)
+    begin, end = max(0, int(begin)), min(frames, int(end) if end > 0 else frames)
+    if end <= begin or not frames:
+        return np.zeros((columns, 2), dtype=np.float32)
+    per_col = (end - begin) / columns
+    if per_col >= frames / len(overview):
+        # Each column spans at least one overview column: pick from the overview
+        a = int(begin / frames * len(overview))
+        b = max(a + 1, int(np.ceil(end / frames * len(overview))))
+        seg = np.asarray(overview[a:b])
+        starts = np.minimum(np.linspace(0, len(seg), columns, endpoint=False).astype(np.int64), len(seg) - 1)
+        return np.stack([np.minimum.reduceat(seg[:, 0], starts), np.maximum.reduceat(seg[:, 1], starts)], axis=1)
+    return peaks(np.asarray(audio[begin:end]), columns)
+
+
+def render_in_subprocess(base_key: str, begin: int, end: int, tempo: float, pitch: float, key: str,
+                         folder: Optional[Path] = None) -> subprocess.Popen:
+    folder = folder or cache_dir()
+    return subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "render", base_key, str(begin), str(end),
+                             repr(float(tempo)), repr(float(pitch)), key, str(folder)],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+
+
 def convert_in_subprocess(src: Path, key: str, folder: Optional[Path] = None) -> subprocess.Popen:
     """Start a conversion in its own process (keeps the app's threads free)."""
     folder = folder or cache_dir()
@@ -192,12 +262,19 @@ def convert_in_subprocess(src: Path, key: str, folder: Optional[Path] = None) ->
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 5 and sys.argv[1] == "convert":
-        try:
+    try:  # errors reach the app through stderr + exit code
+        if len(sys.argv) == 5 and sys.argv[1] == "convert":
             convert(Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4]))
-        except Exception as e:  # reported to the app through stderr + exit code
-            print(f"{type(e).__name__}: {e}", file=sys.stderr)
-            sys.exit(1)
-    else:
-        print("usage: media.py convert SRC KEY CACHE_DIR", file=sys.stderr)
-        sys.exit(2)
+        elif len(sys.argv) == 9 and sys.argv[1] == "render":
+            _, _, base, b, e, tempo, pitch, key, folder = sys.argv
+            render(base, int(b), int(e), float(tempo), float(pitch), key, Path(folder))
+        else:
+            print("usage: media.py convert SRC KEY CACHE_DIR | render BASE BEGIN END TEMPO PITCH KEY CACHE_DIR",
+                  file=sys.stderr)
+            sys.exit(2)
+    except RuntimeError as e:          # our own messages: shown as they are
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"{type(e).__name__}: {e}", file=sys.stderr)
+        sys.exit(1)

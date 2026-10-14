@@ -191,7 +191,7 @@ Rectangle {
                     id: categoryRow
                     spacing: ScaleMetrics.dp(4)
                     readonly property var categories: root.midiMode
-                        ? ["ALL", "MACRO", "EDITOR", "ACTION", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART", "MATRIX", "SEQ"]
+                        ? ["ALL", "MACRO", "EDITOR", "ACTION", "CLIP", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART", "MATRIX", "SEQ"]
                         : root.laneMode
                         ? ["ALL", "MACRO", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART", "MATRIX", "SEQ"]
                         : ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART", "MATRIX", "SEQ"]

@@ -29,6 +29,10 @@ AUDIO_MODES = ("loop", "oneshot", "full")
 # Whether a mode starts on the bar by default (one-shots fire at once, like pads)
 AUDIO_MODE_SYNC = {"loop": True, "oneshot": False, "full": True}
 AUDIO_GAIN_RANGE = (-60.0, 6.0)         # dB
+# Stretch (MATCH SONG) range as a tempo factor; transpose range
+AUDIO_STRETCH_RANGE = (0.5, 1.5)
+AUDIO_SEMITONES = 12
+AUDIO_CENTS = 50
 
 
 @dataclasses.dataclass
@@ -42,10 +46,14 @@ class AudioClip:
     end: int = 0                        # slice end frame, 0 = end of file
     gain_db: float = 0.0
     bars: int = 0                       # slice length in bars, 0 = from the length at the song BPM
+    stretch: bool = False               # MATCH SONG: rendered to the song tempo (pitch kept)
+    semitones: int = 0                  # transpose (rendered, tempo kept)
+    cents: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {"file": self.file, "mode": self.mode, "sync": self.sync, "start": self.start,
-                "end": self.end, "gain_db": self.gain_db, "bars": self.bars}
+                "end": self.end, "gain_db": self.gain_db, "bars": self.bars, "stretch": self.stretch,
+                "semitones": self.semitones, "cents": self.cents}
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> AudioClip:
@@ -59,6 +67,9 @@ class AudioClip:
             end=max(0, int(d.get("end", 0))),
             gain_db=max(lo, min(hi, float(d.get("gain_db", 0.0)))),
             bars=max(0, min(1024, int(d.get("bars", 0)))),
+            stretch=bool(d.get("stretch", False)),
+            semitones=max(-AUDIO_SEMITONES, min(AUDIO_SEMITONES, int(d.get("semitones", 0)))),
+            cents=max(-AUDIO_CENTS, min(AUDIO_CENTS, int(d.get("cents", 0)))),
         )
 
 

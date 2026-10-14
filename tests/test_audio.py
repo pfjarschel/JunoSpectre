@@ -492,3 +492,128 @@ def test_play_starts_audio_in_a_real_worker(tmp_path):
         b.seqStop()
     finally:
         b.close_audio()
+
+
+# -- clip tempo, renders, waveform -------------------------------------------------
+
+def _player_with_file(tmp_path, seconds=4.0, name="loop.wav"):
+    sf = pytest.importorskip("soundfile")
+    folder = tmp_path / "lib"
+    folder.mkdir(exist_ok=True)
+    t = np.arange(int(RATE * seconds)) / RATE
+    sf.write(folder / name, np.stack([np.sin(t * 600), np.sin(t * 600)], axis=1).astype(np.float32) * 0.5, RATE)
+    player = AudioPlayer(folder, tmp_path / "cache", client=FakeClient())
+    player.prepare(name)
+    deadline = time.time() + 30
+    while player.file_state(name)["state"] != "ready" and time.time() < deadline:
+        time.sleep(0.05)
+    return player
+
+
+class _FakeRender:
+    """Stands in for a Rubber Band render: writes the slice, timed by the tempo factor."""
+    calls = []
+
+    def __init__(self, base_key, begin, end, tempo, pitch, key, folder):
+        _FakeRender.calls.append((tempo, pitch))
+        base = np.load(media.cache_paths(base_key, folder)["audio"])
+        end = len(base) if end <= 0 else end
+        n = int(round((end - begin) / tempo))
+        media._save_entry(np.resize(base[begin:end], (n, 2)).astype(np.float32), key, folder, {})
+        self.stderr = None
+
+    def wait(self):
+        return 0
+
+
+def test_clip_tempo_and_stretch_spec(tmp_path, monkeypatch):
+    from src.spectre.sequencer.models import Clip
+    player = _player_with_file(tmp_path, seconds=4.0)
+    clip = Clip(audio=AudioClip(file="loop.wav"))
+    player.song_bpm = 120.0
+    assert player.clip_bars(clip) == 2 and player.clip_bpm(clip) == pytest.approx(120.0)
+    assert player.render_spec(clip) is None
+    clip.audio.bars = 2
+    clip.audio.end = int(RATE * 4 * 120 / 125)              # 2 bars at 125 BPM
+    assert player.clip_bpm(clip) == pytest.approx(125.0, abs=0.01)
+    clip.audio.stretch = True
+    assert player.render_spec(clip) == (pytest.approx(0.96, abs=1e-4), 0.0)
+    clip.audio.semitones, clip.audio.cents = -2, 25
+    assert player.render_spec(clip)[1] == pytest.approx(-1.75)
+    player.song_bpm = 400.0                                 # clamped to 1.5x
+    assert player.render_spec(clip)[0] == 1.5
+
+    # Renders run in the background; the clip plays the newest ready one
+    monkeypatch.setattr(media, "render_in_subprocess", _FakeRender)
+    player.song_bpm = 120.0
+    player.set_clips([clip])
+    deadline = time.time() + 10
+    while player.clip_state(clip)["state"] != "ready" and time.time() < deadline:
+        time.sleep(0.02)
+    assert player.clip_state(clip)["state"] == "ready"
+    first = player.clip_frames(clip)
+    assert first == pytest.approx(clip.audio.end / 0.96, abs=2)
+    player.song_bpm = 100.0
+    player.refresh_renders()
+    assert player.clip_frames(clip) == first                # old render plays meanwhile
+    deadline = time.time() + 10
+    while player.clip_state(clip)["state"] != "ready" and time.time() < deadline:
+        time.sleep(0.02)
+    assert player.clip_frames(clip) == pytest.approx(clip.audio.end / 0.8, abs=2)
+
+
+def test_render_reports_a_missing_rubberband(tmp_path, monkeypatch):
+    player = _player_with_file(tmp_path, seconds=0.5)
+    key = player.file_state("loop.wav")["key"]
+    monkeypatch.setattr(media, "rubberband_path", lambda: None)
+    with pytest.raises(RuntimeError, match="needs Rubber Band"):
+        media.render(key, 0, 0, 1.1, 0.0, "r1", player.cache)
+
+
+@pytest.mark.skipif(media.rubberband_path() is None, reason="rubberband not installed")
+def test_rubberband_render_keeps_length_by_tempo(tmp_path):
+    player = _player_with_file(tmp_path, seconds=2.0)
+    key = player.file_state("loop.wav")["key"]
+    info = media.render(key, 0, RATE, 1.25, 0.0, "r2", player.cache)
+    assert info["frames"] == pytest.approx(RATE / 1.25, rel=0.02)
+
+
+def test_peaks_window_zooms_into_the_audio(tmp_path):
+    player = _player_with_file(tmp_path, seconds=2.0)
+    key = player.file_state("loop.wav")["key"]
+    wide = media.peaks_window(key, 0, 0, 500, player.cache)
+    assert wide.shape == (500, 2) and wide[:, 1].max() > 0.45
+    close = media.peaks_window(key, 1000, 1400, 400, player.cache)   # 1 frame per column
+    data = np.load(media.cache_paths(key, player.cache)["audio"])
+    assert close[:, 1] == pytest.approx(data[1000:1400].mean(axis=1), abs=1e-6)
+    assert media.peaks_window("nope", 0, 0, 10, player.cache).shape == (10, 2)
+
+
+def test_bridge_fit_end_and_song_bpm_from_clip(tmp_path):
+    from src.spectre.ui.bridge import SpectreBridge
+    from tests.test_sequencer_bridge import DummyJuno
+
+    b = SpectreBridge(DummyJuno())
+    b.close_audio()
+    player = _player_with_file(tmp_path, seconds=5.0)
+    b.audio_player = player
+    b.sequencer.audio = player
+    try:
+        b.seqSelectTrack(0)
+        b.seqSetTrackKind(0, "audio")
+        b.seqSetClipAudioFile("", "loop.wav")
+        b.seqSetClipAudio("start", RATE // 2)
+        b.seqSetClipAudio("bars", 2)
+        b.seqFitClipEnd()                                   # 2 bars at 120 BPM = 4 s
+        clip = b.sequencer.song.tracks[0].clips[0]
+        assert clip.audio.end == RATE // 2 + 4 * RATE
+        info = b.seqTracks[0]["clips"][0]
+        assert (info["audioBars"], info["audioBpm"], info["audioBarsAuto"]) == (2, 120.0, False)
+        b.seqSetClipAudio("end", RATE // 2 + int(4.2 * RATE))   # longer slice: slower clip
+        b.seqSetSongBpmFromClip()
+        assert b.bpm == pytest.approx(114.29, abs=0.01)
+        b.seqSetClipAudio("end", 10 * RATE)                  # past the file end = to the end
+        assert clip.audio.end == 0
+        assert len(b.audioPeaks(0, 0, 100)) == 200
+    finally:
+        player.close()
