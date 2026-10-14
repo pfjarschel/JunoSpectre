@@ -74,3 +74,15 @@ Startup splash generator.
 ```bash
 python tools/make_splash.py [master.jpg]
 ```
+
+### 9. `audio_play_test.py`
+Audio clip playback check.
+- **Requirements:** `soundfile` + `sounddevice` (and `libportaudio2` on the Pi); the JUNO in USB Driver VENDOR mode.
+- **Function:** Converts a file into the playback cache (in its own process, like the app), starts the audio worker on the JUNO's USB audio and plays it. Without a file it plays a generated 120 BPM click. Reports underruns, the worker's CPU use and the DAC rate against the Pi clock.
+
+```bash
+python tools/audio_play_test.py                      # click, 8 s
+python tools/audio_play_test.py song.mp3 -s 20       # 20 s of a file
+python tools/audio_play_test.py loop.wav --loop 0 2  # loop the first 2 s
+python tools/audio_play_test.py song.wav --voices 8  # 8 copies at once (CPU check)
+```

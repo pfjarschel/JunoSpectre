@@ -123,6 +123,9 @@ pip install -r requirements.txt
 pip install PyQt6   # needed by the UI launcher
 ```
 
+Audio clips (backing tracks, loops, samples) also need PortAudio:
+`sudo apt install libportaudio2` on Raspberry Pi OS / Debian.
+
 ### Run (desktop PC and Raspberry Pi)
 
 One unified launcher, with automatic hardware detection. No touchscreen or

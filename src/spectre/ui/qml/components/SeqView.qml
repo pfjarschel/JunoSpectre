@@ -232,16 +232,6 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: ScaleMetrics.dp(6)
 
-                // Track bank: tabs show tracks 1-8 or 9-16 (tap to flip)
-                SpButton {
-                    objectName: "trackBankChip"
-                    implicitHeight: ScaleMetrics.dp(26)
-                    implicitWidth: ScaleMetrics.dp(36)
-                    text: Bridge.seqTrackBank === 0 ? "1-8" : "9-16"
-                    fontSize: 8
-                    onClicked: Bridge.seqSetTrackBank(1 - Bridge.seqTrackBank)
-                }
-
                 // Track Tabs of the shown bank (long-press to rename)
                 RowLayout {
                     spacing: ScaleMetrics.dp(3)
@@ -264,6 +254,16 @@ Rectangle {
                             }
                         }
                     }
+                }
+
+                // Track bank: the tabs show tracks 1-8 or 9-16 (tap to flip)
+                SpButton {
+                    objectName: "trackBankChip"
+                    implicitHeight: ScaleMetrics.dp(26)
+                    implicitWidth: ScaleMetrics.dp(36)
+                    text: Bridge.seqTrackBank === 0 ? "1-8" : "9-16"
+                    fontSize: 8
+                    onClicked: Bridge.seqSetTrackBank(1 - Bridge.seqTrackBank)
                 }
 
                 Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard }
