@@ -26,6 +26,8 @@ Rectangle {
     property bool laneMode: false
 
     signal addRequested(string key)
+    // midiMode: type the control in (channel + number) instead of learning it
+    signal manualRequested(string key)
     signal closeRequested()
 
     function open(macroIndex, color) {
@@ -229,6 +231,14 @@ Rectangle {
                     border.width: 1
                     readonly property bool assigned: root.isAssigned(modelData.key)
 
+                    // Under the row so the MANUAL button takes its own taps
+                    MouseArea {
+                        id: touchArea
+                        anchors.fill: parent
+                        enabled: !assigned
+                        onClicked: root.addRequested(modelData.key)
+                    }
+
                     RowLayout {
                         anchors.fill: parent
                         anchors.margins: ScaleMetrics.dp(8)
@@ -254,6 +264,16 @@ Rectangle {
                                 color: Theme.textDim
                                 elide: Text.ElideRight
                             }
+                        }
+
+                        SpButton {
+                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                            Layout.preferredHeight: ScaleMetrics.dp(28)
+                            visible: root.midiMode
+                            text: "MANUAL"
+                            variant: "outline"
+                            accent: root.macroColor
+                            onClicked: root.manualRequested(modelData.key)
                         }
 
                         Rectangle {
@@ -283,12 +303,6 @@ Rectangle {
                         }
                     }
 
-                    MouseArea {
-                        id: touchArea
-                        anchors.fill: parent
-                        enabled: !assigned
-                        onClicked: root.addRequested(modelData.key)
-                    }
                 }
             }
 

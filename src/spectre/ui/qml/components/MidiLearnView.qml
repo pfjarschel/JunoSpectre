@@ -34,6 +34,48 @@ Rectangle {
     property var contexts: []
     property int contextFor: -2          // -1 = learn scope, >= 0 = binding row, -2 = closed
 
+    // Manual entry panel: a control typed in by channel and number
+    property bool entryOpen: false
+    property int entryIndex: -1          // binding being changed, -1 = new binding
+    property string entryTarget: ""
+    property string entryTitle: ""
+    property string entryContext: ""
+    property string entryPort: ""
+    property int entryChannel: 1         // 1..16
+    property string entryKind: "cc"
+    property int entryNumber: 1
+    property bool entryButton: false
+    property var entryPorts: []
+    readonly property string entryLabel: Bridge.controlLabel(entryPort, entryChannel, entryKind, entryNumber)
+    readonly property string entryReplaces: entryOpen
+        ? Bridge.controlBoundTo(entryPort, entryChannel, entryKind, entryNumber, entryContext, entryIndex) : ""
+
+    function openEntry(index, target, title) {
+        var b = index >= 0 ? root.bindings[index] : null
+        root.entryIndex = index
+        root.entryTarget = b ? b.target : target
+        root.entryTitle = b ? b.title : title
+        root.entryContext = b ? b.context : root.learnContext
+        root.fillEntry(Bridge.controlManualStart(index))
+        root.entryButton = root.entryKind === "note"
+        root.entryOpen = true
+    }
+    function fillEntry(c) {
+        root.entryPort = c.port
+        root.entryChannel = c.channel
+        root.entryKind = c.kind
+        root.entryNumber = c.number
+        root.entryPorts = Bridge.controlManualPorts(c.port)
+    }
+    function saveEntry() {
+        if (root.entryIndex >= 0)
+            Bridge.setControlBindingControl(root.entryIndex, root.entryPort, root.entryChannel, root.entryKind, root.entryNumber)
+        else
+            Bridge.addControlBinding(root.entryTarget, root.entryContext, root.entryPort, root.entryChannel,
+                                     root.entryKind, root.entryNumber, root.entryButton)
+        root.entryOpen = false
+    }
+
     function openContexts(forIndex) {
         root.contexts = Bridge.controlContexts()
         root.contextFor = forIndex
@@ -206,14 +248,30 @@ Rectangle {
                         anchors.rightMargin: ScaleMetrics.dp(4)
                         spacing: ScaleMetrics.dp(6)
 
-                        Text {
+                        // Tap to type in another channel / number
+                        Item {
                             Layout.preferredWidth: ScaleMetrics.dp(190)
-                            text: row.modelData.control
-                            elide: Text.ElideRight
-                            font.family: Theme.fontMono
-                            font.bold: true
-                            font.pixelSize: ScaleMetrics.sp(9)
-                            color: Theme.textPrimary
+                            Layout.fillHeight: true
+                            RowLayout {
+                                anchors.fill: parent
+                                spacing: ScaleMetrics.dp(4)
+                                Text {
+                                    Layout.maximumWidth: parent.width - ScaleMetrics.dp(16)
+                                    text: row.modelData.control
+                                    elide: Text.ElideRight
+                                    font.family: Theme.fontMono
+                                    font.bold: true
+                                    font.pixelSize: ScaleMetrics.sp(9)
+                                    color: ctlArea.pressed ? root.accent : Theme.textPrimary
+                                }
+                                Icon { name: "edit"; size: 11; color: Theme.textDim }
+                                Item { Layout.fillWidth: true }
+                            }
+                            MouseArea {
+                                id: ctlArea
+                                anchors.fill: parent
+                                onClicked: root.openEntry(row.index, "", "")
+                            }
                         }
                         Text { text: "→"; font.pixelSize: ScaleMetrics.sp(10); color: Theme.textDim }
                         Text {
@@ -282,7 +340,191 @@ Rectangle {
             picker.close()
             Bridge.startControlLearn(key, root.learnContext)
         }
+        onManualRequested: (key) => {
+            var title = key
+            for (var i = 0; i < picker.targetList.length; i++)
+                if (picker.targetList[i].key === key) title = picker.targetList[i].title
+            picker.close()
+            root.openEntry(-1, key, title)
+        }
         onCloseRequested: picker.close()
+    }
+
+    // Manual entry
+    Rectangle {
+        anchors.fill: parent
+        visible: root.entryOpen
+        color: Theme.scrim
+        z: 21
+        MouseArea { anchors.fill: parent; onClicked: root.entryOpen = false }
+        Rectangle {
+            width: Math.min(parent.width - ScaleMetrics.dp(60), ScaleMetrics.dp(600))
+            height: entryCol.implicitHeight + ScaleMetrics.dp(24)
+            anchors.centerIn: parent
+            radius: ScaleMetrics.dp(10)
+            color: Theme.bgCard
+            border.color: root.accent
+            border.width: 1
+            MouseArea { anchors.fill: parent }
+            ColumnLayout {
+                id: entryCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: ScaleMetrics.dp(12)
+                spacing: ScaleMetrics.dp(10)
+                Text {
+                    Layout.fillWidth: true
+                    text: (root.entryIndex >= 0 ? "CHANGE CONTROL  ·  " : "SET CONTROL  ·  ") + root.entryTitle
+                    elide: Text.ElideRight
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(11)
+                    color: Theme.textPrimary
+                }
+                RowLayout {
+                    spacing: ScaleMetrics.dp(6)
+                    FieldLabel { text: "PORT" }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(4)
+                        Repeater {
+                            model: root.entryPorts
+                            delegate: SpButton {
+                                required property var modelData
+                                implicitHeight: ScaleMetrics.dp(28)
+                                width: Math.min(implicitWidth, ScaleMetrics.dp(260))
+                                text: modelData.title
+                                fontSize: 8
+                                accent: root.accent
+                                checked: root.entryPort === modelData.key
+                                onClicked: root.entryPort = modelData.key
+                            }
+                        }
+                    }
+                }
+                RowLayout {
+                    spacing: ScaleMetrics.dp(6)
+                    FieldLabel { text: "TYPE" }
+                    Repeater {
+                        model: [{ key: "cc", title: "CC" }, { key: "note", title: "NOTE" }]
+                        delegate: SpButton {
+                            required property var modelData
+                            implicitWidth: ScaleMetrics.dp(64)
+                            implicitHeight: ScaleMetrics.dp(28)
+                            text: modelData.title
+                            accent: root.accent
+                            checked: root.entryKind === modelData.key
+                            onClicked: {
+                                root.entryKind = modelData.key
+                                if (modelData.key === "note") root.entryButton = true
+                            }
+                        }
+                    }
+                    Item { Layout.preferredWidth: ScaleMetrics.dp(12) }
+                    FieldLabel { text: "CHANNEL" }
+                    SeqStepper {
+                        width: ScaleMetrics.dp(110)
+                        Layout.preferredWidth: width
+                        count: 16
+                        index: root.entryChannel - 1
+                        valueText: "CH " + root.entryChannel
+                        valueColor: root.accent
+                        textPx: ScaleMetrics.sp(10)
+                        onRequested: (i) => root.entryChannel = i + 1
+                    }
+                }
+                RowLayout {
+                    spacing: ScaleMetrics.dp(6)
+                    FieldLabel { text: root.entryKind === "note" ? "NOTE" : "NUMBER" }
+                    SpButton {
+                        implicitHeight: ScaleMetrics.dp(30)
+                        text: "−10"
+                        onClicked: root.entryNumber = Math.max(0, root.entryNumber - 10)
+                    }
+                    SeqStepper {
+                        width: ScaleMetrics.dp(150)
+                        Layout.preferredWidth: width
+                        count: 128
+                        index: root.entryNumber
+                        valueText: (root.entryKind === "note" ? "NOTE " : "CC ") + root.entryNumber
+                        valueColor: root.accent
+                        textPx: ScaleMetrics.sp(10)
+                        pxPerStep: ScaleMetrics.dp(5)
+                        onRequested: (i) => root.entryNumber = i
+                    }
+                    SpButton {
+                        implicitHeight: ScaleMetrics.dp(30)
+                        text: "+10"
+                        onClicked: root.entryNumber = Math.min(127, root.entryNumber + 10)
+                    }
+                    Item { Layout.fillWidth: true }
+                    SpButton {
+                        implicitHeight: ScaleMetrics.dp(30)
+                        text: "LAST MOVED"
+                        enabled: Bridge.controlActivity !== ""
+                        onClicked: root.fillEntry(Bridge.controlManualStart(-1))
+                    }
+                }
+                RowLayout {
+                    // New bindings only: knob/fader or button (changing a control keeps its options)
+                    visible: root.entryIndex < 0 && root.entryTarget.indexOf("action.") !== 0
+                    spacing: ScaleMetrics.dp(6)
+                    FieldLabel { text: "IT IS A" }
+                    SpButton {
+                        implicitHeight: ScaleMetrics.dp(28)
+                        text: "KNOB / FADER"
+                        accent: root.accent
+                        checked: !root.entryButton
+                        onClicked: root.entryButton = false
+                    }
+                    SpButton {
+                        implicitHeight: ScaleMetrics.dp(28)
+                        text: "BUTTON"
+                        accent: root.accent
+                        checked: root.entryButton
+                        onClicked: root.entryButton = true
+                    }
+                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: ScaleMetrics.dp(30)
+                    radius: ScaleMetrics.dp(4)
+                    color: Theme.bgTrack
+                    border.color: root.entryReplaces !== "" ? Theme.warning : Theme.borderCard
+                    border.width: 1
+                    Text {
+                        anchors.fill: parent
+                        anchors.leftMargin: ScaleMetrics.dp(8)
+                        anchors.rightMargin: ScaleMetrics.dp(8)
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                        text: root.entryLabel + "  →  " + root.entryTitle
+                              + (root.entryReplaces !== "" ? "   (replaces " + root.entryReplaces + ")" : "")
+                        font.family: Theme.fontMono
+                        font.pixelSize: ScaleMetrics.sp(9)
+                        color: root.entryReplaces !== "" ? Theme.warning : Theme.textPrimary
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.entryIndex >= 0 ? "" : "APPLIES: " + root.learnContextTitle
+                        elide: Text.ElideRight
+                        font.pixelSize: ScaleMetrics.sp(8)
+                        color: Theme.textDim
+                    }
+                    HeadButton { text: "CANCEL"; tint: Theme.textSecondary; onClicked: root.entryOpen = false }
+                    SpButton {
+                        implicitHeight: ScaleMetrics.dp(28)
+                        text: root.entryIndex >= 0 ? "CHANGE" : "ASSIGN"
+                        variant: "primary"
+                        accent: root.accent
+                        onClicked: root.saveEntry()
+                    }
+                }
+            }
+        }
     }
 
     // Presets
@@ -506,6 +748,14 @@ Rectangle {
         variant: "outline"
         implicitHeight: ScaleMetrics.dp(28)
         horizontalPadding: ScaleMetrics.dp(10)
+    }
+
+    component FieldLabel: Text {
+        Layout.preferredWidth: ScaleMetrics.dp(64)
+        font.bold: true
+        font.pixelSize: ScaleMetrics.sp(8)
+        font.letterSpacing: 1.0
+        color: Theme.textDim
     }
 
     component RowChip: SpButton {

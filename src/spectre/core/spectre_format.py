@@ -212,7 +212,7 @@ def patch_state_from_dict(d: Dict[str, Any]) -> PatchState:
                     setattr(out, key, list(d[key]))
                 except Exception:
                     pass
-        # macros: list of {name, value, links:[{target_key,polarity,depth}]}
+        # macros: list of {name ("" = automatic), value, links:[{target_key,polarity,depth}]}
         if isinstance(d.get("macros"), list) and d["macros"]:
             try:
                 slots = []
@@ -224,7 +224,7 @@ def patch_state_from_dict(d: Dict[str, Any]) -> PatchState:
                         if isinstance(lk, dict):
                             links.append(_safe_construct(MacroLink, lk, MacroLink()))
                     slot = MacroSlot(
-                        name=str(m.get("name", "MACRO"))[:14] or "MACRO",
+                        name=str(m.get("name", "") or ""),
                         value=float(m.get("value", 0.0)),
                         links=links,
                     )

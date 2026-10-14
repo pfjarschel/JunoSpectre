@@ -29,7 +29,7 @@ from typing import Optional
 
 from PyQt6.QtCore import Qt, QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
-from ...control.lcxl3 import format_value, screen_names
+from ...control.lcxl3 import format_value
 from ...core.macro_targets import filter_macro_targets
 from ...sequencer import automation as auto
 from ...sequencer.engine import DIVIDER_TICKS
@@ -431,23 +431,8 @@ class AutomationBridgeMixin(BridgeBaseMixin):
         return macros + rest
 
     def _auto_tab_name(self, lane) -> str:
-        """Short lane tab label: "T1 Cutoff", "M2 Wobble", "Reverb Level"."""
-        if not lane.target:
-            return ""
-        if lane.target.startswith("macro."):
-            n = lane.target[6:]
-            try:
-                name = self.patch_state.macros[int(n) - 1].name
-            except (ValueError, IndexError):
-                name = ""
-            return f"M{n} {name}" if name and name not in (f"M{n}", f"MACRO {n}") else f"Macro {n}"
-        entry = self._ctl_entry(lane.target)
-        group, name = screen_names(lane.target, self._ctl_target_title(lane.target),
-                                   entry["category"] if entry else "")
-        for prefix, short in (("TONE ", "T"), ("MACRO ", "M"), ("MATRIX CTRL ", "MX"), ("TRACK ", "TR")):
-            if group.startswith(prefix):
-                return f"{short}{group[len(prefix):]} {name}"
-        return f"ALL {name}" if group == "ALL TONES" else name
+        """Short lane tab label: "T1 Cutoff", "M2 WOBBLE", "Reverb Level"."""
+        return self._short_target_name(lane.target) if lane.target else ""
 
     @pyqtSlot(int, float, result=str)
     def seqLaneValueText(self, lane_idx: int, t: float) -> str:

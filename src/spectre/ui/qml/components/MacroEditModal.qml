@@ -66,10 +66,11 @@ Rectangle {
         nameField.text = currentMacroName();
     }
 
+    // The typed name ("" = automatic: named after the links)
     function currentMacroName() {
-        if (Bridge.macroNames && Bridge.macroNames.length >= targetMacro)
-            return Bridge.macroNames[targetMacro - 1];
-        return "M" + targetMacro;
+        if (Bridge.macroCustomNames && Bridge.macroCustomNames.length >= targetMacro)
+            return Bridge.macroCustomNames[targetMacro - 1];
+        return "";
     }
 
     function depthLabel(d) {
@@ -202,6 +203,14 @@ Rectangle {
                             }
                             onActiveFocusChanged: {
                                 if (activeFocus) root.keyboardVisible = true;
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: nameField.text === ""
+                                text: ((Bridge.macroNames && Bridge.macroNames.length >= root.targetMacro)
+                                       ? Bridge.macroNames[root.targetMacro - 1] : "") + "  ·  AUTO"
+                                font: nameField.font
+                                color: Theme.textDim
                             }
                         }
                         SpButton {

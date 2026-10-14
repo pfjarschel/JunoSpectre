@@ -78,7 +78,7 @@ def test_ui_bridge_slots_and_properties():
     assert bridge.masterLevel == 115
 
     # Test Macros (relative bipolar: value in [-1, 1], sounding = base + offset)
-    assert bridge.macroNames[0] == "CUTOFF"
+    assert bridge.macroNames[0] == "CUTOFF OFS"
     bridge.setMacro(1, 0.5)
     assert bridge.macroValues[0] == pytest.approx(0.5)
     # default M1: common.cutoff_offset, base 64, span 63, depth 1.0 -> 64 + 31.5 = 96 (rounded)
@@ -736,8 +736,8 @@ def test_init_patch_workflow():
     assert bridge.lfo1PitchDepth == 0
     assert bridge.lfo2TvfDepth == 0
     assert bridge.patch_state.effects.routing_preset == ""  # raw template patch, no preset
-    assert bridge.macroNames[6] == "CHORUS"
-    assert bridge.macroNames[7] == "REVERB"
+    assert bridge.macroNames[6] == "CHORUS LEVEL"
+    assert bridge.macroNames[7] == "REVERB LEVEL"
     assert bridge.macroValues[6] == pytest.approx(0.0)
     assert bridge.macroValues[7] == pytest.approx(0.0)
 
@@ -948,7 +948,7 @@ def test_customizable_multitarget_macros():
 
     # INIT resets names, values, links to defaults
     bridge.initPatch()
-    assert bridge.macroNames[0] == "CUTOFF"
+    assert bridge.macroNames[0] == "CUTOFF OFS"
     assert bridge.macroValues[0] == pytest.approx(0.0)
     assert len(bridge.getMacroLinks(1)) == 1
 

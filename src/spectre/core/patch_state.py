@@ -531,28 +531,50 @@ class MacroLink:
 
 @dataclass
 class MacroSlot:
-    """One customizable macro knob (relative, bipolar)."""
+    """One customizable macro knob (relative, bipolar).
 
-    name: str = "MACRO"
+    name "" = automatic: named after its links (auto_macro_name).
+    """
+
+    name: str = ""
     value: float = 0.0         # -1..1, 0 = neutral
     links: list["MacroLink"] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.value = max(-1.0, min(1.0, float(self.value)))
-        self.name = str(self.name)[:14] if self.name else "MACRO"
+        self.name = str(self.name or "")[:14]
+
+
+MACRO_NAME_MAX = 14
+
+
+def auto_macro_name(index: int, link_names: list[str]) -> str:
+    """Name of macro `index` (1-based) from its links' short names.
+
+    No link: "M1"; one: its name; several: joined with "+" while they fit,
+    else the first one and a count ("CUTOFF +2").
+    """
+    names = [n.upper() for n in link_names if n]
+    if not names:
+        return f"M{index}"
+    joined = "+".join(names)
+    if len(joined) <= MACRO_NAME_MAX:
+        return joined
+    more = f" +{len(names) - 1}" if len(names) > 1 else ""
+    return names[0][:MACRO_NAME_MAX - len(more)].rstrip() + more
 
 
 def default_macro_slots() -> list["MacroSlot"]:
     """Factory defaults replicating the legacy 8-knob deck as relative macros."""
     return [
-        MacroSlot(name="CUTOFF", links=[MacroLink("common.cutoff_offset", 1, 1.0)]),
-        MacroSlot(name="RESO", links=[MacroLink("common.resonance_offset", 1, 1.0)]),
-        MacroSlot(name="ATTACK", links=[MacroLink("common.attack_offset", 1, 1.0)]),
-        MacroSlot(name="RELEASE", links=[MacroLink("common.release_offset", 1, 1.0)]),
-        MacroSlot(name="PORTA TIME", links=[MacroLink("common.portamento_time", 1, 0.5)]),
-        MacroSlot(name="ANALOG FEEL", links=[MacroLink("common.analog_feel", 1, 0.5)]),
-        MacroSlot(name="CHORUS", links=[MacroLink("effects.chorus_level", 1, 0.5)]),
-        MacroSlot(name="REVERB", links=[MacroLink("effects.reverb_level", 1, 0.5)]),
+        MacroSlot(links=[MacroLink("common.cutoff_offset", 1, 1.0)]),
+        MacroSlot(links=[MacroLink("common.resonance_offset", 1, 1.0)]),
+        MacroSlot(links=[MacroLink("common.attack_offset", 1, 1.0)]),
+        MacroSlot(links=[MacroLink("common.release_offset", 1, 1.0)]),
+        MacroSlot(links=[MacroLink("common.portamento_time", 1, 0.5)]),
+        MacroSlot(links=[MacroLink("common.analog_feel", 1, 0.5)]),
+        MacroSlot(links=[MacroLink("effects.chorus_level", 1, 0.5)]),
+        MacroSlot(links=[MacroLink("effects.reverb_level", 1, 0.5)]),
     ]
 
 

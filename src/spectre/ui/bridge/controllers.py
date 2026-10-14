@@ -459,13 +459,27 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         behavior = "toggle" if (kind == "note" or raw == 127) else "absolute"
         b = Binding(port=port, channel=ch, kind=kind, number=num, target=target, behavior=behavior,
                     context=self._ctl_learn_context)
-        for old in [o for o in self._ctl_bindings if o.same_control(b) and o.context == b.context]:
-            self._ctl_bindings.remove(old)
-            self._ctl_resolver.forget(old)
-        self._ctl_bindings.append(b)
-        self._ctl_save()
+        self._ctl_put_binding(b)
         self._ctl_set_activity(f"Learned {self._ctl_control_label(port, ch, kind, num)} → "
                                f"{self._ctl_target_title(target)}")
+
+    def _ctl_put_binding(self, b: Binding, index: int = -1) -> None:
+        """Add `b`, or put it at `index` in place of that binding.
+
+        A control has one binding per context, so another binding of the
+        same control and context is replaced.
+        """
+        keep = self._ctl_bindings[index] if 0 <= index < len(self._ctl_bindings) else None
+        for old in [o for o in self._ctl_bindings
+                    if o is not keep and o.same_control(b) and o.context == b.context]:
+            self._ctl_bindings.remove(old)
+            self._ctl_resolver.forget(old)
+        if keep is None:
+            self._ctl_bindings.append(b)
+        else:
+            self._ctl_resolver.forget(keep)
+            self._ctl_bindings[self._ctl_bindings.index(keep)] = b
+        self._ctl_save()
         self.controllersChanged.emit()
 
     # -- targets -------------------------------------------------------------
@@ -606,15 +620,25 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         if target.startswith("macro."):
             try:
                 idx = int(target[6:])
-                name = self.patch_state.macros[idx - 1].name
-            except (ValueError, IndexError):
+            except ValueError:
                 return target
-            return f"Macro {idx}" + (f" ({name})" if name and name != f"MACRO {idx}" else "")
+            return self._macro_title(idx) if 1 <= idx <= len(self.patch_state.macros) else target
         entry = self._macroEntry(target)
         base, part = self._splitPart(target)
         if entry and part and base.startswith("part."):
             return entry["title"].replace("Part", f"Part {part}", 1)
         return entry["title"] if entry else target
+
+    def _short_target_name(self, target: str) -> str:
+        """Compact name of a target (lane tabs, strip cards, macro names):
+        "T1 Cutoff", "ALL Reso", "P3 Level", "MX2 Dest 1 Sens", "M2 WOBBLE"."""
+        if target.startswith("macro."):
+            return self._ctl_target_title(target)
+        scope, name = self._surface_names(target, self._ctl_target_title(target))
+        for prefix, short in (("TONE ", "T"), ("PART ", "P"), ("MATRIX CTRL ", "MX"), ("TRACK ", "TR")):
+            if scope.startswith(prefix):
+                return f"{short}{scope[len(prefix):]} {name}"
+        return {"ALL TONES": f"ALL {name}", "EDITED PART": f"Part {name}"}.get(scope, name)
 
     def _ctl_control_label(self, port: str, ch: int, kind: str, num: int) -> str:
         if port not in self._ctl_names:
@@ -797,7 +821,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 else:
                     if eff.startswith("macro."):
                         idx = eff[6:]
-                        title = self.patch_state.macros[int(idx) - 1].name if idx.isdigit() else ""
+                        title = self._macro_name(int(idx)) if idx.isdigit() else ""
                     elif eff.startswith("action."):
                         title = lcxl3.short_title(self._ctl_target_title(eff))
                     else:
@@ -849,14 +873,6 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     # -- on-screen context strip ------------------------------------------------
 
-    @staticmethod
-    def _ctx_strip_title(scope: str, name: str) -> str:
-        """Compact label for a strip card: "T2 Cutoff", "P3 Level", "M1 Dest 1 Sens"."""
-        for prefix, short in (("TONE ", "T"), ("PART ", "P"), ("MATRIX CTRL ", "M"), ("TRACK ", "TRK")):
-            if scope.startswith(prefix):
-                return f"{short}{scope[len(prefix):]} {name}"
-        return name
-
     def _ctx_compute(self) -> list:
         out = []
         knobs = CONTEXT_KNOBS.get(str(getattr(self, "_active_view", "")), [])
@@ -865,11 +881,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             if not target:
                 out.append({"key": "", "title": "-", "text": "", "norm": 0.0, "active": False})
                 continue
-            if target.startswith("macro."):
-                title = self.patch_state.macros[int(target[6:]) - 1].name or f"M{target[6:]}"
-            else:
-                scope, name = self._surface_names(target, self._ctl_target_title(target))
-                title = self._ctx_strip_title(scope, name)
+            title = self._short_target_name(target)
             cur = self._ctl_current(target)
             out.append({"key": target, "title": title, "text": self._surface_value(target),
                         "norm": round(cur, 4) if cur is not None else 0.0, "active": cur is not None})
@@ -1085,6 +1097,74 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         with self._ctl_lock:
             self._ctl_events.clear()
         self.controllersChanged.emit()
+
+    # Manual entry: a control typed in by channel and number instead of learned
+
+    @pyqtSlot(int, result="QVariantMap")
+    def controlManualStart(self, index: int) -> dict:
+        """Starting values for the manual entry panel (channel 1..16).
+
+        A binding's own control when editing one (index >= 0), else the
+        control that moved last, else CH1 CC 1 on any port.
+        """
+        if 0 <= index < len(self._ctl_bindings):
+            b = self._ctl_bindings[index]
+            port, ch, kind, num = b.port, b.channel, b.kind, b.number
+        elif self._ctl_moved:
+            port, ch, kind, num = max(self._ctl_moved, key=lambda c: self._ctl_moved[c][1])
+        else:
+            port, ch, kind, num = "", 0, "cc", 1
+        return {"port": port, "channel": ch + 1, "kind": kind, "number": num}
+
+    @pyqtSlot(str, result="QVariantList")
+    def controlManualPorts(self, current: str = "") -> list:
+        """Ports a typed-in control can listen on: any port, then each controller input."""
+        keys = [p["key"] for p in self.controllerPorts if p["enabled"]]
+        if current and current not in keys:
+            keys.append(current)
+        return [{"key": "", "title": "ANY PORT"}] + [{"key": k, "title": k} for k in keys]
+
+    @pyqtSlot(str, int, str, int, result=str)
+    def controlLabel(self, port: str, channel: int, kind: str, number: int) -> str:
+        """"Knob A1 · CH1 CC 13" for channel 1..16."""
+        return self._ctl_control_label(str(port or ""), (int(channel) - 1) & 0x0F,
+                                       "note" if kind == "note" else "cc", int(number) & 0x7F)
+
+    @pyqtSlot(str, int, str, int, str, int, result=str)
+    def controlBoundTo(self, port: str, channel: int, kind: str, number: int, context: str, index: int) -> str:
+        """Title of the binding a manual entry would replace ("" = none)."""
+        probe = Binding(port=str(port or ""), channel=(int(channel) - 1) & 0x0F,
+                        kind="note" if kind == "note" else "cc", number=int(number) & 0x7F,
+                        target="-", context=str(context or ""))
+        for i, b in enumerate(self._ctl_bindings):
+            if i != index and b.same_control(probe) and b.context == probe.context:
+                return self._ctl_target_title(b.target)
+        return ""
+
+    @pyqtSlot(str, str, str, int, str, int, bool)
+    def addControlBinding(self, target: str, context: str, port: str, channel: int, kind: str,
+                          number: int, button: bool) -> None:
+        """Bind a typed-in control (channel 1..16) to `target`, as learn would."""
+        if not target:
+            return
+        kind = "note" if kind == "note" else "cc"
+        behavior = "toggle" if (button or target.startswith("action.")) else "absolute"
+        b = Binding(port=str(port or ""), channel=(int(channel) - 1) & 0x0F, kind=kind,
+                    number=int(number) & 0x7F, target=str(target), behavior=behavior,
+                    context=str(context or ""))
+        self._ctl_put_binding(b)
+        self._ctl_set_activity(f"Assigned {self._ctl_control_label(b.port, b.channel, kind, b.number)} → "
+                               f"{self._ctl_target_title(b.target)}")
+
+    @pyqtSlot(int, str, int, str, int)
+    def setControlBindingControl(self, index: int, port: str, channel: int, kind: str, number: int) -> None:
+        """Move binding `index` to another control (channel 1..16); its options stay."""
+        if not 0 <= index < len(self._ctl_bindings):
+            return
+        old = self._ctl_bindings[index]
+        b = Binding(**{**old.to_dict(), "port": str(port or ""), "channel": (int(channel) - 1) & 0x0F,
+                       "kind": "note" if kind == "note" else "cc", "number": int(number) & 0x7F})
+        self._ctl_put_binding(b, index)
 
     @pyqtSlot(str, str, result="QVariantList")
     def getControlTargets(self, category: str = "ALL", query: str = "") -> list:

@@ -350,7 +350,7 @@ def test_surface_shows_names_values_and_leds(ui):
     msgs = [m for _, m in sent]
     text = lambda cc, field, t: lcxl3.display_text(cc, field, t).hex()
     assert text(13, 0, "MACRO 1") in msgs                    # knob A1 = macro 1
-    assert text(13, 1, "CUTOFF") in msgs
+    assert text(13, 1, "CUTOFF OFS") in msgs
     assert text(13, 2, "+0%") in msgs
     assert lcxl3.led_rgb(13, lcxl3.by_value(lcxl3.CATEGORY_COLORS["MACRO"], 0.5)).hex() in msgs
     assert text(21, 0, "TONE 1") in msgs                     # row B = context knobs: PCM page = edited tone
@@ -529,3 +529,81 @@ def test_context_knobs_follow_the_page(ui):
     assert bridge.wavetableSweepMode == "chaos"
     _send(app, bridge, _cc(21, 40))
     assert bridge.wavetableSweepMode == "triangle"
+
+
+@pytest.mark.ui
+def test_manual_entry_binds_a_typed_in_control(ui):
+    app, bridge, data = ui
+    # Starts from the control that moved last
+    _send(app, bridge, _cc(21, 5, ch=2))
+    assert bridge.controlManualStart(-1) == {"port": PORT, "channel": 3, "kind": "cc", "number": 21}
+    assert bridge.controlManualPorts("")[0] == {"key": "", "title": "ANY PORT"}
+    bridge.addControlBinding("tone.all.tvf_cutoff", "", "", 3, "cc", 21, False)
+    (b,) = bridge.controlBindings
+    assert (b["target"], b["behavior"], b["port"], b["control"]) == (
+        "tone.all.tvf_cutoff", "absolute", "ANY PORT", "CH3 CC 21")
+    assert json.loads((data / "hardware.json").read_text())["controllers"]["bindings"][0]["channel"] == 2
+    # It works like a learned binding
+    bridge._ctl_bindings[0].takeover = "jump"
+    _send(app, bridge, _cc(21, 100, ch=2))
+    assert [t.tvf_cutoff for t in bridge.patch_state.tones] == [100] * 4
+    # Buttons and actions press; the same control + scope replaces the old binding
+    assert bridge.controlBoundTo("", 3, "cc", 21, "", -1) == "All Cutoff"
+    assert bridge.controlBoundTo("", 3, "cc", 21, "SEQUENCER", -1) == ""
+    bridge.addControlBinding("action.seq.toggle_play", "", "", 3, "cc", 21, False)
+    assert [(b["target"], b["behavior"]) for b in bridge.controlBindings] == [("action.seq.toggle_play", "toggle")]
+
+
+@pytest.mark.ui
+def test_changing_a_bindings_control_keeps_its_options(ui):
+    app, bridge, _ = ui
+    bridge._ctl_bindings = [_b(number=13, takeover="scale", lo=1.0, hi=0.0, context="VA"),
+                            _b(number=14, target="macro.1", context="VA")]
+    assert bridge.controlManualStart(0) == {"port": PORT, "channel": 1, "kind": "cc", "number": 13}
+    assert bridge.controlBoundTo(PORT, 1, "cc", 13, "VA", 0) == ""      # its own control
+    bridge.setControlBindingControl(0, PORT, 16, "note", 60)
+    first = bridge.controlBindings[0]
+    assert (first["control"], first["takeover"], first["lo"], first["context"]) == (
+        "CH16 NOTE 60", "scale", 1.0, "VA")
+    # Moving it onto the other binding's control replaces that one, in place
+    bridge.setControlBindingControl(0, PORT, 1, "cc", 14)
+    assert [b["target"] for b in bridge.controlBindings] == ["tone.all.tvf_cutoff"]
+    assert bridge.controlLabel(PORT, 1, "cc", 13) == "Knob A1 · CH1 CC 13"
+
+
+@pytest.mark.ui
+def test_macros_are_named_after_their_links_until_renamed(ui):
+    from src.spectre.core.patch_state import auto_macro_name
+
+    app, bridge, _ = ui
+    assert bridge.macroNames[0] == "CUTOFF OFS"
+    assert bridge.macroCustomNames[0] == ""
+    assert bridge._ctl_target_title("macro.1") == "M1 CUTOFF OFS"
+    # The name follows the links
+    bridge.removeMacroTarget(1, 0)
+    assert bridge.macroNames[0] == "M1"
+    assert bridge._ctl_target_title("macro.1") == "M1"
+    bridge.addMacroTarget(1, "tone.1.tvf_cutoff")
+    assert bridge.macroNames[0] == "T1 CUTOFF"
+    bridge.addMacroTarget(1, "tone.2.tvf_cutoff")
+    assert bridge.macroNames[0] == "T1 CUTOFF +1"
+    # A typed name sticks; clearing it goes back to automatic
+    bridge.setMacroName(1, "wobble")
+    assert (bridge.macroNames[0], bridge.macroCustomNames[0]) == ("WOBBLE", "WOBBLE")
+    assert bridge._ctl_target_title("macro.1") == "M1 WOBBLE"
+    bridge.setMacroName(1, "  ")
+    assert (bridge.macroNames[0], bridge.macroCustomNames[0]) == ("T1 CUTOFF +1", "")
+    assert bridge._short_target_name("part.level") == "Part Level"
+    assert bridge._short_target_name("part.level@3") == "P3 Level"
+    assert auto_macro_name(2, ["Cutoff", "Reso"]) == "CUTOFF+RESO"
+    assert auto_macro_name(2, ["T2 LFO1 Pitch Dep"]) == "T2 LFO1 PITCH"
+
+
+def test_automatic_macro_names_survive_save_and_load():
+    from src.spectre.core.patch_state import PatchState
+    from src.spectre.core.spectre_format import patch_state_from_dict, patch_state_to_dict
+
+    ps = PatchState()
+    ps.macros[1].name = "WOBBLE"
+    back = patch_state_from_dict(patch_state_to_dict(ps))
+    assert [m.name for m in back.macros[:2]] == ["", "WOBBLE"]

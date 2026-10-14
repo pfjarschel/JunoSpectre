@@ -16,7 +16,7 @@ from ...core.macro_targets import (
     macro_delta,
     resolve_sounding,
 )
-from ...core.patch_state import PatchState, ToneState
+from ...core.patch_state import PatchState, ToneState, auto_macro_name
 from ...core.routing import tone_send_attrs, tone_sends
 from .base import BridgeBaseMixin
 
@@ -737,8 +737,28 @@ class MacroBridgeMixin(BridgeBaseMixin):
             self.pitchFineChanged.emit(self.pitchFine)
         self.macrosChanged.emit()
 
+    def _macro_name(self, index: int) -> str:
+        """Shown name of macro `index` (1-based): its own, else named after its links."""
+        try:
+            slot = self.patch_state.macros[index - 1]
+        except IndexError:
+            return f"M{index}"
+        if slot.name:
+            return slot.name
+        return auto_macro_name(index, [self._short_target_name(lk.target_key) for lk in slot.links])
+
+    def _macro_title(self, index: int) -> str:
+        """"M1 CUTOFF OFS" (just "M1" while it has no name and no link)."""
+        name = self._macro_name(index)
+        return name if name == f"M{index}" else f"M{index} {name}"
+
     @pyqtProperty("QVariantList", notify=macrosChanged)
     def macroNames(self) -> list:
+        return [self._macro_name(i) for i in range(1, len(self.patch_state.macros) + 1)]
+
+    @pyqtProperty("QVariantList", notify=macrosChanged)
+    def macroCustomNames(self) -> list:
+        """Names typed by the user ("" = automatic)."""
         return [s.name for s in self.patch_state.macros]
 
     @pyqtProperty("QVariantList", notify=macrosChanged)
@@ -789,7 +809,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(int, str)
     def setMacroName(self, index: int, name: str) -> None:
         if 1 <= index <= len(self.patch_state.macros):
-            clean = (name or "").strip().upper()[:14] or f"M{index}"
+            clean = (name or "").strip().upper()[:14]      # "" = automatic
             self.patch_state.macros[index - 1].name = clean
             self.macrosChanged.emit()
 
