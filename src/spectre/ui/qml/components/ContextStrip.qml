@@ -39,6 +39,8 @@ Rectangle {
         readonly property string paramName: knob ? knob.title : "-"
         readonly property real normValue: knob ? knob.norm : 0.0
         readonly property string displayString: knob ? knob.text : ""
+        // Macros fill out from the centre (0 = middle); double-tap centres them
+        readonly property bool bipolar: knob !== null && knob.bipolar
         // Tone-specific knobs ("T2 Level") take the tone colour, the rest the page accent
         readonly property color knobColor: {
             const m = /^T([1-4]) /.exec(paramName);
@@ -127,13 +129,25 @@ Rectangle {
             clip: true
 
             Rectangle {
-                anchors.left: parent.left
+                readonly property real norm: Math.max(0.0, Math.min(1.0, card.normValue))
+                readonly property real from: card.bipolar ? Math.min(norm, 0.5) : 0.0
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
-                width: parent.width * Math.max(0.0, Math.min(1.0, card.normValue))
+                x: parent.width * from
+                width: parent.width * (card.bipolar ? Math.abs(norm - 0.5) : norm)
                 radius: ScaleMetrics.dp(2)
                 color: card.knobColor
             }
+        }
+
+        // Centre tick of a bipolar bar
+        Rectangle {
+            visible: card.bipolar
+            anchors.horizontalCenter: barBg.horizontalCenter
+            anchors.verticalCenter: barBg.verticalCenter
+            width: 1
+            height: barBg.height + ScaleMetrics.dp(4)
+            color: Theme.textDim
         }
 
         // Direct Touch and Drag Interaction
@@ -163,6 +177,8 @@ Rectangle {
                     }
                 }
             }
+
+            onDoubleClicked: if (card.bipolar) card.applyNormValue(0.5)
         }
     }
 }

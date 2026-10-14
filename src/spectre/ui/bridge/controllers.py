@@ -117,8 +117,8 @@ CONTEXT_KNOBS: dict[str, list[str]] = {
     "ROUTING": [f"tone.{i}.chorus_send" for i in range(1, 5)] + [f"tone.{i}.reverb_send" for i in range(1, 5)],
     "MASTER FX": ["effects.chorus_level", "effects.chorus_rate", "effects.chorus_depth", "effects.chorus_feedback",
                   "effects.reverb_level", "effects.reverb_time", "effects.reverb_damp", "effects.reverb_predelay"],
-    # LIVE / SEQUENCER: bank 1 shown here; they follow the track bank (_context_knob_targets)
-    "LIVE": [f"part.level@{n}" for n in range(1, 9)],
+    "LIVE": [f"macro.{n}" for n in range(1, 9)],
+    # SEQUENCER: bank 1 shown here; it follows the track bank (_context_knob_targets)
     "SEQUENCER": [f"seq.swing.{n}" for n in range(1, 9)],
     "ARPEGGIO": [f"arp.{f}" for f in ("style", "motif", "grid", "duration", "octave", "accent",
                                       "velocity", "step")],
@@ -887,15 +887,12 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     # -- on-screen context strip ------------------------------------------------
 
     def _context_knob_targets(self) -> list:
-        """The current page's 8 knob targets. Track pages follow the visible track bank."""
+        """The current page's 8 knob targets. The sequencer follows the visible track bank."""
         view = str(getattr(self, "_active_view", ""))
-        if view in ("SEQUENCER", "LIVE") and hasattr(self, "sequencer"):
-            tracks = self.sequencer.song.tracks
+        if view == "SEQUENCER" and hasattr(self, "sequencer"):
             first = self.seqTrackBank * TRACK_BANK_SIZE
-            shown = range(first, min(len(tracks), first + TRACK_BANK_SIZE))
-            if view == "SEQUENCER":
-                return [f"seq.swing.{i + 1}" for i in shown]
-            return [f"part.level@{(tracks[i].target_parts or [i + 1])[0]}" for i in shown]
+            last = min(len(self.sequencer.song.tracks), first + TRACK_BANK_SIZE)
+            return [f"seq.swing.{i + 1}" for i in range(first, last)]
         return CONTEXT_KNOBS.get(view, [])
 
     def _ctx_compute(self) -> list:
@@ -904,12 +901,14 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         for n in range(1, 9):
             target = knobs[n - 1] if n <= len(knobs) else ""
             if not target:
-                out.append({"key": "", "title": "-", "text": "", "norm": 0.0, "active": False})
+                out.append({"key": "", "title": "-", "text": "", "norm": 0.0, "active": False,
+                            "bipolar": False})
                 continue
             title = self._short_target_name(target)
             cur = self._ctl_current(target)
             out.append({"key": target, "title": title, "text": self._surface_value(target),
-                        "norm": round(cur, 4) if cur is not None else 0.0, "active": cur is not None})
+                        "norm": round(cur, 4) if cur is not None else 0.0, "active": cur is not None,
+                        "bipolar": target.startswith("macro.")})
         return out
 
     def _ctx_refresh(self, *_args) -> None:
@@ -920,7 +919,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty("QVariantList", notify=contextKnobsChanged)
     def contextKnobs(self) -> list:
-        """The current page's 8 context knobs: [{key, title, text, norm, active}]."""
+        """The current page's 8 context knobs: [{key, title, text, norm, active, bipolar}]."""
         return self._ctx_knobs
 
     @pyqtProperty(bool, notify=contextKnobsChanged)

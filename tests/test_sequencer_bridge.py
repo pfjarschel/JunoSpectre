@@ -492,8 +492,7 @@ def test_track_context_knobs_follow_the_bank(bridge):
     bridge.seqSetTrackBank(1)
     assert bridge._ctl_resolve("context.1") == "seq.swing.9"
     assert bridge._ctl_resolve("context.8") == "seq.swing.16"
-    # Live knobs set the level of each shown track's main part
+    # Live knobs are the macros, whatever bank shows
     bridge.setActiveView("LIVE")
-    bridge.seqSetTrackTargetPart(9, 3)
-    assert bridge._ctl_resolve("context.2") == "part.level@3"
-    assert bridge._ctl_resolve("context.1") == "part.level@9"
+    assert bridge._ctl_resolve("context.1") == "macro.1"
+    assert bridge._ctl_resolve("context.8") == "macro.8"

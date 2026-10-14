@@ -16,6 +16,10 @@ Rectangle {
     // rebuilds and converts all 16 parts)
     readonly property var perfParts: Bridge.perfParts
     readonly property var seqTracks: Bridge.seqTracks || []
+    // MOTION shows the 8 automation lanes instead of the note tracks
+    // (shares the sequencer page's mode)
+    readonly property bool motion: Bridge.seqMotionMode
+    readonly property var lanes: Bridge.seqAutomationLanes || []
     // Track headers and the scene column's STOP ALL share this height (keeps rows aligned)
     readonly property real trackHeaderHeight: ScaleMetrics.dp(40)
 
@@ -46,13 +50,30 @@ Rectangle {
                 color: Theme.textPrimary
             }
 
+            // Note tracks or automation lanes
+            Row {
+                spacing: ScaleMetrics.dp(3)
+                Repeater {
+                    model: [ { label: "NOTES", motion: false }, { label: "MOTION", motion: true } ]
+                    delegate: SpButton {
+                        implicitHeight: ScaleMetrics.dp(28)
+                        implicitWidth: ScaleMetrics.dp(64)
+                        text: modelData.label
+                        fontSize: 8
+                        checked: root.motion === modelData.motion
+                        onClicked: Bridge.seqSetMotionMode(modelData.motion)
+                    }
+                }
+            }
+
             Item { Layout.fillWidth: true }
 
             // Keyboard plays a different part than the active track sends to
-            KbdPartHint {}
+            KbdPartHint { suppressed: root.motion }
 
             // Track bank: the grid shows tracks 1-8 or 9-16
             RowLayout {
+                visible: !root.motion
                 spacing: ScaleMetrics.dp(3)
                 Text {
                     text: "TRACKS"
@@ -186,12 +207,22 @@ Rectangle {
                 spacing: ScaleMetrics.dp(4)
 
                 Repeater {
-                    model: 8
+                    model: root.motion ? 0 : 8
                     delegate: TrackColumn {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 1  // equal columns whatever the names
                         Layout.fillHeight: true
                         trackIdx: Bridge.seqTrackBank * 8 + index
+                    }
+                }
+
+                Repeater {
+                    model: root.motion ? root.lanes.length : 0
+                    delegate: LaneColumn {
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        Layout.fillHeight: true
+                        laneIdx: index
                     }
                 }
 
@@ -251,6 +282,11 @@ Rectangle {
                                 id: stopAllMouse
                                 anchors.fill: parent
                                 onClicked: {
+                                    if (root.motion) {
+                                        for (let i = 0; i < root.lanes.length; i++)
+                                            Bridge.seqStopLane(i);   // linked lanes follow their tracks
+                                        return;
+                                    }
                                     const n = root.seqTracks.length;
                                     for (let i = 0; i < n; i++)
                                         Bridge.seqStopTrack(i);
@@ -294,32 +330,6 @@ Rectangle {
                             }
                         }
                     }
-                }
-            }
-        }
-
-        // =====================================================================
-        // 3. LIVE MACROS: compact cards like the encoder strip
-        // (drag to change, double-tap to center; deep edit in the Macro Deck)
-        // =====================================================================
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: false
-            Layout.preferredHeight: ScaleMetrics.dp(40)
-            spacing: ScaleMetrics.dp(6)
-
-            Repeater {
-                model: 8
-                delegate: LiveMacroDial {
-                    Layout.fillWidth: true
-                    Layout.preferredWidth: 1
-                    Layout.fillHeight: true
-                    macroIndex: modelData + 1
-                    macroTitle: (Bridge.macroNames && Bridge.macroNames.length > modelData)
-                                ? Bridge.macroNames[modelData] : ("M" + (modelData + 1))
-                    macroColor: Theme.pageAccent
-                    macroValue01: (Bridge.macroValues && Bridge.macroValues.length > modelData)
-                                  ? Bridge.macroValues[modelData] : 0.0
                 }
             }
         }
@@ -559,136 +569,193 @@ Rectangle {
         }
     }
 
-
     // =========================================================================
-    // Compact Live Macro Card: name on top, value in the middle, a bipolar bar
-    // filling from the center. Drag up/right to raise, down/left to lower;
-    // double-tap to center.
+    // Lane Column Component (MOTION): lane header + 8 automation clip slots.
+    // A linked lane launches with its track, so its tiles only select.
     // =========================================================================
-    component LiveMacroDial: Rectangle {
-        id: dialRoot
-        property int macroIndex: 1
-        property string macroTitle: "MACRO"
-        property color macroColor: Theme.pageAccent
-        property real macroValue01: 0.0
+    component LaneColumn: Rectangle {
+        id: laneRoot
+        property int laneIdx: 0
+        readonly property var laneData: root.lanes.length > laneIdx ? root.lanes[laneIdx] : null
+        readonly property color laneColor: root.trackColors[laneIdx % root.trackColors.length]
+        readonly property bool linked: laneData ? laneData.linkTrack >= 0 : false
+        readonly property bool hasTarget: laneData ? laneData.target !== "" : false
+        readonly property int playhead: (Bridge.seqLanePlayheads && Bridge.seqLanePlayheads.length > laneIdx)
+                                        ? Bridge.seqLanePlayheads[laneIdx] : 0
 
-        radius: ScaleMetrics.dp(6)
-        color: Theme.bgApp
-        border.color: dialMouse.containsPress ? dialRoot.macroColor : Theme.borderCard
-        border.width: 1
+        radius: ScaleMetrics.dp(4)
+        color: Theme.bgCard
+        border.color: Bridge.seqActiveLane === laneIdx ? laneRoot.laneColor : Theme.borderCard
+        border.width: Bridge.seqActiveLane === laneIdx ? 2 : 1
 
-        MouseArea {
-            id: dialMouse
+        ColumnLayout {
             anchors.fill: parent
-            preventStealing: true
-            property real startX: 0
-            property real startY: 0
-            property real startVal: 0
+            anchors.margins: ScaleMetrics.dp(4)
+            spacing: ScaleMetrics.dp(3)
 
-            onPressed: (mouse) => {
-                startX = mouse.x;
-                startY = mouse.y;
-                startVal = dialRoot.macroValue01;
-            }
-
-            onPositionChanged: (mouse) => {
-                if (pressed) {
-                    const d = (mouse.x - startX) + (startY - mouse.y);
-                    Bridge.setMacro(dialRoot.macroIndex, Math.max(-1.0, Math.min(1.0, startVal + d / ScaleMetrics.dp(60))));
-                }
-            }
-
-            onDoubleClicked: Bridge.setMacro(dialRoot.macroIndex, 0.0)
-        }
-
-        // Header: macro tag + name
-        Item {
-            id: macroHeader
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.margins: ScaleMetrics.dp(3)
-            height: ScaleMetrics.dp(12)
-
+            // Lane header: parameter on top, link / stop below. Tap to select the lane.
             Rectangle {
-                id: macroTag
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                width: ScaleMetrics.dp(18)
-                height: ScaleMetrics.dp(12)
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.trackHeaderHeight
                 radius: ScaleMetrics.dp(3)
-                color: Theme.bgCardActive
+                color: Theme.bgSurface
+                border.color: Theme.borderCard
+                border.width: 1
 
-                Text {
-                    anchors.centerIn: parent
-                    text: "M" + dialRoot.macroIndex
-                    font.bold: true
-                    font.pixelSize: ScaleMetrics.sp(8)
-                    color: dialRoot.macroColor
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: Bridge.seqSelectLane(laneRoot.laneIdx)
                 }
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: ScaleMetrics.dp(3)
+                    spacing: ScaleMetrics.dp(2)
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(4)
+
+                        Rectangle {
+                            width: ScaleMetrics.dp(6)
+                            height: ScaleMetrics.dp(6)
+                            radius: 3
+                            color: laneRoot.laneColor
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: laneRoot.hasTarget ? laneRoot.laneData.tabName : "LANE " + (laneRoot.laneIdx + 1)
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: laneRoot.hasTarget ? Theme.textPrimary : Theme.textDim
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            visible: Bridge.seqIsPlaying && laneRoot.laneData && laneRoot.laneData.activeClipIdx >= 0
+                            text: (laneRoot.playhead + 1).toString()
+                            font.family: Theme.fontMono
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(7)
+                            color: laneRoot.laneColor
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        spacing: ScaleMetrics.dp(3)
+
+                        // The note track it launches with (as on the sequencer's LINK)
+                        SpButton {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            text: laneRoot.linked ? "LINK T" + (laneRoot.laneData.linkTrack + 1) : "LINK OFF"
+                            fontSize: 8
+                            variant: laneRoot.linked ? "outline" : "neutral"
+                            accent: laneRoot.linked
+                                    ? root.trackColors[laneRoot.laneData.linkTrack % root.trackColors.length]
+                                    : Theme.pageAccent
+                            onClicked: Bridge.seqSelectLane(laneRoot.laneIdx)
+                        }
+
+                        SpButton {
+                            Layout.preferredWidth: ScaleMetrics.dp(16)
+                            Layout.fillHeight: true
+                            enabled: !laneRoot.linked
+                            opacity: enabled ? 1.0 : 0.35
+                            icon: "stop"
+                            fontSize: 8
+                            onClicked: Bridge.seqStopLane(laneRoot.laneIdx)
+                        }
+                    }
+                }
+            }
+
+            // 8 Clip Tiles
+            Repeater {
+                model: 8
+                delegate: LaneTile {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.preferredHeight: 1
+                    laneIndex: laneRoot.laneIdx
+                    clipIndex: index
+                    laneColor: laneRoot.laneColor
+                    laneData: laneRoot.laneData
+                }
+            }
+        }
+    }
+
+    component LaneTile: Rectangle {
+        id: laneTile
+        property int laneIndex: 0
+        property int clipIndex: 0
+        property color laneColor: Theme.pageAccent
+        property var laneData: null
+
+        readonly property var clipData: (laneData && laneData.clips && laneData.clips.length > clipIndex)
+                                        ? laneData.clips[clipIndex] : null
+        readonly property bool linked: laneData ? laneData.linkTrack >= 0 : false
+        readonly property bool hasValues: clipData ? clipData.hasValues : false
+        // A linked lane shows its track's launches
+        readonly property bool isPlaying: laneData ? (Bridge.seqIsPlaying && laneData.activeClipIdx === clipIndex) : false
+        readonly property bool isQueued: laneData ? laneData.queuedClipIdx === clipIndex : false
+        readonly property bool isSelected: laneData ? laneData.selectedClipIdx === clipIndex : false
+
+        radius: ScaleMetrics.dp(4)
+        opacity: linked && !isPlaying && !isQueued ? 0.5 : 1.0
+        color: isPlaying ? Qt.rgba(laneColor.r, laneColor.g, laneColor.b, 0.25)
+                         : (hasValues ? Theme.bgSurface : Theme.bgApp)
+        border.color: isPlaying ? laneColor
+                                : (isQueued ? Theme.warning
+                                            : (isSelected ? Theme.textPrimary : Theme.borderCard))
+        border.width: (isPlaying || isQueued || isSelected) ? 2 : 1
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: ScaleMetrics.dp(4)
+            spacing: ScaleMetrics.dp(4)
+
+            Icon {
+                name: laneTile.isPlaying ? "play" : (laneTile.isQueued ? "busy" : (laneTile.hasValues ? "dotFilled" : ""))
+                size: laneTile.hasValues && !laneTile.isPlaying && !laneTile.isQueued ? 7 : 11
+                color: laneTile.isPlaying ? laneTile.laneColor : (laneTile.isQueued ? Theme.warning : Theme.textDim)
             }
 
             Text {
-                anchors.left: macroTag.right
-                anchors.right: parent.right
-                anchors.leftMargin: ScaleMetrics.dp(4)
-                anchors.verticalCenter: parent.verticalCenter
-                text: dialRoot.macroTitle
-                font.bold: true
-                font.pixelSize: ScaleMetrics.sp(9)
-                color: Theme.textSecondary
+                Layout.fillWidth: true
+                text: laneTile.clipData ? (laneTile.clipData.name || ("Clip " + (laneTile.clipIndex + 1)))
+                                        : ("C" + (laneTile.clipIndex + 1))
+                font.bold: laneTile.isPlaying || laneTile.hasValues
+                font.pixelSize: ScaleMetrics.sp(8)
+                color: laneTile.isPlaying ? Theme.textPrimary : (laneTile.hasValues ? Theme.textSecondary : Theme.textDim)
                 elide: Text.ElideRight
             }
+
+            Text {
+                visible: laneTile.isQueued || laneTile.isPlaying
+                text: laneTile.isQueued ? "QUEUED" : "PLAY"
+                font.bold: true
+                font.pixelSize: ScaleMetrics.sp(6)
+                color: laneTile.isQueued ? Theme.warning : laneTile.laneColor
+            }
         }
 
-        // Value (-100 .. +100)
-        Text {
-            anchors.top: macroHeader.bottom
-            anchors.bottom: macroBar.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottomMargin: ScaleMetrics.dp(2)
-            text: {
-                const pct = Math.round(dialRoot.macroValue01 * 100);
-                return (pct > 0 ? "+" : "") + pct;
+        MouseArea {
+            anchors.fill: parent
+            onClicked: {
+                Bridge.seqSelectLane(laneTile.laneIndex);
+                Bridge.seqSelectLaneClip(laneTile.laneIndex, laneTile.clipIndex);
+                if (!laneTile.linked)
+                    Bridge.seqLaunchLaneClip(laneTile.laneIndex, laneTile.clipIndex);
             }
-            font.bold: true
-            font.pixelSize: ScaleMetrics.sp(8)
-            font.family: Theme.fontMono
-            color: Theme.textPrimary
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-
-        // Bipolar bar, filling out from the center
-        Rectangle {
-            id: macroBar
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.leftMargin: ScaleMetrics.dp(3)
-            anchors.rightMargin: ScaleMetrics.dp(3)
-            anchors.bottomMargin: ScaleMetrics.dp(6)
-            height: ScaleMetrics.dp(3)
-            radius: ScaleMetrics.dp(2)
-            color: Theme.bgRaised
-
-            Rectangle {
-                height: parent.height
-                radius: ScaleMetrics.dp(2)
-                color: dialRoot.macroColor
-                x: dialRoot.macroValue01 >= 0 ? parent.width / 2
-                                              : parent.width / 2 * (1 + dialRoot.macroValue01)
-                width: Math.abs(dialRoot.macroValue01) * parent.width / 2
-            }
-
-            // Center tick
-            Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.verticalCenter: parent.verticalCenter
-                width: 1
-                height: parent.height + ScaleMetrics.dp(4)
-                color: Theme.textDim
+            onDoubleClicked: {
+                Bridge.seqSelectLane(laneTile.laneIndex);
+                Bridge.seqSelectLaneClip(laneTile.laneIndex, laneTile.clipIndex);
+                Bridge.setActiveView("SEQUENCER");
             }
         }
     }
