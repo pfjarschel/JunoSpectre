@@ -115,7 +115,7 @@ Item {
             // Follow a note track's clip launches (and its parts)
             SeqStepper {
                 label: "LINK:"
-                count: 9
+                count: (Bridge.seqTracks ? Bridge.seqTracks.length : 8) + 1
                 index: root.lane ? root.lane.linkTrack + 1 : 0
                 valueText: index === 0 ? "OFF" : "T" + index
                 valueColor: index === 0 ? Theme.textSecondary : Theme.trackColors[(index - 1) % Theme.trackColors.length]

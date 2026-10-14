@@ -49,10 +49,10 @@ def test_sequencer_transport_properties_and_slots(bridge):
 
 def test_sequencer_tracks_and_step_editing(bridge):
     tracks = bridge.seqTracks
-    assert len(tracks) == 8
+    assert len(tracks) == 16
     assert tracks[0]["name"] == "Track 1"
-    assert tracks[7]["name"] == "Track 8"
-    assert [t["isDrum"] for t in tracks] == [False] * 7 + [True]
+    assert tracks[15]["name"] == "Track 16"
+    assert [i for i, t in enumerate(tracks) if t["isDrum"]] == [9]
 
     bridge.seqSelectTrack(1)
     assert bridge.seqActiveTrack == 1
@@ -296,19 +296,19 @@ def test_each_track_keeps_its_own_selected_clip(bridge):
     assert bridge.seqActiveClipSteps[0]["isActive"] is True
     assert bridge.recorder.active_clip_idx == 3
 
-    assert [t["selectedClipIdx"] for t in bridge.seqTracks] == [3, 5, 0, 0, 0, 0, 0, 0]
+    assert [t["selectedClipIdx"] for t in bridge.seqTracks] == [3, 5] + [0] * 14
 
 
 def test_play_from_stop_starts_each_tracks_selected_clip(bridge):
     bridge.seqSelectTrack(0)
     bridge.seqSelectClip(2)
-    bridge.seqSelectTrack(7)
+    bridge.seqSelectTrack(12)
     bridge.seqSelectClip(6)
     bridge.seqStopTrack(1)  # queued stop survives into Play
 
     bridge.seqPlay()
     try:
-        assert [t["activeClipIdx"] for t in bridge.seqTracks] == [2, -1, 0, 0, 0, 0, 0, 6]
+        assert [t["activeClipIdx"] for t in bridge.seqTracks] == [2, -1] + [0] * 10 + [6, 0, 0, 0]
     finally:
         bridge.seqStop()
 
@@ -420,7 +420,7 @@ def test_per_note_step_editing(bridge):
 
 
 def test_drum_step_notes(bridge):
-    bridge.seqSelectTrack(7)
+    bridge.seqSelectTrack(9)
     assert [bridge.seqAddStepNote(1) for _ in range(3)] == [36, 38, 42]
     assert bridge.seqActiveClipSteps[1]["chordName"] == ""
     # Quick buttons swap the selected hit; an existing hit is just selected
@@ -470,3 +470,30 @@ def test_piano_roll_notes_and_lengths(bridge):
     assert steps[0]["notes"][0]["length"] == 3
     assert [s["held"] for s in steps[:5]] == [0, 1, 1, 0, 0]
     assert steps[5]["held"] == 1
+
+
+def test_track_banks(bridge):
+    assert bridge.seqTrackBank == 0
+    bridge.seqSelectTrack(2)
+    # Flipping the bank selects the track in the same column there
+    bridge.seqSetTrackBank(1)
+    assert (bridge.seqActiveTrack, bridge.seqTrackBank) == (10, 1)
+    bridge.seqSetTrackBank(5)  # clamped
+    assert bridge.seqActiveTrack == 10
+    bridge.seqSelectTrack(4)   # selecting a track shows its bank
+    assert bridge.seqTrackBank == 0
+    bridge._ctl_run_action("seq.track_bank")
+    assert bridge.seqActiveTrack == 12
+
+
+def test_track_context_knobs_follow_the_bank(bridge):
+    bridge.setActiveView("SEQUENCER")
+    assert bridge._ctl_resolve("context.1") == "seq.swing.1"
+    bridge.seqSetTrackBank(1)
+    assert bridge._ctl_resolve("context.1") == "seq.swing.9"
+    assert bridge._ctl_resolve("context.8") == "seq.swing.16"
+    # Live knobs set the level of each shown track's main part
+    bridge.setActiveView("LIVE")
+    bridge.seqSetTrackTargetPart(9, 3)
+    assert bridge._ctl_resolve("context.2") == "part.level@3"
+    assert bridge._ctl_resolve("context.1") == "part.level@9"

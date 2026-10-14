@@ -106,21 +106,22 @@ def test_songs_without_automation_get_empty_lanes():
 
 def test_default_tracks_and_routing():
     tracks = default_tracks()
-    assert len(tracks) == 8
-    # Tracks 1-7 send to parts 1-7, Track 8 to the rhythm part
-    assert [t.target_parts for t in tracks] == [[1], [2], [3], [4], [5], [6], [7], [10]]
-    assert [t.name for t in tracks] == [f"Track {i}" for i in range(1, 9)]
-    assert [t.is_drum for t in tracks] == [False] * 7 + [True]
+    assert len(tracks) == 16
+    # Track N sends to part N; track 10 is the rhythm part
+    assert [t.target_parts for t in tracks] == [[i] for i in range(1, 17)]
+    assert [t.name for t in tracks] == [f"Track {i}" for i in range(1, 17)]
+    assert [i for i, t in enumerate(tracks) if t.is_drum] == [9]
 
 
-def test_songs_always_have_eight_tracks():
+def test_songs_always_have_sixteen_tracks():
     short = default_sequencer_song().to_dict()
     short["tracks"] = short["tracks"][:5]
     short["tracks"][0]["name"] = "Bass"
     song = SequencerSong.from_dict(short)
-    assert len(song.tracks) == 8
+    assert len(song.tracks) == 16
     assert song.tracks[0].name == "Bass"          # kept
-    assert song.tracks[7].target_parts == [10]    # filled in with defaults
+    assert song.tracks[9].target_parts == [10]    # filled in with defaults
+    assert song.tracks[15].target_parts == [16]
 
 
 def test_sequencer_song_roundtrip():
@@ -133,7 +134,7 @@ def test_sequencer_song_roundtrip():
     song2 = SequencerSong.from_dict(d)
     assert song2.bpm == 135.0
     assert song2.master_resync_bars == 8
-    assert len(song2.tracks) == 8
+    assert len(song2.tracks) == 16
     assert song2.tracks[0].clips[0].steps[0].notes[0].pitch == 72
 
 

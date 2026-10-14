@@ -1,4 +1,4 @@
-"""Data models for the Juno Spectre 8-track polymetric sequencer & clip launcher."""
+"""Data models for the Juno Spectre 16-track polymetric sequencer & clip launcher."""
 
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ from typing import Any, Dict, List, Optional
 MAX_STEP_NOTES = 12
 # Longest clip, in steps (also the longest a note can be held)
 MAX_CLIP_STEPS = 128
-NUM_TRACKS = 8
+NUM_TRACKS = 16
+# Tracks shown at once (live grid columns, sequencer tabs, context knobs)
+TRACK_BANK_SIZE = 8
 NUM_AUTOMATION_LANES = 8
 # Dice (humanize) ranges: timing in +/- clock ticks, velocity in +/- % of 127
 MAX_DICE_TIMING = 24
@@ -143,7 +145,7 @@ def _fold_step_ties(steps_data: List[Any], steps: List[Step]) -> None:
 
 @dataclasses.dataclass
 class Track:
-    """One of the 5 fixed tracks in the performance sequencer."""
+    """One of the NUM_TRACKS fixed tracks in the performance sequencer."""
     track_id: int = 1                   # 1..NUM_TRACKS
     name: str = "Track"
     target_parts: List[int] = dataclasses.field(default_factory=lambda: [1])
@@ -323,7 +325,7 @@ class AutomationLane:
 
 @dataclasses.dataclass
 class SequencerSong:
-    """Complete 8-track sequencer state container."""
+    """Complete sequencer state container (NUM_TRACKS tracks + automation lanes)."""
     bpm: float = 120.0
     master_resync_bars: int = 0         # Realign period: 0 = Off, 1, 2, 4, 8, 16, 32 bars
     tracks: List[Track] = dataclasses.field(default_factory=list)
@@ -377,13 +379,13 @@ def default_clip(name: str = "Clip", length: int = 16) -> Clip:
 
 
 def default_tracks() -> List[Track]:
-    """Build the standard tracks: Tracks 1-7 send to Parts 1-7, Track 8 to the rhythm part."""
+    """Build the standard tracks: track N sends to part N (track 10 to the rhythm part)."""
     tracks = []
     for i in range(NUM_TRACKS):
         t = Track(
             track_id=i + 1,
             name=f"Track {i + 1}",
-            target_parts=[DRUM_PART] if i == NUM_TRACKS - 1 else [i + 1],
+            target_parts=[i + 1],
             clock_divider="1/16",
             swing=0.50,
             active_clip_idx=0,

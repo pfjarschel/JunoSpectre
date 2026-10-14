@@ -15,6 +15,7 @@ Rectangle {
     // Read once per change; every track column uses it (each Bridge read
     // rebuilds and converts all 16 parts)
     readonly property var perfParts: Bridge.perfParts
+    readonly property var seqTracks: Bridge.seqTracks || []
     // Track headers and the scene column's STOP ALL share this height (keeps rows aligned)
     readonly property real trackHeaderHeight: ScaleMetrics.dp(40)
 
@@ -49,6 +50,28 @@ Rectangle {
 
             // Keyboard plays a different part than the active track sends to
             KbdPartHint {}
+
+            // Track bank: the grid shows tracks 1-8 or 9-16
+            RowLayout {
+                spacing: ScaleMetrics.dp(3)
+                Text {
+                    text: "TRACKS"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(8)
+                    color: Theme.textDim
+                }
+                Repeater {
+                    model: 2
+                    delegate: SpButton {
+                        implicitHeight: ScaleMetrics.dp(28)
+                        implicitWidth: ScaleMetrics.dp(40)
+                        text: index === 0 ? "1-8" : "9-16"
+                        fontSize: 8
+                        checked: Bridge.seqTrackBank === index
+                        onClicked: Bridge.seqSetTrackBank(index)
+                    }
+                }
+            }
 
             // Realign: every N bars all tracks restart from step 1 together
             // (pulls polymetric / triplet tracks back in line)
@@ -145,7 +168,7 @@ Rectangle {
         }
 
         // =====================================================================
-        // 2. SESSION MATRIX: 8 TRACKS + SCENE LAUNCH COLUMN
+        // 2. SESSION MATRIX: THE SHOWN BANK'S 8 TRACKS + SCENE LAUNCH COLUMN
         // The scene column copies a track column's header height, margins and
         // spacing so each scene button lines up with its row of clips.
         // =====================================================================
@@ -163,12 +186,12 @@ Rectangle {
                 spacing: ScaleMetrics.dp(4)
 
                 Repeater {
-                    model: Bridge.seqTracks ? Bridge.seqTracks.length : 0
+                    model: 8
                     delegate: TrackColumn {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 1  // equal columns whatever the names
                         Layout.fillHeight: true
-                        trackIdx: index
+                        trackIdx: Bridge.seqTrackBank * 8 + index
                     }
                 }
 
@@ -228,7 +251,7 @@ Rectangle {
                                 id: stopAllMouse
                                 anchors.fill: parent
                                 onClicked: {
-                                    const n = Bridge.seqTracks ? Bridge.seqTracks.length : 0;
+                                    const n = root.seqTracks.length;
                                     for (let i = 0; i < n; i++)
                                         Bridge.seqStopTrack(i);
                                 }
@@ -308,8 +331,7 @@ Rectangle {
     component TrackColumn: Rectangle {
         id: colRoot
         property int trackIdx: 0
-        readonly property var trackData: (Bridge.seqTracks && Bridge.seqTracks.length > trackIdx)
-                                         ? Bridge.seqTracks[trackIdx] : null
+        readonly property var trackData: root.seqTracks.length > trackIdx ? root.seqTracks[trackIdx] : null
         readonly property int currentPlayhead: (Bridge.seqPlayheads && Bridge.seqPlayheads.length > trackIdx)
                                                ? Bridge.seqPlayheads[trackIdx] : 0
         readonly property color trackColor: root.trackColors[trackIdx % root.trackColors.length]

@@ -17,8 +17,10 @@ Rectangle {
     property int currentStepPage: 0 // 16 steps per page: 0: steps 0-15 ... 7: steps 112-127
 
     readonly property var trackColors: Theme.trackColors
-    readonly property var activeTrackData: (Bridge.seqTracks && Bridge.seqTracks.length > Bridge.seqActiveTrack)
-                                           ? Bridge.seqTracks[Bridge.seqActiveTrack] : null
+    // Read once per change (each Bridge read rebuilds every track)
+    readonly property var seqTracks: Bridge.seqTracks || []
+    readonly property var activeTrackData: seqTracks.length > Bridge.seqActiveTrack
+                                           ? seqTracks[Bridge.seqActiveTrack] : null
     readonly property color currentTrackColor: trackColors[Bridge.seqActiveTrack % trackColors.length]
     // Tracks sending to the rhythm part show drum names and drum buttons
     readonly property bool isDrumTrack: activeTrackData ? activeTrackData.isDrum : false
@@ -230,24 +232,35 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: ScaleMetrics.dp(6)
 
-                // Track Tabs (long-press to rename)
+                // Track bank: tabs show tracks 1-8 or 9-16 (tap to flip)
+                SpButton {
+                    objectName: "trackBankChip"
+                    implicitHeight: ScaleMetrics.dp(26)
+                    implicitWidth: ScaleMetrics.dp(36)
+                    text: Bridge.seqTrackBank === 0 ? "1-8" : "9-16"
+                    fontSize: 8
+                    onClicked: Bridge.seqSetTrackBank(1 - Bridge.seqTrackBank)
+                }
+
+                // Track Tabs of the shown bank (long-press to rename)
                 RowLayout {
                     spacing: ScaleMetrics.dp(3)
                     Repeater {
-                        model: Bridge.seqTracks ? Bridge.seqTracks.length : 0
+                        model: 8
                         delegate: SpButton {
-                            readonly property string trackName: Bridge.seqTracks[index] ? Bridge.seqTracks[index].name : ""
+                            readonly property int trackIdx: Bridge.seqTrackBank * 8 + index
+                            readonly property string trackName: root.seqTracks[trackIdx] ? root.seqTracks[trackIdx].name : ""
                             implicitHeight: ScaleMetrics.dp(26)
-                            implicitWidth: ScaleMetrics.dp(58)
+                            implicitWidth: ScaleMetrics.dp(54)
                             text: trackName
                             fontSize: 8
                             variant: "outline"
-                            accent: root.trackColors[index]
-                            checked: Bridge.seqActiveTrack === index
-                            onClicked: Bridge.seqSelectTrack(index)
+                            accent: root.trackColors[trackIdx % root.trackColors.length]
+                            checked: Bridge.seqActiveTrack === trackIdx
+                            onClicked: Bridge.seqSelectTrack(trackIdx)
                             onPressAndHold: {
-                                Bridge.seqSelectTrack(index);
-                                trackRename.openTrack(index, trackName);
+                                Bridge.seqSelectTrack(trackIdx);
+                                trackRename.openTrack(trackIdx, trackName);
                             }
                         }
                     }

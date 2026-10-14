@@ -27,6 +27,7 @@ from ...control.mapping import BEHAVIORS, TAKEOVERS, Binding, Resolver, pick_bin
 from ...core.arpeggio import FIELD_LABELS as ARP_FIELD_LABELS
 from ...core.macro_targets import filter_macro_targets, get_macro_categories
 from ...core.midi import port_key
+from ...sequencer.models import NUM_TRACKS, TRACK_BANK_SIZE
 from .base import BridgeBaseMixin
 from .hardware import save_hardware_settings
 
@@ -56,7 +57,8 @@ ACTIONS: list[dict] = (
     [_action("seq.toggle_play", "Sequencer Play/Stop"), _action("seq.play", "Sequencer Play"),
      _action("seq.stop", "Sequencer Stop"), _action("seq.live_record", "Sequencer Record On/Off (track or lane)")]
     + [_action(f"seq.scene.{n}", f"Launch Scene {n}") for n in range(1, 9)]
-    + [_action(f"seq.stop_track.{n}", f"Stop Track {n}") for n in range(1, 9)]
+    + [_action(f"seq.stop_track.{n}", f"Stop Track {n}") for n in range(1, NUM_TRACKS + 1)]
+    + [_action("seq.track_bank", "Track Bank 1-8 / 9-16")]
     + [_action("motion.toggle_play", "Motion Play/Stop"), _action("motion.toggle_record", "Motion Record On/Off")]
     + [_action(f"tone.mute.{n}", f"Tone {n} Mute On/Off") for n in range(1, 5)]
     + [_action(f"tone.select.{n}", f"Select Tone {n}") for n in range(1, 5)]
@@ -115,7 +117,8 @@ CONTEXT_KNOBS: dict[str, list[str]] = {
     "ROUTING": [f"tone.{i}.chorus_send" for i in range(1, 5)] + [f"tone.{i}.reverb_send" for i in range(1, 5)],
     "MASTER FX": ["effects.chorus_level", "effects.chorus_rate", "effects.chorus_depth", "effects.chorus_feedback",
                   "effects.reverb_level", "effects.reverb_time", "effects.reverb_damp", "effects.reverb_predelay"],
-    "LIVE": [f"part.level@{n}" for n in (1, 2, 3, 4, 5, 6, 7, 10)],
+    # LIVE / SEQUENCER: bank 1 shown here; they follow the track bank (_context_knob_targets)
+    "LIVE": [f"part.level@{n}" for n in range(1, 9)],
     "SEQUENCER": [f"seq.swing.{n}" for n in range(1, 9)],
     "ARPEGGIO": [f"arp.{f}" for f in ("style", "motif", "grid", "duration", "octave", "accent",
                                       "velocity", "step")],
@@ -487,7 +490,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     def _ctl_resolve(self, target: str) -> str:
         """"context.N" -> the current page's knob N target ("" when unused)."""
         if target.startswith("context."):
-            knobs = CONTEXT_KNOBS.get(str(getattr(self, "_active_view", "")), [])
+            knobs = self._context_knob_targets()
             try:
                 n = int(target[8:])
             except ValueError:
@@ -733,6 +736,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             color = (0, 127, 0)
         elif t.startswith("action.seq.stop_track."):
             color = (127, 0, 0)
+        elif t == "action.seq.track_bank":
+            on, color = self.seqTrackBank == 1, (110, 110, 127)
         elif t == "action.motion.toggle_play":
             on, color = self.vector.motion.state.value == "playing", (0, 127, 0)
         elif t == "action.motion.toggle_record":
@@ -873,9 +878,21 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     # -- on-screen context strip ------------------------------------------------
 
+    def _context_knob_targets(self) -> list:
+        """The current page's 8 knob targets. Track pages follow the visible track bank."""
+        view = str(getattr(self, "_active_view", ""))
+        if view in ("SEQUENCER", "LIVE") and hasattr(self, "sequencer"):
+            tracks = self.sequencer.song.tracks
+            first = self.seqTrackBank * TRACK_BANK_SIZE
+            shown = range(first, min(len(tracks), first + TRACK_BANK_SIZE))
+            if view == "SEQUENCER":
+                return [f"seq.swing.{i + 1}" for i in shown]
+            return [f"part.level@{(tracks[i].target_parts or [i + 1])[0]}" for i in shown]
+        return CONTEXT_KNOBS.get(view, [])
+
     def _ctx_compute(self) -> list:
         out = []
-        knobs = CONTEXT_KNOBS.get(str(getattr(self, "_active_view", "")), [])
+        knobs = self._context_knob_targets()
         for n in range(1, 9):
             target = knobs[n - 1] if n <= len(knobs) else ""
             if not target:
@@ -929,6 +946,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self.seqLaunchScene(n - 1)
             elif action.startswith("seq.stop_track."):
                 self.seqStopTrack(n - 1)
+            elif action == "seq.track_bank":
+                self.seqSetTrackBank(1 - self.seqTrackBank)
             elif action == "motion.toggle_play":
                 state = self.vector.motion.state.value
                 self.stopMotion() if state == "playing" else self.playMotion()

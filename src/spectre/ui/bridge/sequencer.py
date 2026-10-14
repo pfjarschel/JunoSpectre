@@ -15,6 +15,7 @@ from ...sequencer.models import (
     MAX_STEP_NOTES,
     MAX_TRACK_NAME,
     NUM_TRACKS,
+    TRACK_BANK_SIZE,
     Clip,
     NoteEvent,
     Step,
@@ -30,7 +31,7 @@ DRUM_ADD_ORDER = (36, 38, 42, 46, 39, 49)
 
 
 class SequencerBridgeMixin(BridgeBaseMixin):
-    """Bridge mixin for 8-track sequencer, session matrix, and step editor."""
+    """Bridge mixin for the sequencer, session matrix, and step editor."""
 
     seqStateChanged = pyqtSignal()
     seqPlayheadsChanged = pyqtSignal()
@@ -157,6 +158,19 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     def seqActiveClip(self) -> int:
         """Selected clip of the active track (each track keeps its own)."""
         return self._seq_selected_clip(getattr(self, "_active_seq_track", 0))
+
+    @pyqtProperty(int, notify=seqActiveTrackChanged)
+    def seqTrackBank(self) -> int:
+        """Track bank on screen (0 = tracks 1-8, 1 = 9-16): the one holding the active track."""
+        return getattr(self, "_active_seq_track", 0) // TRACK_BANK_SIZE
+
+    @pyqtSlot(int)
+    def seqSetTrackBank(self, bank: int) -> None:
+        """Show another bank by selecting the track in the same column there."""
+        banks = NUM_TRACKS // TRACK_BANK_SIZE
+        bank = max(0, min(banks - 1, int(bank)))
+        if bank != self.seqTrackBank:
+            self.seqSelectTrack(bank * TRACK_BANK_SIZE + getattr(self, "_active_seq_track", 0) % TRACK_BANK_SIZE)
 
     def _seq_selected_clip(self, track_idx: int) -> int:
         if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):

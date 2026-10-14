@@ -19,6 +19,8 @@ span = full-scale delta for macro=+1 @ depth=1 (sounding = base + pol*depth*span
 
 from __future__ import annotations
 
+from ..sequencer.models import NUM_TRACKS
+
 
 def _trio(key: str, title: str, category: str, lo: float, hi: float, span: float) -> dict:
     return {"key": key, "title": title, "category": category,
@@ -125,7 +127,8 @@ def build_macro_catalog() -> list[dict]:
     cat += [_trio(f"common.matrix{c}_sens{d}", f"Matrix {c} Sens {d}", "MATRIX", 1, 127, 63)
             for c in range(1, 5) for d in range(1, 5)]
     # --- SEQ (sequencer tracks) ---
-    cat += [_trio(f"seq.swing.{n}", f"Track {n} Swing", "SEQ", 0.50, 0.75, 0.25) for n in range(1, 9)]
+    cat += [_trio(f"seq.swing.{n}", f"Track {n} Swing", "SEQ", 0.50, 0.75, 0.25)
+            for n in range(1, NUM_TRACKS + 1)]
     return cat
 
 
