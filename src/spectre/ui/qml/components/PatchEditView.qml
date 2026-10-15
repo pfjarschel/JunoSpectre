@@ -369,11 +369,27 @@ Rectangle {
                         color: Theme.borderCard
                     }
 
-                    Text {
-                        text: "PITCH & TUNING"
-                        font.bold: true
-                        font.pixelSize: ScaleMetrics.sp(8)
-                        color: Theme.textDim
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScaleMetrics.dp(4)
+                        Text {
+                            text: "PITCH & TUNING"
+                            font.bold: true
+                            font.pixelSize: ScaleMetrics.sp(8)
+                            color: Theme.textDim
+                        }
+                        Item { Layout.fillWidth: true }
+                        // Auto Detune: spreads the 4 tones' fine tunes; the
+                        // FINE TUNE row below becomes its amount while on
+                        SpButton {
+                            objectName: "pcmAutoDetune"
+                            compact: true
+                            implicitHeight: ScaleMetrics.dp(22)
+                            fontSize: 8
+                            text: "AUTO DETUNE"
+                            checked: Bridge.autoDetune
+                            onClicked: Bridge.setAutoDetune(!Bridge.autoDetune)
+                        }
                     }
 
                     TouchFader {
@@ -387,6 +403,7 @@ Rectangle {
                     }
 
                     TouchFader {
+                        visible: !Bridge.autoDetune
                         ctlKey: "tone.pitch_fine"
                         Layout.fillWidth: true
                         label: "FINE TUNE"
@@ -394,6 +411,16 @@ Rectangle {
                         normVal: (Bridge.pitchFine + 50) / 100.0
                         isBipolar: true
                         onMoved: (norm) => Bridge.setPitchFine(Math.round(norm * 100 - 50))
+                    }
+
+                    TouchFader {
+                        visible: Bridge.autoDetune
+                        ctlKey: "detune.auto"
+                        Layout.fillWidth: true
+                        label: "AUTO DETUNE"
+                        valText: Bridge.autoDetuneCents + " c"
+                        normVal: Bridge.autoDetuneCents / 50.0
+                        onMoved: (norm) => Bridge.setAutoDetuneCents(Math.round(norm * 50))
                     }
 
                     Rectangle {

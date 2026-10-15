@@ -122,6 +122,12 @@ Rectangle {
                             color: Theme.tint(Theme.pageAccent, root.unisonActive ? 0.55 : 0.15)
                         }
 
+                        TouchHighlight {
+                            anchors.fill: parent
+                            radius: parent.radius
+                            ctlKey: "detune.auto"
+                        }
+
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: ScaleMetrics.dp(4)

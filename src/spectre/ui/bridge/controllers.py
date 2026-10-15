@@ -162,6 +162,13 @@ STEPPED.update({f"arp.{f}": ("Arp " + ("Oct Range" if f == "octave" else f.title
                              f"_arp_text_{f}", f"_set_arp_text_{f}")
                 for f, labels in ARP_FIELD_LABELS.items()})
 
+# Detune targets the edited-tone fine tune turns into (_ctl_resolve):
+# key -> (title, min, max, bridge property, setter)
+DETUNE = {
+    "detune.master": ("Master Fine Tune", -50, 50, "masterFine", "sculptPitchFine"),
+    "detune.auto": ("Auto Detune", 0, 50, "autoDetuneCents", "setAutoDetuneCents"),
+}
+
 ACTIONS += [_action(f"view.goto.{v}", "Go to " + _PAGE_TITLES.get(v, v.title()))
             for v in CONTEXT_PAGES]
 # Clip launchers: one per track and clip slot (their own CLIP category in the picker)
@@ -658,7 +665,11 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     # -- targets -------------------------------------------------------------
 
     def _ctl_resolve(self, target: str) -> str:
-        """"context.N" -> the current page's knob N target ("" when unused)."""
+        """"context.N" -> the current page's knob N target ("" when unused).
+
+        The edited tone's fine tune follows what the page offers: the master
+        fine tune on Wavetable / Vector (no per-tone tuning there), the Auto
+        Detune amount while Auto Detune is on (PCM, VA)."""
         if target.startswith("context."):
             # Pages without context knobs: the alt layer's row stays on the macros
             knobs = self._context_knob_targets() or [f"macro.{n}" for n in range(1, 9)]
@@ -666,12 +677,20 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 n = int(target[8:])
             except ValueError:
                 return ""
-            return knobs[n - 1] if 1 <= n <= len(knobs) else ""
+            target = knobs[n - 1] if 1 <= n <= len(knobs) else ""
+        if target == "tone.sel.pitch_fine":
+            if str(getattr(self, "_active_view", "")) in ("WAVETABLE", "VECTOR"):
+                return "detune.master"
+            if self.patch_state.auto_detune:
+                return "detune.auto"
         return "" if target == "action.none" else target
 
     def _ctl_entry(self, target: str):
         """Catalog entry for a target (edited-tone targets use tone 1's)."""
         target = self._ctl_resolve(target)
+        if target in DETUNE:
+            title, lo, hi, _, _ = DETUNE[target]
+            return {"key": target, "title": title, "category": "PITCH", "min": lo, "max": hi, "span": hi - lo}
         if target.startswith("tone.sel."):
             target = "tone.1." + target[len("tone.sel."):]
         return self._macroEntry(target)
@@ -691,6 +710,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         target = self._ctl_resolve(target)
         if target in STEPPED:
             return 0.0, float(len(STEPPED[target][1]) - 1)
+        if target in DETUNE:
+            return float(DETUNE[target][1]), float(DETUNE[target][2])
         if target.startswith("macro."):
             return -1.0, 1.0
         if target.startswith("mfx.p."):
@@ -725,6 +746,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             _, values, prop, _ = STEPPED[target]
             cur = str(getattr(self, prop, ""))
             return values.index(cur) / (len(values) - 1) if cur in values else None
+        if target in DETUNE:
+            return (float(getattr(self, DETUNE[target][3])) - lo) / (hi - lo)
         if target.startswith("macro."):
             idx = int(target[6:]) - 1
             if not 0 <= idx < len(self.patch_state.macros):
@@ -756,6 +779,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             _, values, _, setter = STEPPED[target]
             getattr(self, setter)(values[max(0, min(len(values) - 1, int(round(value))))])
             return
+        if target in DETUNE:
+            getattr(self, DETUNE[target][4])(int(round(value)))
+            return
         if target.startswith("macro."):
             if abs(value) <= 1.0 / 127.0:
                 value = 0.0      # 0..127 has no middle: CC 63/64 is the macro's center
@@ -786,6 +812,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             return f"Context Knob {target[8:]}"
         if target in STEPPED:
             return STEPPED[target][0]
+        if target in DETUNE:
+            return DETUNE[target][0]
         if target.startswith("action."):
             return _ACTION_TITLES.get(target, target)
         if target.startswith("tone.sel."):
@@ -811,6 +839,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         "T1 Cutoff", "ALL Reso", "P3 Level", "MX2 Dest 1 Sens", "M2 WOBBLE"."""
         if target.startswith("macro."):
             return self._ctl_target_title(target)
+        if target in DETUNE:
+            return self._surface_names(target, "")[1]
         scope, name = self._surface_names(target, self._ctl_target_title(target))
         for prefix, short in (("TONE ", "T"), ("PART ", "P"), ("MATRIX CTRL ", "MX"), ("TRACK ", "TR")):
             if scope.startswith(prefix):
@@ -981,8 +1011,10 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             title = self._ctl_target_title(target)
         if target in STEPPED:
             return "SPECTRE", STEPPED[target][0]
+        if target in DETUNE:
+            return "ALL TONES", {"detune.master": "Master Fine", "detune.auto": "Auto Detune"}[target]
         if target.startswith("tone.sel."):
-            tones = self._target_tones()
+            tones = [self._active_tone()] if self._sculpt_view() else self._target_tones()
             scope = f"TONE {tones[0].tone_index}" if len(tones) == 1 else "LINKED TONES"
             return scope, lcxl3.short_title(title.removeprefix("Edited Tone "))
         if target.startswith("mfx.p."):
@@ -1000,6 +1032,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             text = str(getattr(self, prop, ""))
             # Arp values are the synth's own names: "Up (_)" keeps its underscore
             return (text if target.startswith("arp.") else text.replace("_", " ")).upper()
+        if target in DETUNE:
+            v = int(getattr(self, DETUNE[target][3]))
+            return f"{v:+d} c" if target == "detune.master" else f"{v} c"
         cur = self._ctl_current(target)
         if cur is None:
             return ""
@@ -1101,6 +1136,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 out.append({"key": "", "title": "-", "text": "", "norm": 0.0, "active": False,
                             "bipolar": False, "touchKey": ""})
                 continue
+            target = self._ctl_resolve(target)   # e.g. fine tune -> Auto Detune amount
             title = self._short_target_name(target)
             cur = self._ctl_current(target)
             out.append({"key": target, "title": title, "text": self._surface_value(target),

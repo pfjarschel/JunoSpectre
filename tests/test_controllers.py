@@ -821,10 +821,10 @@ def test_va_page_tone_targets_ignore_the_pcm_link(ui):
     # Oscillator 2's FINE and the context strip's T2 fine card, not all four oscillators
     assert lit == [("tone.2.pitch_fine", "EncoderCard"), ("tone.2.pitch_fine", "TouchFader")]
 
-    # Auto Detune owns the fine tunes
-    bridge.patch_state.auto_detune = True
+    # With Auto Detune on, the same knob sets its amount
+    bridge.setAutoDetune(True)
     _send(app, bridge, _cc(34, 127, ch=15), port=DAW)
-    assert tones[1].fine_tune == 14
+    assert bridge.autoDetuneCents == 50
 
     # The sculptor's ADSR switch converts all four tones, link switch or not
     bridge.setLinkedMode(False)
@@ -832,3 +832,46 @@ def test_va_page_tone_targets_ignore_the_pcm_link(ui):
         t.set_env_curve("tvf", [10, 30, 50, 40], [0, 127, 90, 60, 0])
     bridge.setEnvAdsr("TVF", True)
     assert all(t.env_is_adsr("tvf") for t in tones)
+
+
+@pytest.mark.ui
+def test_fine_tune_knob_follows_the_page_and_auto_detune(ui):
+    app, bridge, _ = ui
+    ps = bridge.patch_state
+    bridge.setAutoDetune(False)
+    for t, f in zip(ps.tones, (60, 68, 64, 64)):           # a manual detune around 0
+        t.fine_tune = f
+    ps.custom_detune_cache = [t.fine_tune for t in ps.tones]
+
+    # Wavetable / Vector: the master fine tune, which keeps the detune
+    bridge.setActiveView("VECTOR")
+    assert bridge._ctl_resolve("tone.sel.pitch_fine") == "detune.master"
+    bridge._ctl_apply("tone.sel.pitch_fine", 60 / 100)    # -50..+50 -> +10
+    assert bridge.masterFine == 10
+    assert [t.fine_tune for t in ps.tones] == [70, 78, 74, 74]
+    assert bridge._surface_names("detune.master", "") == ("ALL TONES", "Master Fine")
+    assert bridge._surface_value("detune.master") == "+10 c"
+
+    # Auto Detune spreads around the master; moving the master shifts the saved manual detune too
+    bridge.setAutoDetune(True)
+    bridge.setAutoDetuneCents(20)
+    assert [t.fine_tune for t in ps.tones] == [54, 94, 64, 84]
+    bridge.sculptPitchFine(0)
+    assert [t.fine_tune for t in ps.tones] == [44, 84, 54, 74]
+    assert bridge._ctl_resolve("tone.sel.pitch_fine") == "detune.master"   # still master here
+
+    # PCM / VA: the Auto Detune amount while it is on, the selected tone otherwise
+    bridge.setActiveView("JUNO PCM")
+    assert bridge._ctl_resolve("tone.sel.pitch_fine") == "detune.auto"
+    bridge._ctl_apply("tone.sel.pitch_fine", 0.2)          # 0..50 -> 10
+    assert bridge.autoDetuneCents == 10
+    assert [t.fine_tune for t in ps.tones] == [54, 74, 59, 69]
+    bridge.setPitchFine(30)                                # the PCM fine tune is locked meanwhile
+    assert ps.tones[0].fine_tune == 54
+    bridge._ctx_refresh()
+    assert "Auto Detune" in [k["title"] for k in bridge.contextKnobs]   # the strip's fine card too
+    bridge.setAutoDetune(False)
+    assert [t.fine_tune for t in ps.tones] == [60, 68, 64, 64]          # the manual detune, re-centred
+    assert bridge._ctl_resolve("tone.sel.pitch_fine") == "tone.sel.pitch_fine"
+    bridge.setActiveView("VA")
+    assert bridge._ctl_resolve("tone.sel.pitch_fine") == "tone.sel.pitch_fine"

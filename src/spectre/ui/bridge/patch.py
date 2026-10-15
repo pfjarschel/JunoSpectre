@@ -287,6 +287,11 @@ class PatchBridgeMixin(BridgeBaseMixin):
     def pitchFine(self) -> int:
         return self._active_tone().fine_cents
 
+    @pyqtProperty(int, notify=vaParamsChanged)
+    def masterFine(self) -> int:
+        """Master fine tune in cents: the 4 tones' average (their detune spreads around it)."""
+        return round(sum(t.fine_tune for t in self.patch_state.tones) / 4) - 64
+
     @pyqtProperty(int, notify=portamentoTimeChanged)
     def portamentoTime(self) -> int:
         return self.patch_state.common.portamento_time
@@ -1001,7 +1006,9 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int)
     def setPitchFine(self, val: int) -> None:
-        """Set Tone Fine Tune in cents (-50..+50)."""
+        """Set Tone Fine Tune in cents (-50..+50). Auto Detune owns it while on."""
+        if self.patch_state.auto_detune:
+            return
         clamped = max(-50, min(50, int(val)))
         raw_val = clamped + 64
         targets = self._target_tones()
@@ -1466,20 +1473,21 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int)
     def sculptPitchFine(self, val: int) -> None:
-        """Sculpt Tone Fine Tune across all 4 tones (-50..+50)."""
-        clamped = max(-50, min(50, int(val)))
-        raw_val = clamped + 64
-        for t in self.patch_state.tones:
-            t.fine_tune = raw_val
-            if not self.patch_state.auto_detune:
-                self.patch_state.custom_detune_cache[t.tone_index - 1] = raw_val
+        """Master fine tune (-50..+50 cents): moves all 4 tones together, keeping
+        their detune (manual or Auto Detune, whose saved manual one moves too)."""
+        delta = max(-50, min(50, int(val))) - self.masterFine
+        ps = self.patch_state
+        for i, t in enumerate(ps.tones):
+            t.fine_tune = max(14, min(114, t.fine_tune + delta))
+            ps.custom_detune_cache[i] = (max(14, min(114, ps.custom_detune_cache[i] + delta))
+                                         if ps.auto_detune else t.fine_tune)
             if self.juno:
                 try:
-                    self.juno.set_tone_pitch(t.tone_index, fine=raw_val)
+                    self.juno.set_tone_pitch(t.tone_index, fine=t.fine_tune)
                 except Exception as e:
                     logger.error(f"Error sculpting fine tune on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.pitch_fine", raw_val) for t in self.patch_state.tones])
-        self.pitchFineChanged.emit(clamped)
+        self._rebaseDirect([(f"tone.{t.tone_index}.pitch_fine", t.fine_tune) for t in ps.tones])
+        self.pitchFineChanged.emit(self.pitchFine)
         self.vaParamsChanged.emit()
 
     @pyqtSlot(str, int)
@@ -2867,14 +2875,16 @@ class PatchBridgeMixin(BridgeBaseMixin):
         self.vaParamsChanged.emit()
 
     def applyAutoDetune(self) -> None:
-        """Distribute symmetrical auto-detuning across all 4 oscillators."""
+        """Distribute symmetrical auto-detuning across all 4 oscillators, around
+        the master fine tune (their current average)."""
         if not self.patch_state.auto_detune:
             return
         d = self.patch_state.auto_detune_cents
         spreads = [-d, d, -(d // 2), (d // 2)]
+        center = 64 + self.masterFine
 
         for idx, offset in enumerate(spreads, start=1):
-            raw = max(14, min(114, 64 + offset))
+            raw = max(14, min(114, center + offset))
             self.patch_state.tones[idx - 1].fine_tune = raw
             if self.juno:
                 try:

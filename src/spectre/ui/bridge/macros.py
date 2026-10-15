@@ -746,6 +746,8 @@ class MacroBridgeMixin(BridgeBaseMixin):
             self.lfoParamsChanged.emit()
             self.pitchCoarseChanged.emit(self.pitchCoarse)
             self.pitchFineChanged.emit(self.pitchFine)
+            if any(k.endswith(".pitch_fine") for k in keys):
+                self.vaParamsChanged.emit()     # master fine / oscillator tunes
         self.macrosChanged.emit()
 
     def _macro_name(self, index: int) -> str:

@@ -583,12 +583,13 @@ Rectangle {
                     onMoved: (norm) => Bridge.sculptPitchCoarse(Math.round(norm * 48 - 24))
                 }
 
+                // Master fine tune: moves all tones together, their detune kept
                 TouchFader {
-                    ctlKey: "tone.pitch_fine"
+                    ctlKey: "detune.master"
                     Layout.fillWidth: true
                     label: "FINE TUNE"
-                    valText: (Bridge.pitchFine >= 0 ? "+" : "") + Bridge.pitchFine + " c"
-                    normVal: (Bridge.pitchFine + 50) / 100.0
+                    valText: (Bridge.masterFine >= 0 ? "+" : "") + Bridge.masterFine + " c"
+                    normVal: (Bridge.masterFine + 50) / 100.0
                     isBipolar: true
                     onMoved: (norm) => Bridge.sculptPitchFine(Math.round(norm * 100 - 50))
                 }
