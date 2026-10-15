@@ -98,6 +98,10 @@ Rectangle {
                     elide: Text.ElideRight
                 }
             }
+
+            Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard }
+
+            PageLinks { group: "fx" }
         }
 
         // 2 Cards: Chorus, Reverb (Master EQ removed: no SysEx control on JUNO-DS)

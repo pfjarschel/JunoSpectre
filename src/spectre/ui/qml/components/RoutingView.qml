@@ -116,6 +116,10 @@ Rectangle {
                     onClicked: Bridge.applyRoutingPreset(modelData.id)
                 }
             }
+
+            Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard }
+
+            PageLinks { group: "fx" }
         }
 
         // =====================================================================

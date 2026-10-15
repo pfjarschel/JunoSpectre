@@ -10,7 +10,8 @@ Row {
     id: links
     property string group: ""
     readonly property var groups: ({
-        "perform": ["PERFORMANCE", "SEQUENCER", "LIVE", "SETLIST"]
+        "perform": ["PERFORMANCE", "SEQUENCER", "LIVE", "SETLIST"],
+        "fx": ["ROUTING", "MFX", "MASTER FX"]
     })
 
     spacing: ScaleMetrics.dp(3)

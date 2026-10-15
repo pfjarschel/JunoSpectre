@@ -374,6 +374,10 @@ Rectangle {
                         checked: root.isBypassed
                         onClicked: Bridge.setMfxBypass(!Bridge.mfxBypassed)
                     }
+
+                    Rectangle { width: 1; height: ScaleMetrics.dp(20); color: Theme.borderCard }
+
+                    PageLinks { group: "fx" }
                 }
 
                 Rectangle {
