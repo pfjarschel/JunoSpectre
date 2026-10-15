@@ -190,11 +190,11 @@ Rectangle {
                     }
 
                     // 5 Full Scaled Chorus Sliders
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "RATE"; val: root.chorusRate; accent: Theme.pageAccent; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("rate", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "DEPTH"; val: root.chorusDepth; accent: Theme.pageAccent; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("depth", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "PRE-DELAY"; val: root.chorusPreDelay; unitText: "ms"; accent: Theme.pageAccent; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("preDelay", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "FEEDBACK"; val: root.chorusFeedback; unitText: "%"; accent: Theme.pageAccent; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("feedback", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "LEVEL"; val: root.chorusLevel; accent: Theme.pageAccent; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("level", v) }
+                    FxSlider { ctlKey: "effects.chorus_rate"; Layout.fillWidth: true; Layout.fillHeight: true; label: "RATE"; val: root.chorusRate; accent: Theme.pageAccent; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("rate", v) }
+                    FxSlider { ctlKey: "effects.chorus_depth"; Layout.fillWidth: true; Layout.fillHeight: true; label: "DEPTH"; val: root.chorusDepth; accent: Theme.pageAccent; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("depth", v) }
+                    FxSlider { ctlKey: "effects.chorus_predelay"; Layout.fillWidth: true; Layout.fillHeight: true; label: "PRE-DELAY"; val: root.chorusPreDelay; unitText: "ms"; accent: Theme.pageAccent; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("preDelay", v) }
+                    FxSlider { ctlKey: "effects.chorus_feedback"; Layout.fillWidth: true; Layout.fillHeight: true; label: "FEEDBACK"; val: root.chorusFeedback; unitText: "%"; accent: Theme.pageAccent; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("feedback", v) }
+                    FxSlider { ctlKey: "effects.chorus_level"; Layout.fillWidth: true; Layout.fillHeight: true; label: "LEVEL"; val: root.chorusLevel; accent: Theme.pageAccent; isDimmed: root.chorusType === 0; onMoved: (v) => Bridge.setChorusParam("level", v) }
 
                     // Routing status
                     Rectangle {
@@ -272,12 +272,12 @@ Rectangle {
                     }
 
                     // 6 Full Scaled Reverb Sliders
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "TIME"; val: root.reverbTime; unitText: "s"; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("time", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "HF DAMP"; val: root.reverbDamp; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("damp", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "PRE-DELAY"; val: root.reverbPreDelay; unitText: "ms"; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("preDelay", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "DIFFUSION"; val: root.reverbDiffusion; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("diffusion", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "LOW CUT / TONE"; val: root.reverbTone; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("tone", v) }
-                    FxSlider { Layout.fillWidth: true; Layout.fillHeight: true; label: "LEVEL"; val: root.reverbLevel; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("level", v) }
+                    FxSlider { ctlKey: "effects.reverb_time"; Layout.fillWidth: true; Layout.fillHeight: true; label: "TIME"; val: root.reverbTime; unitText: "s"; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("time", v) }
+                    FxSlider { ctlKey: "effects.reverb_damp"; Layout.fillWidth: true; Layout.fillHeight: true; label: "HF DAMP"; val: root.reverbDamp; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("damp", v) }
+                    FxSlider { ctlKey: "effects.reverb_predelay"; Layout.fillWidth: true; Layout.fillHeight: true; label: "PRE-DELAY"; val: root.reverbPreDelay; unitText: "ms"; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("preDelay", v) }
+                    FxSlider { ctlKey: "effects.reverb_diffusion"; Layout.fillWidth: true; Layout.fillHeight: true; label: "DIFFUSION"; val: root.reverbDiffusion; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("diffusion", v) }
+                    FxSlider { ctlKey: "effects.reverb_tone"; Layout.fillWidth: true; Layout.fillHeight: true; label: "LOW CUT / TONE"; val: root.reverbTone; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("tone", v) }
+                    FxSlider { ctlKey: "effects.reverb_level"; Layout.fillWidth: true; Layout.fillHeight: true; label: "LEVEL"; val: root.reverbLevel; accent: Theme.pageAccent; isDimmed: root.reverbType === 0; onMoved: (v) => Bridge.setReverbParam("level", v) }
 
                     // Routing status
                     Rectangle {

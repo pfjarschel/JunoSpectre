@@ -246,6 +246,14 @@ Item {
         objectName: "editTargetPicker"
     }
 
+    // Hardware control under the hand, when the page can't highlight it
+    TouchToast {
+        objectName: "touchToast"
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: ScaleMetrics.dp(62)
+        z: 50
+    }
+
     // Global Bridge signal listeners
     Connections {
         target: Bridge

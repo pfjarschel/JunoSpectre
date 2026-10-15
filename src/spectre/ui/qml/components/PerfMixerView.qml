@@ -333,6 +333,12 @@ Rectangle {
                 border.color: Theme.borderCard
                 border.width: 1
 
+                TouchHighlight {
+                    anchors.fill: parent
+                    radius: parent.radius
+                    ctlKey: "part.level@" + chan.partIndex
+                }
+
                 // Center slot groove
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -399,6 +405,12 @@ Rectangle {
                 color: Theme.bgControl
                 border.color: Theme.borderCard
                 border.width: 1
+
+                TouchHighlight {
+                    anchors.fill: parent
+                    radius: parent.radius
+                    ctlKey: "part.pan@" + chan.partIndex
+                }
 
                 // Center tick
                 Rectangle {

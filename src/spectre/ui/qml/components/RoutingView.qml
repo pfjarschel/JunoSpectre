@@ -487,6 +487,7 @@ Rectangle {
                     }
 
                     SendSlider {
+                        ctlKey: "tone.output_level"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         readonly property var t: root.shownTone()
@@ -497,6 +498,7 @@ Rectangle {
                         onMoved: (v) => Bridge.setToneRoutingParam(root.selectedToneTab, "level", v)
                     }
                     SendSlider {
+                        ctlKey: "tone.chorus_send"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         readonly property var t: root.shownTone()
@@ -508,6 +510,7 @@ Rectangle {
                         onMoved: (v) => Bridge.setToneRoutingParam(root.selectedToneTab, "chorusSend", v)
                     }
                     SendSlider {
+                        ctlKey: "tone.reverb_send"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         readonly property var t: root.shownTone()
@@ -576,6 +579,7 @@ Rectangle {
                         }
                     }
                     SendSlider {
+                        ctlKey: "part.level@" + Bridge.activePerfPart
                         Layout.fillWidth: true
                         label: "OUT LEVEL"
                         accent: root.cPart
@@ -583,6 +587,7 @@ Rectangle {
                         onMoved: (v) => Bridge.setRoutingPartParam("level", v)
                     }
                     SendSlider {
+                        ctlKey: "part.chorus_send@" + Bridge.activePerfPart
                         Layout.fillWidth: true
                         label: "CHORUS SEND"
                         accent: root.cCho
@@ -590,6 +595,7 @@ Rectangle {
                         onMoved: (v) => Bridge.setRoutingPartParam("chorusSend", v)
                     }
                     SendSlider {
+                        ctlKey: "part.reverb_send@" + Bridge.activePerfPart
                         Layout.fillWidth: true
                         label: "REVERB SEND"
                         accent: root.cRev
@@ -647,6 +653,7 @@ Rectangle {
                     }
 
                     SendSlider {
+                        ctlKey: "effects.mfx_dry_send"
                         Layout.fillWidth: true
                         label: "OUT LEVEL"
                         accent: root.cOut
@@ -654,6 +661,7 @@ Rectangle {
                         onMoved: (v) => Bridge.setMfxSend("dry", v)
                     }
                     SendSlider {
+                        ctlKey: "effects.mfx_chorus_send"
                         Layout.fillWidth: true
                         label: "CHORUS SEND"
                         accent: root.cCho
@@ -661,6 +669,7 @@ Rectangle {
                         onMoved: (v) => Bridge.setMfxSend("chorus", v)
                     }
                     SendSlider {
+                        ctlKey: "effects.mfx_reverb_send"
                         Layout.fillWidth: true
                         label: "REVERB SEND"
                         accent: root.cRev
@@ -703,6 +712,7 @@ Rectangle {
                         }
                     }
                     SendSlider {
+                        ctlKey: "effects.chorus_level"
                         Layout.fillWidth: true
                         label: "LEVEL"
                         accent: root.cCho
@@ -759,6 +769,7 @@ Rectangle {
                         }
                     }
                     SendSlider {
+                        ctlKey: "effects.reverb_level"
                         Layout.fillWidth: true
                         label: "LEVEL"
                         accent: root.cRev

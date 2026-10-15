@@ -180,6 +180,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tvf_cutoff"
                     Layout.fillWidth: true
                     label: "CUTOFF"
                     valText: Bridge.masterCutoff.toString()
@@ -188,6 +189,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tvf_resonance"
                     Layout.fillWidth: true
                     label: "RESONANCE"
                     valText: Bridge.masterReso.toString()
@@ -196,6 +198,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tvf_keyfollow"
                     Layout.fillWidth: true
                     label: "KEY FOLLOW"
                     valText: (Bridge.tvfKeyFollow >= 0 ? "+" : "") + Bridge.tvfKeyFollow + "%"
@@ -205,6 +208,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tvf_env_depth"
                     Layout.fillWidth: true
                     label: "ENV DEPTH"
                     valText: (Bridge.tvfEnvDepth >= 0 ? "+" : "") + Bridge.tvfEnvDepth
@@ -248,6 +252,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tvf_attack"
                     Layout.fillWidth: true
                     label: "ATTACK (A)"
                     valText: Bridge.tvfAttack.toString()
@@ -256,6 +261,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tvf_decay"
                     Layout.fillWidth: true
                     label: "DECAY (D)"
                     valText: Bridge.tvfDecay.toString()
@@ -264,6 +270,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tvf_sustain"
                     Layout.fillWidth: true
                     label: "SUSTAIN (S)"
                     valText: Bridge.tvfSustain.toString()
@@ -272,6 +279,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tvf_release"
                     Layout.fillWidth: true
                     label: "RELEASE (R)"
                     valText: Bridge.tvfRelease.toString()
@@ -303,6 +311,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "common.level"
                     Layout.fillWidth: true
                     label: "LEVEL"
                     valText: Bridge.masterLevel.toString()
@@ -311,6 +320,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tva_pan"
                     Layout.fillWidth: true
                     label: "PAN"
                     valText: Bridge.tvaPan === 0 ? "CENTER" : (Bridge.tvaPan < 0 ? ("L" + Math.abs(Bridge.tvaPan)) : ("R" + Bridge.tvaPan))
@@ -354,6 +364,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tva_attack"
                     Layout.fillWidth: true
                     label: "ATTACK (A)"
                     valText: Bridge.masterAttack.toString()
@@ -362,6 +373,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tva_decay"
                     Layout.fillWidth: true
                     label: "DECAY (D)"
                     valText: Bridge.tvaDecay.toString()
@@ -370,6 +382,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tva_sustain"
                     Layout.fillWidth: true
                     label: "SUSTAIN (S)"
                     valText: Bridge.tvaSustain.toString()
@@ -378,6 +391,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.tva_release"
                     Layout.fillWidth: true
                     label: "RELEASE (R)"
                     valText: Bridge.masterRelease.toString()
@@ -448,6 +462,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.lfo" + root.activeLfoTab + "_rate"
                     Layout.fillWidth: true
                     label: "RATE"
                     valText: root.lfoData.rate.toString()
@@ -456,6 +471,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.lfo" + root.activeLfoTab + "_pitch_depth"
                     Layout.fillWidth: true
                     label: "PITCH DEPTH"
                     valText: (root.lfoData.pitchDepth >= 0 ? "+" : "") + root.lfoData.pitchDepth
@@ -465,6 +481,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.lfo" + root.activeLfoTab + "_tvf_depth"
                     Layout.fillWidth: true
                     label: "FILTER DEPTH"
                     valText: (root.lfoData.tvfDepth >= 0 ? "+" : "") + root.lfoData.tvfDepth
@@ -474,6 +491,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.lfo" + root.activeLfoTab + "_tva_depth"
                     Layout.fillWidth: true
                     label: "AMP DEPTH"
                     valText: (root.lfoData.tvaDepth >= 0 ? "+" : "") + root.lfoData.tvaDepth
@@ -483,6 +501,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.lfo" + root.activeLfoTab + "_pan_depth"
                     Layout.fillWidth: true
                     label: "PAN DEPTH"
                     valText: (root.lfoData.panDepth >= 0 ? "+" : "") + root.lfoData.panDepth
@@ -555,6 +574,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.pitch_coarse"
                     Layout.fillWidth: true
                     label: "COARSE TUNE"
                     valText: (Bridge.pitchCoarse >= 0 ? "+" : "") + Bridge.pitchCoarse + " st"
@@ -564,6 +584,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.pitch_fine"
                     Layout.fillWidth: true
                     label: "FINE TUNE"
                     valText: (Bridge.pitchFine >= 0 ? "+" : "") + Bridge.pitchFine + " c"
@@ -600,6 +621,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "tone.pitch_env_depth"
                     Layout.fillWidth: true
                     label: "ENV DEPTH"
                     valText: (Bridge.pitchEnvDepth >= 0 ? "+" : "") + Bridge.pitchEnvDepth + " st"
@@ -686,6 +708,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "common.portamento_time"
                     Layout.fillWidth: true
                     label: "PORTAMENTO TIME"
                     valText: Bridge.portamentoTime.toString()
@@ -707,6 +730,7 @@ Rectangle {
                 }
 
                 TouchFader {
+                    ctlKey: "common.analog_feel"
                     Layout.fillWidth: true
                     label: "1/f MOD DEPTH"
                     valText: Bridge.analogFeel.toString()

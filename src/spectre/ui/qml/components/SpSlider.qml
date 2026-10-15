@@ -10,6 +10,7 @@ import ".."
 //   bipolar         fill grows from the centre
 //   from/to/integer moved() reports from..to (rounded if integer); the
 //                   default 0..1 reports the normalized position
+//   ctlKey          the parameter it edits (TouchHighlight), e.g. "tone.tvf_cutoff"
 //   scrollView      parent Flickable: a horizontal-first drag holds it so
 //                   vertical drift can't steal the gesture; a vertical-first
 //                   drag is left to the Flickable
@@ -26,6 +27,7 @@ Item {
     property real from: 0.0
     property real to: 1.0
     property bool integer: false
+    property string ctlKey: ""
     readonly property alias pressed: area.pressed
 
     signal moved(real value)
@@ -65,6 +67,12 @@ Item {
             font.pixelSize: ScaleMetrics.sp(Theme.fontSm)
             color: Theme.textPrimary
         }
+    }
+
+    TouchHighlight {
+        anchors.fill: bar
+        radius: bar.radius
+        ctlKey: sl.ctlKey
     }
 
     Rectangle {

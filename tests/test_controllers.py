@@ -736,3 +736,50 @@ def test_touch_events_are_not_controls(ui, monkeypatch):
     _send(app, bridge, _cc(5, 127, ch=14), _cc(5, 0, ch=14), port=DAW)
     _send(app, bridge, _cc(104, 0), port=DAW)
     assert bridge._ctl_state()["ALT"] == ""
+
+
+@pytest.mark.ui
+def test_touched_control_highlights_or_toasts(ui):
+    from PyQt6.QtCore import QObject
+
+    app, bridge, _ = ui
+    bridge._ctl_open[DAW] = object()
+    bridge._ctl_send = lambda key, msg: None
+    bridge._hw_outputs = [PORT + " 36:0", DAW + " 36:1"]
+    bridge._ctl_sync_ports = lambda ins: None
+    assert bridge.loadControlPreset(str(SURFACE)) == ""
+    toast = next(w.findChild(QObject, "touchToast") for w in app.topLevelWindows()
+                 if w.findChild(QObject, "touchToast"))
+    bridge.setActiveView("JUNO PCM")
+
+    def settle():
+        for _ in range(5):
+            app.processEvents()
+
+    # Cutoff offset (knob C1) has no slider on the PCM page: the toast shows it
+    _send(app, bridge, _cc(29, 127, ch=14), port=DAW)
+    settle()
+    assert bridge.touchedKey == "common.cutoff_offset"
+    assert bridge.touchedControl["name"] == "Cutoff Ofs"
+    assert toast.property("showing")
+    _send(app, bridge, _cc(29, 0, ch=14), port=DAW)
+    assert bridge._touch_timer.isActive()        # lingers a moment, then hides
+    bridge._touch_hide()
+    settle()
+    assert bridge.touchedKey == "" and not toast.property("showing")
+
+    # Key follow (knob C5) is on the page: highlighted there, no toast
+    _send(app, bridge, _cc(33, 127, ch=14), port=DAW)
+    settle()
+    assert bridge.touchedKey == "tone.tvf_keyfollow"
+    assert not toast.property("showing")
+    _send(app, bridge, _cc(33, 0, ch=14), port=DAW)
+    bridge._touch_hide()
+
+    # A move without a touch report shows it too (and its new value)
+    for b in bridge._ctl_bindings:
+        b.takeover = "jump"
+    _send(app, bridge, _cc(29, 127, ch=15), port=DAW)
+    settle()
+    assert bridge.touchedKey == "common.cutoff_offset" and bridge.touchedControl["value"] == "+63"
+    assert bridge._touch_timer.isActive()

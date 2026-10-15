@@ -37,6 +37,8 @@ DRAIN_MS = 15
 FEEDBACK_MS = 100
 # LCXL3 touch events: channel 15 (0-based 14), the control's CC, 127 on touch / 0 on release
 TOUCH_CH = 14
+# Touchscreen hint: kept this long after the touch ends (twice after a move without touch)
+TOUCH_LINGER_MS = 700
 # Alt layer button: released sooner than this, with nothing used meanwhile, is a tap (latch)
 ALT_TAP_S = 0.35
 # A knob that moved this recently is the source of its value: no feedback
@@ -179,6 +181,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     controllersChanged = pyqtSignal()
     contextKnobsChanged = pyqtSignal()
     controlActivityChanged = pyqtSignal()
+    touchedControlChanged = pyqtSignal()
     _ctlPending = pyqtSignal()   # rtmidi thread -> UI thread
 
     def _init_controllers(self) -> None:
@@ -207,6 +210,14 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         self._alt_t0 = 0.0
         self._ctl_scene = 0                         # scene the alt layer's Play/Record act on
         self._ctl_touched: set = set()              # (port, CC) of surface controls being touched
+        # Touchscreen hint for the control under the hand: highlighted where it
+        # is on screen, a toast otherwise (QML). Hidden a moment after the last
+        # move, or after the touch ends.
+        self._touch_key = ""
+        self._touch_info: dict = {}
+        self._touch_timer = QTimer(self)
+        self._touch_timer.setSingleShot(True)
+        self._touch_timer.timeout.connect(self._touch_hide)
         self._ctl_names: dict[str, dict] = {}       # port key -> {"cc:13": "Knob A1"}
         # Device setups from presets: [{match, listen, feedback, on_connect, on_quit}]
         self._ctl_devices: list[dict] = [dict(d) for d in cfg.get("devices", []) if isinstance(d, dict)]
@@ -544,18 +555,64 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 continue
             self._ctl_apply(eff, t)
             self._ctl_set_activity(f"{label} = {raw} → {title}")
+            self._touch_show(eff)
 
     def _ctl_touch(self, port: str, num: int, on: bool) -> None:
         """A surface knob/fader touched or let go (never a control value, never learned)."""
         if not on:
             self._ctl_touched.discard((port, num))
+            if not self._ctl_touched:
+                self._touch_timer.start(TOUCH_LINGER_MS)
             return
         self._ctl_touched.add((port, num))
+        hits = self._ctl_pick(port, 15, "cc", num)
+        if hits:
+            self._touch_show(hits[0].target)
         if self._alt_held:
             self._alt_used = True           # touched while held: the alt layer is momentary
         # A new grab: takeover starts over from where the target is now
         for b in self._ctl_pick(port, 15, "cc", num):
             self._ctl_resolver.forget(b)
+
+    def _touch_norm(self, target: str) -> str:
+        """Key a touchscreen control is tagged with (ctlKey): tone targets drop the
+        tone ("tone.tvf_cutoff"), edited-part targets name the part."""
+        eff = self._ctl_resolve(target)
+        if eff.startswith("tone."):
+            return "tone." + eff.split(".", 2)[-1]
+        if eff.startswith("part.") and "@" not in eff:
+            return f"{eff}@{self._editedPart()}"
+        return eff
+
+    def _touch_show(self, target: str) -> None:
+        eff = self._ctl_resolve(target)
+        if not eff or eff.startswith("action."):
+            return
+        title = self._macro_name(int(eff[6:])) if eff.startswith("macro.") else self._ctl_target_title(eff)
+        group, name = self._surface_names(eff, title)
+        info = {"key": self._touch_norm(eff), "group": group, "name": name, "value": self._surface_value(eff)}
+        if info != self._touch_info or info["key"] != self._touch_key:
+            self._touch_info, self._touch_key = info, info["key"]
+            self.touchedControlChanged.emit()
+        if not self._ctl_touched:
+            self._touch_timer.start(TOUCH_LINGER_MS * 2)   # moved without a touch report
+        else:
+            self._touch_timer.stop()
+
+    def _touch_hide(self) -> None:
+        if self._touch_key:
+            self._touch_key = ""
+            self.touchedControlChanged.emit()
+
+    @pyqtProperty(str, notify=touchedControlChanged)
+    def touchedKey(self) -> str:
+        """ctlKey of the control under the hand ("" = none): on-screen controls highlight."""
+        return self._touch_key
+
+    @pyqtProperty("QVariantMap", notify=touchedControlChanged)
+    def touchedControl(self) -> dict:
+        """{key, group, name, value} for the toast (shown when nothing on screen highlights)."""
+        return self._touch_info
 
     def _ctl_set_activity(self, text: str) -> None:
         if text != self._ctl_activity:
@@ -1033,13 +1090,13 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             target = knobs[n - 1] if n <= len(knobs) else ""
             if not target:
                 out.append({"key": "", "title": "-", "text": "", "norm": 0.0, "active": False,
-                            "bipolar": False})
+                            "bipolar": False, "touchKey": ""})
                 continue
             title = self._short_target_name(target)
             cur = self._ctl_current(target)
             out.append({"key": target, "title": title, "text": self._surface_value(target),
                         "norm": round(cur, 4) if cur is not None else 0.0, "active": cur is not None,
-                        "bipolar": target.startswith("macro.")})
+                        "bipolar": target.startswith("macro."), "touchKey": self._touch_norm(target)})
         return out
 
     def _ctx_refresh(self, *_args) -> None:

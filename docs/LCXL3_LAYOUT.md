@@ -144,7 +144,10 @@ The Novation button has no LED, so the layer shows itself through:
 Enabled with feature message `B6 47 7F`. Touch on/off arrive as CC 127/0 on channel 15, numbered
 like the control (movement CCs are on channel 16, so they don't collide).
 
-- **Touch shows** the control's name and value on the screen (and on the touchscreen), before it moves.
+- **Touch shows** the control's name and value on the LCXL3 screen before it moves. On the
+  touchscreen, the matching control of the current page (slider, context strip card, mixer strip)
+  gets a white outline; when the page has none, a toast shows the name and value. Both stay a
+  moment after the touch ends, and a move without a touch report shows them too.
 - **Fader takeover** uses touch-on/off instead of guessing when a fader is grabbed and released.
 - **Envelope faders** take their shape snapshot on touch (below).
 - **The Novation hold rule** counts a touch as "used while held".

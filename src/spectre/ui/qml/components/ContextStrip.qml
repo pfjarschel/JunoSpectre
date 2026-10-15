@@ -47,6 +47,12 @@ Rectangle {
             return m ? Theme.toneColors[parseInt(m[1]) - 1] : Theme.pageAccent;
         }
 
+        TouchHighlight {
+            anchors.fill: parent
+            radius: parent.radius
+            ctlKey: card.knob ? card.knob.touchKey : ""
+        }
+
         radius: ScaleMetrics.dp(6)
         color: Theme.bgApp
         border.color: mouseArea.containsPress ? card.knobColor : Theme.borderCard
