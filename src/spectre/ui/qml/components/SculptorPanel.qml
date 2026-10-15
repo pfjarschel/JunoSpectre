@@ -231,12 +231,16 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: ScaleMetrics.dp(4)
                     Text {
-                        text: "TVF ENVELOPE (ADSR)"
+                        text: "TVF ENVELOPE"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
                         color: Theme.textDim
                     }
                     Item { Layout.fillWidth: true }
+                    EnvModeChip {
+                        objectName: "sculptTvfEnvMode"
+                        env: "TVF"
+                    }
                     EnvThumb {
                         objectName: "sculptTvfEnvThumb"
                         env: "TVF"
@@ -333,12 +337,16 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: ScaleMetrics.dp(4)
                     Text {
-                        text: "TVA ENVELOPE (ADSR)"
+                        text: "TVA ENVELOPE"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
                         color: Theme.textDim
                     }
                     Item { Layout.fillWidth: true }
+                    EnvModeChip {
+                        objectName: "sculptTvaEnvMode"
+                        env: "TVA"
+                    }
                     EnvThumb {
                         objectName: "sculptTvaEnvThumb"
                         env: "TVA"
@@ -575,12 +583,16 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: ScaleMetrics.dp(4)
                     Text {
-                        text: "PITCH ENVELOPE (MSEG)"
+                        text: "PITCH ENVELOPE"
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
                         color: Theme.textDim
                     }
                     Item { Layout.fillWidth: true }
+                    EnvModeChip {
+                        objectName: "sculptPitchEnvMode"
+                        env: "PITCH"
+                    }
                     EnvThumb {
                         objectName: "sculptPitchEnvThumb"
                         env: "PITCH"

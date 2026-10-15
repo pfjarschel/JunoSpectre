@@ -198,11 +198,11 @@ class MacroBridgeMixin(BridgeBaseMixin):
         mapping = {
             "tvf_cutoff": t.tvf_cutoff, "tvf_resonance": t.tvf_resonance,
             "tvf_env_depth": t.tvf_env_depth, "tvf_keyfollow": t.tvf_cutoff_keyfollow,
-            "tvf_attack": t.tvf_t1,
-            "tvf_decay": t.tvf_t2, "tvf_sustain": t.tvf_l3, "tvf_release": t.tvf_t4,
+            "tvf_attack": t.tvf_attack,
+            "tvf_decay": t.tvf_decay, "tvf_sustain": t.tvf_sustain, "tvf_release": t.tvf_release,
             "tva_level": t.level, "tva_pan": t.pan,
-            "tva_attack": t.tva_t1, "tva_decay": t.tva_t2,
-            "tva_sustain": t.tva_l3, "tva_release": t.tva_t4,
+            "tva_attack": t.tva_attack, "tva_decay": t.tva_decay,
+            "tva_sustain": t.tva_sustain, "tva_release": t.tva_release,
             "pitch_coarse": t.coarse_tune, "pitch_fine": t.fine_tune,
             "lfo1_rate": t.lfo1_rate, "lfo1_pitch_depth": t.lfo1_pitch_depth,
             "lfo1_tvf_depth": t.lfo1_tvf_depth, "lfo1_tva_depth": t.lfo1_tva_depth,
@@ -210,9 +210,9 @@ class MacroBridgeMixin(BridgeBaseMixin):
             "lfo2_pitch_depth": t.lfo2_pitch_depth, "lfo2_tvf_depth": t.lfo2_tvf_depth,
             "lfo2_tva_depth": t.lfo2_tva_depth, "lfo2_pan_depth": t.lfo2_pan_depth,
             "output_level": t.output_level,
-            "pitch_env_depth": t.pitch_env_depth, "pitch_env_attack": t.pitch_env_t1,
-            "pitch_env_decay": t.pitch_env_t2, "pitch_env_release": t.pitch_env_t4,
-            "pitch_env_sustain": t.pitch_env_l3,
+            "pitch_env_depth": t.pitch_env_depth, "pitch_env_attack": t.pitch_env_attack,
+            "pitch_env_decay": t.pitch_env_decay, "pitch_env_release": t.pitch_env_release,
+            "pitch_env_sustain": t.pitch_env_sustain,
         }
         return float(mapping.get(param, 0.0))
 
@@ -618,16 +618,13 @@ class MacroBridgeMixin(BridgeBaseMixin):
             if juno:
                 juno.set_tone_param(tone_idx, 0x000C, t.output_level)
         elif param.startswith("pitch_env_"):
-            attr = {"pitch_env_depth": "pitch_env_depth", "pitch_env_attack": "pitch_env_t1",
-                    "pitch_env_decay": "pitch_env_t2", "pitch_env_release": "pitch_env_t4",
-                    "pitch_env_sustain": "pitch_env_l3"}.get(param)
-            if attr:
-                lo, hi = {"pitch_env_depth": (52, 76), "pitch_env_sustain": (1, 127)}.get(param, (0, 127))
-                v = max(lo, min(hi, iv))
-                if param == "pitch_env_sustain" and t.pitch_env_l2 == t.pitch_env_l3:
-                    t.pitch_env_l2 = v      # a plain decay to sustain: keep it plain
-                setattr(t, attr, v)
-                self._push_pitch_env(t)
+            if param == "pitch_env_depth":
+                t.pitch_env_depth = max(52, min(76, iv))
+            elif param in ("pitch_env_attack", "pitch_env_decay", "pitch_env_sustain", "pitch_env_release"):
+                setattr(t, param, iv)       # the A/D/S/R properties (core.env_shape)
+            else:
+                return
+            self._push_pitch_env(t)
 
     def _applyLfoParam(self, t: ToneState, param: str, iv: int) -> None:
         juno = self.juno

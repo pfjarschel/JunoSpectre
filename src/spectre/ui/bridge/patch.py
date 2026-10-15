@@ -1515,6 +1515,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     def _push_tvf_env(self, t: ToneState) -> None:
         """Send the raw TVF MSEG block [T1..T4, L0..L4] for a tone."""
+        t.env_forget_broken_original("tvf")
         if self.juno:
             try:
                 self.juno.set_tone_tvf_env(t.tone_index, t.tvf_env_block())
@@ -1523,6 +1524,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     def _push_tva_env(self, t: ToneState) -> None:
         """Send the raw TVA MSEG block [T1..T4, L1..L3] for a tone."""
+        t.env_forget_broken_original("tva")
         if self.juno:
             try:
                 self.juno.set_tone_tva_env(t.tone_index, t.tva_env_block())
@@ -1531,6 +1533,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     def _push_pitch_env(self, t: ToneState) -> None:
         """Send all Pitch Envelope parameters for a tone."""
+        t.env_forget_broken_original("pitch")
         if self.juno:
             try:
                 kwargs = {
@@ -1556,6 +1559,12 @@ class PatchBridgeMixin(BridgeBaseMixin):
         """
         env = env.upper()
         t = self._active_tone()
+        key = {"TVF": "tvf", "TVA": "tva"}.get(env, "pitch")
+        # ADSR switch: on when the curve is a plain ADSR; it can go back when the switch made it
+        mode = {"adsr": t.env_is_adsr(key), "restorable": key in t.env_originals}
+        return {**self._envSegments(t, env), **mode}
+
+    def _envSegments(self, t: ToneState, env: str) -> dict:
         if env == "TVF":
             return {
                 "times": [t.tvf_t1, t.tvf_t2, t.tvf_t3, t.tvf_t4],
@@ -1587,7 +1596,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                 t.pitch_env_l0_bipolar, t.pitch_env_l1_bipolar, t.pitch_env_l2_bipolar,
                 t.pitch_env_l3_bipolar, t.pitch_env_l4_bipolar,
             ],
-            "bipolar": True, "custom": False,
+            "bipolar": True, "custom": not t.env_is_adsr("pitch"),
             "mods": {
                 "depth": t.pitch_env_depth_st,
                 "velSens": t.pitch_env_vel_sens_bipolar,
@@ -1596,6 +1605,42 @@ class PatchBridgeMixin(BridgeBaseMixin):
                 "timeKf": t.pitch_env_time_kf_bipolar,
             },
         }
+
+    @pyqtSlot(str, bool)
+    def setEnvAdsr(self, env: str, on: bool) -> None:
+        """ADSR switch of 'TVF' | 'TVA' | 'PITCH' (edited tone, or all when linked).
+
+        On: the curve becomes a plain ADSR, the original is kept. Off: the
+        original comes back exactly (ADSR edits since are dropped)."""
+        env = env.upper()
+        key = {"TVF": "tvf", "TVA": "tva"}.get(env, "pitch")
+        push = {"tvf": self._push_tvf_env, "tva": self._push_tva_env, "pitch": self._push_pitch_env}[key]
+        for t in self._target_tones():
+            if on:
+                t.env_to_adsr(key)
+            elif not t.env_restore(key):
+                continue
+            push(t)
+            self._rebaseDirect([(f"tone.{t.tone_index}.{p}", getattr(t, p)) for p in
+                                ([f"{key}_{s}" for s in ("attack", "decay", "sustain", "release")]
+                                 if key != "pitch" else
+                                 [f"pitch_env_{s}" for s in ("attack", "decay", "sustain", "release")])])
+        self._emit_env_signals(env)
+
+    def _emit_env_signals(self, env: str) -> None:
+        if env == "TVF":
+            for sig, v in ((self.tvfAttackChanged, self.tvfAttack), (self.tvfDecayChanged, self.tvfDecay),
+                           (self.tvfSustainChanged, self.tvfSustain), (self.tvfReleaseChanged, self.tvfRelease)):
+                sig.emit(v)
+        elif env == "TVA":
+            for sig, v in ((self.tvaAttackChanged, self.tvaAttack), (self.tvaDecayChanged, self.tvaDecay),
+                           (self.tvaSustainChanged, self.tvaSustain), (self.tvaReleaseChanged, self.tvaRelease)):
+                sig.emit(v)
+            self.masterAttackChanged.emit(self.masterAttack)
+            self.masterReleaseChanged.emit(self.masterRelease)
+        else:
+            self.pitchEnvChanged.emit()
+        self.envShapeChanged.emit(env)
 
     @pyqtSlot(str, str, int)
     def setEnvModParam(self, env: str, param: str, val: int) -> None:

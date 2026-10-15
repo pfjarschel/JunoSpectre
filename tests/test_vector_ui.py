@@ -1163,6 +1163,41 @@ def test_ui_bridge_step_lfo():
 
 
 
+def test_envelope_adsr_switch():
+    from PyQt6.QtCore import QObject
+
+    app, qml_engine, bridge = create_application(platform="offscreen")
+    root = qml_engine.rootObjects()[0]
+    chip = root.findChild(QObject, "pcmTvfEnvMode")
+    assert chip is not None and root.findChild(QObject, "sculptPitchEnvMode") is not None
+
+    # INIT patches start as plain ADSR, with nothing to switch back to
+    bridge.initPatch()
+    app.processEvents()
+    seg = bridge.getEnvSegments("TVF")
+    assert seg["adsr"] and not seg["restorable"] and not seg["custom"]
+    assert all(t.env_is_adsr(e) for t in bridge.patch_state.tones for e in ("tvf", "tva", "pitch"))
+    assert chip.property("checked") and not chip.property("enabled")
+
+    tone = bridge.patch_state.tones[0]
+    bridge.setSelectedTone(1)
+    bridge.setLinkedMode(False)
+    bridge.setEnvSegment("TVF", "t3", 50)                  # the curve editor breaks the shape
+    assert not bridge.getEnvSegments("TVF")["adsr"]
+    app.processEvents()
+    assert not chip.property("checked") and chip.property("enabled")
+    before = tone.env_curve("tvf")
+    bridge.setEnvAdsr("TVF", True)
+    seg = bridge.getEnvSegments("TVF")
+    assert seg["adsr"] and seg["restorable"]
+    assert bridge.tvfDecay == 50                           # the longest decay segment
+    bridge.setTvfSustain(30)                               # an ADSR edit...
+    bridge.setEnvAdsr("TVF", False)                        # ...dropped on the way back
+    assert tone.env_curve("tvf") == before
+    assert not bridge.getEnvSegments("TVF")["restorable"]
+    assert bridge.patch_state.tones[1].env_is_adsr("tvf")  # unlinked: only the edited tone
+
+
 def test_envelope_overlay_bridge_api():
     """Generic MSEG editing API: segments, lossless rules, presets, overlay request."""
     from PyQt6.QtCore import QObject
@@ -1194,9 +1229,9 @@ def test_envelope_overlay_bridge_api():
     assert bridge.tvfSustain == 127
     assert bridge.getEnvSegments("TVF")["custom"] is True
 
-    # With L2 untied, ADSR sustain must only move L3 (lossless rule)
+    # A dip below sustain keeps its distance to it (core.env_shape)
     bridge.setTvfSustain(100)
-    assert tone.tvf_l2 == 40
+    assert tone.tvf_l2 == 13
     assert tone.tvf_l3 == 100
 
     # TVF preset applies a canonical ADSR-shaped MSEG that ADSR faders describe

@@ -169,6 +169,8 @@ class ToneState:
             [1, 1, 1, 1],  # Ctrl 4: Dest 1..4
         ]
     )
+    # Curves the envelope ADSR switch replaced: "tvf"/"tva"/"pitch" -> [T1..T4, L0..L4]
+    env_originals: dict[str, list[int]] = field(default_factory=dict)
 
     # Convenience properties for UI bipolar representations
     @property
@@ -223,53 +225,110 @@ class ToneState:
     def tva_env_time_kf_bipolar(self) -> int:
         return (self.tva_env_time_keyfollow - 64) * 10
 
-    # --- TVF envelope: ADSR quick controls as a lossless projection of the ---
-    # --- real 4-time / 5-level hardware MSEG (T1..T4 / L0..L4).           ---
-    @property
-    def tvf_attack(self) -> int:
-        return self.tvf_t1
+    # --- Envelopes: A/D/S/R controls over the 4-time / 5-level hardware ---
+    # --- curves (core.env_shape). TVA levels are L1..L3 (L0 = L4 = 0).  ---
+    _ENV_ATTRS = {
+        "tvf": (("tvf_t1", "tvf_t2", "tvf_t3", "tvf_t4"),
+                ("tvf_l0", "tvf_l1", "tvf_l2", "tvf_l3", "tvf_l4"), 0, (0, 127)),
+        "tva": (("tva_t1", "tva_t2", "tva_t3", "tva_t4"),
+                (None, "tva_l1", "tva_l2", "tva_l3", None), 0, (0, 127)),
+        "pitch": (("pitch_env_t1", "pitch_env_t2", "pitch_env_t3", "pitch_env_t4"),
+                  ("pitch_env_l0", "pitch_env_l1", "pitch_env_l2", "pitch_env_l3", "pitch_env_l4"), 64, (1, 127)),
+    }
 
-    @tvf_attack.setter
-    def tvf_attack(self, val: int) -> None:
-        self.tvf_t1 = max(0, min(127, int(val)))
+    def env_curve(self, env: str) -> tuple[list[int], list[int]]:
+        """(times [T1..T4], levels [L0..L4]) of "tvf" / "tva" / "pitch"."""
+        times, levels, center, _ = self._ENV_ATTRS[env]
+        return ([getattr(self, a) for a in times],
+                [getattr(self, a) if a else center for a in levels])
 
-    @property
-    def tvf_decay(self) -> int:
-        return self.tvf_t2
+    def set_env_curve(self, env: str, times: Sequence[int], levels: Sequence[int]) -> None:
+        t_attrs, l_attrs, _, _ = self._ENV_ATTRS[env]
+        for a, v in zip(t_attrs, times):
+            setattr(self, a, int(v))
+        for a, v in zip(l_attrs, levels):
+            if a:
+                setattr(self, a, int(v))
 
-    @tvf_decay.setter
-    def tvf_decay(self, val: int) -> None:
-        self.tvf_t2 = max(0, min(127, int(val)))
+    def env_stage(self, env: str, stage: str) -> int:
+        from . import env_shape
 
-    @property
-    def tvf_sustain(self) -> int:
-        return self.tvf_l3
+        times, levels = self.env_curve(env)
+        return env_shape.value(stage, times, levels, self._ENV_ATTRS[env][2])
 
-    @tvf_sustain.setter
-    def tvf_sustain(self, val: int) -> None:
-        val = max(0, min(127, int(val)))
-        if self.tvf_l2 == self.tvf_l3:
-            self.tvf_l2 = val
-        self.tvf_l3 = val
+    def set_env_stage(self, env: str, stage: str, val: int) -> None:
+        """Move one A/D/S/R control. Moves are taken from a snapshot of the curve,
+        kept until the curve changes some other way (editor, patch load)."""
+        from . import env_shape
 
-    @property
-    def tvf_release(self) -> int:
-        return self.tvf_t4
+        _, _, center, level_range = self._ENV_ATTRS[env]
+        cur = self.env_curve(env)
+        snaps = self.__dict__.setdefault("_env_snaps", {})
+        snap = snaps.get(env)
+        if snap is None or snap[1] != cur:
+            snap = snaps[env] = [cur, cur]
+        new = env_shape.apply(stage, val, cur, snap[0], center, level_range)
+        self.set_env_curve(env, *new)
+        snap[1] = self.env_curve(env)
 
-    @tvf_release.setter
-    def tvf_release(self, val: int) -> None:
-        self.tvf_t4 = max(0, min(127, int(val)))
+    def env_is_adsr(self, env: str) -> bool:
+        from . import env_shape
+
+        return env_shape.is_adsr(*self.env_curve(env), self._ENV_ATTRS[env][2])
+
+    def env_to_adsr(self, env: str, keep_original: bool = True) -> None:
+        """Make the curve a plain ADSR; the original is kept to switch back to."""
+        from . import env_shape
+
+        if self.env_is_adsr(env):
+            return
+        times, levels = self.env_curve(env)
+        if keep_original:
+            self.env_originals[env] = times + levels
+        self.set_env_curve(env, *env_shape.to_adsr(times, levels, self._ENV_ATTRS[env][2]))
+
+    def env_restore(self, env: str) -> bool:
+        """Back to the curve the ADSR switch replaced (edits made since are dropped)."""
+        block = self.env_originals.pop(env, None)
+        if not block:
+            return False
+        self.set_env_curve(env, block[:4], block[4:9])
+        return True
+
+    def env_forget_broken_original(self, env: str) -> None:
+        """A stored original lives only while the curve keeps the ADSR shape."""
+        if env in self.env_originals and not self.env_is_adsr(env):
+            del self.env_originals[env]
+
+    tvf_attack = property(lambda s: s.env_stage("tvf", "attack"),
+                          lambda s, v: s.set_env_stage("tvf", "attack", v))
+    tvf_decay = property(lambda s: s.env_stage("tvf", "decay"),
+                         lambda s, v: s.set_env_stage("tvf", "decay", v))
+    tvf_sustain = property(lambda s: s.env_stage("tvf", "sustain"),
+                           lambda s, v: s.set_env_stage("tvf", "sustain", v))
+    tvf_release = property(lambda s: s.env_stage("tvf", "release"),
+                           lambda s, v: s.set_env_stage("tvf", "release", v))
+    tva_attack = property(lambda s: s.env_stage("tva", "attack"),
+                          lambda s, v: s.set_env_stage("tva", "attack", v))
+    tva_decay = property(lambda s: s.env_stage("tva", "decay"),
+                         lambda s, v: s.set_env_stage("tva", "decay", v))
+    tva_sustain = property(lambda s: s.env_stage("tva", "sustain"),
+                           lambda s, v: s.set_env_stage("tva", "sustain", v))
+    tva_release = property(lambda s: s.env_stage("tva", "release"),
+                           lambda s, v: s.set_env_stage("tva", "release", v))
+    pitch_env_attack = property(lambda s: s.env_stage("pitch", "attack"),
+                                lambda s, v: s.set_env_stage("pitch", "attack", v))
+    pitch_env_decay = property(lambda s: s.env_stage("pitch", "decay"),
+                               lambda s, v: s.set_env_stage("pitch", "decay", v))
+    pitch_env_sustain = property(lambda s: s.env_stage("pitch", "sustain"),
+                                 lambda s, v: s.set_env_stage("pitch", "sustain", v))
+    pitch_env_release = property(lambda s: s.env_stage("pitch", "release"),
+                                 lambda s, v: s.set_env_stage("pitch", "release", v))
 
     @property
     def tvf_env_custom(self) -> bool:
-        """True when TVF shape deviates from the canonical ADSR projection."""
-        return bool(
-            self.tvf_t3 != 0
-            or self.tvf_l0 != 0
-            or self.tvf_l1 != 127
-            or self.tvf_l2 != self.tvf_l3
-            or self.tvf_l4 != 0
-        )
+        """True when the TVF curve is not a plain ADSR."""
+        return not self.env_is_adsr("tvf")
 
     def tvf_env_block(self) -> list[int]:
         """Raw contiguous hardware block: [T1..T4, L0..L4]."""
@@ -280,50 +339,10 @@ class ToneState:
         self.tvf_t1, self.tvf_t2, self.tvf_t3, self.tvf_t4 = (int(v) for v in block[0:4])
         self.tvf_l0, self.tvf_l1, self.tvf_l2, self.tvf_l3, self.tvf_l4 = (int(v) for v in block[4:9])
 
-    # --- TVA envelope: ADSR projection of 4-time / 3-level hardware MSEG ---
-    @property
-    def tva_attack(self) -> int:
-        return self.tva_t1
-
-    @tva_attack.setter
-    def tva_attack(self, val: int) -> None:
-        self.tva_t1 = max(0, min(127, int(val)))
-
-    @property
-    def tva_decay(self) -> int:
-        return self.tva_t2
-
-    @tva_decay.setter
-    def tva_decay(self, val: int) -> None:
-        self.tva_t2 = max(0, min(127, int(val)))
-
-    @property
-    def tva_sustain(self) -> int:
-        return self.tva_l3
-
-    @tva_sustain.setter
-    def tva_sustain(self, val: int) -> None:
-        val = max(0, min(127, int(val)))
-        if self.tva_l2 == self.tva_l3:
-            self.tva_l2 = val
-        self.tva_l3 = val
-
-    @property
-    def tva_release(self) -> int:
-        return self.tva_t4
-
-    @tva_release.setter
-    def tva_release(self, val: int) -> None:
-        self.tva_t4 = max(0, min(127, int(val)))
-
     @property
     def tva_env_custom(self) -> bool:
-        """True when TVA shape deviates from the canonical ADSR projection."""
-        return bool(
-            self.tva_t3 != 0
-            or self.tva_l1 != 127
-            or self.tva_l2 != self.tva_l3
-        )
+        """True when the TVA curve is not a plain ADSR."""
+        return not self.env_is_adsr("tva")
 
     def tva_env_block(self) -> list[int]:
         """Raw contiguous hardware block: [T1..T4, L1..L3]."""

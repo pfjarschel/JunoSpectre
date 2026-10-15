@@ -904,6 +904,13 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
                 # 2. Reset in-memory state from the SAME golden image the hardware received,
                 #    so UI and synth provably match (decoded blob, or hand-built fallback).
                 self.patch_state = PatchState.from_template_file() or PatchState.create_init_patch()
+                # New patches start with plain ADSR envelopes (nothing to switch back to)
+                for t in self.patch_state.tones:
+                    for env in ("tvf", "tva", "pitch"):
+                        t.env_to_adsr(env, keep_original=False)
+                    self._push_tvf_env(t)
+                    self._push_tva_env(t)
+                    self._push_pitch_env(t)
 
                 # 3. Update patch name & mode
                 self._patch_name = self.patch_state.common.name

@@ -405,12 +405,16 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: ScaleMetrics.dp(4)
                         Text {
-                            text: "PITCH ENVELOPE (MSEG)"
+                            text: "PITCH ENVELOPE"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(8)
                             color: Theme.textDim
                         }
                         Item { Layout.fillWidth: true }
+                        EnvModeChip {
+                            objectName: "pcmPitchEnvMode"
+                            env: "PITCH"
+                        }
                         EnvThumb {
                             objectName: "pcmPitchEnvThumb"
                             env: "PITCH"
@@ -526,12 +530,16 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: ScaleMetrics.dp(4)
                         Text {
-                            text: "TVF ENVELOPE (ADSR)"
+                            text: "TVF ENVELOPE"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(8)
                             color: Theme.textDim
                         }
                         Item { Layout.fillWidth: true }
+                        EnvModeChip {
+                            objectName: "pcmTvfEnvMode"
+                            env: "TVF"
+                        }
                         EnvThumb {
                             objectName: "pcmTvfEnvThumb"
                             env: "TVF"
@@ -636,12 +644,16 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: ScaleMetrics.dp(4)
                         Text {
-                            text: "TVA ENVELOPE (ADSR)"
+                            text: "TVA ENVELOPE"
                             font.bold: true
                             font.pixelSize: ScaleMetrics.sp(8)
                             color: Theme.textDim
                         }
                         Item { Layout.fillWidth: true }
+                        EnvModeChip {
+                            objectName: "pcmTvaEnvMode"
+                            env: "TVA"
+                        }
                         EnvThumb {
                             objectName: "pcmTvaEnvThumb"
                             env: "TVA"

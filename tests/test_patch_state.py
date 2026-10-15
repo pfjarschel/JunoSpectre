@@ -100,11 +100,15 @@ def test_tvf_env_adsr_projection_is_lossless():
     assert tone.tvf_env_custom is True
     assert tone.tvf_sustain == 80
 
-    # Once L2 deviates, ADSR sustain must not stomp the break level
+    # A dip below sustain keeps its distance to it
     tone.tvf_l2 = 30
     tone.tvf_sustain = 100
-    assert tone.tvf_l2 == 30
+    assert tone.tvf_l2 == 50
     assert tone.tvf_l3 == 100
+    # A break level between the peak and sustain keeps its relative place
+    tone.tvf_l2 = 120                   # 20/27 of the way from sustain (100) up to the peak
+    tone.tvf_sustain = 46
+    assert (tone.tvf_l2, tone.tvf_l3) == (106, 46)
 
     # Raw 9-byte hardware block roundtrip
     block = tone.tvf_env_block()
@@ -133,10 +137,10 @@ def test_tva_env_adsr_projection_is_lossless():
     assert tone.tva_env_custom is True
 
     tone.tva_sustain = 90
-    assert tone.tva_l2 == 60
+    assert tone.tva_l2 == 23            # the dip keeps its distance to sustain
     assert tone.tva_l3 == 90
 
-    assert tone.tva_env_block() == [40, 0, 0, 0, 127, 60, 90]
+    assert tone.tva_env_block() == [40, 0, 0, 0, 127, 23, 90]
 
 
 def test_env_modifier_defaults_and_conversions():
