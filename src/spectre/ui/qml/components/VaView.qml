@@ -384,7 +384,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: ScaleMetrics.dp(24)
                 label: "COARSE"
-                ctlKey: "tone.pitch_coarse"
+                ctlKey: "tone." + osc.oscIndex + ".pitch_coarse"
                 valText: (osc.coarseVal > 0 ? "+" + osc.coarseVal : osc.coarseVal.toString()) + " st"
                 normVal: (osc.coarseVal + 24) / 48.0
                 isBipolar: true
@@ -396,7 +396,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: ScaleMetrics.dp(24)
                 label: osc.autoDetuneActive ? "FINE (AUTO)" : "FINE"
-                ctlKey: "tone.pitch_fine"
+                ctlKey: "tone." + osc.oscIndex + ".pitch_fine"
                 valText: (osc.fineVal > 0 ? "+" + osc.fineVal : osc.fineVal.toString()) + " c"
                 normVal: (osc.fineVal + 50) / 100.0
                 isBipolar: true
@@ -410,7 +410,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: ScaleMetrics.dp(24)
                 label: "LEVEL"
-                ctlKey: "tone.tva_level"
+                ctlKey: "tone." + osc.oscIndex + ".tva_level"
                 valText: osc.lvlVal.toString()
                 normVal: osc.lvlVal / 127.0
                 barColor: osc.accent

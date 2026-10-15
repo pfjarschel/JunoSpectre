@@ -9,7 +9,15 @@ import ".."
 Rectangle {
     id: hl
     property string ctlKey: ""
-    readonly property bool hit: ctlKey !== "" && ctlKey === Bridge.touchedKey
+    // "tone.2.pitch_fine" (one tone) and "tone.pitch_fine" (all tones) match
+    // each other; two different tones don't
+    readonly property bool hit: {
+        const k = Bridge.touchedKey;
+        if (ctlKey === "" || k === "")
+            return false;
+        const oneTone = /^tone\.[1-4]\./;
+        return k === ctlKey || k.replace(oneTone, "tone.") === ctlKey || ctlKey.replace(oneTone, "tone.") === k;
+    }
     // Effective visibility: false while the page or a parent is hidden
     readonly property bool counted: visible
 

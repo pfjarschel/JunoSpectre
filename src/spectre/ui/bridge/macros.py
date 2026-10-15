@@ -603,6 +603,8 @@ class MacroBridgeMixin(BridgeBaseMixin):
                 juno.set_tone_pitch(tone_idx, coarse=t.coarse_tune)
         elif param == "pitch_fine":
             t.fine_tune = max(14, min(114, iv))
+            if not ps.auto_detune:      # the custom detune Auto Detune gives back
+                ps.custom_detune_cache[tone_idx - 1] = t.fine_tune
             if juno:
                 juno.set_tone_pitch(tone_idx, fine=t.fine_tune)
         elif param.startswith("lfo1_") or param.startswith("lfo2_"):

@@ -46,7 +46,9 @@ and value before you move it.
   centred, non-destructive, like the Juno panel knobs.
 - Key Follow is filter key follow on all tones. **Not in the macro catalog yet.**
 - Fine Tune acts on the **selected tone** (detune between tones is the useful part); the screen
-  title names the tone.
+  title names the tone. On the PCM page it follows the page's link switch; on Vector, Wavetable
+  and VA (shared controls always act on all tones, per-tone controls on one) it is always the
+  selected tone. Locked while VA Auto Detune is on.
 - LFO depths and the other per-tone rows act on all tones (`tone.all.*`).
 - Macro parameter stacks replace per-page MFX knobs.
 

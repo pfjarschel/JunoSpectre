@@ -783,3 +783,52 @@ def test_touched_control_highlights_or_toasts(ui):
     settle()
     assert bridge.touchedKey == "common.cutoff_offset" and bridge.touchedControl["value"] == "+63"
     assert bridge._touch_timer.isActive()
+
+
+@pytest.mark.ui
+def test_va_page_tone_targets_ignore_the_pcm_link(ui):
+    app, bridge, _ = ui
+    bridge._ctl_open[DAW] = object()
+    bridge._ctl_send = lambda key, msg: None
+    bridge._hw_outputs = [PORT + " 36:0", DAW + " 36:1"]
+    bridge._ctl_sync_ports = lambda ins: None
+    assert bridge.loadControlPreset(str(SURFACE)) == ""
+    for b in bridge._ctl_bindings:
+        b.takeover = "jump"
+    bridge.patch_state.auto_detune = False
+    tones = bridge.patch_state.tones
+    for t in tones:
+        t.fine_tune = 64
+    bridge.setActiveView("VA")
+    bridge.setLinkedMode(True)                 # the PCM page's link switch
+    bridge.setSelectedTone(2)
+
+    # Fine tune (knob C6) detunes only the selected oscillator
+    _send(app, bridge, _cc(34, 0, ch=15), port=DAW)
+    assert [t.fine_tune for t in tones] == [64, 14, 64, 64]
+    assert bridge.patch_state.custom_detune_cache[1] == 14
+    assert bridge.touchedKey == "tone.2.pitch_fine"
+    for _ in range(5):
+        app.processEvents()
+    def items(item):
+        yield item
+        for child in item.childItems():
+            yield from items(child)
+
+    lit = sorted((o.property("ctlKey"), o.parentItem().metaObject().className().split("_")[0])
+                 for w in app.topLevelWindows() for o in items(w.contentItem())
+                 if o.metaObject().className().startswith("TouchHighlight") and o.property("visible"))
+    # Oscillator 2's FINE and the context strip's T2 fine card, not all four oscillators
+    assert lit == [("tone.2.pitch_fine", "EncoderCard"), ("tone.2.pitch_fine", "TouchFader")]
+
+    # Auto Detune owns the fine tunes
+    bridge.patch_state.auto_detune = True
+    _send(app, bridge, _cc(34, 127, ch=15), port=DAW)
+    assert tones[1].fine_tune == 14
+
+    # The sculptor's ADSR switch converts all four tones, link switch or not
+    bridge.setLinkedMode(False)
+    for t in tones:
+        t.set_env_curve("tvf", [10, 30, 50, 40], [0, 127, 90, 60, 0])
+    bridge.setEnvAdsr("TVF", True)
+    assert all(t.env_is_adsr("tvf") for t in tones)

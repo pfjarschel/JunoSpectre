@@ -131,6 +131,14 @@ class PatchBridgeMixin(BridgeBaseMixin):
         """Return the ToneState currently active in the UI."""
         return self.patch_state.get_tone(self._selected_tone)
 
+    # Engine pages whose shared controls (the sculptor) always act on all 4 tones;
+    # their per-tone controls (oscillators) act on one tone. The PCM page's
+    # link switch does not apply there.
+    SCULPT_VIEWS = ("VECTOR", "WAVETABLE", "VA")
+
+    def _sculpt_view(self) -> bool:
+        return str(getattr(self, "_active_view", "")) in self.SCULPT_VIEWS
+
     def _target_tones(self, tone_index: Optional[int] = None) -> list[ToneState]:
         """Return list of target tones to mutate (single or all if linked)."""
         if tone_index is not None:
@@ -1615,7 +1623,8 @@ class PatchBridgeMixin(BridgeBaseMixin):
         env = env.upper()
         key = {"TVF": "tvf", "TVA": "tva"}.get(env, "pitch")
         push = {"tvf": self._push_tvf_env, "tva": self._push_tva_env, "pitch": self._push_pitch_env}[key]
-        for t in self._target_tones():
+        # The sculptor's envelopes are the 4 tones' together
+        for t in (self.patch_state.tones if self._sculpt_view() else self._target_tones()):
             if on:
                 t.env_to_adsr(key)
             elif not t.env_restore(key):

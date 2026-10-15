@@ -575,11 +575,17 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             self._ctl_resolver.forget(b)
 
     def _touch_norm(self, target: str) -> str:
-        """Key a touchscreen control is tagged with (ctlKey): tone targets drop the
-        tone ("tone.tvf_cutoff"), edited-part targets name the part."""
+        """Key a touchscreen control is tagged with (ctlKey): "tone.tvf_cutoff" when
+        all tones move, "tone.2.pitch_fine" for one tone; edited-part targets
+        name the part. TouchHighlight matches a one-tone key to an all-tones
+        control and the reverse."""
         eff = self._ctl_resolve(target)
         if eff.startswith("tone."):
-            return "tone." + eff.split(".", 2)[-1]
+            _, which, param = eff.split(".", 2)
+            if which == "sel":
+                tones = [self._active_tone()] if self._sculpt_view() else self._target_tones()
+                which = str(tones[0].tone_index) if len(tones) == 1 else "all"
+            return f"tone.{param}" if which == "all" else f"tone.{which}.{param}"
         if eff.startswith("part.") and "@" not in eff:
             return f"{eff}@{self._editedPart()}"
         return eff
@@ -697,7 +703,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         """Concrete keys a direct edit of `target` touches right now (edited part)."""
         if target.startswith("tone.sel."):     # the tone(s) the editors are on
             param = target[len("tone.sel."):]
-            return [self._scopedKey(f"tone.{t.tone_index}.{param}") for t in self._target_tones()]
+            tones = [self._active_tone()] if self._sculpt_view() else self._target_tones()
+            return [self._scopedKey(f"tone.{t.tone_index}.{param}") for t in tones]
         if "@" in target:      # a fixed part ("part.level@3"): PERFORM only
             return [target] if self._in_perform() else []
         out = []
@@ -761,6 +768,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             if self._ctl_mfx_param(target) is not None:
                 self.setMfxParam(int(target[6:]) - 1, int(round(value)))
             return
+        if target.endswith("pitch_fine") and self.patch_state.auto_detune:
+            return      # Auto Detune owns the fine tunes (the screen's are locked too)
         touched = set()
         for k in self._ctl_keys(target):
             if self._macroLinksFor(k):
