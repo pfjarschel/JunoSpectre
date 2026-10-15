@@ -623,3 +623,18 @@ def test_clip_launch_actions(tmp_path, monkeypatch):
     track = b.sequencer.song.tracks[11]
     assert (track.queued_clip_idx, track.selected_clip_idx) == (2, 2)
     b.close_audio()
+
+
+@pytest.mark.ui
+def test_picked_bindings_follow_binding_and_context_changes(ui):
+    app, bridge, _ = ui
+    bridge._ctl_bindings = [_b(number=13), _b(number=13, target="macro.1", context="VA")]
+    ctl = (PORT, 0, "cc", 13)
+    bridge.setActiveView("JUNO PCM")
+    assert [b.target for b in bridge._ctl_pick(*ctl)] == ["tone.all.tvf_cutoff"]
+    bridge.setActiveView("VA")
+    assert [b.target for b in bridge._ctl_pick(*ctl)] == ["macro.1"]
+    bridge.setControlBindingOption(1, "context", "MIXER")
+    assert [b.target for b in bridge._ctl_pick(*ctl)] == ["tone.all.tvf_cutoff"]
+    bridge.removeControlBinding(0)
+    assert bridge._ctl_pick(*ctl) == ()

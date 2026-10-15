@@ -164,6 +164,12 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         self._ctl_enabled: dict[str, bool] = {str(k): bool(v) for k, v in dict(cfg.get("enabled", {})).items()}
         self._ctl_bindings: list[Binding] = [b for b in map(Binding.from_dict, cfg.get("bindings", [])) if b]
         self._ctl_resolver = Resolver()
+        # _ctl_pick memo: bindings version (bumped on controllersChanged) + context
+        self._ctl_version = 0
+        self._ctl_pick_key: tuple = ()
+        self._ctl_pick_list: list = []
+        self._ctl_pick_memo: dict = {}
+        self.controllersChanged.connect(self._ctl_bump_version)
         self._ctl_open: dict[str, object] = {}      # port key -> mido input
         self._ctl_events: deque = deque(maxlen=4096)
         self._ctl_lock = threading.Lock()
@@ -400,8 +406,27 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         return {"PAGE": str(getattr(self, "_active_view", "")), "MODE": self._ctl_mode(),
                 "LAYER": self._ctl_layer, "BANK": str(self._ctl_bank)}
 
-    def _ctl_pick(self, port, ch, kind, num) -> list:
-        return pick_bindings(self._ctl_bindings, port, ch, kind, num, self._ctl_state())
+    def _ctl_pick(self, port, ch, kind, num) -> tuple:
+        """The bindings a control drives now, memoized per bindings + context.
+
+        The feedback and surface ticks ask for every bound control 10 times
+        a second; each pick scans all bindings, which kept the Pi's UI
+        thread ~25% busy with ~200 bindings. Every binding change emits
+        controllersChanged (bumps the version); a new list resets it too.
+        """
+        state = self._ctl_state()
+        key = (self._ctl_version, *state.values())
+        if key != self._ctl_pick_key or self._ctl_pick_list is not self._ctl_bindings:
+            self._ctl_pick_key, self._ctl_pick_list, self._ctl_pick_memo = key, self._ctl_bindings, {}
+        ctl = (port, ch, kind, num)
+        hits = self._ctl_pick_memo.get(ctl)
+        if hits is None:
+            hits = self._ctl_pick_memo[ctl] = tuple(
+                pick_bindings(self._ctl_bindings, port, ch, kind, num, state))
+        return hits
+
+    def _ctl_bump_version(self, *_args) -> None:
+        self._ctl_version += 1
 
     # -- events --------------------------------------------------------------
 
@@ -665,13 +690,13 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     def _ctl_feedback_tick(self) -> None:
         """Send each absolute knob its target's value, so it never jumps (endless knobs)."""
         now = time.monotonic()
-        state = self._ctl_state()
+        fb_ports = {k for k in self._ctl_open if self._ctl_feedback_on(k)}
         for b in self._ctl_bindings:
             if (b.kind != "cc" or b.behavior != "absolute" or b.target.startswith("action.")
-                    or b.port not in self._ctl_open or not self._ctl_feedback_on(b.port)):
+                    or b.port not in fb_ports):
                 continue
             ctl = (b.port, b.channel, b.kind, b.number)
-            if b not in pick_bindings(self._ctl_bindings, *ctl, state):
+            if b not in self._ctl_pick(*ctl):
                 continue        # another context owns this control right now
             moved = self._ctl_moved.get(ctl)
             if moved and now - moved[1] < FEEDBACK_HOLD_S:
@@ -707,7 +732,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     def _surface_binding(self, port: str, number: int):
         ch = 0 if number in lcxl3.BUTTONS or number > 100 else 15
-        hits = pick_bindings(self._ctl_bindings, port, ch, "cc", number, self._ctl_state())
+        hits = self._ctl_pick(port, ch, "cc", number)
         return hits[0] if hits else None
 
     def _surface_button_rgb(self, b) -> tuple:
