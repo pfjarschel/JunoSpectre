@@ -12,7 +12,8 @@ Behaviors:
   latch      for buttons that latch on the device (127 on one press, 0 on
              the next): on -> hi, off -> lo; for actions every change is a press
 Context: "" applies everywhere; "MODE:PATCH" / "MODE:PERFORM" only in that
-sound mode; "LAYER:MIXER" while a surface layer is on; "BANK:2" in part
+sound mode; "LAYER:MIXER" / "LAYER:CONTROL" by the surface's mode; "ALT:ON"
+while the alt layer is on (the LCXL3's Novation button); "BANK:2" in part
 bank 2; a bare word is an app page (activeView, e.g. "SEQUENCER"). Tokens
 combine with "&". For one control the most specific active context wins
 (see context_rank).
@@ -83,15 +84,16 @@ class Binding:
 
 # Context tokens and how specific they are. A context is tokens joined by
 # "&" (e.g. "LAYER:MIXER&MODE:PERFORM&BANK:2"); a bare token is an app page.
-_TOKEN_WEIGHT = {"LAYER": 8, "BANK": 1, "MODE": 1}
+_TOKEN_WEIGHT = {"ALT": 16, "LAYER": 8, "BANK": 1, "MODE": 1}
 PAGE_WEIGHT = 2
 
 
 def context_rank(context: str, state: dict) -> int:
-    """Specificity of a context in `state` ({PAGE, MODE, LAYER, BANK}); -1 = not active.
+    """Specificity of a context in `state` ({PAGE, MODE, LAYER, ALT, BANK}); -1 = not active.
 
     Every token must hold. A layer (e.g. the LCXL3's DAW Mixer mode)
-    outranks everything else, so it takes over the controls it binds.
+    outranks everything else, so it takes over the controls it binds; the
+    alt layer outranks that.
     """
     if not context:
         return 0

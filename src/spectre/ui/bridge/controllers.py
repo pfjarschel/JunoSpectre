@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 DRAIN_MS = 15
 FEEDBACK_MS = 100
+# Alt layer button: released sooner than this, with nothing used meanwhile, is a tap (latch)
+ALT_TAP_S = 0.35
 # A knob that moved this recently is the source of its value: no feedback
 FEEDBACK_HOLD_S = 0.3
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -61,7 +63,10 @@ ACTIONS: list[dict] = (
     + [_action("seq.track_bank", "Track Bank 1-8 / 9-16")]
     + [_action(f"seq.clip.{n}", f"Launch Clip {n} of Selected Track") for n in range(1, 9)]
     + [_action("seq.stop_selected", "Stop Selected Track"), _action("seq.stop_all", "Stop All Clips")]
-    + [_action("none", "Nothing (blocks wider scopes)")]
+    + [_action("none", "Nothing (blocks wider scopes)"),
+       _action("layer.alt", "Alt Layer (tap: latch, hold: while held)"),
+       _action("scene.next", "Next Scene"), _action("scene.prev", "Previous Scene"),
+       _action("seq.scene_launch", "Launch Selected Scene"), _action("seq.scene_stop", "Stop Selected Scene")]
     + [_action("motion.toggle_play", "Motion Play/Stop"), _action("motion.toggle_record", "Motion Record On/Off")]
     + [_action(f"tone.mute.{n}", f"Tone {n} Mute On/Off") for n in range(1, 5)]
     + [_action(f"tone.select.{n}", f"Select Tone {n}") for n in range(1, 5)]
@@ -84,7 +89,8 @@ _PAGE_TITLES = {"JUNO PCM": "PCM Editor", "PERFORMANCE": "Perf Mixer", "LIVE": "
 
 # Learn scopes offered in the UI
 CONTEXT_TITLES = {"": "EVERYWHERE", "MODE:PATCH": "PATCH MODE", "MODE:PERFORM": "PERFORM MODE"}
-_TOKEN_TITLES = {"LAYER:MIXER": "MIXER", "BANK:1": "PARTS 1-8", "BANK:2": "PARTS 9-16"}
+_TOKEN_TITLES = {"LAYER:MIXER": "MIXER", "LAYER:CONTROL": "CONTROL", "ALT:ON": "ALT LAYER",
+                 "BANK:1": "PARTS 1-8", "BANK:2": "PARTS 9-16"}
 
 
 def context_title(context: str) -> str:
@@ -99,6 +105,17 @@ def context_title(context: str) -> str:
 CONTEXT_PAGES = ["JUNO PCM", "VECTOR", "WAVETABLE", "VA", "MOD MATRIX", "STEP LFO", "MSEG ENVELOPES",
                  "ROUTING", "MFX", "MASTER FX", "MACROS", "ARPEGGIO", "PERFORMANCE", "SEQUENCER", "LIVE",
                  "SETLIST"]
+# Page shortcut LEDs: the UI's page category accents (Theme.qml), in LED units 0..127
+_CAT_RGB = {"synth": (28, 94, 124), "modfx": (64, 70, 124), "perform": (104, 70, 125), "system": (113, 116, 120)}
+_VIEW_CAT = {**{v: "synth" for v in ("JUNO PCM", "VECTOR", "WAVETABLE", "VA")},
+             **{v: "modfx" for v in ("MOD MATRIX", "STEP LFO", "MSEG ENVELOPES", "ROUTING", "MFX", "MASTER FX")},
+             **{v: "perform" for v in ("MACROS", "ARPEGGIO", "PERFORMANCE", "SEQUENCER", "LIVE", "SETLIST")}}
+
+
+def _view_rgb(view: str) -> tuple:
+    return _CAT_RGB[_VIEW_CAT.get(view, "system")]
+
+
 # The 8 context knobs of each page (on-screen strip; controllers bind "context.N").
 # "" = unused. Keys are macro catalog targets, "macro.N", or the editor-following
 # and stepped targets below.
@@ -183,6 +200,10 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         # Surface layer ("MIXER" while the LCXL3 is in DAW Mixer mode); the part
         # bank is the app's one (seqTrackBank)
         self._ctl_layer = ""
+        # Alt layer (Novation button): on while held or latched by a tap
+        self._alt_held = self._alt_latched = self._alt_used = self._alt_was = self._alt_shown = False
+        self._alt_t0 = 0.0
+        self._ctl_scene = 0                         # scene the alt layer's Play/Record act on
         self._ctl_names: dict[str, dict] = {}       # port key -> {"cc:13": "Knob A1"}
         # Device setups from presets: [{match, listen, feedback, on_connect, on_quit}]
         self._ctl_devices: list[dict] = [dict(d) for d in cfg.get("devices", []) if isinstance(d, dict)]
@@ -293,6 +314,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             for k in [k for k in self.__dict__.get("_surface_state", {}) if k.split(":")[0] == client]:
                 del self._surface_state[k]
             self._ctl_layer = ""                      # on_connect starts the device fresh
+            self._alt_held = self._alt_latched = self._alt_shown = False
             self._ctl_device_messages(client, self._ctl_devices[i].get("on_connect", []))
         self._ctl_connected_devices = live
 
@@ -408,7 +430,33 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     def _ctl_state(self) -> dict:
         """What binding contexts are matched against right now."""
         return {"PAGE": str(getattr(self, "_active_view", "")), "MODE": self._ctl_mode(),
-                "LAYER": self._ctl_layer, "BANK": str(self.seqTrackBank + 1)}
+                "LAYER": self._ctl_layer or "CONTROL", "ALT": "ON" if self._alt_on() else "",
+                "BANK": str(self.seqTrackBank + 1)}
+
+    def _alt_on(self) -> bool:
+        return self._alt_held or self._alt_latched
+
+    def _ctl_alt_edge(self, down: bool) -> None:
+        """Alt layer button. It turns the layer on at press; on release a tap
+        (short, nothing used meanwhile) latches it on or off, anything else
+        puts it back as it was before the press."""
+        now = time.monotonic()
+        if down:
+            if self._alt_held:
+                return
+            self._alt_held, self._alt_used, self._alt_t0 = True, False, now
+            self._alt_was = self._alt_latched
+        else:
+            if not self._alt_held:
+                return
+            self._alt_held = False
+            tap = not self._alt_used and now - self._alt_t0 < ALT_TAP_S
+            self._alt_latched = (not self._alt_was) if tap else self._alt_was
+        on = self._alt_on()
+        if on != self._alt_shown:
+            self._alt_shown = on
+            self._ctl_fb_sent.clear()       # the layer's controls send their positions
+            self.controllersChanged.emit()
 
     def _ctl_pick(self, port, ch, kind, num) -> tuple:
         """The bindings a control drives now, memoized per bindings + context.
@@ -449,10 +497,19 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             return
         label = self._ctl_control_label(port, ch, kind, num)
         hits = self._ctl_pick(port, ch, kind, num)
+        if self._alt_held and not any(b.target == "action.layer.alt" for b in hits):
+            self._alt_used = True           # used while held: the layer is momentary
         if not hits:
             self._ctl_set_activity(f"{label} = {raw}  (not assigned)")
             return
         for b in hits:
+            if b.target == "action.layer.alt":
+                st = self._ctl_resolver.state(b)
+                down = raw >= 64
+                if down != st.pressed:
+                    st.pressed = down
+                    self._ctl_alt_edge(down)
+                continue
             if b.target.startswith("action."):
                 st = self._ctl_resolver.state(b)
                 down = raw >= 64
@@ -522,7 +579,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     def _ctl_resolve(self, target: str) -> str:
         """"context.N" -> the current page's knob N target ("" when unused)."""
         if target.startswith("context."):
-            knobs = self._context_knob_targets()
+            # Pages without context knobs: the alt layer's row stays on the macros
+            knobs = self._context_knob_targets() or [f"macro.{n}" for n in range(1, 9)]
             try:
                 n = int(target[8:])
             except ValueError:
@@ -771,7 +829,13 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         elif t == "action.seq.live_record":
             on, color = bool(self.seqRecArmed), (127, 0, 0)
         elif t.startswith("action.view.goto."):
-            on, color = str(getattr(self, "_active_view", "")) == t[len("action.view.goto."):], (110, 110, 127)
+            view = t[len("action.view.goto."):]
+            on, color = str(getattr(self, "_active_view", "")) == view, _view_rgb(view)
+        elif t == "action.seq.scene_launch":
+            on, color = any(tr.active_clip_idx == self._ctl_scene for tr in self.sequencer.song.tracks) \
+                and self.sequencer.is_playing, (127, 127, 127)
+        elif t == "action.seq.scene_stop":
+            color = (127, 40, 0)
         elif t.startswith("action.seq.scene."):
             color = (0, 127, 0)
         elif t.startswith("action.seq.stop_track."):
@@ -920,6 +984,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 page = str(getattr(self, "_active_view", ""))
                 if self._ctl_layer == "MIXER":
                     page = "MIXER " + ("9-16" if self.seqTrackBank == 1 else "1-8") if self._in_perform() else "MIXER"
+                if self._alt_on():
+                    page = f"CTX · SCENE {self._ctl_scene + 1}"
                 stat = (str(getattr(self, "_patch_name", "") or "JUNO SPECTRE"), page,
                         f"{self._ctl_mode()} · {sel}")
                 if st["stat"] != stat:
@@ -1006,6 +1072,14 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self.seqStopTrack(self._active_seq_track)
             elif action == "seq.stop_all":
                 self.seqStopAllClips()
+            elif action in ("scene.next", "scene.prev"):
+                scenes = max(len(t.clips) for t in self.sequencer.song.tracks)
+                step = 1 if action == "scene.next" else -1
+                self._ctl_scene = max(0, min(scenes - 1, self._ctl_scene + step))
+            elif action == "seq.scene_launch":
+                self.seqLaunchScene(self._ctl_scene)
+            elif action == "seq.scene_stop":
+                self.seqStopScene(self._ctl_scene)
             elif action.startswith("seq.launch.") and len(parts) == 4:
                 self.seqLaunchClip(int(parts[2]) - 1, n - 1)
             elif action == "seq.track_bank":

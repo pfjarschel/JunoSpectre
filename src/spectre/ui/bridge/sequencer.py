@@ -466,6 +466,14 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             self.seqTracksChanged.emit()
             self.seqAutomationChanged.emit()
 
+    @pyqtSlot(int)
+    def seqStopScene(self, scene_idx: int) -> None:
+        """Stop the clips of one scene at the next bar; other scenes keep playing."""
+        if hasattr(self, "sequencer"):
+            self.sequencer.stop_scene(int(scene_idx))
+            self.seqTracksChanged.emit()
+            self.seqAutomationChanged.emit()
+
     def _seq_clip_state(self, track_idx: int, clip_idx: int) -> str:
         """"empty" / "loaded" / "queued" / "playing" for a clip slot (controller LEDs)."""
         tracks = self.sequencer.song.tracks if hasattr(self, "sequencer") else []

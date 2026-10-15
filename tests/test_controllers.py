@@ -639,3 +639,68 @@ def test_picked_bindings_follow_binding_and_context_changes(ui):
     assert [b.target for b in bridge._ctl_pick(*ctl)] == ["tone.all.tvf_cutoff"]
     bridge.removeControlBinding(0)
     assert bridge._ctl_pick(*ctl) == ()
+
+
+@pytest.mark.ui
+def test_alt_layer_tap_latches_and_hold_is_momentary(ui, monkeypatch):
+    from src.spectre.ui.bridge import controllers as ctl_mod
+
+    app, bridge, _ = ui
+    bridge._ctl_open[DAW] = object()
+    bridge._ctl_send = lambda key, msg: None
+    bridge._hw_outputs = [PORT + " 36:0", DAW + " 36:1"]
+    bridge._ctl_sync_ports = lambda ins: None
+    assert bridge.loadControlPreset(str(SURFACE)) == ""
+    for b in bridge._ctl_bindings:
+        b.takeover = "jump"
+    clock = [100.0]
+    monkeypatch.setattr(ctl_mod.time, "monotonic", lambda: clock[0])
+
+    def nov(down, hold=0.1):
+        if not down:
+            clock[0] += hold
+        _send(app, bridge, _cc(104, 127 if down else 0), port=DAW)
+
+    alt = lambda: bridge._ctl_state()["ALT"] == "ON"
+    row_a = lambda: bridge._ctl_resolve(bridge._surface_binding(DAW, 13).target)
+
+    bridge.setActiveView("JUNO PCM")
+    assert row_a() == "macro.1"
+    nov(1); nov(0)                                         # tap: latched
+    assert alt()
+    assert row_a() == "tone.sel.tvf_cutoff"                # row A = the page's context knobs
+    _send(app, bridge, _cc(41, 127), _cc(41, 0), port=DAW)  # button 5 = Mod Matrix page
+    assert bridge._active_view == "MOD MATRIX"
+    bridge.setActiveView("SETLIST")
+    assert row_a() == "macro.1"                            # no context on this page: macros stay
+    _send(app, bridge, _cc(107, 127), _cc(107, 0), port=DAW)   # Page > = next app page
+    assert bridge._active_view == "JUNO PCM"
+    nov(1); nov(0)                                         # tap again: off
+    assert not alt() and row_a() == "macro.1"
+
+    nov(1)                                                 # hold and use: only while held
+    assert alt()
+    _send(app, bridge, _cc(5, 30, ch=15), port=DAW)        # fader 1 = pitch env attack
+    assert [t.pitch_env_t1 for t in bridge.patch_state.tones] == [30] * 4
+    nov(0, hold=0.1)
+    assert not alt()
+    nov(1); nov(0, hold=1.0)                               # long press, nothing used: momentary
+    assert not alt()
+
+    # Scenes: Track > selects, Play launches, Record stops
+    nov(1)
+    _send(app, bridge, _cc(102, 127), _cc(102, 0), _cc(102, 127), _cc(102, 0), port=DAW)
+    assert bridge._ctl_scene == 2
+    _send(app, bridge, _cc(116, 127), _cc(116, 0), port=DAW)
+    assert all(t.queued_clip_idx == 2 for t in bridge.sequencer.song.tracks)
+    _send(app, bridge, _cc(118, 127), _cc(118, 0), port=DAW)
+    assert all(t.queued_clip_idx == -1 for t in bridge.sequencer.song.tracks)
+    nov(0)
+
+    # Mixer: the alt layer keeps the faders as levels
+    bridge._in_perform = lambda: True
+    _send(app, bridge, _cc(30, 1, ch=6), port=DAW)
+    nov(1)
+    _send(app, bridge, _cc(5, 77, ch=15), port=DAW)
+    assert bridge.patch_state.perf_parts[0].volume == 77
+    nov(0)

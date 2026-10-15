@@ -559,3 +559,12 @@ def test_controller_clip_row_and_stops(bridge):
     tracks[7].queued_clip_idx = -1
     bridge._ctl_run_action("seq.stop_all")              # transport stopped: nothing queued to stop
     assert tracks[7].queued_clip_idx == -1
+
+
+def test_stop_scene_leaves_other_scenes_playing(bridge):
+    tracks = bridge.sequencer.song.tracks
+    bridge.sequencer.clock._running = True
+    tracks[0].active_clip_idx, tracks[1].active_clip_idx = 2, 3
+    tracks[4].active_clip_idx, tracks[4].queued_clip_idx = 0, 2     # about to launch scene 3's clip
+    bridge.seqStopScene(2)
+    assert (tracks[0].queued_clip_idx, tracks[1].queued_clip_idx, tracks[4].queued_clip_idx) == (-2, -1, -1)

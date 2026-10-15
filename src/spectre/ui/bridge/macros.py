@@ -212,6 +212,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
             "output_level": t.output_level,
             "pitch_env_depth": t.pitch_env_depth, "pitch_env_attack": t.pitch_env_t1,
             "pitch_env_decay": t.pitch_env_t2, "pitch_env_release": t.pitch_env_t4,
+            "pitch_env_sustain": t.pitch_env_l3,
         }
         return float(mapping.get(param, 0.0))
 
@@ -618,10 +619,14 @@ class MacroBridgeMixin(BridgeBaseMixin):
                 juno.set_tone_param(tone_idx, 0x000C, t.output_level)
         elif param.startswith("pitch_env_"):
             attr = {"pitch_env_depth": "pitch_env_depth", "pitch_env_attack": "pitch_env_t1",
-                    "pitch_env_decay": "pitch_env_t2", "pitch_env_release": "pitch_env_t4"}.get(param)
+                    "pitch_env_decay": "pitch_env_t2", "pitch_env_release": "pitch_env_t4",
+                    "pitch_env_sustain": "pitch_env_l3"}.get(param)
             if attr:
-                lo, hi = (52, 76) if param == "pitch_env_depth" else (0, 127)
-                setattr(t, attr, max(lo, min(hi, iv)))
+                lo, hi = {"pitch_env_depth": (52, 76), "pitch_env_sustain": (1, 127)}.get(param, (0, 127))
+                v = max(lo, min(hi, iv))
+                if param == "pitch_env_sustain" and t.pitch_env_l2 == t.pitch_env_l3:
+                    t.pitch_env_l2 = v      # a plain decay to sustain: keep it plain
+                setattr(t, attr, v)
                 self._push_pitch_env(t)
 
     def _applyLfoParam(self, t: ToneState, param: str, iv: int) -> None:

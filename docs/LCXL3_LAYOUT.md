@@ -111,7 +111,7 @@ The Novation button (CC 104) turns on one layer. It is the same layer however it
 | Control | In the layer |
 |---|---|
 | Row A | The current page's 8 context knobs (pages without context: unchanged) |
-| Faders 1–4 | Pitch envelope A/D/S/R (faders 5–8 stay on the amp envelope) |
+| Faders 1–4 | DAW Control mode: pitch envelope A/D/S/R (faders 5–8 stay on the amp envelope); DAW Mixer mode: unchanged (levels) |
 | 16 buttons | Page shortcuts (below) |
 | Page ◀▶, Track ◀▶, Play, Record | See [Global navigation](#global-navigation-both-modes) |
 

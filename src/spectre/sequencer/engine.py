@@ -257,6 +257,23 @@ class SequencerEngine:
                 if not lane.is_linked and lane.active_clip_idx >= 0:
                     self.stop_lane(i)
 
+    def stop_scene(self, scene_idx: int) -> None:
+        """Stop the clips of one scene row (tracks and unlinked lanes) and cancel its
+        queued launches; clips of other scenes keep playing."""
+        for i, track in enumerate(self.song.tracks):
+            if track.queued_clip_idx == scene_idx:
+                track.queued_clip_idx = -1
+            elif track.active_clip_idx == scene_idx and track.queued_clip_idx == -1 and (
+                    self.is_playing or self._audio_active_clip(track) is not None):
+                self.stop_track(i)
+        for i, lane in enumerate(self.song.automation):
+            if lane.is_linked:
+                continue
+            if lane.queued_clip_idx == scene_idx:
+                lane.queued_clip_idx = -1
+            elif self.is_playing and lane.active_clip_idx == scene_idx and lane.queued_clip_idx == -1:
+                self.stop_lane(i)
+
     def _on_clock_tick(self, tick_in_bar: int, total_ticks: int) -> None:
         """Executed on each PPQN pulse in the dedicated clock thread."""
         with self._lock:

@@ -98,6 +98,7 @@ def build_macro_catalog() -> list[dict]:
         ("pitch_env_depth", "Pitch Env Depth", "PITCH", 52, 76, 12),
         ("pitch_env_attack", "Pitch Env Attack", "PITCH", 0, 127, 127),
         ("pitch_env_decay", "Pitch Env Decay", "PITCH", 0, 127, 127),
+        ("pitch_env_sustain", "Pitch Env Sustain", "PITCH", 1, 127, 63),
         ("pitch_env_release", "Pitch Env Release", "PITCH", 0, 127, 127),
     ]
     for i in range(1, 5):
