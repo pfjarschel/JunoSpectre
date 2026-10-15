@@ -11,7 +11,8 @@ Rectangle {
     border.color: Theme.borderCard
     border.width: 1
 
-    property int page: 1 // 1 = parts 1-8, 2 = parts 9-16
+    // 1 = parts 1-8, 2 = parts 9-16: the app's one part/track bank
+    readonly property int page: Bridge.seqTrackBank + 1
     property string subView: "mixer" // "mixer" | "zones"
     property var allParts: Bridge.perfParts
     readonly property bool pushBusy: Bridge.perfPushProgress >= 0
@@ -46,7 +47,7 @@ Rectangle {
                 icon: root.page === 1 ? "right" : "left"
                 iconAfter: root.page === 1
                 text: root.page === 1 ? "1–8" : "9–16"
-                onClicked: root.page = (root.page === 1 ? 2 : 1)
+                onClicked: Bridge.seqSetTrackBank(root.page === 1 ? 1 : 0)
             }
             // MIXER | ZONES sub-view toggle
             SpButton {

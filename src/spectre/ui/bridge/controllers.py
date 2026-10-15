@@ -71,8 +71,8 @@ ACTIONS: list[dict] = (
     + [_action("playlist.next", "Setlist Next"), _action("playlist.prev", "Setlist Previous"),
        _action("panic", "Panic (All Notes Off)"),
        _action("view.next", "Next Page"), _action("view.prev", "Previous Page"),
-       _action("select.next", "Next Tone / Part"), _action("select.prev", "Previous Tone / Part"),
-       _action("bank.next", "Part Bank 9-16"), _action("bank.prev", "Part Bank 1-8"),
+       _action("select.next", "Next Part / Track"), _action("select.prev", "Previous Part / Track"),
+       _action("bank.next", "Part / Track Bank 9-16"), _action("bank.prev", "Part / Track Bank 1-8"),
        _action("arp.toggle", "Arpeggio On/Off"), _action("arp.hold", "Arp Hold On/Off")]
 )
 _PAGE_TITLES = {"JUNO PCM": "PCM Editor", "PERFORMANCE": "Perf Mixer", "LIVE": "Live Mode",
@@ -177,9 +177,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         self._ctl_learn_target = ""
         self._ctl_learn_context = ""
         self._ctl_activity = ""
-        # Surface layer ("MIXER" while the LCXL3 is in DAW Mixer mode) and part bank (1 or 2)
+        # Surface layer ("MIXER" while the LCXL3 is in DAW Mixer mode); the part
+        # bank is the app's one (seqTrackBank)
         self._ctl_layer = ""
-        self._ctl_bank = 1
         self._ctl_names: dict[str, dict] = {}       # port key -> {"cc:13": "Knob A1"}
         # Device setups from presets: [{match, listen, feedback, on_connect, on_quit}]
         self._ctl_devices: list[dict] = [dict(d) for d in cfg.get("devices", []) if isinstance(d, dict)]
@@ -203,6 +203,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         # Which bindings are active depends on the page and the sound mode
         self.activeViewChanged.connect(self._ctl_context_changed)
         self.patchInfoChanged.connect(self._ctl_context_changed)
+        self.seqActiveTrackChanged.connect(self._ctl_context_changed)
         self._ctl_load_names()
 
     def _ctl_save(self) -> None:
@@ -288,7 +289,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             logger.info(f"Controller setup: {client}")
             for k in [k for k in self.__dict__.get("_surface_state", {}) if k.split(":")[0] == client]:
                 del self._surface_state[k]
-            self._ctl_layer, self._ctl_bank = "", 1    # on_connect starts the device fresh
+            self._ctl_layer = ""                      # on_connect starts the device fresh
             self._ctl_device_messages(client, self._ctl_devices[i].get("on_connect", []))
         self._ctl_connected_devices = live
 
@@ -404,7 +405,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     def _ctl_state(self) -> dict:
         """What binding contexts are matched against right now."""
         return {"PAGE": str(getattr(self, "_active_view", "")), "MODE": self._ctl_mode(),
-                "LAYER": self._ctl_layer, "BANK": str(self._ctl_bank)}
+                "LAYER": self._ctl_layer, "BANK": str(self.seqTrackBank + 1)}
 
     def _ctl_pick(self, port, ch, kind, num) -> tuple:
         """The bindings a control drives now, memoized per bindings + context.
@@ -789,10 +790,13 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     def _ctl_context_changed(self, *_args) -> None:
         # patchInfoChanged also fires on every patch/part change; only a new
-        # page or mode changes which bindings are active
-        state = (str(getattr(self, "_active_view", "")), self._ctl_mode())
-        if state == getattr(self, "_ctl_last_context", None):
+        # page, mode or bank changes which bindings are active
+        state = (str(getattr(self, "_active_view", "")), self._ctl_mode(), self.seqTrackBank)
+        last = getattr(self, "_ctl_last_context", None)
+        if state == last:
             return
+        if last is not None and state[2] != last[2]:
+            self._ctl_fb_sent.clear()   # the new bank's bindings send their positions
         self._ctl_last_context = state
         self.controllersChanged.emit()
 
@@ -897,7 +901,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                        else f"TONE {int(self._selected_tone)}")
                 page = str(getattr(self, "_active_view", ""))
                 if self._ctl_layer == "MIXER":
-                    page = "MIXER " + ("9-16" if self._ctl_bank == 2 else "1-8") if self._in_perform() else "MIXER"
+                    page = "MIXER " + ("9-16" if self.seqTrackBank == 1 else "1-8") if self._in_perform() else "MIXER"
                 stat = (str(getattr(self, "_patch_name", "") or "JUNO SPECTRE"), page,
                         f"{self._ctl_mode()} · {sel}")
                 if st["stat"] != stat:
@@ -1023,15 +1027,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 step = 1 if action == "view.next" else -1
                 self.setActiveView(CONTEXT_PAGES[(i + step) % len(CONTEXT_PAGES)])
             elif action in ("bank.next", "bank.prev"):
-                self._ctl_bank = 2 if action == "bank.next" else 1
-                self._ctl_fb_sent.clear()
-                self.controllersChanged.emit()
+                self.seqSetTrackBank(1 if action == "bank.next" else 0)
             elif action in ("select.next", "select.prev"):
-                step = 1 if action == "select.next" else -1
-                if self._in_perform():
-                    self.editPerfPart(max(1, min(16, self._editedPart() + step)))
-                else:
-                    self.setSelectedTone(max(1, min(4, int(self._selected_tone) + step)))
+                self.selectNextTrack(1 if action == "select.next" else -1)
         except Exception as e:
             logger.warning(f"controller action {action} failed: {e}")
 

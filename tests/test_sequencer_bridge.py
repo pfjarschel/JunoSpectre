@@ -486,6 +486,39 @@ def test_track_banks(bridge):
     assert bridge.seqActiveTrack == 12
 
 
+def test_one_part_track_cursor(bridge):
+    # PATCH mode: tracks only, the edited part stays
+    bridge.patch_state.active_perf_part = 1
+    bridge.seqSelectTrack(4)
+    assert bridge.patch_state.active_perf_part == 1
+
+    bridge._sound_mode = "PERFORM"
+    bridge.seqSelectTrack(2)
+    assert bridge.patch_state.active_perf_part == 3
+    bridge.editPerfPart(11)                    # from the Perform page
+    assert (bridge.seqActiveTrack, bridge.seqTrackBank) == (10, 1)
+    bridge.seqSetTrackBank(0)                  # the bank keeps the column, part included
+    assert (bridge.seqActiveTrack, bridge.patch_state.active_perf_part) == (2, 3)
+    # Edited part changed elsewhere (song load, panel): the cursor follows
+    bridge.patch_state.active_perf_part = 6
+    bridge.perfPartsChanged.emit()
+    assert bridge.seqActiveTrack == 5
+
+    # Controller: Track arrows step parts/tracks across the bank edge, Page arrows flip the bank
+    bridge.seqSelectTrack(7)
+    bridge._ctl_run_action("select.next")
+    assert (bridge.seqActiveTrack, bridge.seqTrackBank, bridge.patch_state.active_perf_part) == (8, 1, 9)
+    assert bridge._ctl_state()["BANK"] == "2"
+    bridge._ctl_run_action("select.prev")
+    bridge._ctl_run_action("select.prev")
+    assert bridge.seqActiveTrack == 6
+    bridge._ctl_run_action("bank.next")
+    assert (bridge.seqActiveTrack, bridge.patch_state.active_perf_part) == (14, 15)
+    bridge.seqSelectTrack(15)
+    bridge._ctl_run_action("select.next")      # clamped at the last
+    assert bridge.seqActiveTrack == 15
+
+
 def test_track_context_knobs_follow_the_bank(bridge):
     bridge.setActiveView("SEQUENCER")
     assert bridge._ctl_resolve("context.1") == "seq.swing.1"

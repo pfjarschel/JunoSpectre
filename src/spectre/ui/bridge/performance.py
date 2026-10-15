@@ -765,6 +765,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             self.__dict__.setdefault("_macro_part_states", {}).pop(
                 int(self.patch_state.active_perf_part), None)
             self.patch_state.active_perf_part = part_index
+            if self._active_seq_track != part_index - 1:
+                self._seq_set_cursor(part_index - 1)  # one part/track cursor
             juno = self.juno
             if juno is not None:
                 try:

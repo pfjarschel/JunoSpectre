@@ -70,6 +70,8 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         self._kbd_channel: int = -1
 
         self._seqUiSync.connect(self._apply_seq_ui_sync, Qt.ConnectionType.QueuedConnection)
+        # One part/track cursor: part edits made elsewhere move it too
+        self.perfPartsChanged.connect(self._cursor_follow_part)
 
         # Subscribe engine UI updates to Qt signals
         self.sequencer.subscribe_ui(self._on_seq_ui_update)
@@ -163,7 +165,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty(int, notify=seqActiveTrackChanged)
     def seqTrackBank(self) -> int:
-        """Track bank on screen (0 = tracks 1-8, 1 = 9-16): the one holding the active track."""
+        """Part/track bank on every page (0 = 1-8, 1 = 9-16): the one holding the cursor."""
         return getattr(self, "_active_seq_track", 0) // TRACK_BANK_SIZE
 
     @pyqtSlot(int)
@@ -348,11 +350,32 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int)
     def seqSelectTrack(self, track_idx: int) -> None:
+        """Move the part/track cursor: in PERFORM mode track n and part n are selected together."""
+        self._seq_set_cursor(track_idx)
+        part = self._active_seq_track + 1
+        if self._in_perform() and int(self.patch_state.active_perf_part) != part:
+            self.editPerfPart(part)
+
+    def _seq_set_cursor(self, track_idx: int) -> None:
+        """Select a track without touching the edited part (that side is already in place)."""
         self._active_seq_track = max(0, min(NUM_TRACKS - 1, int(track_idx)))
         self._seq_retarget_recorder(self.seqCursorStep)
         self.seqActiveTrackChanged.emit()
         self.seqActiveClipChanged.emit()
         self.seqTracksChanged.emit()
+
+    def _cursor_follow_part(self, *_args) -> None:
+        """PERFORM: the edited part changed elsewhere (song load, panel): the cursor follows."""
+        if not self._in_perform():
+            return
+        track = int(self.patch_state.active_perf_part) - 1
+        if 0 <= track < NUM_TRACKS and track != self._active_seq_track:
+            self._seq_set_cursor(track)
+
+    @pyqtSlot(int)
+    def selectNextTrack(self, step: int) -> None:
+        """Track ◀▶: the next/previous part/track; crossing slot 8/9 turns the bank."""
+        self.seqSelectTrack(max(0, min(NUM_TRACKS - 1, self._active_seq_track + int(step))))
 
     @pyqtSlot(int, int)
     def seqSetTrackTargetPart(self, track_idx: int, part_num: int) -> None:
