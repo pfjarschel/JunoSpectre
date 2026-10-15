@@ -458,6 +458,32 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             self.sequencer.stop_track(track_idx)
             self.seqTracksChanged.emit()
 
+    @pyqtSlot()
+    def seqStopAllClips(self) -> None:
+        """Stop every playing clip at the next bar; the transport keeps running."""
+        if hasattr(self, "sequencer"):
+            self.sequencer.stop_all_clips()
+            self.seqTracksChanged.emit()
+            self.seqAutomationChanged.emit()
+
+    def _seq_clip_state(self, track_idx: int, clip_idx: int) -> str:
+        """"empty" / "loaded" / "queued" / "playing" for a clip slot (controller LEDs)."""
+        tracks = self.sequencer.song.tracks if hasattr(self, "sequencer") else []
+        if not 0 <= track_idx < len(tracks) or not 0 <= clip_idx < len(tracks[track_idx].clips):
+            return "empty"
+        track, seq = tracks[track_idx], self.sequencer
+        if track.queued_clip_idx == clip_idx:
+            return "queued"
+        if track.active_clip_idx == clip_idx and (
+                seq.is_playing or seq._audio_active_clip(track) is not None):
+            return "playing"
+        clip = track.clips[clip_idx]
+        if track.is_audio:
+            full = clip.audio is not None and bool(clip.audio.file)
+        else:
+            full = any(s.is_active for s in clip.steps)
+        return "loaded" if full else "empty"
+
     # -------------------------------------------------------------------------
     # QML Step Editing Slots
     # -------------------------------------------------------------------------

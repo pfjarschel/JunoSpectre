@@ -529,3 +529,33 @@ def test_track_context_knobs_follow_the_bank(bridge):
     bridge.setActiveView("LIVE")
     assert bridge._ctl_resolve("context.1") == "macro.1"
     assert bridge._ctl_resolve("context.8") == "macro.8"
+
+
+def test_controller_clip_row_and_stops(bridge):
+    seq = bridge.sequencer
+    tracks = seq.song.tracks
+    bridge.seqSelectTrack(2)
+    assert bridge._seq_clip_state(2, 3) == "empty"
+    bridge.seqToggleStepNote(0, 60, 100)                # selected clip of track 3 gets a note
+    sel = tracks[2].selected_clip_idx
+    assert bridge._seq_clip_state(2, sel) == "loaded"
+
+    seq.clock._running = True                           # is_playing without a clock thread
+    bridge._ctl_run_action("seq.clip.4")                # bottom row: clip 4 of the selected track
+    assert tracks[2].queued_clip_idx == 3
+    assert bridge._seq_clip_state(2, 3) == "queued"
+    tracks[2].active_clip_idx, tracks[2].queued_clip_idx = 3, -1
+    assert bridge._seq_clip_state(2, 3) == "playing"
+
+    bridge._ctl_run_action("seq.stop_selected")
+    assert tracks[2].queued_clip_idx == -2
+    # Stop all: only what plays; idle tracks stay startable
+    tracks[2].queued_clip_idx = -1
+    tracks[5].active_clip_idx = 0
+    tracks[6].active_clip_idx = -1
+    bridge._ctl_run_action("seq.stop_all")
+    assert (tracks[2].queued_clip_idx, tracks[5].queued_clip_idx, tracks[6].queued_clip_idx) == (-2, -2, -1)
+    seq.clock._running = False
+    tracks[7].queued_clip_idx = -1
+    bridge._ctl_run_action("seq.stop_all")              # transport stopped: nothing queued to stop
+    assert tracks[7].queued_clip_idx == -1

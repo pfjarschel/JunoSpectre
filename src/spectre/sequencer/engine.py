@@ -245,6 +245,18 @@ class SequencerEngine:
                 return
             track.queued_clip_idx = -2  # -2 means queued stop
 
+    def stop_all_clips(self) -> None:
+        """Stop every playing clip (tracks and unlinked lanes) the way stop_track does;
+        the transport keeps running. Idle tracks are left alone, so a stopped
+        transport still starts them on Play."""
+        for i, track in enumerate(self.song.tracks):
+            if self._audio_active_clip(track) is not None or (self.is_playing and track.active_clip_idx >= 0):
+                self.stop_track(i)
+        if self.is_playing:
+            for i, lane in enumerate(self.song.automation):
+                if not lane.is_linked and lane.active_clip_idx >= 0:
+                    self.stop_lane(i)
+
     def _on_clock_tick(self, tick_in_bar: int, total_ticks: int) -> None:
         """Executed on each PPQN pulse in the dedicated clock thread."""
         with self._lock:

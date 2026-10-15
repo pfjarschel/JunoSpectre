@@ -89,7 +89,11 @@ the current bank in Perform mode.
 
 - Chorus and reverb levels are not on row C: the routing sets them.
 - Reverb diffusion is left out (least audible).
-- In Patch mode, slots 5–8 hold what makes sense for the patch (FX returns, patch level), as now.
+- In Patch mode, faders 5–8 are MFX out, chorus level, reverb level and patch level; knob A8 is the
+  patch pan. The other slot 5–8 controls do nothing in the mixer.
+- Row B in Perform mode: tone output level, then the part's chorus/reverb sends (they apply instead of
+  the tone's), MFX out/chorus/reverb sends, chorus and reverb levels. In Patch mode the tone's own
+  sends take slots 2–3.
 
 ## Novation button layer
 

@@ -354,13 +354,14 @@ def test_surface_shows_names_values_and_leds(ui):
     assert text(13, 1, "CUTOFF OFS") in msgs
     assert text(13, 2, "+0%") in msgs
     assert lcxl3.led_rgb(13, lcxl3.by_value(lcxl3.CATEGORY_COLORS["MACRO"], 0.5)).hex() in msgs
-    assert text(21, 0, "TONE 1") in msgs                     # row B = context knobs: PCM page = edited tone
-    assert text(21, 1, "Cutoff") in msgs
+    assert text(21, 0, "ALL TONES") in msgs                  # row B = LFOs, on every page
+    assert text(21, 1, "LFO1 Rate") in msgs
+    assert text(33, 1, "Flt Key Follow") in msgs              # row C = sound core
+    assert text(34, 0, "TONE 1") in msgs                     # fine tune: the edited tone
+    assert lcxl3.led_rgb(45, lcxl3.OFF).hex() in msgs        # clip row: empty clip
     bridge.setActiveView("SETLIST")
     bridge._ctl_feedback_tick()
-    assert lcxl3.led_rgb(21, lcxl3.OFF).hex() in [m for _, m in sent]   # no context knobs there
-    bridge.setActiveView("JUNO PCM")
-    bridge._ctl_feedback_tick()
+    assert text(21, 1, "LFO1 Rate") not in [m for _, m in sent[len(msgs):]]   # nothing changed
     # Moving a knob updates only its value
     sent.clear()
     bridge._ctl_bindings = [b for b in bridge._ctl_bindings]
@@ -370,13 +371,12 @@ def test_surface_shows_names_values_and_leds(ui):
     _send(app, bridge)
     assert [m for _, m in sent] == [text(13, 2, "+100%"),
                                     lcxl3.led_rgb(13, lcxl3.CATEGORY_COLORS["MACRO"]).hex()]
-    # Page buttons switch the app page; the stationary screen follows
-    sent.clear()
+    # Page buttons flip the part/track bank, Track buttons step the cursor
     bridge.setActiveView("JUNO PCM")
     _send(app, bridge, _cc(107, 127), _cc(107, 0), port=DAW)
-    assert bridge._active_view == "VECTOR"
-    bridge._ctl_feedback_tick()
-    assert lcxl3.display_text(lcxl3.STATIONARY, 1, "VECTOR").hex() in [m for _, m in sent]
+    assert (bridge._active_view, bridge.seqTrackBank) == ("JUNO PCM", 1)
+    _send(app, bridge, _cc(103, 127), _cc(103, 0), port=DAW)
+    assert bridge.seqActiveTrack == 7
 
 
 def test_screen_text_is_ascii_and_fits():
@@ -420,7 +420,7 @@ def test_mixer_layer_follows_the_device_and_banks_parts(ui):
     assert bridge._ctl_layer == "MIXER"
     _send(app, bridge, _cc(5, 90, ch=15), port=DAW)         # fader 1 = part 1 level
     assert bridge.patch_state.perf_parts[0].volume == 90
-    _send(app, bridge, _cc(102, 127), _cc(102, 0), port=DAW)   # Track > = parts 9-16
+    _send(app, bridge, _cc(107, 127), _cc(107, 0), port=DAW)   # Page > = parts 9-16
     _send(app, bridge, _cc(5, 33, ch=15), port=DAW)
     assert bridge.patch_state.perf_parts[8].volume == 33
     _send(app, bridge, _cc(30, 2, ch=6), port=DAW)          # back to DAW Control

@@ -59,6 +59,9 @@ ACTIONS: list[dict] = (
     + [_action(f"seq.scene.{n}", f"Launch Scene {n}") for n in range(1, 9)]
     + [_action(f"seq.stop_track.{n}", f"Stop Track {n}") for n in range(1, NUM_TRACKS + 1)]
     + [_action("seq.track_bank", "Track Bank 1-8 / 9-16")]
+    + [_action(f"seq.clip.{n}", f"Launch Clip {n} of Selected Track") for n in range(1, 9)]
+    + [_action("seq.stop_selected", "Stop Selected Track"), _action("seq.stop_all", "Stop All Clips")]
+    + [_action("none", "Nothing (blocks wider scopes)")]
     + [_action("motion.toggle_play", "Motion Play/Stop"), _action("motion.toggle_record", "Motion Record On/Off")]
     + [_action(f"tone.mute.{n}", f"Tone {n} Mute On/Off") for n in range(1, 5)]
     + [_action(f"tone.select.{n}", f"Select Tone {n}") for n in range(1, 5)]
@@ -525,7 +528,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             except ValueError:
                 return ""
             return knobs[n - 1] if 1 <= n <= len(knobs) else ""
-        return target
+        return "" if target == "action.none" else target
 
     def _ctl_entry(self, target: str):
         """Catalog entry for a target (edited-tone targets use tone 1's)."""
@@ -736,8 +739,16 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         hits = self._ctl_pick(port, ch, "cc", number)
         return hits[0] if hits else None
 
+    # Clip row LEDs by clip state
+    _CLIP_RGB = {"empty": lcxl3.OFF, "loaded": (20, 20, 20), "queued": (127, 80, 0), "playing": (0, 127, 0)}
+
+    def _seq_clip_state_any(self, track_idx: int) -> bool:
+        """Whether a track plays or has a clip queued (its stop button lights)."""
+        track = self.sequencer.song.tracks[track_idx]
+        return any(self._seq_clip_state(track_idx, c) in ("playing", "queued") for c in range(len(track.clips)))
+
     def _surface_button_rgb(self, b) -> tuple:
-        if b is None:
+        if b is None or b.target == "action.none":
             return lcxl3.OFF
         t = b.target
         n = int(t.rsplit(".", 1)[1]) if t.rsplit(".", 1)[-1].isdigit() else 0
@@ -764,6 +775,13 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         elif t.startswith("action.seq.scene."):
             color = (0, 127, 0)
         elif t.startswith("action.seq.stop_track."):
+            color = (127, 0, 0)
+        elif t.startswith("action.seq.clip."):
+            return self._CLIP_RGB[self._seq_clip_state(self._active_seq_track, n - 1)]
+        elif t == "action.seq.stop_selected":
+            on, color = self._seq_clip_state_any(self._active_seq_track), (127, 0, 0)
+        elif t == "action.seq.stop_all":
+            on = any(self._seq_clip_state_any(i) for i in range(len(self.sequencer.song.tracks)))
             color = (127, 0, 0)
         elif t.startswith("action.seq.launch."):
             tr, c = (int(x) - 1 for x in t.split(".")[3:5])
@@ -982,6 +1000,12 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self.seqLaunchScene(n - 1)
             elif action.startswith("seq.stop_track."):
                 self.seqStopTrack(n - 1)
+            elif action.startswith("seq.clip."):
+                self.seqLaunchClip(self._active_seq_track, n - 1)
+            elif action == "seq.stop_selected":
+                self.seqStopTrack(self._active_seq_track)
+            elif action == "seq.stop_all":
+                self.seqStopAllClips()
             elif action.startswith("seq.launch.") and len(parts) == 4:
                 self.seqLaunchClip(int(parts[2]) - 1, n - 1)
             elif action == "seq.track_bank":
