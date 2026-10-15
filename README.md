@@ -111,20 +111,28 @@ Edits go only to temporary RAM buffers: the temporary Patch (`1F 00 00 00`) or a
 
 - Python 3.11+ (developed on 3.13)
 - ALSA / USB-MIDI access on Linux
-- `PyQt6` for the UI, plus the packages in [requirements.txt](requirements.txt)
+- The Python packages in [requirements.txt](requirements.txt) (`PyQt6` for the UI)
+- For audio clips: PortAudio and, for stretch/transpose, Rubber Band
 
 ### Install
 
 ```bash
 git clone https://github.com/pfjarschel/JunoSpectre.git
 cd JunoSpectre
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-pip install PyQt6   # needed by the UI launcher
+./scripts/setup_venv.sh
 ```
 
-Audio clips (backing tracks, loops, samples) also need PortAudio:
-`sudo apt install libportaudio2` on Raspberry Pi OS / Debian.
+This creates `.venv` and installs the requirements into it. It first installs
+the system packages listed under `[tool.spectre.system-packages]` in
+[pyproject.toml](pyproject.toml) (PortAudio, Rubber Band), asking for your sudo
+password if needed. It detects the distro and uses apt (Debian, Ubuntu,
+Raspberry Pi OS), dnf (Fedora) or pacman (Arch). On immutable Fedora
+(Silverblue, Kinoite, Bazzite, Aurora) it prints the `rpm-ostree install`
+command instead. On the Pi the venv also uses the apt `PyQt6`, which is built
+for the Pi's own Qt and display; elsewhere pip installs it.
+
+The launcher always runs from `.venv`, and the in-app updater installs each
+release's new requirements into it before switching to that release.
 
 ### Run (desktop PC and Raspberry Pi)
 

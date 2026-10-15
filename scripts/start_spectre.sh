@@ -123,6 +123,11 @@ if [[ "$MODE" == appliance* && "$WANT_FULLSCREEN" -eq 0 && "$WANT_WINDOWED" -eq 
     EXTRA_ARGS+=(--fullscreen)
 fi
 
+if [[ "$MODE" == appliance* && "$PYTHON" == "python3" ]]; then
+    echo "Warning: no .venv; the updater can't install new requirements." \
+        "Run scripts/setup_venv.sh once." >&2
+fi
+
 echo "Starting Juno Spectre Touch Workstation ($MODE)..."
 echo "  python : $PYTHON"
 echo "  qt     : ${QT_QPA_PLATFORM:-(auto)}"

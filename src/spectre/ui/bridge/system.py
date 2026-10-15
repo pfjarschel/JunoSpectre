@@ -15,6 +15,12 @@ from .base import BridgeBaseMixin
 logger = logging.getLogger(__name__)
 
 
+def _packages_note(result: dict) -> str:
+    installed = result.get("installed") or {}
+    count = len(installed.get("system", [])) + len(installed.get("pip", []))
+    return f" • {count} NEW PACKAGE{'S' if count != 1 else ''}" if count else ""
+
+
 class SystemBridgeMixin(BridgeBaseMixin):
     """Appliance update, Wi-Fi networking, host telemetry, and power actions."""
 
@@ -267,15 +273,15 @@ class SystemBridgeMixin(BridgeBaseMixin):
             self.updateAvailableChanged.emit(False)
             if result["changed"]:
                 self._set_updater_log(
-                    f"RELEASE {result['to']} INSTALLED ({result['from']} → {result['to']}) "
-                    f"• TAP RESTART APPLICATION"
+                    f"RELEASE {result['to']} INSTALLED ({result['from']} → {result['to']})"
+                    f"{_packages_note(result)} • TAP RESTART APPLICATION"
                 )
                 self._set_update_applied(True)
             else:
                 self._set_updater_log(f"ALREADY ON RELEASE {result['to']}")
             self._set_updater_busy(False)
 
-        self._start_updater_task("git checkout release", self._updater.apply, on_ok)
+        self._start_updater_task("install release", self._updater.apply, on_ok)
 
     @pyqtSlot()
     def rollbackRelease(self) -> None:
@@ -283,7 +289,8 @@ class SystemBridgeMixin(BridgeBaseMixin):
 
         def on_ok(result: dict) -> None:
             self._set_updater_log(
-                f"ROLLED BACK {result['from']} → {result['to']} • TAP RESTART APPLICATION"
+                f"ROLLED BACK {result['from']} → {result['to']}"
+                f"{_packages_note(result)} • TAP RESTART APPLICATION"
             )
             self._update_available = False
             self.updateAvailableChanged.emit(False)

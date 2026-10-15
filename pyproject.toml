@@ -44,6 +44,18 @@ dev = [
 [project.scripts]
 juno-spectre = "spectre.ui.app:run_app"
 
+# System packages, read by the in-app updater (src/spectre/core/updater.py) from
+# each release before switching to it, and by scripts/setup_venv.sh. Each entry
+# names the package per Linux package manager; a missing manager means it is not
+# needed there. python = the Python dist it provides, which pip then skips (the
+# Pi's apt PyQt6 is built for its own Qt and eglfs/KMS; a pip wheel bundles another).
+# command = a program that, when already on PATH, satisfies the entry.
+[tool.spectre.system-packages]
+venv = { apt = "python3-venv" }
+pyqt6 = { apt = "python3-pyqt6", python = "PyQt6" }
+portaudio = { apt = "libportaudio2", dnf = "portaudio", pacman = "portaudio" }
+rubberband = { apt = "rubberband-cli", dnf = "rubberband", pacman = "rubberband", command = "rubberband" }
+
 [tool.setuptools]
 package-dir = { "" = "src" }
 
