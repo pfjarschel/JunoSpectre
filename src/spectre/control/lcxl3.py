@@ -154,6 +154,8 @@ def format_value(target: str, value: float, lo: float, hi: float) -> str:
         return f"{value * 100:.0f}%"
     if base.endswith("pitch_env_depth"):
         return f"{int(round(value)) - 64:+d} st"
+    if base.endswith("tvf_keyfollow"):
+        return f"{(int(round(value)) - 64) * 10:+d}%"
     if base.endswith("pan"):
         v = int(round(value)) - 64
         return "C" if v == 0 else (f"L{-v}" if v < 0 else f"R{v}")

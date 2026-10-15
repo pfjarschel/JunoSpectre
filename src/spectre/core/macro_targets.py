@@ -69,6 +69,7 @@ def build_macro_catalog() -> list[dict]:
         ("tvf_cutoff", "Cutoff", "FILTER", 0, 127, 127),
         ("tvf_resonance", "Resonance", "FILTER", 0, 127, 127),
         ("tvf_env_depth", "Filter Env Depth", "FILTER", 1, 127, 63),
+        ("tvf_keyfollow", "Filter Key Follow", "FILTER", 44, 84, 20),
         ("tvf_attack", "Filter Attack", "FILTER", 0, 127, 127),
         ("tvf_decay", "Filter Decay", "FILTER", 0, 127, 127),
         ("tvf_sustain", "Filter Sustain", "FILTER", 0, 127, 127),

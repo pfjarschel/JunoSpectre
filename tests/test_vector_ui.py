@@ -864,6 +864,36 @@ def test_analog_feel_dedicated_control_rebases_macro6():
     assert bridge.analogFeel == 0
 
 
+def test_key_follow_macro_and_amp_sustain_link():
+    """Filter key follow is a macro target; amp sustain moves L2 with L3 like the filter."""
+    app, qml_engine, bridge = create_application(platform="offscreen")
+
+    bridge.sculptTvfKeyFollow(50)  # raw 69 on all tones
+    bridge.removeMacroTarget(4, 0)
+    bridge.addMacroTarget(4, "tone.all.tvf_keyfollow")
+    bridge.setMacroLink(4, 0, 1, 1.0)  # +20 raw (+200%) at full
+    bridge.setMacro(4, 0.5)
+    assert [t.tvf_cutoff_keyfollow for t in bridge.patch_state.tones] == [79] * 4
+    assert bridge.tvfKeyFollow == 150
+    bridge.setMacro(4, 1.0)
+    assert bridge.patch_state.tones[0].tvf_cutoff_keyfollow == 84  # clamped to +200%
+    bridge.setMacro(4, 0.0)
+    assert bridge.patch_state.tones[0].tvf_cutoff_keyfollow == 69
+    # A direct edit rebases the link
+    bridge.sculptTvfKeyFollow(-30)
+    bridge.setMacro(4, 0.5)
+    assert bridge.patch_state.tones[0].tvf_cutoff_keyfollow == 71  # 61 + 10
+
+    t1 = bridge.patch_state.tones[0]
+    t1.tva_l2 = t1.tva_l3 = 80
+    bridge.removeMacroTarget(5, 0)
+    bridge.addMacroTarget(5, "tone.1.tva_sustain")
+    bridge.setMacroLink(5, 0, 1, 1.0)
+    bridge.setMacro(5, 0.25)
+    assert t1.tva_l3 == pytest.approx(112, abs=1)
+    assert t1.tva_l2 == t1.tva_l3
+
+
 def test_customizable_multitarget_macros():
     """Rename, add/remove links, polarity/depth, stacking sum, clamp-restore."""
     app, qml_engine, bridge = create_application(platform="offscreen")

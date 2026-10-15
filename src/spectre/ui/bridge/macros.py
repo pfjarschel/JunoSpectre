@@ -197,7 +197,8 @@ class MacroBridgeMixin(BridgeBaseMixin):
     def _toneParam(t: ToneState, param: str) -> float:
         mapping = {
             "tvf_cutoff": t.tvf_cutoff, "tvf_resonance": t.tvf_resonance,
-            "tvf_env_depth": t.tvf_env_depth, "tvf_attack": t.tvf_t1,
+            "tvf_env_depth": t.tvf_env_depth, "tvf_keyfollow": t.tvf_cutoff_keyfollow,
+            "tvf_attack": t.tvf_t1,
             "tvf_decay": t.tvf_t2, "tvf_sustain": t.tvf_l3, "tvf_release": t.tvf_t4,
             "tva_level": t.level, "tva_pan": t.pan,
             "tva_attack": t.tva_t1, "tva_decay": t.tva_t2,
@@ -573,6 +574,10 @@ class MacroBridgeMixin(BridgeBaseMixin):
             t.tvf_env_depth = max(1, min(127, iv))
             if juno:
                 juno.set_tone_tvf(tone_idx, env_depth=t.tvf_env_depth)
+        elif param == "tvf_keyfollow":
+            t.tvf_cutoff_keyfollow = max(44, min(84, iv))
+            if juno:
+                juno.set_tone_tvf(tone_idx, key_follow=t.tvf_cutoff_keyfollow)
         elif param in ("tvf_attack", "tvf_decay", "tvf_sustain", "tvf_release"):
             setattr(t, param, max(0, min(127, iv)))
             self._push_tvf_env(t)
@@ -588,9 +593,8 @@ class MacroBridgeMixin(BridgeBaseMixin):
             if juno:
                 juno.set_tone_tva(tone_idx, pan=t.pan)
         elif param in ("tva_attack", "tva_decay", "tva_sustain", "tva_release"):
-            setattr(t, {"tva_attack": "tva_t1", "tva_decay": "tva_t2",
-                        "tva_sustain": "tva_l3", "tva_release": "tva_t4"}[param],
-                    max(0, min(127, iv)))
+            # The properties, so sustain moves L2 with L3 like the filter does
+            setattr(t, param, max(0, min(127, iv)))
             self._push_tva_env(t)
         elif param == "pitch_coarse":
             t.coarse_tune = max(16, min(112, iv))
@@ -711,6 +715,8 @@ class MacroBridgeMixin(BridgeBaseMixin):
                 self.tvaLevelChanged.emit(self.tvaLevel)
             except Exception:
                 pass
+        if any(k.endswith(".tvf_keyfollow") for k in keys):
+            self.tvfKeyFollowChanged.emit(self.tvfKeyFollow)
         if "common.level" in keys:
             self.masterLevelChanged.emit(self.masterLevel)
         if "common.portamento_time" in keys:

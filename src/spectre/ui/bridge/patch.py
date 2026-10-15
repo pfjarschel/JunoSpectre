@@ -809,6 +809,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                     self.juno.set_tone_param(t.tone_index, 0x004A, raw_val)
                 except Exception as e:
                     logger.error(f"Error setting TVF keyfollow on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_keyfollow", raw_val) for t in targets])
         self.tvfKeyFollowChanged.emit(clamped)
 
     @pyqtSlot(int)
@@ -1204,6 +1205,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                     self.juno.set_tone_param(t.tone_index, 0x004A, raw_val)
                 except Exception as e:
                     logger.error(f"Error sculpting TVF keyfollow on synth: {e}")
+        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_keyfollow", raw_val) for t in self.patch_state.tones])
         self.tvfKeyFollowChanged.emit(clamped)
 
     @pyqtSlot(int)

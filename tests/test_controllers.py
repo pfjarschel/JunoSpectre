@@ -331,6 +331,7 @@ def test_value_text():
     assert format_value("tone.1.tva_pan", 64, 0, 127) == "C"
     assert format_value("tone.1.tva_pan", 40, 0, 127) == "L24"
     assert format_value("vector.x", 0.25, 0, 1) == "25%"
+    assert format_value("tone.all.tvf_keyfollow", 74, 44, 84) == "+100%"
     assert format_value("part.level@3", 100, 0, 127) == "100"
 
 
