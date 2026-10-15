@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 DRAIN_MS = 15
 FEEDBACK_MS = 100
+# LCXL3 touch events: channel 15 (0-based 14), the control's CC, 127 on touch / 0 on release
+TOUCH_CH = 14
 # Alt layer button: released sooner than this, with nothing used meanwhile, is a tap (latch)
 ALT_TAP_S = 0.35
 # A knob that moved this recently is the source of its value: no feedback
@@ -204,6 +206,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         self._alt_held = self._alt_latched = self._alt_used = self._alt_was = self._alt_shown = False
         self._alt_t0 = 0.0
         self._ctl_scene = 0                         # scene the alt layer's Play/Record act on
+        self._ctl_touched: set = set()              # (port, CC) of surface controls being touched
         self._ctl_names: dict[str, dict] = {}       # port key -> {"cc:13": "Knob A1"}
         # Device setups from presets: [{match, listen, feedback, on_connect, on_quit}]
         self._ctl_devices: list[dict] = [dict(d) for d in cfg.get("devices", []) if isinstance(d, dict)]
@@ -403,12 +406,12 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             self._ctl_scheduled = False
         if not events:
             return
-        # Knobs: only the latest value per control. Buttons: every edge.
+        # Knobs: only the latest value per control. Buttons and touches: every edge.
         latest: dict = {}
         ordered = []
         for ev in events:
             ctl = ev[:4]
-            if self._ctl_is_button(ctl):
+            if ctl[1] == TOUCH_CH or self._ctl_is_button(ctl):
                 ordered.append(ev)
             else:
                 if ctl not in latest:
@@ -484,9 +487,12 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     def _ctl_handle(self, ev: tuple) -> None:
         port, ch, kind, num, raw = ev
-        if ch == 6 and any(p == port for p, _ in self._surfaces()):
+        if ch in (6, TOUCH_CH) and any(p == port for p, _ in self._surfaces()):
+            if ch == TOUCH_CH:
+                if kind == "cc":
+                    self._ctl_touch(port, num, raw >= 64)
             # LCXL3 feature channel: mode reports, not controls. DAW Mixer = mixer layer.
-            if kind == "cc" and num == 30:
+            elif kind == "cc" and num == 30:
                 self._ctl_set_layer("MIXER" if raw == 1 else "")
             return
         self._ctl_moved[(port, ch, kind, num)] = (raw, time.monotonic())
@@ -538,6 +544,18 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 continue
             self._ctl_apply(eff, t)
             self._ctl_set_activity(f"{label} = {raw} → {title}")
+
+    def _ctl_touch(self, port: str, num: int, on: bool) -> None:
+        """A surface knob/fader touched or let go (never a control value, never learned)."""
+        if not on:
+            self._ctl_touched.discard((port, num))
+            return
+        self._ctl_touched.add((port, num))
+        if self._alt_held:
+            self._alt_used = True           # touched while held: the alt layer is momentary
+        # A new grab: takeover starts over from where the target is now
+        for b in self._ctl_pick(port, 15, "cc", num):
+            self._ctl_resolver.forget(b)
 
     def _ctl_set_activity(self, text: str) -> None:
         if text != self._ctl_activity:

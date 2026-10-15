@@ -704,3 +704,35 @@ def test_alt_layer_tap_latches_and_hold_is_momentary(ui, monkeypatch):
     _send(app, bridge, _cc(5, 77, ch=15), port=DAW)
     assert bridge.patch_state.perf_parts[0].volume == 77
     nov(0)
+
+
+@pytest.mark.ui
+def test_touch_events_are_not_controls(ui, monkeypatch):
+    from src.spectre.ui.bridge import controllers as ctl_mod
+
+    monkeypatch.setattr(ctl_mod.time, "monotonic", lambda: 100.0)   # every press is a quick tap
+    app, bridge, _ = ui
+    bridge._ctl_open[DAW] = object()
+    sent = []
+    bridge._ctl_send = lambda key, msg: sent.append(msg.hex())
+    bridge._hw_outputs = [PORT + " 36:0", DAW + " 36:1"]
+    bridge._ctl_sync_ports = lambda ins: None
+    assert bridge.loadControlPreset(str(SURFACE)) == ""
+    assert "B6 47 7F" in sent                              # touch events on at connect
+    before = bridge.patch_state.common.cutoff_offset
+    _send(app, bridge, _cc(29, 127, ch=14), port=DAW)      # touch knob C1 (cutoff)
+    assert bridge.patch_state.common.cutoff_offset == before
+    assert (DAW, 29) in bridge._ctl_touched
+    _send(app, bridge, _cc(29, 0, ch=14), port=DAW)
+    assert not bridge._ctl_touched
+    # Never learned: learn waits for a real move
+    bridge.startControlLearn("macro.3")
+    _send(app, bridge, _cc(29, 127, ch=14), port=DAW)
+    assert bridge.controlLearnTarget == "macro.3"
+    _send(app, bridge, _cc(29, 0, ch=14), port=DAW)
+    # Touching a control while the alt button is held makes the layer momentary
+    bridge._ctl_learn_target = ""
+    _send(app, bridge, _cc(104, 127), port=DAW)
+    _send(app, bridge, _cc(5, 127, ch=14), _cc(5, 0, ch=14), port=DAW)
+    _send(app, bridge, _cc(104, 0), port=DAW)
+    assert bridge._ctl_state()["ALT"] == ""
