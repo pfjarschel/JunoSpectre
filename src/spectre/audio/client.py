@@ -101,6 +101,9 @@ class AudioClient:
                           "end": int(end), "loop": bool(loop), "gain": float(gain), "offset": int(offset),
                           "id": int(vid)})
 
+    def retarget(self, slot: str, key: str, begin: int = 0, end: int = 0) -> bool:
+        return self.send({"cmd": "retarget", "slot": slot, "key": key, "begin": int(begin), "end": int(end)})
+
     def stop(self, slot: str, at: Optional[float] = None) -> bool:
         return self.send({"cmd": "stop", "slot": slot, "at": at})
 

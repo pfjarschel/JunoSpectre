@@ -6,7 +6,8 @@ import JunoSpectre
 import ".."
 
 // AUDIO track clip editor (in place of the step grid): the waveform with the
-// slice's start (beat 1) / end markers and its beat grid, then the clip's
+// slice's start (beat 1) / end markers, its beat grid and where a synced
+// loop's bar restart cuts it, then the clip's
 // mode, start, gain, bars / tempo, stretch and transpose. FILE opens the
 // browser (the media folder or a USB stick; files from USB are copied in).
 Item {
@@ -25,6 +26,8 @@ Item {
     readonly property real clipBpm: (clipData && clipData.audioBpm) || 0
     readonly property real tempo: (clipData && clipData.audioTempo) || 1.0
     readonly property bool stretch: !!(clipData && clipData.audioStretch)
+    // A synced loop restarts on its bar: past this frame the slice never plays (0 = whole)
+    readonly property int cutFrame: (clipData && clipData.audioCutFrame) || 0
     readonly property real rate: 44100
 
     // Stretch amount colour: fine up to 10%, amber to 20%, red beyond
@@ -392,6 +395,30 @@ Item {
             x: Math.max(0, Math.min(parent.width, ex)); y: 0; height: parent.height
             width: Math.max(0, parent.width - x)
             color: Qt.rgba(0, 0, 0, 0.45)
+        }
+        // Cut by the bar restart: the slice's tail that never plays
+        Item {
+            readonly property real cx: wv.xOf(root.cutFrame)
+            visible: root.cutFrame > 0 && cx < parent.width
+            x: Math.max(0, cx)
+            width: Math.max(0, Math.min(parent.width, wv.xOf(root.endFrame)) - x)
+            height: parent.height
+            Rectangle { anchors.fill: parent; color: Theme.recording; opacity: 0.18 }
+            Rectangle { visible: parent.cx >= 0; width: ScaleMetrics.dp(1); height: parent.height; color: Theme.recording }
+            Rectangle {
+                visible: parent.cx >= 0
+                y: ScaleMetrics.dp(16)
+                width: cutText.implicitWidth + ScaleMetrics.dp(6); height: ScaleMetrics.dp(14)
+                color: Theme.recording
+                Text {
+                    id: cutText
+                    anchors.centerIn: parent
+                    text: "CUT"
+                    font.bold: true
+                    font.pixelSize: ScaleMetrics.sp(7)
+                    color: Theme.bgApp
+                }
+            }
         }
         // Beat grid of the slice: its bars split into beats (bars brighter)
         Canvas {

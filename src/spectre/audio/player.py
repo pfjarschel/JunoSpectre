@@ -50,6 +50,7 @@ class AudioPlayer:
         self._lock = threading.Lock()
         self._loaded: set = set()            # cache keys the worker has mapped
         self._voice: Dict[str, int] = {}     # slot -> id of its current voice
+        self._slot_play: Dict[str, tuple] = {}  # slot -> (clip_id, key, begin, end) it plays
         self._next_vid = 1
         self._starting = False
         self.auditioning = ""                # clip_id playing in the preview slot
@@ -218,6 +219,7 @@ class AudioPlayer:
                 changed = True
         if changed:
             self._changed()
+        self.retarget_all()
 
     def clip_state(self, clip) -> dict:
         """What the clip editor shows: {state, error} of what the clip plays."""
@@ -309,15 +311,36 @@ class AudioPlayer:
         if not self.ready:
             self.ensure_worker()
             return
-        self._play(f"t{track_idx}", p, self._shift(at), loop, clip.audio.gain_db)
+        self._play(f"t{track_idx}", clip, p, self._shift(at), loop)
 
-    def _play(self, slot: str, p, at: Optional[float], loop: bool, gain_db: float) -> None:
+    def _play(self, slot: str, clip, p, at: Optional[float], loop: bool) -> None:
         key, begin, end, _frames = p
         self._load(key)
         vid = self._next_vid
         self._next_vid += 1
         self._voice[slot] = vid
-        self.client.play(slot, key, at=at, begin=begin, end=end, loop=loop, gain=10 ** (gain_db / 20.0), vid=vid)
+        self._slot_play[slot] = (clip.clip_id, key, begin, end)
+        self.client.play(slot, key, at=at, begin=begin, end=end, loop=loop,
+                         gain=10 ** (clip.audio.gain_db / 20.0), vid=vid)
+
+    def retarget(self, clip) -> None:
+        """The clip's slice or render changed: what plays it now (or waits to)
+        switches over at once, keeping its place since the slice start."""
+        p = self._playable(clip)
+        if p is None:
+            return                            # a render is on its way: retargeted when ready
+        for slot, (cid, key, begin, end) in list(self._slot_play.items()):
+            if cid != clip.clip_id or slot not in self._voice or (key, begin, end) == p[:3]:
+                continue
+            self._load(p[0])
+            self._slot_play[slot] = (cid,) + tuple(p[:3])
+            self.client.retarget(slot, p[0], begin=p[1], end=p[2])
+
+    def retarget_all(self) -> None:
+        for cid in {v[0] for v in list(self._slot_play.values())}:
+            clip = self._clips.get(cid)
+            if clip is not None and clip.audio is not None:
+                self.retarget(clip)
 
     def stop(self, track_idx: int, at: Optional[float]) -> None:
         self._voice.pop(f"t{track_idx}", None)
@@ -348,7 +371,7 @@ class AudioPlayer:
             return False
         self.auditioning = clip.clip_id
         self._audition_range = (p[1], p[1] + p[3])
-        self._play(PREVIEW_SLOT, p, None, clip.audio.mode == "loop", clip.audio.gain_db)
+        self._play(PREVIEW_SLOT, clip, p, None, clip.audio.mode == "loop")
         return True
 
     def position(self, slot: str) -> int:

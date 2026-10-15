@@ -139,6 +139,35 @@ def test_stop_fades_out_and_ends_the_voice():
     assert m.voices == []
 
 
+def test_retarget_keeps_the_place_since_the_slice_start():
+    m = _mixer_with(100000)
+    m.submit({"cmd": "play", "slot": "t1", "key": "a", "at": None, "begin": 1000, "end": 5000, "loop": True,
+              "id": 7})
+    m.render(512, 0.0)                                       # 512 frames past the start
+    # Only the end moved: the voice carries on in place, no crossfade
+    m.submit({"cmd": "retarget", "slot": "t1", "key": "a", "begin": 1000, "end": 1600})
+    out = m.render(128, 512 / RATE)
+    assert len(m.voices) == 1 and m.voices[0].pos == 1000 + (512 + 128) % 600
+    assert out[0, 0] == pytest.approx((1000 + 512 + 1) / 1e6)
+    # A new start: crossfade to the same distance past it
+    m.submit({"cmd": "retarget", "slot": "t1", "key": "a", "begin": 3000, "end": 9000})
+    out = m.render(512, 640 / RATE)
+    new = [v for v in m.voices if v.vid == 7]
+    assert len(new) == 1 and out[FADE_OUT + 10, 0] == pytest.approx((3000 + 40 + FADE_OUT + 10 + 1) / 1e6)
+    assert len(m.voices) == 1                                # the old one faded out silently
+    assert not [e for e in m.events if e["ev"] == "ended"]
+
+
+def test_retarget_past_a_one_shot_end_ends_it():
+    m = _mixer_with(100000)
+    m.submit({"cmd": "play", "slot": "t1", "key": "b", "at": None, "begin": 0, "end": 5000, "id": 3})
+    m.render(1024, 0.0)
+    m.submit({"cmd": "retarget", "slot": "t1", "key": "b", "begin": 0, "end": 800})
+    out = m.render(512, 1024 / RATE)
+    assert not out[FADE_OUT:].any() and m.voices == []
+    assert {"ev": "ended", "slot": "t1", "id": 3} in list(m.events)
+
+
 def test_newer_launch_cancels_a_waiting_voice():
     m = _mixer_with()
     m.submit({"cmd": "play", "slot": "t1", "key": "a", "at": 10.0, "id": 1})
@@ -354,6 +383,10 @@ class FakeClient:
         self.sent.append(("stop", slot, at))
         return True
 
+    def retarget(self, slot, key, begin=0, end=0):
+        self.sent.append(("retarget", slot, key, begin, end))
+        return True
+
     def stop_all(self):
         return True
 
@@ -386,12 +419,24 @@ def test_player_prepares_files_and_plays_slices(tmp_path):
     kind, slot, k, kw = player.client.sent[-1]
     assert (kind, slot, k, kw["at"], kw["begin"], kw["loop"]) == ("play", "t3", key, 5.01, 1000, True)
     assert kw["gain"] == pytest.approx(0.501, abs=0.001)
+    # Slice edits reach the voice playing the clip at once
+    player._clips = {clip.clip_id: clip}
+    clip.audio.end = 20000
+    player.retarget(clip)
+    assert player.client.sent[-1] == ("retarget", "t3", key, 1000, 20000)
+    n = len(player.client.sent)
+    player.retarget_all()                                    # nothing changed: nothing sent
+    assert len(player.client.sent) == n
     # Only the current voice's end reports the track stopping
     ended = []
     player.on_ended = ended.append
     player._on_event({"ev": "ended", "slot": "t3", "id": kw["vid"] - 1})
     player._on_event({"ev": "ended", "slot": "t3", "id": kw["vid"]})
     assert ended == [3]
+    n = len(player.client.sent)
+    clip.audio.end = 0
+    player.retarget(clip)                                    # not playing any more
+    assert len(player.client.sent) == n
     # A clip whose file isn't ready silences its slot instead
     player.start(4, Clip(audio=AudioClip(file="gone.wav")), 6.0, False)
     assert player.client.sent[-1] == ("stop", "t4", 6.01)
@@ -612,6 +657,12 @@ def test_bridge_fit_end_and_song_bpm_from_clip(tmp_path):
         b.seqSetClipAudio("end", RATE // 2 + int(4.2 * RATE))   # longer slice: slower clip
         b.seqSetSongBpmFromClip()
         assert b.bpm == pytest.approx(114.29, abs=0.01)
+        # A synced loop of 4.2 s restarts every 2 bars (4 s) at 120 BPM: the tail is cut
+        b.setBpm(120)
+        b.seqSetClipAudio("bars", 0)
+        assert b.seqTracks[0]["clips"][0]["audioCutFrame"] == RATE // 2 + 4 * RATE
+        b.seqSetClipAudio("mode", "oneshot")
+        assert b.seqTracks[0]["clips"][0]["audioCutFrame"] == 0
         b.seqSetClipAudio("end", 10 * RATE)                  # past the file end = to the end
         assert clip.audio.end == 0
         assert len(b.audioPeaks(0, 0, 100)) == 200

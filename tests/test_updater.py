@@ -362,3 +362,17 @@ def test_working_tree_system_packages(manager, expected):
     packages, provided = updater.system.resolve(updater.requirements()["system"])
     assert set(packages) == expected
     assert provided == ({"pyqt6"} if manager == "apt" else set())
+
+
+def test_restart_prefers_repo_venv(tmp_path):
+    import sys
+
+    from src.spectre.ui.bridge.system import REPO_ROOT, restart_executable
+
+    assert (REPO_ROOT / "pyproject.toml").is_file()
+    assert restart_executable(tmp_path) == sys.executable
+    venv_python = tmp_path / ".venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("")
+    venv_python.chmod(0o755)
+    assert restart_executable(tmp_path) == str(venv_python)

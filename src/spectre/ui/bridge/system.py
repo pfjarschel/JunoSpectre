@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
+import sys
 import threading
 import time
+from pathlib import Path
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
@@ -13,6 +16,21 @@ from ...core.wifi import WifiStatus
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
+
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+def restart_executable(repo_root: Path = REPO_ROOT) -> str:
+    """Python to re-exec into: the repo venv when present, else the current one.
+
+    A restart must land in .venv even if this process started before the venv
+    existed (the updater installs new requirements only there).
+    """
+    venv_python = repo_root / ".venv" / "bin" / "python"
+    if venv_python.is_file() and os.access(venv_python, os.X_OK):
+        return str(venv_python)
+    return sys.executable
 
 
 def _packages_note(result: dict) -> str:
@@ -520,10 +538,7 @@ class SystemBridgeMixin(BridgeBaseMixin):
         never returns. If exec fails the app keeps running instead of
         black-screening the appliance.
         """
-        import os
-        import sys
-
-        exe = sys.executable
+        exe = restart_executable()
         if not exe or not os.path.exists(exe):
             logger.error(f"Restart aborted: invalid python executable {exe!r}")
             return

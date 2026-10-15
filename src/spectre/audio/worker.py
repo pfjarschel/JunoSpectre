@@ -14,6 +14,9 @@ Commands:
   {"cmd": "play", "slot": s, "key": k, "at": t|null, "begin": f, "end": f,
    "loop": bool, "gain": g, "offset": f, "id": n}          a new voice (replaces the slot's at t;
                                                            cancels its voices still waiting)
+  {"cmd": "retarget", "slot": s, "key": k, "begin": f, "end": f}
+                                                           the slot's voices play another slice /
+                                                           source, as far past its start as before
   {"cmd": "stop", "slot": s, "at": t|null}                 fade the slot's voice out at t
   {"cmd": "stop_all"}
   {"cmd": "gain", "slot": s, "gain": g}                    ramped over one block
@@ -74,6 +77,17 @@ class Voice:
         if self.loop and self.pos >= self.end:
             self.pos = self.begin + (self.pos - self.begin) % (self.end - self.begin)
 
+    def set_region(self, source: np.ndarray, begin: int, end: int) -> None:
+        """Play another slice / source, keeping how far past its start the voice is."""
+        frames = len(source)
+        rel = self.pos - self.begin
+        self.source = source
+        self.begin = max(0, min(frames, int(begin)))
+        self.end = max(self.begin, min(frames, int(end) if end > 0 else frames))
+        self.loop = self.loop and self.end > self.begin
+        self.pos = self.begin + rel
+        self.wrap()
+
 
 class Mixer:
     """Sample-accurate voice scheduling and mixing (no I/O; the device calls render)."""
@@ -113,6 +127,12 @@ class Mixer:
             self.voices.append(Voice(slot, src, cmd.get("at"), int(cmd.get("begin", 0)),
                                      int(cmd.get("end", 0)), bool(cmd.get("loop")), float(cmd.get("gain", 1.0)),
                                      int(cmd.get("offset", 0)), int(cmd.get("id", 0))))
+        elif kind == "retarget":
+            src = self.sources.get(str(cmd.get("key")))
+            if src is None:
+                self.events.append({"ev": "error", "msg": f"not loaded: {cmd.get('key')}"})
+                return
+            self._retarget(str(cmd.get("slot")), src, int(cmd.get("begin", 0)), int(cmd.get("end", 0)))
         elif kind == "stop":
             slot, at = str(cmd.get("slot")), cmd.get("at")
             for v in self.voices:
@@ -134,6 +154,33 @@ class Mixer:
                     v.target_gain = float(cmd.get("gain", 1.0))
         elif kind == "master":
             self.master = max(0.0, float(cmd.get("gain", 1.0)))
+
+    def _retarget(self, slot: str, src: np.ndarray, begin: int, end: int) -> None:
+        """Slice edits while the slot plays: a waiting voice just takes the new
+        slice; a sounding one continues on it in place when only its end moved,
+        else crossfades to a copy at the same distance past the new start."""
+        for v in list(self.voices):
+            if v.slot != slot or v.done:
+                continue
+            if not v.started:
+                v.set_region(src, begin, end)
+                continue
+            if v.stop_at is not None or v.release >= 0:
+                continue                      # already on its way out
+            new = Voice(slot, src, None, 0, 0, v.loop, v.gain, 0, v.vid)
+            new.pos = v.pos
+            new.begin = v.begin
+            new.set_region(src, begin, end)
+            if src is v.source and new.begin == v.begin and new.pos == v.pos:
+                v.end, v.loop = new.end, new.loop     # same audio here: no jump
+                continue
+            v.stop_at = 0.0
+            if not new.loop and new.pos >= new.end:
+                continue                      # already past the new end: it just ends
+            new.target_gain = v.target_gain
+            new.started = True
+            v.vid = -1                        # its fade-out isn't the slot's end
+            self.voices.append(new)
 
     # -- rendering (device thread) ----------------------------------------------
 
@@ -170,7 +217,7 @@ class Mixer:
         for v in self.voices:
             if v.started and not v.done:
                 self._mix(v, out, n, t0)
-                if v.done:
+                if v.done and v.vid >= 0:        # -1: replaced by a retarget
                     self.events.append({"ev": "ended", "slot": v.slot, "id": v.vid})
         self.voices = [v for v in self.voices if not v.done]
         if self.master != 1.0:

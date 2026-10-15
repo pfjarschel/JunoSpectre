@@ -263,7 +263,19 @@ class AudioBridgeMixin(BridgeBaseMixin):
                 "audioEnd": (min(a.end, file_frames) if a.end > 0 else file_frames),
                 "audioBars": p.clip_bars(clip), "audioBarsAuto": a.bars == 0,
                 "audioBpm": round(p.clip_bpm(clip), 2), "audioStretch": a.stretch,
-                "audioTempo": spec[0] if spec else 1.0, "audioSemitones": a.semitones, "audioCents": a.cents}
+                "audioTempo": spec[0] if spec else 1.0, "audioSemitones": a.semitones, "audioCents": a.cents,
+                "audioCutFrame": self._audio_cut_frame(clip, frames, spec)}
+
+    def _audio_cut_frame(self, clip, frames: int, spec) -> int:
+        """Source frame where a synced loop's restart on the bar cuts its slice
+        (0 = it plays whole: other modes, or a slice that fits its bars)."""
+        a = clip.audio
+        if a.mode != "loop" or not a.sync or frames <= 0:
+            return 0
+        seq = self.sequencer
+        cycle_s = seq._audio_cycle_ticks(clip) * 60.0 / (seq.clock.ppqn * max(1.0, seq.bpm))
+        played = round(cycle_s * media.SAMPLE_RATE * (spec[0] if spec else 1.0))
+        return a.start + played if frames - played > media.SAMPLE_RATE // 100 else 0
 
     # -- QML: track kind -----------------------------------------------------------
 
@@ -381,7 +393,8 @@ class AudioBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(str, "QVariant")
     def seqSetClipAudio(self, param: str, value) -> None:
-        """Edit the selected audio clip: mode (also sets its default sync), sync, gainDb."""
+        """Edit the selected audio clip: mode (also sets its default sync), sync, gainDb,
+        start / end (applied to it while it plays), bars, stretch, semitones, cents."""
         t_idx, c_idx, clip = self._audio_edit_clip()
         if clip is None:
             return
@@ -422,6 +435,8 @@ class AudioBridgeMixin(BridgeBaseMixin):
             render = True
         else:
             return
+        if param in ("start", "end"):
+            self.audio_player.retarget(clip)  # heard at once if it plays (renders: once ready)
         if render:
             self._audio_render_timer.start()
         self.seqTracksChanged.emit()
