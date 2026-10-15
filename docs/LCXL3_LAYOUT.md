@@ -45,10 +45,17 @@ and value before you move it.
 - Cutoff and Resonance are the patch offsets (`common.cutoff_offset` / `common.resonance_offset`):
   centred, non-destructive, like the Juno panel knobs.
 - Key Follow is filter key follow on all tones. **Not in the macro catalog yet.**
-- Fine Tune acts on the **selected tone** (detune between tones is the useful part); the screen
-  title names the tone. On the PCM page it follows the page's link switch; on Vector, Wavetable
-  and VA (shared controls always act on all tones, per-tone controls on one) it is always the
-  selected tone. Locked while VA Auto Detune is on.
+- Fine Tune follows what the page offers:
+
+  | Page | Auto Detune off | Auto Detune on |
+  |---|---|---|
+  | PCM | Selected tone (all when the page's link switch is on) | Auto Detune amount |
+  | VA | Selected oscillator (the PCM link switch doesn't apply) | Auto Detune amount |
+  | Wavetable / Vector | Master fine tune | Master fine tune |
+
+  The master fine tune moves all tones together and keeps their detune; Auto Detune spreads
+  around it. The PCM page has its own Auto Detune switch: while on, its FINE TUNE row is the
+  detune amount, like the knob.
 - LFO depths and the other per-tone rows act on all tones (`tone.all.*`).
 - Macro parameter stacks replace per-page MFX knobs.
 
