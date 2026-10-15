@@ -86,3 +86,15 @@ python tools/audio_play_test.py song.mp3 -s 20       # 20 s of a file
 python tools/audio_play_test.py loop.wav --loop 0 2  # loop the first 2 s
 python tools/audio_play_test.py song.wav --voices 8  # 8 copies at once (CPU check)
 ```
+
+### 10. `lcxl3_probe.py`
+Launch Control XL3 DAW-mode probe (checks for `docs/LCXL3_LAYOUT.md`).
+- **Requirements:** the LCXL3 over USB; the app closed (it uses the same ports).
+- **Function:** Puts the LCXL3 in DAW Control (or Mixer) mode, optionally turns on touch events, sets LED colours and the permanent screen's title, and prints every message from both its ports. Ctrl+C leaves DAW mode.
+
+```bash
+python tools/lcxl3_probe.py                         # DAW Control mode, print everything
+python tools/lcxl3_probe.py --touch                 # + touch events
+python tools/lcxl3_probe.py --led 116 45 --led 118 5  # Play blue, Record red
+python tools/lcxl3_probe.py --screen "CTX - SCENE 3"  # permanent screen title line
+```
