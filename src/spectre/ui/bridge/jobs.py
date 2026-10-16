@@ -88,6 +88,8 @@ class JobsBridgeMixin(BridgeBaseMixin):
     def _on_job_done(self, name: str, result: Any) -> None:
         self._job_name, self._job_progress, self._job_text = "", -1.0, ""
         self.jobChanged.emit()
+        if name == "save" and isinstance(result, dict) and result.get("saved"):
+            self._saved_as_loaded()      # Shift + move now goes back to the saved state
         self.jobFinished.emit(name, result)
 
     # -- jobs ------------------------------------------------------------

@@ -135,8 +135,10 @@ class MacroBridgeMixin(BridgeBaseMixin):
                     out.append((mi, link))
         return out
 
-    def _readAbsolute(self, key: str) -> float:
-        ps = self.patch_state
+    def _readAbsolute(self, key: str, ps=None) -> float:
+        """Current value of `key` (ps: read the edited part's sound from this
+        state instead, e.g. the loaded-value snapshot)."""
+        ps = ps if ps is not None else self.patch_state
         key, part = self._splitPart(key)
         if part:
             if key.startswith("part."):
@@ -144,7 +146,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
                 return float({"level": p.volume, "pan": p.pan, "chorus_send": p.chorus_send,
                               "reverb_send": p.reverb_send}.get(key[5:], 0))
             if part != self._editedPart():
-                ps = self._macroPartState(part)
+                ps = self._macroPartState(part)   # (never a snapshot: those are the edited part's)
         try:
             if key == "common.level":
                 return float(ps.common.level)
@@ -464,6 +466,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
     def _forgetMacroPart(self, part: int) -> None:
         """A part's sound changed: drop its mirror and its macro bases."""
         self.__dict__.setdefault("_macro_part_states", {}).pop(int(part), None)
+        self._forget_loaded(int(part))
         suffix = f"@{int(part)}"
         bases = self.patch_state.macro_bases
         for k in [k for k in bases if k.endswith(suffix) and not k.startswith("part.")]:
@@ -474,6 +477,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
         self.patch_state.macro_bases = {}
         self._macro_part_states = {}
         self._auto_forget()
+        self._forget_loaded()
 
     def _applyPatchKey(self, key: str, iv: int, ps, edited: bool = True) -> None:
         """Common/tone macro write into `ps` + the synth's current patch base."""

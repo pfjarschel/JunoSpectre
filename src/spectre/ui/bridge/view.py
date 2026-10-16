@@ -22,7 +22,11 @@ class ViewBridgeMixin(BridgeBaseMixin):
     requestOpenEnvOverlay = pyqtSignal(str)
 
     def _emit_all_state_signals(self) -> None:
-        """Emit signals for all properties to trigger complete UI refresh."""
+        """Emit signals for all properties to trigger complete UI refresh.
+
+        Called after every load and part switch: also keeps the loaded state
+        controllers reset to (Shift + move)."""
+        self._capture_loaded()
         self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
         self.selectedToneChanged.emit(self._selected_tone)
         self.toneWavesChanged.emit()
@@ -208,6 +212,7 @@ class ViewBridgeMixin(BridgeBaseMixin):
 
     def _restore_librarian_entry(self) -> None:
         """Revert app + synth sound to the Librarian-entry snapshot."""
+        self._forget_loaded(self._loaded_slot())   # reverted: that is the loaded sound again
         snap = self._librarian_entry_snapshot
         if not isinstance(snap, dict) or not isinstance(snap.get("state"), dict):
             return

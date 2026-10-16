@@ -88,6 +88,22 @@ def test_engine_launch_quantization():
     assert song.tracks[0].queued_clip_idx == -1
 
 
+def test_engine_launch_and_stop_now(monkeypatch):
+    song = default_sequencer_song()
+    engine = SequencerEngine(song=song)
+    monkeypatch.setattr(SequencerEngine, "is_playing", property(lambda self: True))
+    engine.launch_clip(0, 2, now=True)          # Shift + clip: no wait for the bar
+    engine._on_clock_tick(tick_in_bar=50, total_ticks=50)
+    assert song.tracks[0].active_clip_idx == 2
+    assert engine.track_steps[0] == 0           # from the clip's start
+    engine.stop_track(0, now=True)
+    engine._on_clock_tick(tick_in_bar=51, total_ticks=51)
+    assert song.tracks[0].active_clip_idx == -1
+    engine.launch_clip(0, 1)                    # a plain launch still waits for the bar
+    engine._on_clock_tick(tick_in_bar=52, total_ticks=52)
+    assert song.tracks[0].active_clip_idx == -1
+
+
 def test_engine_scene_launch():
     song = default_sequencer_song()
     engine = SequencerEngine(song=song)

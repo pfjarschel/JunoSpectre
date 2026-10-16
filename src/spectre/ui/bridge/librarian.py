@@ -879,6 +879,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
     @pyqtSlot()
     def initPatch(self) -> None:
         """Initialize the active sound in RAM to the golden JUNO SPECTRE template."""
+        self._forget_loaded(self._loaded_slot())   # INIT is the new loaded sound
         logger.info("Initializing active patch in RAM to JUNO SPECTRE template...")
 
         # Pause motion playback without destroying the recorded trajectory, and hold

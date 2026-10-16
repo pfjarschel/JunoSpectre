@@ -1017,6 +1017,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             self._resetMacroBases()
         self._sound_mode = m
         self.patch_state.sound_mode = m
+        self._capture_loaded()
         self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
         self.perfPartsChanged.emit()
         try:
@@ -1656,6 +1657,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         they were saved against): the image already sounds base + macro, so
         nothing is recomputed.
         """
+        self._forget_loaded()          # a new performance: new loaded values
         from ...core.spectre_format import patch_state_from_dict
 
         try:
@@ -1784,6 +1786,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         the saved engine view. The image is always DT1-pushed, so Pi-only
         files never degrade to a header rename.
         """
+        self._forget_loaded()          # a new sound: new loaded values
         try:
             from ...core.spectre_format import load_spectre, patch_state_to_dict
             loaded = load_spectre(path)

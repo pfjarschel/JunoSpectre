@@ -432,10 +432,11 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         self.seqTracksChanged.emit()
 
     @pyqtSlot(int, int)
-    def seqLaunchClip(self, track_idx: int, clip_idx: int) -> None:
+    def seqLaunchClip(self, track_idx: int, clip_idx: int, now: bool = False) -> None:
+        """now: launch on the next tick instead of the next bar (controller Shift)."""
         if hasattr(self, "sequencer"):
             before = self.seqActiveClip
-            self.sequencer.launch_clip(track_idx, clip_idx)
+            self.sequencer.launch_clip(track_idx, clip_idx, now)
             self._seq_after_launch(before)
 
     @pyqtSlot(int)
@@ -453,16 +454,16 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         self.seqAutomationChanged.emit()
 
     @pyqtSlot(int)
-    def seqStopTrack(self, track_idx: int) -> None:
+    def seqStopTrack(self, track_idx: int, now: bool = False) -> None:
         if hasattr(self, "sequencer"):
-            self.sequencer.stop_track(track_idx)
+            self.sequencer.stop_track(track_idx, now)
             self.seqTracksChanged.emit()
 
     @pyqtSlot()
-    def seqStopAllClips(self) -> None:
-        """Stop every playing clip at the next bar; the transport keeps running."""
+    def seqStopAllClips(self, now: bool = False) -> None:
+        """Stop every playing clip at the next bar (now: at once); the transport keeps running."""
         if hasattr(self, "sequencer"):
-            self.sequencer.stop_all_clips()
+            self.sequencer.stop_all_clips(now)
             self.seqTracksChanged.emit()
             self.seqAutomationChanged.emit()
 

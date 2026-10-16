@@ -156,6 +156,7 @@ class FollowBridgeMixin(BridgeBaseMixin):
         self._resetMacroBases()
         self._sound_mode = mode
         self.patch_state.sound_mode = mode
+        self._capture_loaded()
         self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
         self.perfPartsChanged.emit()
 

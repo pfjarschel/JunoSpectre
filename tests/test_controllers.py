@@ -970,3 +970,109 @@ def test_part_mixer_moves_refresh_the_strips_throttled(ui):
     while time.monotonic() < deadline and len(count) < 2:
         app.processEvents()
     assert len(count) == 2                      # and the last one when the interval ends
+
+
+@pytest.mark.ui
+def test_solo_mute_and_shift_buttons(ui, monkeypatch):
+    from src.spectre.ui.bridge import controllers as ctl_mod
+
+    clock = [100.0]
+    monkeypatch.setattr(ctl_mod.time, "monotonic", lambda: clock[0])
+    app, bridge, _ = ui
+    bridge._ctl_open[DAW] = object()
+    bridge._ctl_send = lambda key, msg: None
+    bridge._hw_outputs = [PORT + " 36:0", DAW + " 36:1"]
+    bridge._ctl_sync_ports = lambda ins: None
+    assert bridge.loadControlPreset(str(SURFACE)) == ""
+    press = lambda num: _send(app, bridge, _cc(num, 127), _cc(num, 0), port=DAW)  # noqa: E731
+    shift = lambda on: _send(app, bridge, _cc(63, 127 if on else 0, ch=6), port=DAW)  # noqa: E731
+    tones = bridge.patch_state.tones
+    muted = lambda: [t.muted for t in tones]  # noqa: E731
+    bridge.setSelectedTone(2)
+
+    # PATCH mode: Solo/Mute act on the selected tone; a second Solo gives the old mutes back
+    press(65)
+    assert muted() == [True, False, True, True]
+    press(65)
+    assert muted() == [False, False, False, False]
+    press(66)
+    assert muted() == [False, True, False, False]
+    shift(True)
+    press(66)                                   # Shift + Mute: unmute all
+    assert muted() == [False, False, False, False]
+    press(39)                                   # Shift + tone button 3: mute tone 3, keep the selection
+    assert muted() == [False, False, True, False] and bridge.selectedTone == 2
+    bpm = bridge.bpm
+    press(102)                                  # Shift + Track >: tempo +1
+    assert bridge.bpm == bpm + 1
+    press(116)                                  # Shift + Play: tap tempo
+    clock[0] += 0.5
+    press(116)
+    assert bridge.bpm == 120.0
+    shift(False)
+    press(39)                                   # without Shift: select tone 3 again
+    assert bridge.selectedTone == 3
+
+    # PERFORM mode: the edited part
+    bridge._in_perform = lambda: True
+    part = bridge.patch_state.perf_parts[bridge._editedPart() - 1]
+    press(65)
+    assert part.solo
+    shift(True)
+    press(65)                                   # Shift + Solo: clear all solos
+    shift(False)
+    assert not any(p.solo for p in bridge.patch_state.perf_parts)
+
+
+@pytest.mark.ui
+def test_shift_move_resets_to_the_loaded_value(ui):
+    app, bridge, _ = ui
+    bridge._ctl_open[DAW] = object()
+    bridge._ctl_send = lambda key, msg: None
+    bridge._hw_outputs = [PORT + " 36:0", DAW + " 36:1"]
+    bridge._ctl_sync_ports = lambda ins: None
+    assert bridge.loadControlPreset(str(SURFACE)) == ""
+    for b in bridge._ctl_bindings:
+        b.takeover = "jump"
+    shift = lambda on: _send(app, bridge, _cc(63, 127 if on else 0, ch=6), port=DAW)  # noqa: E731
+    tones = bridge.patch_state.tones
+    bridge.setActiveView("JUNO PCM")
+    bridge.setLinkedMode(True)
+    for t, c in zip(tones, (100, 50, 70, 90)):
+        t.tvf_cutoff = c
+    bridge._emit_all_state_signals()             # a load: this is the loaded sound
+    loaded_macro = bridge.patch_state.macros[0].value
+
+    _send(app, bridge, _cc(29, 0, ch=15), port=DAW)     # cutoff (all linked tones) down
+    _send(app, bridge, _cc(13, 127, ch=15), port=DAW)   # macro 1 up
+    assert [t.tvf_cutoff for t in tones] == [0, 0, 0, 0]
+    shift(True)
+    _send(app, bridge, _cc(29, 5, ch=15), port=DAW)     # Shift + move: each tone its own loaded value
+    _send(app, bridge, _cc(13, 20, ch=15), port=DAW)
+    shift(False)
+    assert [t.tvf_cutoff for t in tones] == [100, 50, 70, 90]
+    assert bridge.patch_state.macros[0].value == loaded_macro
+
+    # A save makes the saved state the loaded one
+    _send(app, bridge, _cc(29, 127, ch=15), port=DAW)
+    bridge._saved_as_loaded()
+    _send(app, bridge, _cc(29, 0, ch=15), port=DAW)
+    shift(True)
+    _send(app, bridge, _cc(29, 5, ch=15), port=DAW)
+    shift(False)
+    assert [t.tvf_cutoff for t in tones] == [127, 127, 127, 127]
+
+    # PERFORM: part levels come from the performance as loaded; an edited
+    # part keeps the copy from before its edits when it is shown again
+    bridge._in_perform = lambda: True
+    bridge.patch_state.perf_parts[0].volume = 90
+    bridge._forget_loaded()
+    bridge._emit_all_state_signals()
+    bridge._ctl_apply("part.level@1", 0.0)
+    assert bridge._ctl_reset("part.level@1")
+    assert bridge.patch_state.perf_parts[0].volume == 90
+    part = bridge.patch_state.perf_parts[bridge._editedPart() - 1]
+    tones[0].tvf_cutoff = 10
+    part.modified = True
+    bridge._emit_all_state_signals()             # e.g. switching back to this edited part
+    assert bridge._loaded_value(bridge._ctl_keys("tone.1.tvf_cutoff")[0]) == 127

@@ -1,6 +1,6 @@
 {
  "name": "Launch Control XL3 \u00b7 Surface",
- "description": "DAW Control mode with screen names/values and LEDs (docs/LCXL3_LAYOUT.md). Knobs: macros, LFOs, sound core; faders: filter + amp envelopes; buttons: tone select, stop track / stop all, setlist, clips of the selected track. Page = part/track bank, Track = part/track. DAW Mixer button: levels, pans, routing of the selected tone/part, master FX, solo/mute. Novation button (tap: latch, hold: while held): page shortcuts, context knobs, pitch envelope, scene select/launch/stop.",
+ "description": "DAW Control mode with screen names/values and LEDs (docs/LCXL3_LAYOUT.md). Knobs: macros, LFOs, sound core; faders: filter + amp envelopes; buttons: tone select, stop track / stop all, setlist, clips of the selected track. Page = part/track bank, Track = part/track. DAW Mixer button: levels, pans, routing of the selected tone/part, master FX, solo/mute. Novation button (tap: latch, hold: while held): page shortcuts, context knobs, pitch envelope, scene select/launch/stop. Solo/Mute: the selected tone (PATCH) or part (PERFORM). Shift: launch/stop now, tap tempo (Play), tempo -/+1 (Track), tone mute (tone buttons), setlist first/last, clear solos/mutes.",
  "match": [
   "LCXL3"
  ],
@@ -59,7 +59,9 @@
   "cc:107": "Page Right",
   "cc:103": "Track Left",
   "cc:102": "Track Right",
-  "cc:104": "Novation"
+  "cc:104": "Novation",
+  "cc:65": "Solo",
+  "cc:66": "Mute"
  },
  "device": {
   "listen": [
@@ -2690,6 +2692,30 @@
    "behavior": "toggle",
    "takeover": "pickup",
    "context": "ALT:ON",
+   "port_hint": "DAW In"
+  },
+  {
+   "channel": 0,
+   "kind": "cc",
+   "number": 65,
+   "target": "action.solo.selected",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "toggle",
+   "takeover": "pickup",
+   "context": "",
+   "port_hint": "DAW In"
+  },
+  {
+   "channel": 0,
+   "kind": "cc",
+   "number": 66,
+   "target": "action.mute.selected",
+   "lo": 0.0,
+   "hi": 1.0,
+   "behavior": "toggle",
+   "takeover": "pickup",
+   "context": "",
    "port_hint": "DAW In"
   }
  ]

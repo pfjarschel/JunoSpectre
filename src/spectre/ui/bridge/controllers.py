@@ -11,6 +11,7 @@ when macros drive the target, the controller sets the base they add to.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import threading
@@ -27,6 +28,7 @@ from ...control.mapping import BEHAVIORS, TAKEOVERS, Binding, Resolver, pick_bin
 from ...core.arpeggio import FIELD_LABELS as ARP_FIELD_LABELS
 from ...core.macro_targets import filter_macro_targets, get_macro_categories
 from ...core.midi import port_key
+from ...core.patch_state import PatchState
 from ...sequencer.models import NUM_TRACKS, TRACK_BANK_SIZE
 from .base import BridgeBaseMixin
 from .hardware import save_hardware_settings
@@ -37,6 +39,11 @@ DRAIN_MS = 15
 FEEDBACK_MS = 100
 # LCXL3 touch events: channel 15 (0-based 14), the control's CC, 127 on touch / 0 on release
 TOUCH_CH = 14
+# LCXL3 Shift button: CC 63 on the feature channel (7, 0-based 6), 127 held / 0 released
+SHIFT_CC = 63
+# Tap tempo: taps further apart than this start a new count; up to this many intervals averaged
+TAP_RESET_S = 2.0
+TAP_INTERVALS = 4
 # Touchscreen hint: kept this long after the touch ends (twice after a move without touch)
 TOUCH_LINGER_MS = 700
 # Alt layer button: released sooner than this, with nothing used meanwhile, is a tap (latch)
@@ -67,6 +74,11 @@ ACTIONS: list[dict] = (
     + [_action("seq.track_bank", "Track Bank 1-8 / 9-16")]
     + [_action(f"seq.clip.{n}", f"Launch Clip {n} of Selected Track") for n in range(1, 9)]
     + [_action("seq.stop_selected", "Stop Selected Track"), _action("seq.stop_all", "Stop All Clips")]
+    + [_action(f"seq.clip_now.{n}", f"Launch/Stop Clip {n} of Selected Track Now") for n in range(1, 9)]
+    + [_action("seq.stop_selected_now", "Stop Selected Track Now"), _action("seq.stop_all_now", "Stop All Clips Now")]
+    + [_action("tempo.tap", "Tap Tempo"), _action("tempo.up", "Tempo +1 BPM"), _action("tempo.down", "Tempo -1 BPM")]
+    + [_action("solo.selected", "Solo Selected Tone / Part"), _action("mute.selected", "Mute Selected Tone / Part"),
+       _action("solo.clear", "Clear All Solos"), _action("mute.clear", "Unmute All")]
     + [_action("none", "Nothing (blocks wider scopes)"),
        _action("layer.alt", "Alt Layer (tap: latch, hold: while held)"),
        _action("scene.next", "Next Scene"), _action("scene.prev", "Previous Scene"),
@@ -81,6 +93,7 @@ ACTIONS: list[dict] = (
     + [_action("mfx.next", "Next MFX"), _action("mfx.prev", "Previous MFX"),
        _action("edit_target.open", "Part / MFX Picker")]
     + [_action("playlist.next", "Setlist Next"), _action("playlist.prev", "Setlist Previous"),
+       _action("playlist.first", "Setlist First Song"), _action("playlist.last", "Setlist Last Song"),
        _action("panic", "Panic (All Notes Off)"),
        _action("view.next", "Next Page"), _action("view.prev", "Previous Page"),
        _action("select.next", "Next Part / Track"), _action("select.prev", "Previous Part / Track"),
@@ -216,6 +229,13 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         self._alt_held = self._alt_latched = self._alt_used = self._alt_was = self._alt_shown = False
         self._alt_t0 = 0.0
         self._ctl_scene = 0                         # scene the alt layer's Play/Record act on
+        self._ctl_shift = False                     # LCXL3 Shift held: buttons do their Shift action
+        self._tap_times: list = []
+        self._tone_solo: tuple | None = None        # PATCH-mode tone solo: (tone, mutes before it)
+        # Shift + move resets a control to the value the sound had when loaded:
+        # the edited sound per part (0 = PATCH mode) and the performance level
+        self._loaded_sounds: dict = {}
+        self._loaded_perf: dict | None = None
         self._ctl_touched: set = set()              # (port, CC) of surface controls being touched
         # Touchscreen hint for the control under the hand: highlighted where it
         # is on screen, a toast otherwise (QML). Hidden a moment after the last
@@ -336,6 +356,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 del self._surface_state[k]
             self._ctl_layer = ""                      # on_connect starts the device fresh
             self._alt_held = self._alt_latched = self._alt_shown = False
+            self._ctl_shift = False
             self._ctl_device_messages(client, self._ctl_devices[i].get("on_connect", []))
         self._ctl_connected_devices = live
 
@@ -512,6 +533,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             # LCXL3 feature channel: mode reports, not controls. DAW Mixer = mixer layer.
             elif kind == "cc" and num == 30:
                 self._ctl_set_layer("MIXER" if raw == 1 else "")
+            elif kind == "cc" and num == SHIFT_CC:
+                self._ctl_shift = raw >= 64
             return
         self._ctl_moved[(port, ch, kind, num)] = (raw, time.monotonic())
         if self._ctl_learn_target:
@@ -540,8 +563,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 # Latching buttons send one message per press (127, then 0)
                 fire = (down != st.pressed) if b.behavior == "latch" else (down and not st.pressed)
                 if fire:
-                    self._ctl_run_action(b.target[7:])
-                    self._ctl_set_activity(f"{label} → {self._ctl_target_title(b.target)}")
+                    action = self._shift_action(b.target[7:]) if self._ctl_shift else b.target[7:]
+                    self._ctl_run_action(action)
+                    self._ctl_set_activity(f"{label} → {self._ctl_target_title('action.' + action)}")
                 st.pressed = down
                 continue
             eff = self._ctl_resolve(b.target)
@@ -550,6 +574,14 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 continue
             if self._auto_owns(eff):
                 self._ctl_set_activity(f"{label} = {raw} → {self._ctl_target_title(eff)}  (automated)")
+                continue
+            if self._ctl_shift:
+                # Shift + move: back to the loaded value; the control picks it up again after
+                done = self._ctl_reset(eff)
+                self._ctl_resolver.forget(b)
+                self._ctl_set_activity(f"{label} → {self._ctl_target_title(eff)}  "
+                                       + ("(loaded value)" if done else "(no loaded value)"))
+                self._touch_show(eff)
                 continue
             # Stepped targets switch right away: their value is quantized, so
             # pickup would always see it as "moved elsewhere"
@@ -828,6 +860,100 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             touched.add(k)
         if touched:
             self._emitForMacroKeys(touched, macros=linked)
+
+    # -- reset to the loaded value (Shift + move) ---------------------------------
+
+    def _loaded_slot(self) -> int:
+        """The sound the editors show: the edited part, or 0 in PATCH mode."""
+        return self._editedPart() if self._in_perform() else 0
+
+    def _capture_loaded(self) -> None:
+        """After a full state refresh (a load, or a part switch): remember the sound
+        as loaded. A part already edited keeps the copy from before its edits."""
+        if getattr(self, "_loaded_sounds", None) is None:
+            return
+        ps = self.patch_state
+        slot = self._loaded_slot()
+        edited = slot and ps.perf_parts[slot - 1].modified
+        if slot == 0 or not edited or slot not in self._loaded_sounds:
+            snap = PatchState()
+            snap.tones = copy.deepcopy(ps.tones)
+            snap.common = copy.deepcopy(ps.common)
+            snap.effects = copy.deepcopy(ps.effects)
+            self._loaded_sounds[slot] = snap
+        if slot == 0 or self._loaded_perf is None:
+            fx = {}
+            if self._in_perform():
+                for k in self._PERF_FX_MACROS:
+                    try:
+                        fx[k] = self._readAbsolute(k)
+                    except Exception:
+                        pass        # that processor isn't readable yet: no reset for it
+            self._loaded_perf = {
+                "parts": [(p.volume, p.pan, p.chorus_send, p.reverb_send) for p in ps.perf_parts],
+                "fx": fx,
+                "macros": [float(m.value) for m in ps.macros],
+            }
+
+    def _forget_loaded(self, part: int | None = None) -> None:
+        """A new sound: part `part` got one (its copy goes), or everything (None)."""
+        if getattr(self, "_loaded_sounds", None) is None:
+            return
+        if part is None:
+            self._loaded_sounds, self._loaded_perf = {}, None
+        else:
+            self._loaded_sounds.pop(int(part), None)
+
+    def _saved_as_loaded(self) -> None:
+        """A save: what is stored now is the new loaded state."""
+        self._forget_loaded()
+        self._capture_loaded()
+
+    def _loaded_value(self, key: str):
+        """Loaded value of a concrete key, or None when there is none."""
+        base, part = self._splitPart(key)
+        perf = self._loaded_perf or {}
+        if base.startswith("part."):
+            parts = perf.get("parts", [])
+            field = {"part.level": 0, "part.pan": 1, "part.chorus_send": 2, "part.reverb_send": 3}.get(base)
+            return float(parts[part - 1][field]) if field is not None and 0 < part <= len(parts) else None
+        if part and part != self._editedPart():
+            return None          # only the edited part's sound is kept
+        if base in self._PERF_FX_MACROS and self._in_perform():
+            return perf.get("fx", {}).get(base)
+        if base.startswith(("vector.", "seq.")):
+            return None
+        snap = self._loaded_sounds.get(self._loaded_slot())
+        return None if snap is None else self._readAbsolute(key, snap)
+
+    def _ctl_reset(self, target: str) -> bool:
+        """Put `target` back to its loaded value (each tone its own). False when it has none."""
+        eff = self._ctl_resolve(target)
+        if not eff or eff in STEPPED or eff in DETUNE or eff.startswith(("mfx.p.", "action.")):
+            return False
+        if eff.startswith("macro."):
+            macros = (self._loaded_perf or {}).get("macros", [])
+            n = int(eff[6:]) if eff[6:].isdigit() else 0
+            if not 1 <= n <= len(macros):
+                return False
+            self.setMacro(n, macros[n - 1])
+            return True
+        touched, linked = set(), False
+        with self._macroWrites():
+            for k in self._ctl_keys(eff):
+                value = self._loaded_value(k)
+                if value is None:
+                    continue
+                if self._macroLinksFor(k):
+                    self.patch_state.macro_bases[k] = value
+                    self._recomputeTarget(k)
+                    linked = True
+                else:
+                    self._applyAbsolute(k, value)
+                touched.add(k)
+        if touched:
+            self._emitForMacroKeys(touched, macros=linked)
+        return bool(touched)
 
     def _ctl_target_title(self, target: str) -> str:
         if target.startswith("context."):
@@ -1276,8 +1402,95 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self.seqSetTrackBank(1 if action == "bank.next" else 0)
             elif action in ("select.next", "select.prev"):
                 self.selectNextTrack(1 if action == "select.next" else -1)
+            elif action.startswith("seq.clip_now."):
+                t_idx = self._active_seq_track
+                if self._seq_clip_state(t_idx, n - 1) == "playing":
+                    self.seqStopTrack(t_idx, now=True)
+                else:
+                    self.seqLaunchClip(t_idx, n - 1, now=True)
+            elif action == "seq.stop_selected_now":
+                self.seqStopTrack(self._active_seq_track, now=True)
+            elif action == "seq.stop_all_now":
+                self.seqStopAllClips(now=True)
+            elif action == "tempo.tap":
+                self._tap_tempo()
+            elif action in ("tempo.up", "tempo.down"):
+                self.setBpm(self.bpm + (1 if action == "tempo.up" else -1))
+            elif action == "playlist.first":
+                if self._setlist_entries:
+                    self.activateSong(0)
+            elif action == "playlist.last":
+                if self._setlist_entries:
+                    self.activateSong(len(self._setlist_entries) - 1)
+            elif action in ("solo.selected", "mute.selected", "solo.clear", "mute.clear"):
+                self._solo_mute_action(action)
         except Exception as e:
             logger.warning(f"controller action {action} failed: {e}")
+
+    # Shift + a button: the same thing right now, or its other side
+    _SHIFT_ACTIONS = {
+        "seq.stop_selected": "seq.stop_selected_now", "seq.stop_all": "seq.stop_all_now",
+        "seq.toggle_play": "tempo.tap", "select.next": "tempo.up", "select.prev": "tempo.down",
+        "playlist.next": "playlist.last", "playlist.prev": "playlist.first",
+        "solo.selected": "solo.clear", "mute.selected": "mute.clear",
+    }
+
+    def _shift_action(self, action: str) -> str:
+        if action.startswith("seq.clip."):
+            return "seq.clip_now." + action[len("seq.clip."):]
+        if action.startswith("tone.select."):
+            return "tone.mute." + action[len("tone.select."):]
+        return self._SHIFT_ACTIONS.get(action, action)
+
+    def _tap_tempo(self) -> None:
+        """One tap: from the second tap on, the tempo is the average of the last intervals."""
+        now = time.monotonic()
+        taps = self._tap_times
+        if taps and now - taps[-1] > TAP_RESET_S:
+            taps.clear()
+        taps.append(now)
+        del taps[:-(TAP_INTERVALS + 1)]
+        if len(taps) >= 2:
+            self.setBpm(round(60.0 * (len(taps) - 1) / (taps[-1] - taps[0]), 1))
+
+    def _solo_mute_action(self, action: str) -> None:
+        """Solo / Mute buttons: the edited part in PERFORM, the selected tone in PATCH."""
+        if self._in_perform():
+            parts = self.patch_state.perf_parts
+            n = self._editedPart()
+            if action == "solo.selected":
+                self.setPartSolo(n, not parts[n - 1].solo)
+            elif action == "mute.selected":
+                self.setPartMute(n, not parts[n - 1].muted)
+            else:
+                for p in parts:
+                    if action == "solo.clear" and p.solo:
+                        self.setPartSolo(p.part_index, False)
+                    elif action == "mute.clear" and p.muted:
+                        self.setPartMute(p.part_index, False)
+            return
+        tones = self.patch_state.tones
+        sel = int(self._selected_tone)
+        if action == "mute.selected":
+            self.toggleToneMute(sel)
+            return
+        # A tone solo mutes the other tones; ending it gives the old mutes back,
+        # unless the mutes were changed by hand since (then they stay)
+        solo, self._tone_solo = self._tone_solo, None
+        active = solo is not None and [t.muted for t in tones] == [t.tone_index != solo[0] for t in tones]
+        if active:
+            for t, was in zip(tones, solo[1]):
+                if t.muted != was:
+                    self.setToneMute(t.tone_index, was)
+        if action == "mute.clear":
+            for t in tones:
+                if t.muted:
+                    self.setToneMute(t.tone_index, False)
+        elif action == "solo.selected" and not (active and solo[0] == sel):
+            self._tone_solo = (sel, [t.muted for t in tones])
+            for t in tones:
+                if t.muted != (t.tone_index != sel):
+                    self.setToneMute(t.tone_index, t.tone_index != sel)
 
     # -- presets -------------------------------------------------------------
 

@@ -149,6 +149,35 @@ The Novation button has no LED, so the layer shows itself through:
 - **The permanent screen line**, e.g. `CTX · SCENE 3` (title field, 16 characters; the scene
   number alone if it doesn't fit).
 
+## Solo, Mute and Shift
+
+The LCXL3's Solo (CC 65), Mute (CC 66) and Shift (CC 63, on channel 7) buttons report in DAW mode
+(tested 2026-10-15). Solo/Mute only switch the device's DAW mode while its Mode button is
+enabled, so on their own they are free. Their white LEDs belong to the device (DAW mode).
+
+**Solo / Mute** act on the selected slot in every mode and layer: the edited part in Perform
+mode, the selected tone in Patch mode. A tone solo mutes the other tones; pressing Solo again
+gives the old mutes back (unless they were changed by hand meanwhile).
+
+**Shift** is a modifier, not a layer: Shift + a control does the same thing right now, or its
+other side.
+
+| Shift + | Does |
+|---|---|
+| Any knob / fader moved | Back to the value the sound had **when it was loaded** (each tone its own) |
+| Clip button | Launch that clip now, from its start (stop it now if it is playing) |
+| Stop selected track / Stop all clips | Stop now instead of at the next bar |
+| Play | Tap tempo (average of the last 4 taps; a 2 s pause starts over) |
+| Track ◀ / ▶ | Tempo −1 / +1 BPM |
+| Tone button 1–4 | Mute / unmute that tone (the selection stays) |
+| Setlist ◀ / ▶ | First / last song |
+| Solo / Mute | Clear all solos / unmute all |
+
+"Loaded" is the sound as it was loaded (library, file, song, INIT, sync from the synth) or last
+saved; a part already edited keeps the copy from before its edits when you come back to it.
+Mixer values, performance FX and macro values come from the performance as loaded. Stepped,
+detune, MFX-parameter, vector and sequencer targets have no loaded value (nothing happens).
+
 ## Touch events
 
 **Off.** The LCXL3 can report touch on/off (feature message `B6 47 7F`, CC 127/0 on channel 15,
@@ -235,6 +264,5 @@ Each step is usable on its own:
 
 `tools/lcxl3_probe.py` puts the device in DAW mode and prints everything it sends. Open points:
 
-- whether Shift and the Solo / Mute buttons report in DAW mode;
 - whether Play / Record take LED colours;
 - how much of the permanent screen's title line is visible.

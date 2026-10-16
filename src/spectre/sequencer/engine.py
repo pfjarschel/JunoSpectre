@@ -104,6 +104,8 @@ class SequencerEngine:
         self._lane_anchor: List[int] = [0] * NUM_AUTOMATION_LANES
         # Tick each track's clip restarted on (linked lanes follow it)
         self._track_anchor: List[int] = [0] * NUM_TRACKS
+        # Tracks whose queued launch/stop applies on the next tick, not the next bar
+        self._launch_now: set = set()
         self.automation_levels: List[Optional[int]] = [None] * NUM_AUTOMATION_LANES
         self._lane_last_send: List[int] = [0] * NUM_AUTOMATION_LANES
         self._lane_segment: List[Optional[tuple]] = [None] * NUM_AUTOMATION_LANES
@@ -190,19 +192,24 @@ class SequencerEngine:
             self._notify_automation()
         self._dispatch_ui(force=True)
 
-    def launch_clip(self, track_idx: int, clip_idx: int) -> None:
+    def launch_clip(self, track_idx: int, clip_idx: int, now: bool = False) -> None:
         """Queue a specific clip on a track to launch on the next measure boundary
-        (an audio clip that doesn't sync starts at once, transport running or not)."""
+        (an audio clip that doesn't sync starts at once, transport running or not).
+        now: while playing, launch on the next tick instead (from the clip's start)."""
         if 0 <= track_idx < len(self.song.tracks):
             track = self.song.tracks[track_idx]
             if 0 <= clip_idx < len(track.clips):
                 track.selected_clip_idx = clip_idx
                 clip = track.clips[clip_idx]
-                if track.is_audio and clip.audio is not None and not clip.audio.sync:
+                if track.is_audio and clip.audio is not None and (
+                        not clip.audio.sync or (now and self.is_playing)):
                     with self._lock:
                         self._audio_start_now(track_idx, track, clip_idx)
                 else:
-                    track.queued_clip_idx = clip_idx
+                    with self._lock:
+                        track.queued_clip_idx = clip_idx
+                        if now and self.is_playing:
+                            self._launch_now.add(track_idx)
 
     def launch_scene(self, scene_idx: int) -> None:
         """Queue every track and automation lane to the designated scene row.
@@ -229,13 +236,13 @@ class SequencerEngine:
         if 0 <= lane_idx < len(self.song.automation):
             self.song.automation[lane_idx].queued_clip_idx = -2
 
-    def stop_track(self, track_idx: int) -> None:
+    def stop_track(self, track_idx: int, now: bool = False) -> None:
         """Queue a track to stop at the next measure boundary (audio that
-        started at once stops at once)."""
+        started at once stops at once). now: stop on the next tick instead."""
         if 0 <= track_idx < len(self.song.tracks):
             track = self.song.tracks[track_idx]
             clip = self._audio_active_clip(track)
-            if clip is not None and not clip.audio.sync:
+            if clip is not None and (not clip.audio.sync or now):
                 with self._lock:
                     track.active_clip_idx = -1
                     track.queued_clip_idx = -1
@@ -243,15 +250,19 @@ class SequencerEngine:
                     if self.audio is not None:
                         self.audio.stop(track_idx, None)
                 return
-            track.queued_clip_idx = -2  # -2 means queued stop
+            with self._lock:
+                track.queued_clip_idx = -2  # -2 means queued stop
+                if now and self.is_playing:
+                    self._launch_now.add(track_idx)
 
-    def stop_all_clips(self) -> None:
+    def stop_all_clips(self, now: bool = False) -> None:
         """Stop every playing clip (tracks and unlinked lanes) the way stop_track does;
         the transport keeps running. Idle tracks are left alone, so a stopped
-        transport still starts them on Play."""
+        transport still starts them on Play. now: tracks stop on the next tick
+        (unlinked lanes still let go at the bar)."""
         for i, track in enumerate(self.song.tracks):
             if self._audio_active_clip(track) is not None or (self.is_playing and track.active_clip_idx >= 0):
-                self.stop_track(i)
+                self.stop_track(i, now)
         if self.is_playing:
             for i, lane in enumerate(self.song.automation):
                 if not lane.is_linked and lane.active_clip_idx >= 0:
@@ -300,8 +311,11 @@ class SequencerEngine:
                 self._track_step_ticks[t_idx] = step_len_ticks
                 self._track_tick_accum[t_idx] += 1
 
-                # Check launch quantization on master bar downbeat
-                if is_bar_downbeat and track.queued_clip_idx != -1:
+                # Check launch quantization on master bar downbeat (or at once, for a "now" launch)
+                now = t_idx in self._launch_now
+                if now:
+                    self._launch_now.discard(t_idx)
+                if (is_bar_downbeat or now) and track.queued_clip_idx != -1:
                     if track.queued_clip_idx == -2:
                         track.active_clip_idx = -1
                     else:
