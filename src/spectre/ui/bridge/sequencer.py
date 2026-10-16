@@ -783,3 +783,36 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             self.recorder.record_tie()
             self.seqCursorStepChanged.emit()
             self.seqActiveClipChanged.emit()
+
+    def _apply_tempo(self, bpm_val: float) -> float:
+        """Set the global tempo: sequencer clock and vector motion follow the same value."""
+        bpm_val = max(20.0, min(300.0, float(bpm_val)))
+        if hasattr(self, "sequencer"):
+            self.sequencer.set_bpm(bpm_val)
+            bpm_val = self.sequencer.bpm
+        self.vector.motion.bpm = bpm_val
+        self.bpmChanged.emit(bpm_val)
+        return bpm_val
+
+    @pyqtSlot(float)
+    def setBpm(self, bpm_val: float) -> None:
+        """Update the global tempo BPM (held while synced audio plays)."""
+        if hasattr(self, "_audio_hold_tempo") and self._audio_hold_tempo(bpm_val):
+            return
+        bpm_val = self._apply_tempo(bpm_val)
+        self._rebaseDirect([("vector.bpm", bpm_val)])
+
+    @pyqtSlot()
+    def panic(self) -> None:
+        """Stop the sequencer and send All Notes Off / Reset All Controllers."""
+        if hasattr(self, "sequencer") and self.sequencer.is_playing:
+            self.seqStop()
+        try:
+            if self.juno and self.juno.midi:
+                self.juno.midi.send_all_notes_off(include_reset=True)
+            else:
+                logger.warning("PANIC ignored: synth not connected (mock/no MIDI).")
+        except Exception as e:
+            logger.warning(f"PANIC failed: {e}")
+            return
+        logger.info("PANIC: Sent All Notes Off")

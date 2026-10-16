@@ -185,7 +185,7 @@ class ArpBridgeMixin(BridgeBaseMixin):
             clock.resync()
 
 
-# Knob targets (bridge/controllers.py STEPPED): "_arp_text_<field>" reads the
+# Knob targets (bridge/context_knobs.py STEPPED): "_arp_text_<field>" reads the
 # value label, "_set_arp_text_<field>" sets it from one.
 def _label_accessors(field: str):
     def get(self) -> str:

@@ -114,16 +114,6 @@ class VectorBridgeMixin(BridgeBaseMixin):
             return self.sequencer.bpm
         return self.vector.motion.bpm
 
-    def _apply_tempo(self, bpm_val: float) -> float:
-        """Set the global tempo: sequencer clock and vector motion follow the same value."""
-        bpm_val = max(20.0, min(300.0, float(bpm_val)))
-        if hasattr(self, "sequencer"):
-            self.sequencer.set_bpm(bpm_val)
-            bpm_val = self.sequencer.bpm
-        self.vector.motion.bpm = bpm_val
-        self.bpmChanged.emit(bpm_val)
-        return bpm_val
-
     @pyqtProperty(str, notify=automatorChanged)
     def automator(self) -> str:
         return self.vector.motion.automator.value
@@ -300,72 +290,6 @@ class VectorBridgeMixin(BridgeBaseMixin):
         """Toggle low-pass smoothing of the trajectory on stop."""
         self.vector.motion.smoothing = bool(enabled)
         self.smoothingChanged.emit(self.vector.motion.smoothing)
-
-    @pyqtSlot(float)
-    def setBpm(self, bpm_val: float) -> None:
-        """Update the global tempo BPM (held while synced audio plays)."""
-        if hasattr(self, "_audio_hold_tempo") and self._audio_hold_tempo(bpm_val):
-            return
-        bpm_val = self._apply_tempo(bpm_val)
-        self._rebaseDirect([("vector.bpm", bpm_val)])
-
-    @pyqtSlot()
-    def panic(self) -> None:
-        """Stop the sequencer and send All Notes Off / Reset All Controllers."""
-        if hasattr(self, "sequencer") and self.sequencer.is_playing:
-            self.seqStop()
-        try:
-            if self.juno and self.juno.midi:
-                self.juno.midi.send_all_notes_off(include_reset=True)
-            else:
-                logger.warning("PANIC ignored: synth not connected (mock/no MIDI).")
-        except Exception as e:
-            logger.warning(f"PANIC failed: {e}")
-            return
-        logger.info("PANIC: Sent All Notes Off")
-
-    @pyqtSlot(int)
-    def toggleToneMute(self, tone_number: int) -> None:
-        """Toggle mute state for tone 1..4 (disables/enables wave playback)."""
-        idx = max(1, min(4, tone_number)) - 1
-        new_muted = not self.patch_state.tones[idx].muted
-        self.setToneMute(tone_number, new_muted)
-
-    @pyqtSlot(int, bool)
-    def setToneMute(self, tone_number: int, muted: bool) -> None:
-        """Set mute state for tone 1..4."""
-        idx = max(1, min(4, tone_number)) - 1
-        self.patch_state.tones[idx].muted = muted
-        self.vector.set_tone_mute(tone_number, muted)
-        target_level = 0 if muted else self.patch_state.tones[idx].level
-        if self.juno:
-            try:
-                self.juno.set_tone_switch(tone_number, not muted)
-                self.juno.set_tone_level(tone_number, target_level)
-            except Exception as e:
-                logger.error(f"Error setting tone mute on synth: {e}")
-        self.toneMutesChanged.emit()
-        self.toneLevelsChanged.emit(*self.vector.tone_levels)
-        if tone_number == self._selected_tone:
-            self.tvaLevelChanged.emit(self.tvaLevel)
-
-    @pyqtSlot(int, int)
-    def setToneLevel(self, tone_number: int, level: int) -> None:
-        """Directly adjust level of a single tone (1..4)."""
-        idx = max(1, min(4, tone_number)) - 1
-        clamped = max(0, min(127, int(level)))
-        self.patch_state.tones[idx].level = clamped
-        if not self.patch_state.tones[idx].muted:
-            self.vector.set_tone_level(tone_number, clamped)
-            if self.juno:
-                try:
-                    self.juno.set_tone_level(tone_number, clamped)
-                except Exception as e:
-                    logger.error(f"Error setting tone level on synth: {e}")
-        self._rebaseDirect([(f"tone.{max(1, min(4, tone_number))}.tva_level", clamped)])
-        self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])
-        if tone_number == self._selected_tone:
-            self.tvaLevelChanged.emit(clamped)
 
     @pyqtSlot(int)
     def setTvaLevel(self, val: int) -> None:

@@ -1123,89 +1123,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         return True
 
     @pyqtSlot()
-    @pyqtSlot(bool)
-    def syncPerformanceFromSynth(self, async_mode: bool = False) -> None:
-        """Read the performance name, 16 part mixer blocks and shared FX from
-        the synth. async_mode reads on the job worker and applies on the UI
-        thread. Never touches the patch editors directly (the edited part is
-        re-read after)."""
-        juno = self.juno
-        if juno is None:
-            logger.info("Cannot sync performance: no synthesizer connected.")
-            return
-        if self._sync_busy:
-            logger.info("Hardware sync already in progress, ignoring request.")
-            return
-        self._set_sync_busy(True)
-        kept_names = [p.patch_name or p.name for p in self.patch_state.perf_parts]
-        active = int(self.patch_state.active_perf_part)
-
-        def read(progress=None) -> dict:
-            return self._read_synth_performance(juno, kept_names, active)
-
-        if not async_mode:
-            self._apply_synth_performance(read(), wait_editors=True)
-        elif not self._start_job("sync", "Reading the performance…", read,
-                                 done=self._apply_synth_performance):
-            logger.info("Sync skipped: another synth job is running.")
-            self._set_sync_busy(False)
-
-    def _read_synth_performance(self, juno, kept_names: list, active: int) -> dict:
-        """The synth's performance name, parts (names resolved) and FX (worker)."""
-        out: dict = {}
-        try:
-            out["name"] = juno.get_perf_name(timeout=1.0)
-        except Exception as e:
-            logger.debug(f"syncPerformance: name read failed: {e}")
-        try:
-            parts = juno.get_perf_parts(timeout=1.0)
-            if parts and len(parts) == 16:
-                repo = self._librarian_repo
-                for i, p in enumerate(parts):
-                    if repo is not None:
-                        p.patch_name = repo.resolve_patch_name(p.patch_msb, p.patch_lsb, p.patch_pc)
-                    # The edited part, or one the library doesn't know: ask the synth
-                    if p.part_index == active or not p.patch_name:
-                        try:
-                            p.patch_name = juno.get_perf_part_patch_name(p.part_index, timeout=0.25) \
-                                or p.patch_name
-                        except Exception as e:
-                            logger.debug(f"part {p.part_index} name read failed: {e}")
-                    if not p.patch_name and kept_names[i] and not kept_names[i].startswith("Part "):
-                        p.patch_name = kept_names[i]
-                    p.patch_name = p.patch_name or f"Part {p.part_index}"
-                out["parts"] = parts
-        except Exception as e:
-            logger.debug(f"syncPerformance: parts read failed: {e}")
-        try:
-            out["fx"] = juno.get_perf_fx(timeout=1.0)
-        except Exception as e:
-            logger.debug(f"syncPerformance: fx read failed: {e}")
-        return out
-
-    def _apply_synth_performance(self, out, wait_editors: bool = False) -> None:
-        """Take a performance read from the synth into the app (UI thread)."""
-        try:
-            if not isinstance(out, dict):
-                return
-            name = out.get("name")
-            if isinstance(name, str) and name:
-                self.patch_state.perf_name = name[:12]
-                self._patch_name = name
-            if out.get("parts"):
-                self.patch_state.perf_parts = out["parts"]
-            if out.get("fx") is not None:
-                self.patch_state.perf_fx = out["fx"]
-            self._sound_mode = "PERFORM"
-            self.patch_state.sound_mode = "PERFORM"
-            self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
-            self.perfPartsChanged.emit()
-            self._emit_fx_editor_signals()
-            self._refresh_editors_for_part(self.patch_state.active_perf_part, async_mode=not wait_editors)
-        finally:
-            self._set_sync_busy(False)
-
-    @pyqtSlot()
     def initPerformance(self) -> None:
         """Reset the temporary performance to a fresh song (RAM only, nothing saved).
 
@@ -1554,52 +1471,32 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         self.seqActiveClipChanged.emit()
         self.seqStateChanged.emit()
 
-    @pyqtSlot(str, result=bool)
-    def loadSpectreFile(self, path: str) -> bool:
-        """Load a Pi .spectre file so it actually sounds (stays in Librarian).
+    @pyqtSlot(int, int)
+    def setPartVolume(self, part_index: int, vol: int) -> None:
+        """Set mixer level for Performance Part 1..16 (state + SysEx DT1)."""
+        if 1 <= part_index <= 16:
+            self.patch_state.perf_parts[part_index - 1].volume = max(0, min(127, int(vol)))
+            juno = self.juno
+            if juno is not None:
+                try:
+                    juno.set_perf_part_level(part_index, int(vol))
+                except Exception as e:
+                    logger.debug(f"setPartVolume: synth write failed: {e}")
+            self._rebaseDirect([(f"part.level@{part_index}",
+                                 self.patch_state.perf_parts[part_index - 1].volume)])
+            self.perfPartsChanged.emit()
 
-        kind=performance proposes PERFORMANCE on OK; patch-like kinds propose
-        the saved engine view. The image is always DT1-pushed, so Pi-only
-        files never degrade to a header rename.
-        """
-        self._forget_loaded()          # a new sound: new loaded values
-        try:
-            loaded = load_spectre(path)
-        except Exception as e:
-            logger.warning(f"loadSpectreFile failed for {path}: {e}")
-            return False
-        kind = str(loaded.get("kind") or "patch")
-        if kind == "playlist":
-            ok = self.loadSetlist(path)
-            if ok:
-                self._pending_view = "SETLIST"
-            return ok
-        if kind == "performance":
-            # One file = the whole song: 16-part performance, part sounds,
-            # macros and (when saved with one) the sequence + tempo.
-            name = str((loaded.get("meta") or {}).get("name") or "")
-            if not self._load_song(patch_state_to_dict(loaded["patch_state"]), name,
-                                   loaded.get("spectre"), path=path):
-                return False
-            self._pending_view = "PERFORMANCE"
-            return True
-        # Single-patch sound: swap state, push image to the temp buffer.
-        self.patch_state = loaded["patch_state"]
-        self.patch_state.sound_mode = "PATCH"
-        self._sound_mode = "PATCH"
-        self._patch_name = self.patch_state.common.name
-        juno = self.juno
-        if juno is not None:
-            try:
-                juno.set_sound_mode(SoundMode.PATCH)
-                juno.set_active_perf_part(1)
-                juno.write_patch_regions(self.patch_state, ADDR_TEMP_PATCH_PART_1)
-            except Exception as e:
-                logger.debug(f"loadSpectreFile: synth push failed: {e}")
-        self._apply_arp_extras(loaded.get("spectre"))
-        self._refresh_tone_waves()
-        self._set_current_file_ref(path, kind)
-        self._emit_all_state_signals()
-        self._pending_view = self._engine_view_for(loaded.get("spectre"))
-        return True
-
+    @pyqtSlot(int, int)
+    def setPartPan(self, part_index: int, pan: int) -> None:
+        """Set pan for Performance Part 1..16 (state + SysEx DT1)."""
+        if 1 <= part_index <= 16:
+            self.patch_state.perf_parts[part_index - 1].pan = max(0, min(127, int(pan)))
+            juno = self.juno
+            if juno is not None:
+                try:
+                    juno.set_perf_part_pan(part_index, int(pan))
+                except Exception as e:
+                    logger.debug(f"setPartPan: synth write failed: {e}")
+            self._rebaseDirect([(f"part.pan@{part_index}",
+                                 self.patch_state.perf_parts[part_index - 1].pan)])
+            self.perfPartsChanged.emit()

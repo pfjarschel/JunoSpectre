@@ -263,44 +263,18 @@ class ViewBridgeMixin(BridgeBaseMixin):
         self._queue_push_jobs(jobs, replace=True)
 
     @pyqtSlot(int)
-    def setSelectedTone(self, tone_number: int) -> None:
-        """Select active tone (1..4) and refresh all tone-specific properties."""
-        clamped = max(1, min(4, int(tone_number)))
-        if self._selected_tone != clamped:
-            self._selected_tone = clamped
-            self.selectedToneChanged.emit(self._selected_tone)
-            # Emit tone property changes so views bind to this tone's parameters
-            self.pitchCoarseChanged.emit(self.pitchCoarse)
-            self.pitchFineChanged.emit(self.pitchFine)
-            self.tvfTypeChanged.emit(self.tvfType)
-            self.masterCutoffChanged.emit(self.masterCutoff)
-            self.masterResoChanged.emit(self.masterReso)
-            self.tvfKeyFollowChanged.emit(self.tvfKeyFollow)
-            self.tvfEnvDepthChanged.emit(self.tvfEnvDepth)
-            self.tvfVeloSensChanged.emit(self.tvfVeloSens)
-            self.tvfAttackChanged.emit(self.tvfAttack)
-            self.tvfDecayChanged.emit(self.tvfDecay)
-            self.tvfSustainChanged.emit(self.tvfSustain)
-            self.tvfReleaseChanged.emit(self.tvfRelease)
-            self.tvaLevelChanged.emit(self.tvaLevel)
-            self.tvaPanChanged.emit(self.tvaPan)
-            self.tvaVeloSensChanged.emit(self.tvaVeloSens)
-            self.tvaAttackChanged.emit(self.tvaAttack)
-            self.tvaDecayChanged.emit(self.tvaDecay)
-            self.tvaSustainChanged.emit(self.tvaSustain)
-            self.tvaReleaseChanged.emit(self.tvaRelease)
-            self.masterAttackChanged.emit(self.masterAttack)
-            self.masterReleaseChanged.emit(self.masterRelease)
-            self.lfoParamsChanged.emit()
-            self.pitchEnvChanged.emit()
-            self.envShapeChanged.emit("TVF")
-            self.envShapeChanged.emit("TVA")
-            self.envShapeChanged.emit("PITCH")
-            self.stepLfoChanged.emit()
+    def openWaveBrowser(self, tone_index: int) -> None:
+        """Request the UI to open the Wave Browser modal for a target tone (1-4)."""
+        logger.debug(f"UI requested wave browser for Tone {tone_index}")
+        self.requestOpenWaveBrowser.emit(tone_index)
 
-    @pyqtSlot(bool)
-    def setLinkedMode(self, linked: bool) -> None:
-        """Toggle linked mode across all 4 tones."""
-        if self._linked_mode != linked:
-            self._linked_mode = linked
-            self.linkedModeChanged.emit(self._linked_mode)
+    @pyqtSlot()
+    def openScreensOverlay(self) -> None:
+        """Request UI to open the Screens Launcher overlay."""
+        self.requestOpenScreensOverlay.emit()
+
+    @pyqtSlot()
+    def openInitPatchModal(self) -> None:
+        """Request UI to open the Patch Initialization confirmation modal."""
+        logger.debug("UI requested openInitPatchModal")
+        self.requestOpenInitPatchModal.emit()

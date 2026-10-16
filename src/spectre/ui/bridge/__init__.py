@@ -22,6 +22,7 @@ from .patch import PatchBridgeMixin
 from .performance import PerformanceBridgeMixin
 from .sequencer import SequencerBridgeMixin
 from .setlist import SetlistBridgeMixin
+from .sync import SyncBridgeMixin
 from .system import SystemBridgeMixin
 from .tmt import TmtBridgeMixin
 from .vector import VectorBridgeMixin
@@ -34,6 +35,7 @@ class SpectreBridge(
     AutomationBridgeMixin,
     SetlistBridgeMixin,
     SystemBridgeMixin,
+    SyncBridgeMixin,
     ViewBridgeMixin,
     VectorBridgeMixin,
     MacroBridgeMixin,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from contextlib import contextmanager
 from typing import Optional
 
@@ -34,8 +33,8 @@ from ...core.routing import (
     mfx_chain,
     tone_send_attrs,
 )
-from ...core.sysex import ADDR_SETUP
 from ...core.waves import WaveCatalogManager
+from ...vector.motion import RecorderState
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -2144,270 +2143,178 @@ class PatchBridgeMixin(BridgeBaseMixin):
         self.pitchFineChanged.emit(self.pitchFine)
         self.vaParamsChanged.emit()
 
-    @pyqtSlot(int, int)
-    def setPartVolume(self, part_index: int, vol: int) -> None:
-        """Set mixer level for Performance Part 1..16 (state + SysEx DT1)."""
-        if 1 <= part_index <= 16:
-            self.patch_state.perf_parts[part_index - 1].volume = max(0, min(127, int(vol)))
-            juno = self.juno
-            if juno is not None:
-                try:
-                    juno.set_perf_part_level(part_index, int(vol))
-                except Exception as e:
-                    logger.debug(f"setPartVolume: synth write failed: {e}")
-            self._rebaseDirect([(f"part.level@{part_index}",
-                                 self.patch_state.perf_parts[part_index - 1].volume)])
-            self.perfPartsChanged.emit()
-
-    @pyqtSlot(int, int)
-    def setPartPan(self, part_index: int, pan: int) -> None:
-        """Set pan for Performance Part 1..16 (state + SysEx DT1)."""
-        if 1 <= part_index <= 16:
-            self.patch_state.perf_parts[part_index - 1].pan = max(0, min(127, int(pan)))
-            juno = self.juno
-            if juno is not None:
-                try:
-                    juno.set_perf_part_pan(part_index, int(pan))
-                except Exception as e:
-                    logger.debug(f"setPartPan: synth write failed: {e}")
-            self._rebaseDirect([(f"part.pan@{part_index}",
-                                 self.patch_state.perf_parts[part_index - 1].pan)])
-            self.perfPartsChanged.emit()
-
-    @pyqtSlot()
-    @pyqtSlot(bool)
-    def syncPatchFromSynth(self, async_mode: bool = False) -> None:
-        """Read the sounding patch from the synth into the editors.
-
-        async_mode reads on the job worker and applies on the UI thread.
-        """
-        juno = self.juno
-        if juno is None:
-            logger.info("Cannot sync: No Roland synthesizer connected.")
-            return
-        if self._sync_busy:
-            logger.info("Hardware sync already in progress, ignoring request.")
-            return
-        self._set_sync_busy(True)
-        if not async_mode:
-            self._apply_synced_patch(self._read_synced_patch(juno))
-        elif not self._start_job("sync", "Reading the patch…",
-                                 lambda progress: self._read_synced_patch(juno),
-                                 done=self._apply_synced_patch):
-            logger.info("Sync skipped: another synth job is running.")
-            self._set_sync_busy(False)
-
-    @staticmethod
-    def _read_synced_patch(juno):
-        try:
-            return juno.read_full_patch(timeout=1.0)
-        except Exception as e:
-            logger.warning(f"Could not read full patch: {e}")
-            return None
-
-    def _apply_synced_patch(self, state) -> None:
-        """Take a patch read from the synth into the editors (UI thread)."""
-        try:
-            if not isinstance(state, PatchState):
-                return
-            # Keep the macro assignments (bases re-capture from the new sound)
-            # and the performance: a patch read carries neither.
-            old = self.patch_state
-            state.macros = old.macros
-            state.perf_parts, state.perf_name = old.perf_parts, old.perf_name
-            state.perf_fx, state.active_perf_part = old.perf_fx, old.active_perf_part
-            self.patch_state = state
-            self._resetMacroBases()
-            state.effects.routing_preset = ""  # no routing preset is selected on the synth
-            self._patch_name = state.common.name
-            self._sound_mode = state.sound_mode
-            self.vector.tone_levels = tuple(t.level for t in state.tones[:4])
-            state.custom_detune_cache = [t.fine_tune for t in state.tones]
-            self.patchInfoChanged.emit(str(self._patch_name), str(self._sound_mode))
-            self._refresh_tone_waves()
-            self._emit_all_state_signals()
-            logger.info(f"Sync complete. Synced patch: '{self._patch_name}'")
-        finally:
-            self._set_sync_busy(False)
-
     @pyqtSlot(str, str, str, result="QVariantList")
     def getFilteredWaves(self, category: str = "ALL", bank: str = "ALL", search: str = "") -> list:
         """Query waveform catalog filtered by category, bank, and search string."""
         return self._wave_catalog.get_filtered_waves(category=category, bank=bank, search=search)
 
-    @pyqtSlot(int, int, int, result=bool)
-    @pyqtSlot(int, int, int, str, result=bool)
-    def selectLibraryPerformance(self, msb: int, lsb: int, pc: int, name: str = "") -> bool:
-        """Audition a performance via PERFORM mode + control channel (ch 16).
+    @pyqtSlot(int, str, int)
+    def setToneWave(self, tone_number: int, bank: str, wave_num: int) -> None:
+        """Assign waveform to tone (1..4) and send SysEx to Roland hardware."""
+        if 1 <= tone_number <= 4:
+            t = self.patch_state.tones[tone_number - 1]
+            t.wave_bank_l = bank.upper()
+            t.wave_num_l = wave_num
+            self._refresh_tone_waves()
+            if self.juno:
+                try:
+                    self.juno.set_tone_wave(tone_number, bank=bank.upper(), wave_num=wave_num)
+                except Exception as e:
+                    logger.error(f"Error setting wave on synth: {e}")
+            self.toneWavesChanged.emit()
 
-        Switches the synth to PERFORM, selects via Bank Select + PC on the
-        performance control channel, then follows the performance name at
-        10 00 00 00. The synth stays in PERFORM mode afterwards.
-        Offline (no synth): applies the mode + navigation state-only, using
-        the library row name for the header.
-        """
-        juno = self.juno
-        if juno is None:
-            if str(name or ""):
-                self._patch_name = str(name)[:12]
-                self.patch_state.perf_name = str(name)[:12]
-            self._apply_performance_selected(int(msb), int(lsb), int(pc))
-            return True
-        if not juno.output_open:
-            if str(name or ""):
-                self._patch_name = str(name)[:12]
-                self.patch_state.perf_name = str(name)[:12]
-            self._apply_performance_selected(int(msb), int(lsb), int(pc))
-            return True
-        try:
-            juno.send_data(ADDR_SETUP, [1])  # PERFORM
-            time.sleep(0.4)
-            juno.select_program(15, msb, lsb, pc)
-            time.sleep(0.8)
-            return self._adopt_synth_performance(int(msb), int(lsb), int(pc), str(name or ""))
-        except Exception as e:
-            logger.warning(f"selectLibraryPerformance failed: {e}")
-            return False
-
-    def _adopt_synth_performance(self, msb: int, lsb: int, pc: int, name: str = "",
-                                 navigate: bool = True) -> bool:
-        """Take the performance the synth just selected into the app, whole.
-
-        Library loads (after their Bank/PC) and panel performance picks.
-        """
-        juno = self.juno
-        juno.invalidate_cache()
-        heard: str = ""
-        try:
-            raw = juno.request_data((0x10, 0x00, 0x00, 0x00),
-                                    (0x00, 0x00, 0x00, 0x0C), timeout=0.8)
-            if raw and len(raw) >= 12:
-                heard = bytes(raw[:12]).decode("latin1", errors="replace").strip()
-        except Exception as e:
-            logger.debug(f"adopt performance: name re-read failed: {e}")
-        # Synth truth wins; library row name is the offline/fallback.
-        self._patch_name = (heard or str(name or ""))[:12] or self._patch_name
-        self.patch_state.perf_name = str(self._patch_name)[:12]
-        if str(self._sound_mode).upper() != "PERFORM":
-            self._patch_origin = None
-            self._resetMacroBases()
-        # The app's performance is what mode switches push back: take the
-        # loaded one whole. Nothing of the previous one survives (sounds,
-        # names, edits).
-        self._part_snapshots = {}
-        self._part_file_status = [""] * 16
-        for p in self.patch_state.perf_parts:
-            p.patch_name, p.name = "", f"Part {p.part_index}"
-        try:
-            self.syncPerformanceFromSynth(async_mode=False)
-        except Exception as e:
-            logger.warning(f"adopt performance: performance read failed: {e}")
-        self._apply_performance_selected(int(msb), int(lsb), int(pc), navigate)
-        try:
-            self.partFileStatusChanged.emit()
-        except Exception:
-            pass
-        return True
-
-    def _apply_performance_selected(self, msb: int, lsb: int, pc: int,
-                                    navigate: bool = True) -> None:
-        """App-side half of a performance audition (mode + ref + OK destination)."""
-        self._sound_mode = "PERFORM"
-        self.patch_state.sound_mode = "PERFORM"
+    @pyqtSlot(str)
+    @pyqtSlot(str, str)
+    def setPatchName(self, name: str, mode: str = "PATCH") -> None:
+        """Set active patch name and sound mode."""
+        self._patch_name = name
+        self._sound_mode = mode
+        self.patch_state.common.name = name
+        self.patch_state.sound_mode = mode
         self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
-        self.perfPartsChanged.emit()
+        if self.juno:
+            try:
+                self.juno.set_patch_name(name)
+            except Exception as e:
+                logger.warning(f"Could not set patch name on synth: {e}")
+
+    @pyqtSlot()
+    def initPatch(self) -> None:
+        """Initialize the active sound in RAM to the golden JUNO SPECTRE template."""
+        self._forget_loaded(self._loaded_slot())   # INIT is the new loaded sound
+        logger.info("Initializing active patch in RAM to JUNO SPECTRE template...")
+
+        # Pause motion playback without destroying the recorded trajectory, and hold
+        # engine-driven SysEx for the whole critical section. Recording is left alone.
+        motion_was_playing = self.vector.motion.state == RecorderState.PLAYING
+        if motion_was_playing:
+            self.vector.motion.pause()
+            self.transportStateChanged.emit(self.vector.motion.state.value)
+
         try:
-            self._emit_fx_editor_signals()
-        except Exception:
-            pass
-        self._set_current_slot_ref(int(msb), int(lsb), int(pc), "performance")
-        if navigate:
-            self._pending_view = "PERFORMANCE"
+            with self.vector.hold_hardware_writes():
+                # 1. Restore the golden image on hardware (one DT1 per region, zero residue).
+                #    Falls back to the per-parameter reset sequence if the asset is missing.
+                hw_ok = False
+                if self.juno:
+                    try:
+                        hw_ok = self.juno.init_patch()
+                    except Exception as e:
+                        logger.error(f"Error sending init_patch to synth: {e}")
+                if not hw_ok and not self.juno:
+                    logger.info("No synth connected; resetting in-memory state only.")
 
-    @pyqtSlot(int, int, int, result=bool)
-    @pyqtSlot(int, int, int, str, result=bool)
-    def selectLibraryPatch(self, msb: int, lsb: int, pc: int, name: str = "") -> bool:
-        """Audition a factory/synth-user patch via Bank Select + Program Change.
+                # 2. Reset in-memory state from the SAME golden image the hardware received,
+                #    so UI and synth provably match (decoded blob, or hand-built fallback).
+                self.patch_state = PatchState.from_template_file() or PatchState()
+                # New patches start with plain ADSR envelopes (nothing to switch back to)
+                for t in self.patch_state.tones:
+                    for env in ("tvf", "tva", "pitch"):
+                        t.env_to_adsr(env, keep_original=False)
+                    self._push_tvf_env(t)
+                    self._push_tva_env(t)
+                    self._push_pitch_env(t)
 
-        Clears the cached temp-buffer base/mode, then re-reads the patch name
-        so the header follows the keyboard. Returns True on success.
-        File patches with a synth_ref should call this with their stored
-        msb/lsb/pc; pure Pi-only files go through loadSpectreFile (DT1 push).
-        Offline (no synth): applies the mode + navigation state-only.
-        """
-        juno = self.juno
-        if juno is None:
-            logger.info("selectLibraryPatch: no synth connected (offline audition).")
-            if str(name or ""):
-                self._patch_name = str(name)[:12]
-                self.patch_state.common.name = str(name)[:12]
-            self._apply_patch_selected(int(msb), int(lsb), int(pc))
-            return True
-        if not juno.output_open:
-            logger.info("selectLibraryPatch: MIDI out not connected (offline audition).")
-            if str(name or ""):
-                self._patch_name = str(name)[:12]
-                self.patch_state.common.name = str(name)[:12]
-            self._apply_patch_selected(int(msb), int(lsb), int(pc))
-            return True
-        try:
-            juno.select_program(0, msb, lsb, pc)
-            # Give the synth a moment to switch, then follow its display name.
+                # 3. Update patch name & mode
+                self._patch_name = self.patch_state.common.name
+                self._sound_mode = self.patch_state.sound_mode
 
-            time.sleep(0.35)
-            return self._adopt_synth_patch(int(msb), int(lsb), int(pc), str(name or ""))
-        except Exception as e:
-            logger.warning(f"selectLibraryPatch failed: {e}")
-            return False
+                # 4. Wave caches, vector position and tone levels follow the template
+                self._reset_vector_to_patch_state()
+        finally:
+            if motion_was_playing and self.vector.motion.state != RecorderState.PLAYING:
+                self.vector.motion.play()
+                self.transportStateChanged.emit(self.vector.motion.state.value)
 
-    def _adopt_synth_patch(self, msb: int, lsb: int, pc: int, name: str = "",
-                           navigate: bool = True) -> bool:
-        """Take the patch the synth just selected into the editors.
+        # 6. Emit all signals to trigger live UI refresh across all tabs and screens
+        #    (macro deck values are derived getters, so they refresh automatically)
+        self._emit_all_state_signals()
+        self._clear_current_ref()  # fresh RAM template: no slot origin
+        self.patchInitialized.emit()
+        logger.info("Active patch initialization complete.")
 
-        Library loads (after their Bank/PC) and PATCH-mode panel picks.
-        """
-        juno = self.juno
-        juno.invalidate_cache()
-        heard: str = ""
-        try:
-            heard = juno.get_patch_name(timeout=0.8)
-        except Exception as e:
-            logger.debug(f"adopt patch: name re-read failed: {e}")
-        # Synth truth wins; library row name is the fallback.
-        resolved = (heard if isinstance(heard, str) else "") or str(name or "")
-        if resolved:
-            self._patch_name = resolved[:12]
-            self.patch_state.common.name = resolved[:12]
-        try:
-            mode = juno.get_sound_mode(timeout=0.5)
-            mode_str = mode.name if hasattr(mode, "name") else str(mode)
-            self._sound_mode = mode_str
-            self.patch_state.sound_mode = mode_str
-        except Exception:
-            pass
-        self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
-        # Pull the full sounding state so editors follow the auditioned patch.
-        try:
-            self.syncPatchFromSynth()
-        except Exception as e:
-            logger.debug(f"adopt patch: full sync failed: {e}")
-        self._set_current_slot_ref(int(msb), int(lsb), int(pc),
-                                   "drum" if int(msb) == 86 else "patch")
-        if navigate:
-            self._pending_view = "JUNO PCM"
-        return True
+    @pyqtSlot(int)
+    def toggleToneMute(self, tone_number: int) -> None:
+        """Toggle mute state for tone 1..4 (disables/enables wave playback)."""
+        idx = max(1, min(4, tone_number)) - 1
+        new_muted = not self.patch_state.tones[idx].muted
+        self.setToneMute(tone_number, new_muted)
 
-    def _apply_patch_selected(self, msb: int, lsb: int, pc: int) -> None:
-        """Offline half of a patch audition (mode + ref + OK destination)."""
-        self._sound_mode = "PATCH"
-        self.patch_state.sound_mode = "PATCH"
-        self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
-        try:
-            self._emit_fx_editor_signals()
-        except Exception:
-            pass
-        self._set_current_slot_ref(int(msb), int(lsb), int(pc),
-                                   "drum" if int(msb) == 86 else "patch")
-        self._pending_view = "JUNO PCM"
+    @pyqtSlot(int, bool)
+    def setToneMute(self, tone_number: int, muted: bool) -> None:
+        """Set mute state for tone 1..4."""
+        idx = max(1, min(4, tone_number)) - 1
+        self.patch_state.tones[idx].muted = muted
+        self.vector.set_tone_mute(tone_number, muted)
+        target_level = 0 if muted else self.patch_state.tones[idx].level
+        if self.juno:
+            try:
+                self.juno.set_tone_switch(tone_number, not muted)
+                self.juno.set_tone_level(tone_number, target_level)
+            except Exception as e:
+                logger.error(f"Error setting tone mute on synth: {e}")
+        self.toneMutesChanged.emit()
+        self.toneLevelsChanged.emit(*self.vector.tone_levels)
+        if tone_number == self._selected_tone:
+            self.tvaLevelChanged.emit(self.tvaLevel)
 
+    @pyqtSlot(int, int)
+    def setToneLevel(self, tone_number: int, level: int) -> None:
+        """Directly adjust level of a single tone (1..4)."""
+        idx = max(1, min(4, tone_number)) - 1
+        clamped = max(0, min(127, int(level)))
+        self.patch_state.tones[idx].level = clamped
+        if not self.patch_state.tones[idx].muted:
+            self.vector.set_tone_level(tone_number, clamped)
+            if self.juno:
+                try:
+                    self.juno.set_tone_level(tone_number, clamped)
+                except Exception as e:
+                    logger.error(f"Error setting tone level on synth: {e}")
+        self._rebaseDirect([(f"tone.{max(1, min(4, tone_number))}.tva_level", clamped)])
+        self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])
+        if tone_number == self._selected_tone:
+            self.tvaLevelChanged.emit(clamped)
 
+    @pyqtSlot(int)
+    def setSelectedTone(self, tone_number: int) -> None:
+        """Select active tone (1..4) and refresh all tone-specific properties."""
+        clamped = max(1, min(4, int(tone_number)))
+        if self._selected_tone != clamped:
+            self._selected_tone = clamped
+            self.selectedToneChanged.emit(self._selected_tone)
+            # Emit tone property changes so views bind to this tone's parameters
+            self.pitchCoarseChanged.emit(self.pitchCoarse)
+            self.pitchFineChanged.emit(self.pitchFine)
+            self.tvfTypeChanged.emit(self.tvfType)
+            self.masterCutoffChanged.emit(self.masterCutoff)
+            self.masterResoChanged.emit(self.masterReso)
+            self.tvfKeyFollowChanged.emit(self.tvfKeyFollow)
+            self.tvfEnvDepthChanged.emit(self.tvfEnvDepth)
+            self.tvfVeloSensChanged.emit(self.tvfVeloSens)
+            self.tvfAttackChanged.emit(self.tvfAttack)
+            self.tvfDecayChanged.emit(self.tvfDecay)
+            self.tvfSustainChanged.emit(self.tvfSustain)
+            self.tvfReleaseChanged.emit(self.tvfRelease)
+            self.tvaLevelChanged.emit(self.tvaLevel)
+            self.tvaPanChanged.emit(self.tvaPan)
+            self.tvaVeloSensChanged.emit(self.tvaVeloSens)
+            self.tvaAttackChanged.emit(self.tvaAttack)
+            self.tvaDecayChanged.emit(self.tvaDecay)
+            self.tvaSustainChanged.emit(self.tvaSustain)
+            self.tvaReleaseChanged.emit(self.tvaRelease)
+            self.masterAttackChanged.emit(self.masterAttack)
+            self.masterReleaseChanged.emit(self.masterRelease)
+            self.lfoParamsChanged.emit()
+            self.pitchEnvChanged.emit()
+            self.envShapeChanged.emit("TVF")
+            self.envShapeChanged.emit("TVA")
+            self.envShapeChanged.emit("PITCH")
+            self.stepLfoChanged.emit()
+
+    @pyqtSlot(bool)
+    def setLinkedMode(self, linked: bool) -> None:
+        """Toggle linked mode across all 4 tones."""
+        if self._linked_mode != linked:
+            self._linked_mode = linked
+            self.linkedModeChanged.emit(self._linked_mode)
