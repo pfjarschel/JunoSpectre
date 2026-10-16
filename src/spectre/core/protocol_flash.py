@@ -416,11 +416,8 @@ class FlashProtocolMixin:
     @staticmethod
     def load_init_template() -> Optional[dict]:
         """Read the golden init template captured by tools/capture_init_template.py."""
-        import sys
-        proto = sys.modules.get("src.spectre.core.protocol") or sys.modules.get("spectre.core.protocol")
-        asset_path = getattr(proto, "TEMPLATE_ASSET_PATH", TEMPLATE_ASSET_PATH) if proto else TEMPLATE_ASSET_PATH
         try:
-            payload = json.loads(Path(asset_path).read_text(encoding="utf-8"))
+            payload = json.loads(Path(TEMPLATE_ASSET_PATH).read_text(encoding="utf-8"))
             if payload.get("version") != 1 or "regions" not in payload:
                 return None
             return payload

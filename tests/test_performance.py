@@ -1462,7 +1462,7 @@ def test_entering_perform_pushes_app_performance(tmp_path):
     bridge.patch_state.perf_parts[2].volume = 77
     juno._store.clear()
     bridge.setSoundMode("PERFORM")
-    from src.spectre.core.protocol import ADDR_SETUP
+    from src.spectre.core.sysex import ADDR_SETUP
     assert juno._store[tuple(ADDR_SETUP)] == bytes([1])
     assert len(juno._store) > 1  # mixer/zone/FX writes followed the mode switch
     juno._store.clear()

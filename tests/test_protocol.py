@@ -146,9 +146,9 @@ def test_juno_client_init_patch(mock_midi_mgr):
 
 
 def test_juno_client_init_patch_fallback_without_asset(mock_midi_mgr, tmp_path, monkeypatch):
-    from src.spectre.core import protocol as protocol_mod
+    from src.spectre.core import protocol_flash
 
-    monkeypatch.setattr(protocol_mod, "TEMPLATE_ASSET_PATH", tmp_path / "missing.json")
+    monkeypatch.setattr(protocol_flash, "TEMPLATE_ASSET_PATH", tmp_path / "missing.json")
     client = JunoClient(mock_midi_mgr)
     mode_msg = mido.Message(
         "sysex",
