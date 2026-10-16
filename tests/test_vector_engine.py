@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock
 
-from src.spectre.vector.engine import MorphMode, VectorEngine
-from src.spectre.vector.math import CrossfadeCurve
+from spectre.vector.engine import MorphMode, VectorEngine
+from spectre.vector.math import CrossfadeCurve
 
 
 def test_vector_engine_initial_state():
@@ -79,7 +79,7 @@ def test_vector_engine_tone_mutes():
 
 
 def test_vector_engine_hold_suppresses_hardware_dispatch():
-    from src.spectre.vector.motion import AutomatorType, RecorderState
+    from spectre.vector.motion import AutomatorType, RecorderState
 
     mock_juno = MagicMock()
     engine = VectorEngine(juno_client=mock_juno, max_update_hz=1000.0)
@@ -99,8 +99,8 @@ def test_vector_engine_hold_suppresses_hardware_dispatch():
 
 
 def test_vector_dispatch_goes_through_the_writer_queue():
-    from src.spectre.core.midi import MidiDeviceManager
-    from src.spectre.core.protocol import JunoClient
+    from spectre.core.midi import MidiDeviceManager
+    from spectre.core.protocol import JunoClient
 
     midi = MagicMock(spec=MidiDeviceManager)
     juno = JunoClient(midi)

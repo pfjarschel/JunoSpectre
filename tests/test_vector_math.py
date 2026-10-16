@@ -1,7 +1,7 @@
 """Unit tests for 2D Cartesian and 1D Wavetable crossfade math."""
 
 
-from src.spectre.vector.math import (
+from spectre.vector.math import (
     CrossfadeCurve,
     calculate_cartesian_levels,
     calculate_wavetable_levels,

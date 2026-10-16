@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from src.spectre.core.wifi import (
+from spectre.core.wifi import (
     WifiError,
     WifiManager,
     WifiNetwork,
@@ -336,7 +336,7 @@ def _wait_for(cond, timeout=5.0):
 
 @pytest.fixture()
 def wifi_bridge():
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     bridge = SpectreBridge()
     bridge._wifi = FakeWifiBackend()

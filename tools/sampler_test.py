@@ -6,13 +6,13 @@ from pathlib import Path
 import numpy as np
 from scipy.io import wavfile
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import mido
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.protocol import JunoClient
-from src.spectre.core.sysex import (
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.protocol import JunoClient
+from spectre.core.sysex import (
     OFFSET_PATCH_TONE_1,
     OFFSET_PATCH_TONE_2,
     OFFSET_PATCH_TONE_3,

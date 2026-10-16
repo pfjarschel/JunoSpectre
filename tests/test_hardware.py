@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.spectre.core.midi import port_key
-from src.spectre.ui.app import create_application
+from spectre.core.midi import port_key
+from spectre.ui.app import create_application
 
 pytestmark = pytest.mark.ui
 

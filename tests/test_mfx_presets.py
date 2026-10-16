@@ -8,7 +8,7 @@ bridge exposure, and the exact write sequences applyPreset() performs.
 """
 
 
-from src.spectre.core.mfx_catalog import (
+from spectre.core.mfx_catalog import (
     EQ_PARAMETRIC_PRESETS,
     SPECTRUM_PRESETS,
     get_mfx_algo,
@@ -80,7 +80,7 @@ def _apply_spectrum(bridge, preset):
 
 
 def _offline_bridge():
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     return SpectreBridge()
 

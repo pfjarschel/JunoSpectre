@@ -2,10 +2,11 @@
 import json
 import sys
 import time
+from pathlib import Path
 
 import mido
 
-sys.path.insert(0, "src")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from spectre.core.midi import MidiDeviceManager  # noqa: E402
 from spectre.core.protocol import JunoClient  # noqa: E402
 

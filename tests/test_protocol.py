@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 import mido
 import pytest
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.protocol import JunoClient, SoundMode
-from src.spectre.core.sysex import (
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.protocol import JunoClient, SoundMode
+from spectre.core.sysex import (
     ADDR_SETUP,
     ADDR_TEMP_PATCH_PART_1,
     ADDR_TEMP_PERF_PATCH_1,
@@ -119,7 +119,7 @@ def test_juno_client_init_patch(mock_midi_mgr):
 
 
 def test_juno_client_init_patch_fails_without_asset(mock_midi_mgr, tmp_path, monkeypatch):
-    from src.spectre.core import protocol_flash
+    from spectre.core import protocol_flash
 
     monkeypatch.setattr(protocol_flash, "TEMPLATE_ASSET_PATH", tmp_path / "missing.json")
     client = JunoClient(mock_midi_mgr)
@@ -342,7 +342,7 @@ def test_juno_client_set_tone_matrix_switch(mock_midi_mgr):
 
 
 def test_mfx_catalog_integrity():
-    from src.spectre.core.mfx_catalog import get_mfx_algo, get_mfx_catalog, get_mfx_categories
+    from spectre.core.mfx_catalog import get_mfx_algo, get_mfx_catalog, get_mfx_categories
 
     catalog = get_mfx_catalog()
     assert len(catalog) == 80
@@ -370,7 +370,7 @@ def test_mfx_catalog_integrity():
 
 
 def test_juno_client_set_mfx_param(mock_midi_mgr):
-    from src.spectre.core.sysex import pack_4nibbles
+    from spectre.core.sysex import pack_4nibbles
 
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PATCH
@@ -409,7 +409,7 @@ def test_juno_client_set_mfx_param(mock_midi_mgr):
 
 
 def test_juno_client_read_mfx(mock_midi_mgr):
-    from src.spectre.core.sysex import pack_4nibbles
+    from spectre.core.sysex import pack_4nibbles
 
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PATCH
@@ -435,7 +435,7 @@ def test_juno_client_read_mfx(mock_midi_mgr):
 
 
 def test_juno_client_chorus_sysex(mock_midi_mgr):
-    from src.spectre.core.sysex import pack_4nibbles
+    from spectre.core.sysex import pack_4nibbles
 
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PATCH
@@ -468,7 +468,7 @@ def test_juno_client_chorus_sysex(mock_midi_mgr):
 
 
 def test_juno_client_reverb_sysex(mock_midi_mgr):
-    from src.spectre.core.sysex import pack_4nibbles
+    from spectre.core.sysex import pack_4nibbles
 
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PATCH
@@ -490,7 +490,7 @@ def test_juno_client_reverb_sysex(mock_midi_mgr):
 
 
 def test_juno_client_read_chorus_and_reverb(mock_midi_mgr):
-    from src.spectre.core.sysex import pack_4nibbles
+    from spectre.core.sysex import pack_4nibbles
 
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PATCH
@@ -724,8 +724,8 @@ def test_juno_client_read_tone_env_modifiers(mock_midi_mgr):
 
 def test_juno_client_sync_reads_full_patch_parity_with_template(mock_midi_mgr):
     """Sync must read the same regions Init restores (common/tone/FX/TMT)."""
-    from src.spectre.core.patch_state import PatchState
-    from src.spectre.core.sysex import (
+    from spectre.core.patch_state import PatchState
+    from spectre.core.sysex import (
         OFFSET_PATCH_COMMON,
         OFFSET_PATCH_COMMON_CHORUS,
         OFFSET_PATCH_COMMON_MFX,
@@ -833,8 +833,8 @@ def test_coalesced_writes_send_latest_value_once():
     import threading
     from unittest.mock import MagicMock
 
-    from src.spectre.core.midi import MidiDeviceManager
-    from src.spectre.core.protocol import JunoClient
+    from spectre.core.midi import MidiDeviceManager
+    from spectre.core.protocol import JunoClient
 
     mgr = MagicMock(spec=MidiDeviceManager)
     client = JunoClient(mgr)

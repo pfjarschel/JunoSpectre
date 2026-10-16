@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.spectre.core.patch_state import PatchState
-from src.spectre.core.protocol import JunoClient
-from src.spectre.core.sysex import CMD_DT1, RolandSysEx
+from spectre.core.patch_state import PatchState
+from spectre.core.protocol import JunoClient
+from spectre.core.sysex import CMD_DT1, RolandSysEx
 
 TEMP = (0x1F, 0x00, 0x00, 0x00)
 

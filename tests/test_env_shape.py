@@ -1,5 +1,5 @@
-from src.spectre.core import env_shape
-from src.spectre.core.patch_state import ToneState
+from spectre.core import env_shape
+from spectre.core.patch_state import ToneState
 
 
 def _tvf(tone, times, levels):
@@ -82,8 +82,8 @@ def test_pitch_adsr_is_bipolar_and_tva_ends_are_fixed():
 
 
 def test_originals_survive_save_and_load():
-    from src.spectre.core.patch_state import PatchState
-    from src.spectre.core.spectre_format import patch_state_from_dict, patch_state_to_dict
+    from spectre.core.patch_state import PatchState
+    from spectre.core.spectre_format import patch_state_from_dict, patch_state_to_dict
 
     ps = PatchState()
     ps.tones[0].set_env_curve("tvf", [10, 30, 50, 40], [0, 127, 90, 60, 0])

@@ -1,6 +1,6 @@
 """Schema and integrity tests for MFX catalog JSON asset."""
 
-from src.spectre.core.mfx_catalog import (
+from spectre.core.mfx_catalog import (
     EQ_PARAMETRIC_PRESETS,
     SPECTRUM_PRESETS,
     get_mfx_algo,

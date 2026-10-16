@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.spectre.core.arpeggio import (
+from spectre.core.arpeggio import (
     ARP_SETUP_SIZE,
     STYLE_NAMES,
     ArpSettings,
@@ -13,10 +13,10 @@ from src.spectre.core.arpeggio import (
     field_from_label,
     field_label,
 )
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.protocol import JunoClient
-from src.spectre.core.spectre_format import load_spectre, save_spectre
-from src.spectre.ui.app import create_application
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.protocol import JunoClient
+from spectre.core.spectre_format import load_spectre, save_spectre
+from spectre.ui.app import create_application
 
 
 def test_style_list_matches_the_parameter_guide():

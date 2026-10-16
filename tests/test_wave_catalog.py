@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.spectre.core.waves import WaveCatalogManager
-from src.spectre.ui.bridge import SpectreBridge
+from spectre.core.waves import WaveCatalogManager
+from spectre.ui.bridge import SpectreBridge
 
 
 def test_wave_catalog_manager_singleton():

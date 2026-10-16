@@ -26,10 +26,10 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from src.spectre.audio import media  # noqa: E402
-from src.spectre.audio.client import AudioClient  # noqa: E402
+from spectre.audio import media  # noqa: E402
+from spectre.audio.client import AudioClient  # noqa: E402
 
 
 def click_track(path: Path, bpm: float = 120.0, bars: int = 4) -> None:

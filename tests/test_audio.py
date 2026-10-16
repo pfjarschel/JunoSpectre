@@ -6,9 +6,9 @@ import time
 import numpy as np
 import pytest
 
-from src.spectre.audio import media
-from src.spectre.audio.client import AudioClient
-from src.spectre.audio.worker import FADE_IN, FADE_OUT, Mixer
+from spectre.audio import media
+from spectre.audio.client import AudioClient
+from spectre.audio.worker import FADE_IN, FADE_OUT, Mixer
 
 RATE = media.SAMPLE_RATE
 
@@ -237,9 +237,9 @@ def test_client_drives_a_worker_process(tmp_path):
 
 # -- engine scheduling (fake sink) ---------------------------------------------
 
-from src.spectre.audio.player import AudioPlayer  # noqa: E402
-from src.spectre.sequencer.engine import AUDIO_LOOKAHEAD_TICKS, SequencerEngine  # noqa: E402
-from src.spectre.sequencer.models import AudioClip  # noqa: E402
+from spectre.audio.player import AudioPlayer  # noqa: E402
+from spectre.sequencer.engine import AUDIO_LOOKAHEAD_TICKS, SequencerEngine  # noqa: E402
+from spectre.sequencer.models import AudioClip  # noqa: E402
 
 
 class FakeSink:
@@ -412,7 +412,7 @@ def test_player_prepares_files_and_plays_slices(tmp_path):
     key = player.file_state("loop.wav")["key"]
     assert ("load", key) in player.client.sent
 
-    from src.spectre.sequencer.models import Clip
+    from spectre.sequencer.models import Clip
     clip = Clip(audio=AudioClip(file="loop.wav", start=1000, end=0, gain_db=-6.0))
     assert player.clip_frames(clip) == RATE - 1000
     player.start(3, clip, 5.0, True)
@@ -445,7 +445,7 @@ def test_player_prepares_files_and_plays_slices(tmp_path):
 # -- bridge ----------------------------------------------------------------------
 
 def test_bridge_audio_track_and_clip_editing(tmp_path):
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
     from tests.test_sequencer_bridge import DummyJuno
 
     b = SpectreBridge(DummyJuno())
@@ -508,7 +508,7 @@ def test_play_starts_audio_in_a_real_worker(tmp_path):
     sf = pytest.importorskip("soundfile")
     from PyQt6.QtCore import QCoreApplication
 
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
     from tests.test_sequencer_bridge import DummyJuno
 
     b = SpectreBridge(DummyJuno())
@@ -573,7 +573,7 @@ class _FakeRender:
 
 
 def test_clip_tempo_and_stretch_spec(tmp_path, monkeypatch):
-    from src.spectre.sequencer.models import Clip
+    from spectre.sequencer.models import Clip
     player = _player_with_file(tmp_path, seconds=4.0)
     clip = Clip(audio=AudioClip(file="loop.wav"))
     player.song_bpm = 120.0
@@ -636,7 +636,7 @@ def test_peaks_window_zooms_into_the_audio(tmp_path):
 
 
 def test_bridge_fit_end_and_song_bpm_from_clip(tmp_path):
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
     from tests.test_sequencer_bridge import DummyJuno
 
     b = SpectreBridge(DummyJuno())
@@ -673,7 +673,7 @@ def test_bridge_fit_end_and_song_bpm_from_clip(tmp_path):
 
 # -- step 5: drift lock, held tempo, offset ----------------------------------------
 
-from src.spectre.audio.drift import DriftEstimator  # noqa: E402
+from spectre.audio.drift import DriftEstimator  # noqa: E402
 
 
 def test_drift_estimator_measures_ppm_through_jitter():
@@ -693,7 +693,7 @@ def test_drift_estimator_measures_ppm_through_jitter():
 
 
 def test_clock_trim_scales_the_tick_interval():
-    from src.spectre.sequencer.clock import SequencerClock
+    from spectre.sequencer.clock import SequencerClock
     c = SequencerClock(bpm=120)
     nominal = c.tick_interval
     c.set_rate_trim(1.00005)
@@ -704,7 +704,7 @@ def test_clock_trim_scales_the_tick_interval():
 
 def test_tempo_waits_while_synced_audio_plays(tmp_path, monkeypatch):
     monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
     from tests.test_sequencer_bridge import DummyJuno
 
     b = SpectreBridge(DummyJuno())
@@ -732,8 +732,8 @@ def test_tempo_waits_while_synced_audio_plays(tmp_path, monkeypatch):
 
 def test_offset_and_drift_lock_settings(tmp_path, monkeypatch):
     monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
-    from src.spectre.ui.bridge import SpectreBridge
-    from src.spectre.ui.bridge.hardware import load_hardware_settings
+    from spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge.hardware import load_hardware_settings
     from tests.test_sequencer_bridge import DummyJuno
 
     b = SpectreBridge(DummyJuno())
@@ -749,7 +749,7 @@ def test_offset_and_drift_lock_settings(tmp_path, monkeypatch):
 
 def test_calibration_clicks_audio_and_juno_together(tmp_path, monkeypatch):
     monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
     from tests.test_sequencer_bridge import DummyJuno
 
     b = SpectreBridge(DummyJuno())

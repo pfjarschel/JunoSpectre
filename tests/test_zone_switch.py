@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import mido
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.protocol import JunoClient
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.protocol import JunoClient
 
 
 def test_set_perf_zone_switch():
@@ -52,7 +52,7 @@ def test_midi_input_demuxer_routes_notes_and_sysex():
 
 def test_sequencer_never_touches_kbd_switches():
     """Kbd switches are plain performance settings: sequencer navigation leaves them alone."""
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     class DummyJuno:
         def __init__(self):

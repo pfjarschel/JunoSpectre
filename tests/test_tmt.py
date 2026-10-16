@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.patch_state import PatchState
-from src.spectre.core.protocol import JunoClient, SoundMode
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.patch_state import PatchState
+from spectre.core.protocol import JunoClient, SoundMode
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ def test_decode_common_reads_tmt_control_switch():
 
 
 def test_old_snapshots_get_tmt_from_their_image():
-    from src.spectre.core.spectre_format import patch_state_from_dict
+    from spectre.core.spectre_format import patch_state_from_dict
 
     common = bytearray(80)
     common[0x28] = 1
@@ -67,7 +67,7 @@ def test_old_snapshots_get_tmt_from_their_image():
 
 
 def test_new_fields_round_trip():
-    from src.spectre.core.spectre_format import patch_state_from_dict, patch_state_to_dict
+    from spectre.core.spectre_format import patch_state_from_dict, patch_state_to_dict
 
     st = PatchState()
     st.common.booster_34 = 3
@@ -92,7 +92,7 @@ def test_client_tmt_writes(mock_midi_mgr):
 
 @pytest.fixture
 def bridge_and_mgr(mock_midi_mgr):
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PATCH
@@ -149,7 +149,7 @@ def test_bridge_range_span_and_reset(bridge_and_mgr):
 
 
 def test_structure_types_are_well_formed():
-    from src.spectre.ui.bridge.tmt import STRUCTURE_TYPES
+    from spectre.ui.bridge.tmt import STRUCTURE_TYPES
 
     assert len(STRUCTURE_TYPES) == 10
     for st in STRUCTURE_TYPES:

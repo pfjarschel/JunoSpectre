@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import tomllib
 
-from src.spectre.core.updater import GitUpdater, UpdaterError, detect_package_manager
+from spectre.core.updater import GitUpdater, UpdaterError, detect_package_manager
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -367,7 +367,7 @@ def test_working_tree_system_packages(manager, expected):
 def test_restart_prefers_repo_venv(tmp_path):
     import sys
 
-    from src.spectre.ui.bridge.system import REPO_ROOT, restart_executable
+    from spectre.ui.bridge.system import REPO_ROOT, restart_executable
 
     assert (REPO_ROOT / "pyproject.toml").is_file()
     assert restart_executable(tmp_path) == sys.executable

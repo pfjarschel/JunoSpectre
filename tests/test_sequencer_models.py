@@ -2,15 +2,15 @@
 
 import pytest
 
-from src.spectre.core.patch_state import PatchState
-from src.spectre.core.spectre_format import (
+from spectre.core.patch_state import PatchState
+from spectre.core.spectre_format import (
     FORMAT_VERSION,
     load_performance,
     load_playlist,
     save_playlist,
     save_spectre,
 )
-from src.spectre.sequencer.models import (
+from spectre.sequencer.models import (
     NUM_AUTOMATION_LANES,
     AutomationClip,
     AutomationLane,
@@ -182,7 +182,7 @@ def test_playlist_save_and_load_roundtrip(tmp_path):
 
 
 def test_track_dice_roundtrip_and_clamping():
-    from src.spectre.sequencer import Track
+    from spectre.sequencer import Track
     t = Track(dice_timing=7, dice_velocity=15)
     t2 = Track.from_dict(t.to_dict())
     assert (t2.dice_timing, t2.dice_velocity) == (7, 15)

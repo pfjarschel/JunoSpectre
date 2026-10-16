@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.patch_state import PatchState
-from src.spectre.core.protocol import JunoClient, SoundMode
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.patch_state import PatchState
+from spectre.core.protocol import JunoClient, SoundMode
 
 
 @pytest.fixture
@@ -87,7 +87,7 @@ def test_decode_reads_both_send_pairs_and_structure():
 
 # --- core.routing: follow the sound -----------------------------------------
 
-from src.spectre.core import routing as R  # noqa: E402
+from spectre.core import routing as R  # noqa: E402
 
 _MFX = {"type": 15, "dry": 127, "cho": 0, "rev": 0}
 _CHO = {"type": 1, "level": 100, "toReverb": 0}
@@ -183,7 +183,7 @@ def test_graph_muted_tones_and_no_output():
 
 
 def test_graph_part_layer():
-    from src.spectre.core.patch_state import PerfPartState
+    from spectre.core.patch_state import PerfPartState
     state = PatchState()
     state.tones[0].reverb_send = 70
     part = PerfPartState(part_index=3)
@@ -209,7 +209,7 @@ def test_mfx_chain_follows_structure():
 # --- bridge ------------------------------------------------------------------
 
 def test_bridge_routing_presets():
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     bridge = SpectreBridge()
     assert bridge.routingPreset == ""
@@ -256,7 +256,7 @@ def test_bridge_routing_presets():
 
 
 def test_bridge_tone_assign_rejects_fake_values():
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     bridge = SpectreBridge()
     bridge.setToneRoutingParam(1, "assign", 2)     # old fake "BOTH"
@@ -268,7 +268,7 @@ def test_bridge_tone_assign_rejects_fake_values():
 
 
 def test_bridge_routing_hardware_sysex_transmission(mock_midi_mgr):
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PATCH
@@ -379,7 +379,7 @@ def test_patch_mode_fx_writes_mirror_to_perf_common(mock_midi_mgr):
 def test_perform_mode_part_fx_writes_leave_shared_fx_alone(mock_midi_mgr):
     """Editing a part patch's FX must not overwrite the performance's shared
     MFX1/chorus/reverb or flip the global chorus/reverb switches."""
-    from src.spectre.core.sysex import ADDR_SETUP_CHORUS_SWITCH, ADDR_SETUP_REVERB_SWITCH
+    from spectre.core.sysex import ADDR_SETUP_CHORUS_SWITCH, ADDR_SETUP_REVERB_SWITCH
 
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PERFORM
@@ -394,7 +394,7 @@ def test_perform_mode_part_fx_writes_leave_shared_fx_alone(mock_midi_mgr):
 def test_old_snapshots_get_routing_from_their_image():
     """Snapshots saved before the routing model carry structure + direct sends
     only in the raw image."""
-    from src.spectre.core.spectre_format import patch_state_from_dict
+    from spectre.core.spectre_format import patch_state_from_dict
 
     tone = bytearray(154)
     tone[0x0F], tone[0x10] = 33, 44
@@ -414,7 +414,7 @@ def test_old_snapshots_get_routing_from_their_image():
 
 def test_mfx_structure_layouts_match_parameter_guide():
     """Labels for TYPE01..16 as drawn on Parameter Guide p.24."""
-    from src.spectre.core.routing import mfx_structure_layout
+    from spectre.core.routing import mfx_structure_layout
 
     labels = [mfx_structure_layout(s)["label"] for s in range(16)]
     assert labels == ["1 | 2 | 3", "1→2 | 3", "1→3 | 2", "1 | 2→3", "2→1 | 3", "2 | 3→1",
@@ -425,7 +425,7 @@ def test_mfx_structure_layouts_match_parameter_guide():
 
 
 def test_bridge_perf_structure_setter():
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     bridge = SpectreBridge()
     assert len(bridge.perfMfxStructures) == 16
@@ -435,7 +435,7 @@ def test_bridge_perf_structure_setter():
 
 def test_chain_outputs_every_reached_unit_sends():
     """Heard on the Juno: MFX1's reverb send plays in a 1→2→3 chain."""
-    from src.spectre.core.routing import chain_outputs
+    from spectre.core.routing import chain_outputs
 
     units = [{"slot": 1, "type": 5, "dry": 127, "cho": 0, "rev": 90},
              {"slot": 2, "type": 7, "dry": 100, "cho": 40, "rev": 0},

@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.spectre.control.mapping import Binding
-from src.spectre.ui.app import create_application
+from spectre.control.mapping import Binding
+from spectre.ui.app import create_application
 
 PORT = "LCXL3 1:LCXL3 1 MIDI In"
 CUTOFF = "tone.1.tvf_cutoff"
@@ -150,7 +150,7 @@ def test_lane_editing_slots_and_load(ui):
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
-from src.spectre.core.patch_state import PatchCommonState, ToneState
+from spectre.core.patch_state import PatchCommonState, ToneState
 
 
 @pytest.fixture

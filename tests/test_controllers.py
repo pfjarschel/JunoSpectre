@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from src.spectre.control.mapping import Binding, Resolver
-from src.spectre.ui.app import create_application
+from spectre.control.mapping import Binding, Resolver
+from spectre.ui.app import create_application
 
 PORT = "LCXL3 1:LCXL3 1 MIDI In"
 DAW = "LCXL3 1:LCXL3 1 DAW In"
@@ -86,8 +86,8 @@ def _valid_target(target, keys):
 
 
 def test_bundled_lcxl3_preset_targets_exist():
-    from src.spectre.core.macro_targets import get_macro_catalog
-    from src.spectre.ui.bridge.controllers import ACTIONS
+    from spectre.core.macro_targets import get_macro_catalog
+    from spectre.ui.bridge.controllers import ACTIONS
 
     keys = {e["key"] for e in get_macro_catalog()} | {a["key"] for a in ACTIONS}
     d = json.loads(PRESET.read_text())
@@ -102,7 +102,7 @@ def test_bundled_lcxl3_preset_targets_exist():
 
 
 def test_most_specific_context_wins():
-    from src.spectre.control.mapping import pick_bindings
+    from spectre.control.mapping import pick_bindings
 
     every = _b(target="macro.1")
     perform = _b(target="part.level@1", context="MODE:PERFORM")
@@ -339,8 +339,8 @@ SURFACE = PRESET.with_name("novation_lcxl3_surface.json")
 
 
 def test_surface_preset_targets_exist():
-    from src.spectre.core.macro_targets import get_macro_catalog
-    from src.spectre.ui.bridge.controllers import ACTIONS
+    from spectre.core.macro_targets import get_macro_catalog
+    from spectre.ui.bridge.controllers import ACTIONS
 
     keys = {e["key"] for e in get_macro_catalog()} | {a["key"] for a in ACTIONS}
     d = json.loads(SURFACE.read_text())
@@ -353,7 +353,7 @@ def test_surface_preset_targets_exist():
 
 
 def test_value_text():
-    from src.spectre.control.lcxl3 import format_value
+    from spectre.control.lcxl3 import format_value
 
     assert format_value("macro.1", -0.5, -1, 1) == "-50%"
     assert format_value("common.cutoff_offset", 70, 1, 127) == "+6"
@@ -366,7 +366,7 @@ def test_value_text():
 
 @pytest.mark.ui
 def test_surface_shows_names_values_and_leds(ui):
-    from src.spectre.control import lcxl3
+    from spectre.control import lcxl3
 
     app, bridge, _ = ui
     bridge._ctl_open[DAW] = object()
@@ -409,7 +409,7 @@ def test_surface_shows_names_values_and_leds(ui):
 
 
 def test_screen_text_is_ascii_and_fits():
-    from src.spectre.control import lcxl3
+    from spectre.control import lcxl3
 
     assert lcxl3.ascii_bytes("PATCH · TONE 1") == list(b"PATCH - TONE 1")
     m = lcxl3.display_text(13, 1, "Filter Cutoff Offset")
@@ -421,8 +421,8 @@ def test_screen_text_is_ascii_and_fits():
 
 
 def test_screen_names_fit_for_every_target():
-    from src.spectre.control.lcxl3 import screen_names
-    from src.spectre.core.macro_targets import get_macro_catalog
+    from spectre.control.lcxl3 import screen_names
+    from spectre.core.macro_targets import get_macro_catalog
 
     assert screen_names("tone.all.lfo1_tvf_depth", "All LFO1 Filter Depth", "LFO") == ("ALL TONES", "LFO1 Flt Dep")
     assert screen_names("tone.3.tvf_cutoff", "T3 Cutoff", "FILTER") == ("TONE 3", "Cutoff")
@@ -602,7 +602,7 @@ def test_changing_a_bindings_control_keeps_its_options(ui):
 
 @pytest.mark.ui
 def test_macros_are_named_after_their_links_until_renamed(ui):
-    from src.spectre.core.patch_state import auto_macro_name
+    from spectre.core.patch_state import auto_macro_name
 
     app, bridge, _ = ui
     assert bridge.macroNames[0] == "CUTOFF OFS"
@@ -629,8 +629,8 @@ def test_macros_are_named_after_their_links_until_renamed(ui):
 
 
 def test_automatic_macro_names_survive_save_and_load():
-    from src.spectre.core.patch_state import PatchState
-    from src.spectre.core.spectre_format import patch_state_from_dict, patch_state_to_dict
+    from spectre.core.patch_state import PatchState
+    from spectre.core.spectre_format import patch_state_from_dict, patch_state_to_dict
 
     ps = PatchState()
     ps.macros[1].name = "WOBBLE"
@@ -640,7 +640,7 @@ def test_automatic_macro_names_survive_save_and_load():
 
 def test_clip_launch_actions(tmp_path, monkeypatch):
     monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     b = SpectreBridge()
     clips = b.getControlTargets("CLIP", "")
@@ -670,7 +670,7 @@ def test_picked_bindings_follow_binding_and_context_changes(ui):
 
 @pytest.mark.ui
 def test_alt_layer_tap_latches_and_hold_is_momentary(ui, monkeypatch):
-    from src.spectre.ui.bridge import controllers as ctl_mod
+    from spectre.ui.bridge import controllers as ctl_mod
 
     app, bridge, _ = ui
     bridge._ctl_open[DAW] = object()
@@ -735,7 +735,7 @@ def test_alt_layer_tap_latches_and_hold_is_momentary(ui, monkeypatch):
 
 @pytest.mark.ui
 def test_touch_events_are_not_controls(ui, monkeypatch):
-    from src.spectre.ui.bridge import controllers as ctl_mod
+    from spectre.ui.bridge import controllers as ctl_mod
 
     monkeypatch.setattr(ctl_mod.time, "monotonic", lambda: 100.0)   # every press is a quick tap
     app, bridge, _ = ui
@@ -971,7 +971,7 @@ def test_part_mixer_moves_refresh_the_strips_throttled(ui):
 
 @pytest.mark.ui
 def test_solo_mute_and_shift_buttons(ui, monkeypatch):
-    from src.spectre.ui.bridge import controllers as ctl_mod
+    from spectre.ui.bridge import controllers as ctl_mod
 
     clock = [100.0]
     monkeypatch.setattr(ctl_mod.time, "monotonic", lambda: clock[0])
@@ -1077,8 +1077,8 @@ def test_shift_move_resets_to_the_loaded_value(ui):
 
 @pytest.mark.ui
 def test_shift_tap_arms_a_reset_for_the_next_moved_knob(ui, monkeypatch):
-    from src.spectre.control import lcxl3
-    from src.spectre.ui.bridge import controllers as ctl_mod
+    from spectre.control import lcxl3
+    from spectre.ui.bridge import controllers as ctl_mod
 
     clock = [100.0]
     monkeypatch.setattr(ctl_mod.time, "monotonic", lambda: clock[0])

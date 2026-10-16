@@ -6,11 +6,11 @@ from unittest.mock import MagicMock
 import mido
 import pytest
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.panel_follow import FollowPlan, PanelFollower
-from src.spectre.core.patch_state import PatchState, PerfPartState
-from src.spectre.core.protocol import JunoClient, SoundMode
-from src.spectre.core.sysex import RolandSysEx
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.panel_follow import FollowPlan, PanelFollower
+from spectre.core.patch_state import PatchState, PerfPartState
+from spectre.core.protocol import JunoClient, SoundMode
+from spectre.core.sysex import RolandSysEx
 
 
 def _dt1(addr, data):
@@ -75,7 +75,7 @@ def test_client_tells_own_traffic():
 
 @pytest.fixture
 def bridge(monkeypatch, tmp_path):
-    from src.spectre.ui.bridge import SpectreBridge, follow
+    from spectre.ui.bridge import SpectreBridge, follow
 
     class SyncThread:
         def __init__(self, target, args=(), **kw):

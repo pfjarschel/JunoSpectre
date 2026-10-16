@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.spectre.vector.motion import (
+from spectre.vector.motion import (
     AutomatorType,
     LoopMode,
     MotionRecorder,
@@ -130,7 +130,7 @@ def test_chaos_automator_smoothness_and_spread():
 
 
 def test_wavetable_sweeps():
-    from src.spectre.vector.motion import WavetableSweepMode
+    from spectre.vector.motion import WavetableSweepMode
     rec = MotionRecorder(bpm=120.0)
 
     # MANUAL

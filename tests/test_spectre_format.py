@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from src.spectre.core.patch_state import PatchState
-from src.spectre.core.spectre_format import (
+from spectre.core.patch_state import PatchState
+from spectre.core.spectre_format import (
     FORMAT_VERSION,
     load_spectre,
     patch_state_from_dict,
@@ -95,7 +95,7 @@ def test_tolerant_decode_survives_missing_keys():
 def test_file_patch_hash_is_cached_until_the_file_changes(tmp_path, monkeypatch):
     import os
 
-    from src.spectre.core import spectre_format as sf
+    from spectre.core import spectre_format as sf
 
     ps = PatchState()
     path = save_spectre(tmp_path / "a.spectre", ps)

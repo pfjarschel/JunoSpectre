@@ -3,13 +3,13 @@
 
 import pytest
 
-from src.spectre.librarian.factory import (
+from spectre.librarian.factory import (
     build_factory_db,
     factory_catalog_version,
     factory_key,
     factory_variants,
 )
-from src.spectre.librarian.repository import PatchRepository
+from spectre.librarian.repository import PatchRepository
 
 ROWS = [
     {"source": "factory", "kind": "patch", "msb": 87, "lsb": 64, "pc": 0,
@@ -105,7 +105,7 @@ def test_legacy_kept_without_matching_variant(tmp_path, factory_db):
 
 
 def test_ensure_shipped_copies(tmp_path, monkeypatch):
-    import src.spectre.librarian.factory as fac
+    import spectre.librarian.factory as fac
     src = tmp_path / "src_factory.db"
     build_factory_db(src, ROWS, "xps30")
     monkeypatch.setattr(fac, "shipped_factory_db", lambda: src)

@@ -5,10 +5,10 @@ import pytest
 PyQt6 = pytest.importorskip("PyQt6.QtCore")
 from PyQt6.QtCore import QCoreApplication
 
-from src.spectre.core.patch_state import PatchState
-from src.spectre.core.spectre_format import save_spectre
-from src.spectre.librarian.repository import PatchRepository
-from src.spectre.ui.librarian_model import PatchListModel
+from spectre.core.patch_state import PatchState
+from spectre.core.spectre_format import save_spectre
+from spectre.librarian.repository import PatchRepository
+from spectre.ui.librarian_model import PatchListModel
 
 
 @pytest.fixture(scope="module")

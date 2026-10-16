@@ -20,9 +20,9 @@ from pathlib import Path
 
 import mido
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from src.spectre.control import lcxl3  # noqa: E402
+from spectre.control import lcxl3  # noqa: E402
 
 
 def _port(names: list[str], key: str) -> str | None:

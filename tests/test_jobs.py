@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from src.spectre.ui.app import create_application
+from spectre.ui.app import create_application
 
 pytestmark = pytest.mark.ui
 

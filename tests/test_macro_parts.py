@@ -5,11 +5,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.patch_state import MacroLink, MacroSlot, PatchCommonState, ToneState
-from src.spectre.core.protocol import JunoClient, SoundMode
-from src.spectre.core.sysex import temp_perf_patch_base
-from src.spectre.ui.app import create_application
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.patch_state import MacroLink, MacroSlot, PatchCommonState, ToneState
+from spectre.core.protocol import JunoClient, SoundMode
+from spectre.core.sysex import temp_perf_patch_base
+from spectre.ui.app import create_application
 
 pytestmark = pytest.mark.ui
 
@@ -163,8 +163,8 @@ def test_part_scope_addresses_the_part_buffer():
 
 
 def test_macro_link_parts_roundtrip():
-    from src.spectre.core.patch_state import PatchState
-    from src.spectre.core.spectre_format import patch_state_from_dict, patch_state_to_dict
+    from spectre.core.patch_state import PatchState
+    from spectre.core.spectre_format import patch_state_from_dict, patch_state_to_dict
 
     ps = PatchState()
     ps.macros[0] = MacroSlot(name="X", links=[MacroLink("common.cutoff_offset", 1, 0.5, [6, 2, 2])])

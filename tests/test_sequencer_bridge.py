@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.spectre.ui.bridge import SpectreBridge
+from spectre.ui.bridge import SpectreBridge
 
 
 class DummyJuno:
@@ -305,9 +305,9 @@ def test_launches_move_the_selection(bridge):
 
 
 def test_loading_a_performance_applies_its_sequence_and_tempo(bridge, tmp_path):
-    from src.spectre.core.patch_state import PatchState
-    from src.spectre.core.spectre_format import save_spectre
-    from src.spectre.sequencer.models import default_sequencer_song
+    from spectre.core.patch_state import PatchState
+    from spectre.core.spectre_format import save_spectre
+    from spectre.sequencer.models import default_sequencer_song
 
     song = default_sequencer_song()
     song.bpm = 97.0

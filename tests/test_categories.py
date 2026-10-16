@@ -1,6 +1,6 @@
 """Tests for the Roland category table (Parameter Guide p.5)."""
 
-from src.spectre.core.categories import (
+from spectre.core.categories import (
     CATEGORIES,
     CHIP_TO_CODES,
     code_from_index,
@@ -53,7 +53,7 @@ def test_qml_full_grid_matches_category_table():
     import re
     from pathlib import Path
 
-    from src.spectre.core.categories import CATEGORIES as _CATS
+    from spectre.core.categories import CATEGORIES as _CATS
 
     qml = Path(__file__).resolve().parent.parent / "src" / "spectre" / "ui" / "qml" \
         / "components" / "LibrarianView.qml"

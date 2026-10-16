@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 import mido
 import pytest
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.protocol import JunoClient
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.protocol import JunoClient
 
 
 def test_find_juno_ports_prefers_midi_1():

@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.spectre.core.protocol import JunoClient
-from src.spectre.core.sysex import ADDR_SETUP
+from spectre.core.protocol import JunoClient
+from spectre.core.sysex import ADDR_SETUP
 
 
 class FakeJuno(JunoClient):
@@ -61,8 +61,8 @@ class FakeJuno(JunoClient):
 
 @pytest.fixture
 def rig(tmp_path):
-    from src.spectre.librarian.repository import PatchRepository
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.librarian.repository import PatchRepository
+    from spectre.ui.bridge import SpectreBridge
 
     juno = FakeJuno()
     bridge = SpectreBridge(juno)
@@ -99,7 +99,7 @@ def test_origin_tracking(rig):
 def test_save_to_file_always_writes_pi(rig):
     out = rig.bridge.saveCurrentToFile("MY SOUND", "HLD", "fat,lead", True, "")
     assert out.endswith(".spectre")
-    from src.spectre.core.spectre_format import load_spectre
+    from spectre.core.spectre_format import load_spectre
     loaded = load_spectre(out)
     assert loaded["meta"]["name"] == "MY SOUND"
     assert loaded["meta"]["favorite"] is True

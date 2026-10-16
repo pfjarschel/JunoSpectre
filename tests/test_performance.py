@@ -6,10 +6,10 @@ from unittest.mock import MagicMock
 import mido
 import pytest
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.patch_state import PatchState, PerfPartState
-from src.spectre.core.protocol import JunoClient, SoundMode
-from src.spectre.core.spectre_format import (
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.patch_state import PatchState, PerfPartState
+from spectre.core.protocol import JunoClient, SoundMode
+from spectre.core.spectre_format import (
     load_spectre,
     make_playlist_entry,
     patch_state_from_dict,
@@ -18,7 +18,7 @@ from src.spectre.core.spectre_format import (
     refresh_entry_snapshot,
     save_spectre,
 )
-from src.spectre.core.sysex import (
+from spectre.core.sysex import (
     ADDR_TEMP_PERFORMANCE,
     perf_part_base,
     perf_zone_base,
@@ -194,9 +194,9 @@ def test_playlist_entry_unsaved_snapshot_only():
 # --- bridge: file loads, pick mode, performance saves -----------------------
 
 def _bridge_rig(tmp_path):
-    from src.spectre.core.sysex import DEFAULT_DEVICE_ID, JUNO_DS_MODEL_ID, RolandSysEx
-    from src.spectre.librarian.repository import PatchRepository
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.core.sysex import DEFAULT_DEVICE_ID, JUNO_DS_MODEL_ID, RolandSysEx
+    from spectre.librarian.repository import PatchRepository
+    from spectre.ui.bridge import SpectreBridge
     from tests.test_librarian_bridge import FakeJuno
 
     juno = FakeJuno()
@@ -228,7 +228,7 @@ def _raw_image_state(name="TEST LD"):
 
 
 def test_engine_view_mapping():
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
     m = SpectreBridge._engine_view_for
     assert m({"engine_mode": "VECTOR"}) == "VECTOR"
     assert m({"engine_mode": "vector"}) == "VECTOR"
@@ -336,7 +336,7 @@ def test_pick_rejects_containers(tmp_path):
 
 
 def test_save_performance_kind(tmp_path):
-    from src.spectre.core.spectre_format import load_spectre
+    from spectre.core.spectre_format import load_spectre
     bridge, _, _ = _bridge_rig(tmp_path)
     bridge.setSoundMode("PERFORM")
     bridge.patch_state.perf_name = "GIGSAVE"
@@ -351,7 +351,7 @@ def test_save_performance_kind(tmp_path):
 
 
 def test_save_embeds_part_snapshots(tmp_path):
-    from src.spectre.core.spectre_format import load_spectre
+    from spectre.core.spectre_format import load_spectre
     bridge, _, _ = _bridge_rig(tmp_path)
     lead = tmp_path / "lead.spectre"
     save_spectre(lead, _raw_image_state("LEAD"), meta={"name": "LEAD"}, kind="patch")
@@ -393,8 +393,8 @@ def test_part_status_lifecycle(tmp_path):
 
 
 def _offline_bridge(tmp_path):
-    from src.spectre.librarian.repository import PatchRepository
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.librarian.repository import PatchRepository
+    from spectre.ui.bridge import SpectreBridge
 
     bridge = SpectreBridge()
     repo = PatchRepository(user_dir=tmp_path / "patches", db_path=tmp_path / "lib.db",
@@ -605,7 +605,7 @@ def test_setlist_midi_actions_step_songs(tmp_path):
 
 
 def test_setlist_song_restores_its_macros(tmp_path):
-    from src.spectre.core.patch_state import MacroLink, MacroSlot
+    from spectre.core.patch_state import MacroLink, MacroSlot
 
     bridge, _, _ = _bridge_rig(tmp_path)
     bridge.setSoundMode("PERFORM")
@@ -628,7 +628,7 @@ def test_setlist_song_restores_its_macros(tmp_path):
 
 
 def test_song_file_load_restores_macros_and_panics(tmp_path):
-    from src.spectre.core.patch_state import MacroSlot
+    from spectre.core.patch_state import MacroSlot
 
     bridge, juno, _ = _bridge_rig(tmp_path)
     bridge.setSoundMode("PERFORM")
@@ -688,8 +688,8 @@ def _sysex_addr(mock_midi_mgr):
 def test_zone_write_addresses():
     from unittest.mock import MagicMock
 
-    from src.spectre.core.midi import MidiDeviceManager
-    from src.spectre.core.protocol import JunoClient
+    from spectre.core.midi import MidiDeviceManager
+    from spectre.core.protocol import JunoClient
     client = JunoClient(MagicMock(spec=MidiDeviceManager))
     client.set_perf_zone(1, 36, 72)
     addr, payload = _sysex_addr(client.midi)
@@ -716,8 +716,8 @@ def test_zone_write_addresses():
 def test_zone_read_defaults_offline():
     from unittest.mock import MagicMock
 
-    from src.spectre.core.midi import MidiDeviceManager
-    from src.spectre.core.protocol import JunoClient
+    from spectre.core.midi import MidiDeviceManager
+    from spectre.core.protocol import JunoClient
     client = JunoClient(MagicMock(spec=MidiDeviceManager))
     client.midi.iter_juno_messages.return_value = []
     zones = client.get_perf_zones(timeout=0.05)
@@ -794,7 +794,7 @@ def test_perf_common_fx_addresses(mock_midi_mgr):
 
 
 def test_get_perf_fx_decodes_all_32_mfx_params(mock_midi_mgr):
-    from src.spectre.core.sysex import pack_4nibbles
+    from spectre.core.sysex import pack_4nibbles
     client = JunoClient(mock_midi_mgr)
     blk = bytearray(145)
     blk[0] = 6                                    # STEP FILTER (25 params)
@@ -809,7 +809,7 @@ def test_get_perf_fx_decodes_all_32_mfx_params(mock_midi_mgr):
 
 
 def test_perf_push_writes_every_mfx_param_including_zeros(tmp_path):
-    from src.spectre.core.mfx_catalog import get_mfx_algo
+    from spectre.core.mfx_catalog import get_mfx_algo
     bridge, _juno, repo = _bridge_rig(tmp_path)
     slot = bridge.patch_state.perf_fx.mfx1
     slot.source = 0
@@ -838,7 +838,7 @@ def test_perf_mfx_params_bulk_address(mock_midi_mgr):
 def test_get_perf_parts_decodes_fx():
     from unittest.mock import MagicMock
 
-    from src.spectre.core.midi import MidiDeviceManager
+    from spectre.core.midi import MidiDeviceManager
     client = JunoClient(MagicMock(spec=MidiDeviceManager))
     blk = bytearray(0x31)
     blk[0x07] = 100; blk[0x1C] = 90; blk[0x1D] = 11; blk[0x1E] = 22
@@ -898,7 +898,7 @@ def test_bridge_perf_sources_and_editing(tmp_path):
     assert bridge.patch_state.perf_fx.mfx_structure == 7
     # copy-to-PERFORM head-start: PARTn -> PERFORM takes part 4's FX,
     # not the edited part's
-    from src.spectre.core.patch_state import EffectsState
+    from spectre.core.patch_state import EffectsState
     part4 = EffectsState()
     part4.mfx_type = 22
     part4.mfx_params = [0] * 32
@@ -1062,8 +1062,8 @@ def test_patch_mode_editors_unchanged(tmp_path):
 def test_read_part_fx_decode():
     from unittest.mock import MagicMock
 
-    from src.spectre.core.midi import MidiDeviceManager
-    from src.spectre.core.sysex import pack_4nibbles
+    from spectre.core.midi import MidiDeviceManager
+    from spectre.core.sysex import pack_4nibbles
     client = JunoClient(MagicMock(spec=MidiDeviceManager))
     mfx = bytes([15, 100, 20, 30] + [0] * 13 + pack_4nibbles(32768 + 40) + [0] * (145 - 21))
     cho = bytes([1, 80, 0, 2] + [0] * 8 + pack_4nibbles(32768 + 12) + [0] * (84 - 16))
@@ -1191,8 +1191,8 @@ def test_leaving_librarian_ends_part_pick(tmp_path):
 
 
 def test_init_performance_fresh_song(tmp_path):
-    from src.spectre.core.patch_state import PerfFxState
-    from src.spectre.core.sysex import temp_perf_patch_base
+    from spectre.core.patch_state import PerfFxState
+    from spectre.core.sysex import temp_perf_patch_base
 
     bridge, juno, _ = _bridge_rig(tmp_path)
     bridge.setSoundMode("PERFORM")
@@ -1236,7 +1236,7 @@ def test_init_performance_fresh_song(tmp_path):
 # --- part edits: modified flag, full snapshots, edited badge -----------------
 
 def test_part_write_hook_reports_part(mock_midi_mgr):
-    from src.spectre.core.sysex import add_address
+    from spectre.core.sysex import add_address
     client = JunoClient(mock_midi_mgr)
     hits = []
     client.on_perf_part_write = hits.append
@@ -1250,7 +1250,7 @@ def test_part_write_hook_reports_part(mock_midi_mgr):
 
 
 def _edit_part(juno, part, value=9):
-    from src.spectre.core.sysex import add_address
+    from spectre.core.sysex import add_address
     juno.send_data(add_address(temp_perf_patch_base(part), (0x00, 0x00, 0x00, 0x20)), [value])
 
 
@@ -1385,7 +1385,7 @@ def test_write_back_updates_file_and_slot(tmp_path):
 # --- save performance to keyboard ----------------------------------------------
 
 def _seed_temp_performance(juno, name=b"SOUNDING"):
-    from src.spectre.core.sysex import add_address
+    from spectre.core.sysex import add_address
     for i, (offset, size) in enumerate(JunoClient.PERF_BLOCKS):
         data = bytearray([i % 100] * size)
         if i == 0:
@@ -1403,7 +1403,7 @@ def test_user_perf_layout():
 
 
 def test_write_user_performance_copies_temp(tmp_path, monkeypatch):
-    from src.spectre.core.sysex import add_address
+    from spectre.core.sysex import add_address
     _, juno, _ = _bridge_rig(tmp_path)
     monkeypatch.setattr(JunoClient, "FLASH_SETTLE_S", 0.0)
     _seed_temp_performance(juno)
@@ -1440,7 +1440,7 @@ def test_save_perf_to_keyboard(tmp_path, monkeypatch):
 
 
 def test_refresh_user_perf_names(tmp_path):
-    from src.spectre.core.sysex import add_address
+    from spectre.core.sysex import add_address
     bridge, juno, _ = _bridge_rig(tmp_path)
     for n in range(1, 129):
         juno._store[add_address(JunoClient.user_perf_base(n), (0, 0, 0, 0))] = (
@@ -1459,7 +1459,7 @@ def test_entering_perform_pushes_app_performance(tmp_path):
     bridge.patch_state.perf_parts[2].volume = 77
     juno._store.clear()
     bridge.setSoundMode("PERFORM")
-    from src.spectre.core.sysex import ADDR_SETUP
+    from spectre.core.sysex import ADDR_SETUP
     assert juno._store[tuple(ADDR_SETUP)] == bytes([1])
     assert len(juno._store) > 1  # mixer/zone/FX writes followed the mode switch
     juno._store.clear()
@@ -1469,7 +1469,7 @@ def test_entering_perform_pushes_app_performance(tmp_path):
 
 def test_entering_patch_pushes_edited_part_sound(tmp_path):
     """PATCH mode sounds what the editors show: the edited part's image lands in the temp patch."""
-    from src.spectre.core.sysex import ADDR_TEMP_PATCH_PART_1
+    from spectre.core.sysex import ADDR_TEMP_PATCH_PART_1
     bridge, juno = _perform_bridge(tmp_path)
     image = _raw_image_state("EDITED")
     pushed = []
@@ -1484,7 +1484,7 @@ def test_entering_patch_pushes_edited_part_sound(tmp_path):
 
 def _patch_round_trip_rig(tmp_path):
     """PERFORM bridge editing part 2, whose temp buffer holds a real image."""
-    from src.spectre.core.sysex import ADDR_TEMP_PATCH_PART_1
+    from spectre.core.sysex import ADDR_TEMP_PATCH_PART_1
     bridge, juno = _perform_bridge(tmp_path)
     image = juno.read_patch_at(ADDR_TEMP_PATCH_PART_1, "seed")
     juno.push_patch_to_perf_part(image, 2)
@@ -1495,7 +1495,7 @@ def _patch_round_trip_rig(tmp_path):
 
 
 def _edit_temp_patch_common(juno, offset, value):
-    from src.spectre.core.sysex import ADDR_TEMP_PATCH_PART_1, add_address
+    from spectre.core.sysex import ADDR_TEMP_PATCH_PART_1, add_address
     addr = tuple(add_address(ADDR_TEMP_PATCH_PART_1, juno.USER_REGION_OFFSETS["common"]))
     raw = bytearray(juno._store[addr])
     raw[offset] = value
@@ -1510,7 +1510,7 @@ def _wait_push(bridge):
 
 
 def test_patch_mode_edits_follow_back_to_part(tmp_path):
-    from src.spectre.core.sysex import add_address, temp_perf_patch_base
+    from spectre.core.sysex import add_address, temp_perf_patch_base
     bridge, juno = _patch_round_trip_rig(tmp_path)
     bridge.setSoundMode("PATCH")
     _edit_temp_patch_common(juno, 0x20, 33)

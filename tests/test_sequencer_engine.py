@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import mido
 import pytest
 
-from src.spectre.sequencer import (
+from spectre.sequencer import (
     NoteEvent,
     SequencerClock,
     SequencerEngine,
@@ -396,7 +396,7 @@ def test_selecting_another_clip_while_armed_launches_it():
 
 
 def test_track_selected_clip_round_trip_and_legacy_default():
-    from src.spectre.sequencer.models import Track
+    from spectre.sequencer.models import Track
 
     t = Track(selected_clip_idx=5)
     assert Track.from_dict(t.to_dict()).selected_clip_idx == 5
@@ -413,8 +413,8 @@ def test_track_selected_clip_round_trip_and_legacy_default():
 
 # -- automation lanes ----------------------------------------------------------
 
-from src.spectre.sequencer import AutomationStep
-from src.spectre.sequencer import automation as auto
+from spectre.sequencer import AutomationStep
+from spectre.sequencer import automation as auto
 
 
 def _auto_engine(bpm=120.0):

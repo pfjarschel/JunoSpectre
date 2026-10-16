@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.spectre.sequencer.chords import chord_name
+from spectre.sequencer.chords import chord_name
 
 
 @pytest.mark.parametrize("pitches, name", [

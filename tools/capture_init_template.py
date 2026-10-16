@@ -22,12 +22,12 @@ from pathlib import Path
 from typing import Callable
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.protocol import JunoClient
-from src.spectre.core.sysex import (
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.protocol import JunoClient
+from spectre.core.sysex import (
     OFFSET_PATCH_COMMON,
     OFFSET_PATCH_COMMON_CHORUS,
     OFFSET_PATCH_COMMON_MFX,

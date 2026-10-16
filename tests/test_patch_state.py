@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.spectre.core.patch_state import (
+from spectre.core.patch_state import (
     PatchState,
     ToneState,
 )
@@ -170,7 +170,7 @@ def test_env_modifier_defaults_and_conversions():
 
 def test_golden_template_asset_decodes():
     """The captured init_template.json asset must decode into a complete PatchState."""
-    from src.spectre.core.patch_state import TEMPLATE_ASSET_PATH
+    from spectre.core.patch_state import TEMPLATE_ASSET_PATH
 
     if not TEMPLATE_ASSET_PATH.exists():
         pytest.skip("init_template.json not captured (run tools/capture_init_template.py)")

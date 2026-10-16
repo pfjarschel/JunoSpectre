@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.spectre.core.protocol import JunoClient
+from spectre.core.protocol import JunoClient
 
 
 @pytest.fixture
@@ -84,7 +84,7 @@ def test_write_user_patch_detects_mismatch(client, monkeypatch):
     client.send_data = MagicMock()  # writes go nowhere
     client.request_data = MagicMock(return_value=bytes(80))  # flash reads back zeros
     monkeypatch.setattr(JunoClient, "FLASH_SETTLE_S", 0.0)
-    from src.spectre.core.patch_state import PatchState
+    from spectre.core.patch_state import PatchState
     state = PatchState.from_template_file()
     # Give it a raw image so there is something to compare.
     base = JunoClient.user_slot_base(87, 0, 75)
@@ -103,7 +103,7 @@ def test_write_user_patch_detects_mismatch(client, monkeypatch):
 
 
 def test_write_requires_raw_image(client):
-    from src.spectre.core.patch_state import PatchState
+    from spectre.core.patch_state import PatchState
     state = PatchState.from_template_file()
     state.raw_regions = {}
     with pytest.raises(ValueError):

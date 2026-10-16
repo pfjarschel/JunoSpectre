@@ -1,6 +1,6 @@
 """Unit tests for Roland SysEx protocol engine."""
 
-from src.spectre.core.sysex import (
+from spectre.core.sysex import (
     ADDR_SETUP,
     ADDR_TEMP_PATCH_PART_1,
     CMD_DT1,

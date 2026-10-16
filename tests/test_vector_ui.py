@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.spectre.ui.app import create_application
+from spectre.ui.app import create_application
 
 pytestmark = pytest.mark.ui
 
@@ -227,8 +227,8 @@ def test_bridge_sync_patch_from_synth():
     """Verify syncPatchFromSynth updates patch name and tone waveforms from JunoClient."""
     from unittest.mock import MagicMock
 
-    from src.spectre.core.patch_state import PatchState
-    from src.spectre.core.protocol import JunoClient
+    from spectre.core.patch_state import PatchState
+    from spectre.core.protocol import JunoClient
 
     state = PatchState.from_template_file()
     state.common.name = "Test Patch"
@@ -255,8 +255,8 @@ def test_bridge_sync_patch_from_synth_async():
     import time
     from unittest.mock import MagicMock
 
-    from src.spectre.core.patch_state import PatchState
-    from src.spectre.core.protocol import JunoClient
+    from spectre.core.patch_state import PatchState
+    from spectre.core.protocol import JunoClient
 
     state = PatchState.from_template_file()
     state.common.name = "Async Patch"
@@ -352,7 +352,7 @@ def test_va_plus_waves():
     """VA chips follow the tone wave; any other wave is PLUS, and the view shows its name."""
     from PyQt6.QtCore import QObject
 
-    from src.spectre.ui.bridge.patch import VA_WAVE_PLUS, va_wave_chip
+    from spectre.ui.bridge.patch import VA_WAVE_PLUS, va_wave_chip
 
     assert va_wave_chip("INTA", 579) == 0
     assert va_wave_chip("INTA", 1327) == 1   # PWM wave counts as SQR
@@ -745,7 +745,7 @@ def test_init_patch_preserves_motion_playback():
     """Init holds engine traffic during the restore and resumes prior playback."""
     from unittest.mock import MagicMock
 
-    from src.spectre.vector.motion import AutomatorType, RecorderState
+    from spectre.vector.motion import AutomatorType, RecorderState
 
     app, qml_engine, bridge = create_application(platform="offscreen")
     bridge.vector.motion.automator = AutomatorType.CIRCLE
@@ -1317,7 +1317,7 @@ def test_env_modifier_bridge_api():
 
 def test_bridge_set_effect_param_table_driven():
     """setChorusParam/setReverbParam clamping and signals."""
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     bridge = SpectreBridge()
 
@@ -1354,7 +1354,7 @@ def test_bridge_no_duplicate_signals():
     """Verify that SpectreBridge metaObject contains no duplicate signal definitions."""
     from collections import defaultdict
 
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     bridge = SpectreBridge()
     mo = bridge.metaObject()
@@ -1426,7 +1426,7 @@ def test_bridge_qml_cutoff_and_mode_bindings():
 
 def test_fx_macro_follows_assigned_processor_in_perform():
     """PERFORM: FX macros read and write the assigned processor, not the part patch FX."""
-    from src.spectre.core.patch_state import MacroLink, MacroSlot
+    from spectre.core.patch_state import MacroLink, MacroSlot
 
     app, qml_engine, bridge = create_application(platform="offscreen")
     ps = bridge.patch_state
@@ -1445,9 +1445,9 @@ def test_fx_macro_follows_assigned_processor_in_perform():
 def test_lpf2_lpf3_reach_the_synth():
     from unittest.mock import MagicMock
 
-    from src.spectre.core.midi import MidiDeviceManager
-    from src.spectre.core.protocol import JunoClient, SoundMode
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.core.midi import MidiDeviceManager
+    from spectre.core.protocol import JunoClient, SoundMode
+    from spectre.ui.bridge import SpectreBridge
 
     mgr = MagicMock(spec=MidiDeviceManager)
     client = JunoClient(mgr)

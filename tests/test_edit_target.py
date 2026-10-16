@@ -4,13 +4,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.spectre.core.midi import MidiDeviceManager
-from src.spectre.core.protocol import JunoClient, SoundMode
+from spectre.core.midi import MidiDeviceManager
+from spectre.core.protocol import JunoClient, SoundMode
 
 
 @pytest.fixture
 def bridge(monkeypatch, tmp_path):
-    from src.spectre.ui.bridge import SpectreBridge
+    from spectre.ui.bridge import SpectreBridge
 
     monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path))
     client = JunoClient(MagicMock(spec=MidiDeviceManager))

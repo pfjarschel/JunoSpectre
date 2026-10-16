@@ -1,8 +1,8 @@
 """Tests for PatchRepository: files as truth, SQLite as rebuildable cache."""
 
-from src.spectre.core.patch_state import PatchState
-from src.spectre.core.spectre_format import save_spectre
-from src.spectre.librarian.repository import PatchRepository
+from spectre.core.patch_state import PatchState
+from spectre.core.spectre_format import save_spectre
+from spectre.librarian.repository import PatchRepository
 
 
 def _make_repo(tmp_path):
@@ -52,7 +52,7 @@ def test_favorite_travels_with_file(tmp_path):
     assert repo.set_favorite(str(p), True) is True
     assert repo.search("STAR")[0]["favorite"] is True
     # File itself carries the flag (portable across machines/pCloud/git)
-    from src.spectre.core.spectre_format import load_spectre
+    from spectre.core.spectre_format import load_spectre
     assert load_spectre(p)["meta"]["favorite"] is True
     repo.close()
 
@@ -103,7 +103,7 @@ def test_kinds_and_category_lists(tmp_path):
 
 
 def test_data_root_env_override(tmp_path, monkeypatch):
-    from src.spectre.librarian.repository import data_root, default_db_path
+    from spectre.librarian.repository import data_root, default_db_path
     monkeypatch.setenv("JUNOSPECTRE_DATA_DIR", str(tmp_path / "custom"))
     assert data_root() == tmp_path / "custom"
     assert default_db_path() == tmp_path / "custom" / "librarian.db"
@@ -117,8 +117,8 @@ def test_data_root_env_override(tmp_path, monkeypatch):
 
 
 def test_auto_backups_hidden_from_index(tmp_path):
-    from src.spectre.core.patch_state import PatchState
-    from src.spectre.core.spectre_format import save_spectre
+    from spectre.core.patch_state import PatchState
+    from spectre.core.spectre_format import save_spectre
 
     repo = _make_repo(tmp_path)
     ps = PatchState.from_template_file()
