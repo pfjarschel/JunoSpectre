@@ -1,4 +1,4 @@
-"""User flash slots, SysEx blobs, and initialization protocol mixin for Roland JUNO-DS / XPS-30."""
+"""User flash slots, patch image transfers and the init template (Roland JUNO-DS / XPS-30)."""
 
 from __future__ import annotations
 
@@ -33,7 +33,6 @@ from .sysex import (
     OFFSET_PATCH_TONE_4,
     PATCH_PARAM_NAME,
     PATCH_TONE_OFFSETS,
-    RolandSysEx,
     add_address,
     encode_name,
 )
@@ -49,7 +48,7 @@ def _named_common(state: PatchState) -> bytes:
 
 
 class FlashProtocolMixin:
-    """User flash slots, batch region transfers, SysEx blob parsing, and template init."""
+    """User flash slots, patch image transfers and the init template."""
 
     # ------------------------------------------------------------------
     # User flash slots (writable): MSB 87 LSB 0..1 -> 256 patches 501..756.
@@ -250,73 +249,6 @@ class FlashProtocolMixin:
                 logger.debug(f"rename verify retry: {e}")
             time.sleep(0.4)
         return False
-
-    # ------------------------------------------------------------------
-    # .syx bulk files: DT1 sequences restoring a raw patch image.
-    # Export reads nothing new (uses the raw image); import retargets the
-    # file's patch base onto the live temp base so files recorded in Patch
-    # mode also apply inside Performance parts.
-    # ------------------------------------------------------------------
-
-    def encode_patch_sysex(self, state: PatchState,
-                           base: Optional[Tuple[int, int, int, int]] = None,
-                           timeout: float = 1.0) -> bytes:
-        """Encode a PatchState raw image as .syx bytes (F0..F7 DT1 messages)."""
-        if not state.raw_regions:
-            raise ValueError("No raw image: sync/read the patch first.")
-        resolved = base if base is not None else self.get_active_patch_base(timeout=timeout)
-        common = _named_common(state)
-        blob = bytearray()
-        blob += bytes([0xF0] + self.sysex.build_dt1(
-            add_address(resolved, self.USER_REGION_OFFSETS["common"]), bytes(common)) + [0xF7])
-        for key in ("mfx", "chorus", "reverb", "tmt"):
-            for chunk in state.raw_regions.get(key, []):
-                blob += bytes([0xF0] + self.sysex.build_dt1(
-                    add_address(resolved, self.USER_REGION_OFFSETS[key]), bytes(chunk)) + [0xF7])
-        for idx in range(1, 5):
-            for chunk, start in zip(state.raw_regions.get(f"tone_{idx}", []),
-                                    self.TONE_CHUNK_STARTS):
-                blob += bytes([0xF0] + self.sysex.build_dt1(
-                    add_address(add_address(resolved, self.USER_REGION_OFFSETS[f"tone_{idx}"]),
-                                start), bytes(chunk)) + [0xF7])
-        return bytes(blob)
-
-    @staticmethod
-    def split_sysex_blob(blob: bytes) -> list[bytes]:
-        """Split raw .syx bytes into individual F0..F7 messages."""
-        messages: list[bytes] = []
-        start: Optional[int] = None
-        for i, byte in enumerate(blob):
-            if byte == 0xF0:
-                start = i
-            elif byte == 0xF7 and start is not None:
-                messages.append(bytes(blob[start:i + 1]))
-                start = None
-        return messages
-
-    def apply_sysex_blob(self, blob: bytes,
-                         base: Optional[Tuple[int, int, int, int]] = None,
-                         timeout: float = 1.0, write_gap: float = 0.02) -> int:
-        """Push a .syx DT1 blob into the live temp buffer. Returns messages applied.
-
-        Only Roland DT1 messages with valid checksums are honored; anything
-        else is skipped. Addresses are rebased onto the live temp base (high
-        two bytes replaced), so Patch-mode captures apply in Performance mode.
-        """
-        from .sysex import CMD_DT1
-
-        resolved = base if base is not None else self.get_active_patch_base(timeout=timeout)
-        applied = 0
-        with self.paced_init_writes(write_gap):
-            for message in self.split_sysex_blob(bytes(blob)):
-                parsed = RolandSysEx.parse(message)
-                if (parsed is None or not parsed.is_valid_checksum
-                        or parsed.command != CMD_DT1 or len(parsed.payload) == 0):
-                    continue
-                addr = (resolved[0], resolved[1], parsed.address[2], parsed.address[3])
-                self.send_data(addr, parsed.payload)
-                applied += 1
-        return applied
 
     @staticmethod
     def load_init_template() -> Optional[dict]:

@@ -817,7 +817,8 @@ def test_perf_push_writes_every_mfx_param_including_zeros(tmp_path):
     slot.params = [0] * 32
     slot.params[20] = 30
     juno = MagicMock()
-    bridge._push_perf_to_synth(juno)
+    _, parts, fx = bridge._perf_push_jobs()[0]
+    bridge._send_perf_mixer(juno, parts, fx)
     n = len(get_mfx_algo(6)["params"])
     calls = [c for c in juno.set_perf_mfx_params_bulk.call_args_list if c.args[0] == 1]
     assert len(calls) == 1
@@ -1505,7 +1506,7 @@ def _edit_temp_patch_common(juno, offset, value):
 def _wait_push(bridge):
     import time
     t0 = time.time()
-    while float(bridge._perf_push_progress) >= 0.0 and time.time() - t0 < 5:
+    while bridge._push_thread is not None and time.time() - t0 < 5:
         time.sleep(0.01)
 
 

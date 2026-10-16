@@ -54,6 +54,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     perfFxChanged = pyqtSignal()
     librarianPickChanged = pyqtSignal()
     perfPushChanged = pyqtSignal(float)
+    pushJobsFinished = pyqtSignal()  # from the push worker; refreshes on the UI thread
     # Background part read finished: (part index, PatchState) -> UI thread
     partStateRead = pyqtSignal(int, object)
     partFileStatusChanged = pyqtSignal()
@@ -71,6 +72,13 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         # getters on hardware reads.
         self._part_fx_cache: dict = {}
         self._perf_push_progress: float = -1.0  # -1.0 = idle
+        # Synth push jobs, run in order by one worker (see _queue_push_jobs)
+        self._push_queue: list = []
+        self._push_queue_lock = threading.Lock()
+        self._push_thread: threading.Thread | None = None
+        self._push_done = 0
+        self._push_total = 0
+        self.pushJobsFinished.connect(self.refreshPartFileStatus)
         self._editing_perf_mfx: int = 1
         self._push_lock = threading.Lock()
         self.partStateRead.connect(self._on_part_state_read)
@@ -409,46 +417,60 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         self.perfPartsChanged.emit()
         return "; ".join(errors)
 
-    def _queue_push_jobs(self, jobs: list) -> None:
-        """Run part-sound jobs in a worker thread (images are slow on SysEx).
+    def _queue_push_jobs(self, jobs: list, replace: bool = False) -> None:
+        """Run synth push jobs on the push worker, in order (SysEx is slow).
 
-        Job: ('image', part_index, PatchState) or ('select', part_index, msb, lsb, pc).
+        Jobs: ('perf', parts, fx) the mixer, zones and shared FX of a
+        performance; ('image', part_index, PatchState) a part's sound;
+        ('select', part_index, msb, lsb, pc). replace=True (a new performance)
+        drops the jobs still waiting from the previous one.
         """
         if not jobs:
             return
-        if float(self._perf_push_progress) >= 0.0:
-            logger.info("push already running; new jobs dropped")
-            return
-        self._set_push_progress(0.0)
-        worker = threading.Thread(target=self._push_parts_worker, args=(list(jobs),), daemon=True)
-        worker.start()
+        with self._push_queue_lock:
+            if replace or not self._push_queue:
+                self._push_done = self._push_total = 0
+                self._push_queue.clear()
+            self._push_queue.extend(jobs)
+            self._push_total += len(jobs)
+            start = self._push_thread is None
+            if start:
+                self._push_thread = threading.Thread(target=self._push_parts_worker,
+                                                     name="part-push", daemon=True)
+            progress = self._push_done / max(1, self._push_total)
+        self._set_push_progress(progress)
+        if start:
+            self._push_thread.start()
 
-    def _push_parts_worker(self, jobs: list) -> None:
+    def _push_parts_worker(self) -> None:
         juno = self.juno
-        try:
-            if juno is None:
-                return
-            total = max(1, len(jobs))
+        while True:
+            with self._push_queue_lock:
+                if not self._push_queue or juno is None:
+                    self._push_queue.clear()
+                    self._push_thread = None
+                    self._set_push_progress(-1.0)
+                    break
+                job = self._push_queue.pop(0)
             with self._push_lock:
-                for done, job in enumerate(jobs):
-                    try:
-                        if job[0] == "image":
-                            _, part, state = job
-                            fails = juno.push_patch_to_perf_part(state, int(part))
-                            if fails:
-                                logger.warning(f"part {part}: {fails} DT1 failures")
-                        elif job[0] == "select":
-                            _, part, msb, lsb, pc = job
-                            juno.set_perf_part_patch(int(part), int(msb), int(lsb), int(pc))
-                    except Exception as e:
-                        logger.debug(f"part push job failed: {e}")
-                    self._set_push_progress((done + 1) / total)
-        finally:
-            self._set_push_progress(-1.0)
-            try:
-                self.refreshPartFileStatus()
-            except Exception:
-                pass
+                try:
+                    if job[0] == "perf":
+                        self._send_perf_mixer(juno, job[1], job[2])
+                    elif job[0] == "image":
+                        _, part, state = job
+                        fails = juno.push_patch_to_perf_part(state, int(part))
+                        if fails:
+                            logger.warning(f"part {part}: {fails} DT1 failures")
+                    elif job[0] == "select":
+                        _, part, msb, lsb, pc = job
+                        juno.set_perf_part_patch(int(part), int(msb), int(lsb), int(pc))
+                except Exception as e:
+                    logger.debug(f"push job {job[0]} failed: {e}")
+            with self._push_queue_lock:
+                self._push_done += 1
+                progress = self._push_done / max(1, self._push_total)
+            self._set_push_progress(progress)
+        self.pushJobsFinished.emit()
 
     @pyqtSlot(int, result=bool)
     def refreshPartFile(self, part_index: int) -> bool:
@@ -901,7 +923,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                                       self.patch_state, self.patch_state.common)
             if m == "PERFORM" and prev != "PERFORM":
                 try:
-                    self._queue_push_jobs(self._push_perf_to_synth(juno))
+                    self._queue_push_jobs(self._perf_push_jobs(), replace=True)
                 except Exception as e:
                     logger.debug(f"setSoundMode: performance push failed: {e}")
         if m != str(getattr(self, "_sound_mode", "")).upper():
@@ -1371,94 +1393,60 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         self._pending_view = "PERFORMANCE"
         return True
 
-    def _push_perf_to_synth(self, juno) -> list:
-        """Send the app's performance (mixer, zones, shared FX, solo) to the synth.
+    def _perf_push_jobs(self, state=None, part_snapshots: dict | None = None) -> list:
+        """Jobs that send a performance (default: the app's) to the synth: the
+        mixer, zones, shared FX and solo first (one 'perf' job, ~280 DT1s), then
+        the part images of Pi-only / edited parts. Copies, so the UI can go on
+        editing."""
+        state = state if state is not None else self.patch_state
+        snapshots = part_snapshots if part_snapshots is not None else self._part_snapshots
+        jobs = [("perf", copy.deepcopy(state.perf_parts), copy.deepcopy(state.perf_fx))]
+        for p in state.perf_parts:
+            image = self._part_restore_image(p, snapshots)
+            if image is not None:
+                jobs.append(("image", p.part_index, image))
+        return jobs
 
-        Returns the part image jobs (Pi-only/edited parts) for _queue_push_jobs.
-        """
-        image_jobs = []
-        for p in self.patch_state.perf_parts:
+    @staticmethod
+    def _send_perf_mixer(juno, parts: list, fx) -> None:
+        """Send a performance's mixer, zones, shared FX and solo (push worker)."""
+        for p in parts:
             try:
                 juno.set_perf_part_patch(p.part_index, p.patch_msb, p.patch_lsb, p.patch_pc)
                 juno.set_perf_part_level(p.part_index, p.volume)
                 juno.set_perf_part_pan(p.part_index, p.pan)
                 juno.set_perf_part_mute(p.part_index, p.muted)
-                if hasattr(juno, "set_perf_part_fx"):
-                    try:
-                        juno.set_perf_part_fx(p.part_index, dry=int(getattr(p, "dry_send", 127)),
-                                              chorus=int(getattr(p, "chorus_send", 0)),
-                                              reverb=int(getattr(p, "reverb_send", 0)))
-                    except Exception as e:
-                        logger.debug(f"perf push: part {p.part_index} fx push failed: {e}")
-                if hasattr(juno, "set_perf_part_output"):
-                    try:
-                        juno.set_perf_part_output(p.part_index,
-                                                  assign=int(getattr(p, "output_assign", 13)),
-                                                  mfx_select=int(getattr(p, "mfx_select", 0)))
-                    except Exception as e:
-                        logger.debug(f"perf push: part {p.part_index} output push failed: {e}")
-                juno.set_perf_zone(p.part_index,
-                                   p.key_low, p.key_high, p.zone_switch, p.zone_octave)
+                juno.set_perf_part_fx(p.part_index, dry=p.dry_send, chorus=p.chorus_send,
+                                      reverb=p.reverb_send)
+                juno.set_perf_part_output(p.part_index, assign=p.output_assign,
+                                          mfx_select=p.mfx_select)
+                juno.set_perf_zone(p.part_index, p.key_low, p.key_high, p.zone_switch, p.zone_octave)
             except Exception as e:
                 logger.debug(f"perf push: part {p.part_index} push failed: {e}")
-                break
-            image = self._part_restore_image(p, self._part_snapshots)
-            if image is not None:
-                image_jobs.append(("image", p.part_index, image))
+                return
         try:
-            fx = getattr(self.patch_state, "perf_fx", None)
-            if fx is not None:
-                if hasattr(juno, "set_perf_source"):
-                    for _w, _o in (("mfx1", int(fx.mfx1.source)), ("mfx2", int(fx.mfx2.source)),
-                                   ("mfx3", int(fx.mfx3.source)), ("chorus", int(fx.chorus_source)),
-                                   ("reverb", int(fx.reverb_source))):
-                        try:
-                            juno.set_perf_source(_w, _o)
-                        except Exception as e:
-                            logger.debug(f"perf push: source {_w} push failed: {e}")
-                if hasattr(juno, "set_perf_structure"):
-                    try:
-                        juno.set_perf_structure(int(fx.mfx_structure))
-                    except Exception as e:
-                        logger.debug(f"perf push: structure push failed: {e}")
-                if hasattr(juno, "set_perf_mfx"):
-                    for _s, _h in ((1, fx.mfx1), (2, fx.mfx2), (3, fx.mfx3)):
-                        try:
-                            juno.set_perf_mfx(_s, mfx_type=int(_h.mfx_type),
-                                              dry_send=int(_h.dry_send),
-                                              chorus_send=int(_h.chorus_send),
-                                              reverb_send=int(_h.reverb_send))
-                        except Exception as e:
-                            logger.debug(f"perf push: mfx{_s} push failed: {e}")
-                        if int(_h.source) == 0:
-                            # Every parameter the type uses, zeros included: the
-                            # synth may still hold another song's values there.
-                            try:
-                                algo = get_mfx_algo(int(_h.mfx_type)) if int(_h.mfx_type) > 0 else None
-                                n = len(algo.get("params", [])) if algo else 0
-                                if n:
-                                    juno.set_perf_mfx_params_bulk(_s, list(_h.params)[:n])
-                            except Exception as e:
-                                logger.debug(f"perf push: mfx{_s} params push failed: {e}")
-                if hasattr(juno, "set_perf_chorus"):
-                    try:
-                        juno.set_perf_chorus(int(fx.chorus_type), level=int(fx.chorus_level),
-                                             output_select=int(fx.chorus_to_reverb))
-                    except Exception as e:
-                        logger.debug(f"perf push: chorus push failed: {e}")
-                if hasattr(juno, "set_perf_reverb"):
-                    try:
-                        juno.set_perf_reverb(int(fx.reverb_type), level=int(fx.reverb_level))
-                    except Exception as e:
-                        logger.debug(f"perf push: reverb push failed: {e}")
-        except Exception as e:
-            logger.debug(f"perf push: perf fx push failed: {e}")
-        try:
-            solos = [p.part_index for p in self.patch_state.perf_parts if p.solo]
+            for which, origin in (("mfx1", fx.mfx1.source), ("mfx2", fx.mfx2.source),
+                                  ("mfx3", fx.mfx3.source), ("chorus", fx.chorus_source),
+                                  ("reverb", fx.reverb_source)):
+                juno.set_perf_source(which, int(origin))
+            juno.set_perf_structure(int(fx.mfx_structure))
+            for s, slot in ((1, fx.mfx1), (2, fx.mfx2), (3, fx.mfx3)):
+                juno.set_perf_mfx(s, mfx_type=int(slot.mfx_type), dry_send=int(slot.dry_send),
+                                  chorus_send=int(slot.chorus_send), reverb_send=int(slot.reverb_send))
+                if int(slot.source) == 0 and int(slot.mfx_type) > 0:
+                    # Every parameter the type uses, zeros included: the synth
+                    # may still hold another song's values there.
+                    algo = get_mfx_algo(int(slot.mfx_type))
+                    n = len(algo.get("params", [])) if algo else 0
+                    if n:
+                        juno.set_perf_mfx_params_bulk(s, list(slot.params)[:n])
+            juno.set_perf_chorus(int(fx.chorus_type), level=int(fx.chorus_level),
+                                 output_select=int(fx.chorus_to_reverb))
+            juno.set_perf_reverb(int(fx.reverb_type), level=int(fx.reverb_level))
+            solos = [p.part_index for p in parts if p.solo]
             juno.set_perf_solo(solos[-1] if solos else 0)
         except Exception as e:
-            logger.debug(f"perf push: solo push failed: {e}")
-        return image_jobs
+            logger.debug(f"perf push: shared FX push failed: {e}")
 
     def _apply_song_state(self, patch_dict: dict, entry_name: str = "",
                           part_snapshots: dict | None = None) -> bool:
@@ -1492,14 +1480,11 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 juno.set_sound_mode(SoundMode.PERFORM)
             except Exception as e:
                 logger.debug(f"song load: mode switch failed: {e}")
-            image_jobs = self._push_perf_to_synth(juno)
-            if getattr(state, "raw_regions", None):
-                try:
-                    active = max(1, min(16, int(getattr(state, "active_perf_part", 1))))
-                    image_jobs.append(("image", active, state))
-                except Exception as e:
-                    logger.debug(f"song load: active image job failed: {e}")
-            self._queue_push_jobs(image_jobs)
+            jobs = self._perf_push_jobs()
+            if state.raw_regions:
+                active = max(1, min(16, int(state.active_perf_part)))
+                jobs.append(("image", active, copy.deepcopy(state)))
+            self._queue_push_jobs(jobs, replace=True)
         try:
             self.refreshPartFileStatus()
         except Exception:
@@ -1617,8 +1602,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             try:
                 juno.set_sound_mode(SoundMode.PATCH)
                 juno.set_active_perf_part(1)
-                blob = juno.encode_patch_sysex(self.patch_state)
-                juno.apply_sysex_blob(blob)
+                juno.write_patch_regions(self.patch_state, ADDR_TEMP_PATCH_PART_1)
             except Exception as e:
                 logger.debug(f"loadSpectreFile: synth push failed: {e}")
         self._apply_arp_extras(loaded.get("spectre"))

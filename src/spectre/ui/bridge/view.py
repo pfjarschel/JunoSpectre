@@ -9,6 +9,7 @@ from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...core.protocol import SoundMode
 from ...core.spectre_format import patch_state_from_dict, patch_state_to_dict
+from ...core.sysex import ADDR_TEMP_PATCH_PART_1
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -215,8 +216,7 @@ class ViewBridgeMixin(BridgeBaseMixin):
                 elif getattr(state, "raw_regions", None):
                     try:
                         juno.set_sound_mode(SoundMode.PATCH)
-                        blob = juno.encode_patch_sysex(state)
-                        juno.apply_sysex_blob(blob)
+                        juno.write_patch_regions(state, ADDR_TEMP_PATCH_PART_1)
                     except Exception as e:
                         logger.debug(f"cancel restore: patch push failed: {e}")
         try:
@@ -248,7 +248,7 @@ class ViewBridgeMixin(BridgeBaseMixin):
             return False
 
     def _restore_performance_sound(self, state, part_snapshots: dict) -> None:
-        """Restore a performance sound: mixer selects sync, images queued."""
+        """Restore a performance sound: mixer, FX and part images on the push worker."""
         juno = self.juno
         if juno is None:
             return
@@ -256,37 +256,11 @@ class ViewBridgeMixin(BridgeBaseMixin):
             juno.set_sound_mode(SoundMode.PERFORM)
         except Exception as e:
             logger.debug(f"cancel restore: mode switch failed: {e}")
-        for p in state.perf_parts:
-            try:
-                juno.set_perf_part_patch(p.part_index, p.patch_msb, p.patch_lsb, p.patch_pc)
-                juno.set_perf_part_level(p.part_index, p.volume)
-                juno.set_perf_part_pan(p.part_index, p.pan)
-                juno.set_perf_part_mute(p.part_index, p.muted)
-                juno.set_perf_zone(p.part_index,
-                                   p.key_low, p.key_high, p.zone_switch, p.zone_octave)
-            except Exception as e:
-                logger.debug(f"cancel restore: part {p.part_index} failed: {e}")
-                break
-        try:
-            solos = [p.part_index for p in state.perf_parts if p.solo]
-            juno.set_perf_solo(solos[-1] if solos else 0)
-        except Exception as e:
-            logger.debug(f"cancel restore: solo failed: {e}")
-        jobs = []
-        jobbed = set()
-        for p in state.perf_parts:
-            image = self._part_restore_image(p, part_snapshots)
-            if image is not None:
-                jobs.append(("image", p.part_index, image))
-                jobbed.add(p.part_index)
-        if getattr(state, "raw_regions", None):
-            try:
-                active = max(1, min(16, int(getattr(state, "active_perf_part", 1))))
-                if active not in jobbed:
-                    jobs.append(("image", active, state))
-            except Exception as e:
-                logger.debug(f"cancel restore: active image failed: {e}")
-        self._queue_push_jobs(jobs)
+        jobs = self._perf_push_jobs(state, part_snapshots)
+        active = max(1, min(16, int(state.active_perf_part)))
+        if state.raw_regions and not any(j[0] == "image" and j[1] == active for j in jobs):
+            jobs.append(("image", active, state))
+        self._queue_push_jobs(jobs, replace=True)
 
     @pyqtSlot(int)
     def setSelectedTone(self, tone_number: int) -> None:
