@@ -177,7 +177,7 @@ other side.
 2026-10-16; faders are unaffected). A Shift tap (press and release, nothing else touched) arms a
 reset: the next knob or fader moved within 3 s goes back to its loaded value, and the rest of that
 turn is ignored until the knob rests for 0.4 s. The screen's middle line shows `MOVE TO RESET`
-while armed; a second tap cancels.
+while armed (on the default screen; not while it still shows a recently moved control); a second tap cancels.
 
 "Loaded" is the sound as it was loaded (library, file, song, INIT, sync from the synth) or last
 saved; a part already edited keeps the copy from before its edits when you come back to it.
