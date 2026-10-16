@@ -152,7 +152,6 @@ def create_application(
 
     # Register as global QML singleton 'Bridge' in module 'JunoSpectre'
     qmlRegisterSingletonInstance("JunoSpectre", 1, 0, "Bridge", bridge)
-    qml_engine.rootContext().setContextProperty("bridge", bridge)
 
     # Set QML import path for singletons (Theme, ScaleMetrics)
     qml_dir = Path(__file__).resolve().parent / "qml"
@@ -172,27 +171,3 @@ def create_application(
     return app, qml_engine, bridge
 
 
-def run_app(
-    juno: Optional[JunoClient] = None,
-    fullscreen: bool = False,
-    platform: Optional[str] = None,
-) -> int:
-    """Launch the Juno Spectre QML Touch Application."""
-    app, qml_engine, bridge = create_application(juno=juno, platform=platform, splash=True)
-
-    # Hide mouse cursor for touch appliance
-    app.setOverrideCursor(Qt.CursorShape.BlankCursor)
-
-    if fullscreen and qml_engine.rootObjects():
-        root_obj = qml_engine.rootObjects()[0]
-        if hasattr(root_obj, "showFullScreen"):
-            root_obj.showFullScreen()
-
-    quit_boot_splash()
-    try:
-        return app.exec()
-    finally:
-        try:
-            bridge._perform_appliance_cleanup("app_exit")
-        except Exception:
-            pass
