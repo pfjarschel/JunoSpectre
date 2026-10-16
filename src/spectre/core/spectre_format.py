@@ -53,6 +53,34 @@ def default_meta(name: str = "JUNO SPECTRE", category: str = "") -> Dict[str, An
     }
 
 
+_LINE_WIDTH = 120
+
+
+def _json_key(k: Any) -> str:
+    return k if isinstance(k, str) else next(iter(json.loads(json.dumps({k: 0}))))
+
+
+def _dumps(obj: Any, level: int = 0) -> str:
+    """Indented JSON that keeps small objects (sequencer steps, notes) and
+    number lists (raw synth bytes) on one line: the files stay readable at
+    a fraction of the size of indent=2."""
+    if not isinstance(obj, (dict, list, tuple)) or not obj:
+        return json.dumps(obj)
+    values = list(obj.values()) if isinstance(obj, dict) else list(obj)
+    if all(not isinstance(v, (dict, list, tuple)) or not v for v in values):
+        flat = json.dumps(obj, separators=(", ", ": "))
+        numbers = not isinstance(obj, dict) and all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) for v in values)
+        if numbers or len(flat) <= _LINE_WIDTH:
+            return flat.replace(", ", ",") if numbers else flat
+    pad = "  " * (level + 1)
+    if isinstance(obj, dict):
+        items = [f"{pad}{json.dumps(_json_key(k))}: {_dumps(v, level + 1)}" for k, v in obj.items()]
+        return "{\n" + ",\n".join(items) + "\n" + "  " * level + "}"
+    items = [pad + _dumps(v, level + 1) for v in values]
+    return "[\n" + ",\n".join(items) + "\n" + "  " * level + "]"
+
+
 def _raw_regions_to_json(raw: Dict[str, list[bytes]]) -> Dict[str, list[list[int]]]:
     out: Dict[str, list[list[int]]] = {}
     for key, chunks in (raw or {}).items():
@@ -315,7 +343,7 @@ def save_spectre(
     p.parent.mkdir(parents=True, exist_ok=True)
     # Touch modified timestamp
     payload["meta"]["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    p.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    p.write_text(_dumps(payload), encoding="utf-8")
     return p
 
 

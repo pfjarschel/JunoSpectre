@@ -188,23 +188,26 @@ class PerformanceProtocolMixin:
         self.send_data(addr, [self._check_perf_source(origin)])
 
     def get_perf_sources(self, timeout: float = 1.0) -> dict:
-        """Read the 5 FX origins + MFX structure (tolerant: defaults on timeout)."""
+        """Read the 5 FX origins + MFX structure (defaults on timeout).
+
+        One read of 10 00 00 30..37 (the sources and the structure are
+        contiguous in the performance common block).
+        """
         out = {"mfx1": 0, "mfx2": 0, "mfx3": 0, "chorus": 0, "reverb": 0, "structure": 0}
+        span = PERF_COMMON_MFX_STRUCTURE - PERF_COMMON_MFX1_SOURCE + 1
+        res = self.request_data(add_address(ADDR_TEMP_PERFORMANCE, PERF_COMMON_MFX1_SOURCE),
+                                (0x00, 0x00, 0x00, span), timeout=timeout)
+        if not res or len(res) < span:
+            logger.debug("get_perf_sources: no reply, using defaults")
+            return out
         pairs = [
             ("mfx1", PERF_COMMON_MFX1_SOURCE), ("mfx2", PERF_COMMON_MFX2_SOURCE),
             ("mfx3", PERF_COMMON_MFX3_SOURCE), ("chorus", PERF_COMMON_CHORUS_SOURCE),
             ("reverb", PERF_COMMON_REVERB_SOURCE), ("structure", PERF_COMMON_MFX_STRUCTURE),
         ]
         for key, off in pairs:
-            try:
-                res = self.request_data(add_address(ADDR_TEMP_PERFORMANCE, off),
-                                        (0x00, 0x00, 0x00, 0x01), timeout=timeout)
-                if res:
-                    v = int(res[0])
-                    out[key] = max(0, min(15, v)) if key == "structure" else max(0, min(16, v))
-            except Exception as e:
-                logger.debug(f"get_perf_sources: read failed for '{key}': {e}")
-                continue
+            v = int(res[off - PERF_COMMON_MFX1_SOURCE])
+            out[key] = max(0, min(15, v)) if key == "structure" else max(0, min(16, v))
         return out
 
     def set_perf_structure(self, structure: int) -> None:
