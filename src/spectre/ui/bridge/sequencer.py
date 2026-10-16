@@ -127,7 +127,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     def _part_rx_channel(self, part_num: int) -> int:
         """MIDI receive channel (0..15) of a performance part, defaulting to part - 1."""
-        parts = getattr(self.patch_state, "perf_parts", None)
+        parts = self.patch_state.perf_parts
         if parts and 1 <= part_num <= len(parts):
             rx = int(getattr(parts[part_num - 1], "rx_channel", -1))
             if 0 <= rx <= 15:

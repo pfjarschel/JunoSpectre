@@ -143,10 +143,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
     def _set_sync_busy(self, busy: bool) -> None:
         if self._sync_busy != busy:
             self._sync_busy = busy
-            try:
-                self.syncBusyChanged.emit(busy)
-            except Exception as e:
-                logger.debug(f"Failed to emit syncBusyChanged: {e}")
+            self.syncBusyChanged.emit(busy)
 
     def _active_tone(self) -> ToneState:
         """Return the ToneState currently active in the UI."""
@@ -1583,13 +1580,13 @@ class PatchBridgeMixin(BridgeBaseMixin):
         """PERFORM: the MFX whose outputs the edited part reaches (end of chain)."""
         part = self.patch_state.perf_parts[self.activePerfPart - 1]
         fx = self.patch_state.perf_fx
-        return mfx_chain(int(part.mfx_select) + 1, int(getattr(fx, "mfx_structure", 0)))[-1]
+        return mfx_chain(int(part.mfx_select) + 1, int(fx.mfx_structure))[-1]
 
     def _routing_inputs(self) -> dict:
         if self._in_perform():
             part = self.patch_state.perf_parts[self.activePerfPart - 1]
             fx = self.patch_state.perf_fx
-            chain = mfx_chain(int(part.mfx_select) + 1, int(getattr(fx, "mfx_structure", 0)))
+            chain = mfx_chain(int(part.mfx_select) + 1, int(fx.mfx_structure))
             units = [dict(self._rail_mfx_entry(n), slot=n) for n in chain]
             m = units[-1]
             c, r = self._rail_cho_entry(), self._rail_rev_entry()

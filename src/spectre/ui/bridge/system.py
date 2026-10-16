@@ -564,11 +564,8 @@ class SystemBridgeMixin(BridgeBaseMixin):
         except Exception as e:
             logger.error(f"Restart execv failed ({argv}): {e}")
             self.powerActionChanged.emit("")
-            try:
-                if not self._timer.isActive():
-                    self._timer.start()
-            except Exception:
-                pass
+            if not self._timer.isActive():
+                self._timer.start()
 
     @pyqtSlot()
     def rebootSystem(self) -> None:
@@ -666,11 +663,8 @@ class SystemBridgeMixin(BridgeBaseMixin):
         else:
             logger.error(f"Host {action} failed: {last_err}")
             self.powerActionChanged.emit("")
-            try:
-                if not self._timer.isActive():
-                    self._timer.start()
-            except Exception:
-                pass
+            if not self._timer.isActive():
+                self._timer.start()
             return f"failed: {last_err}"
         try:
             app = QGuiApplication.instance()

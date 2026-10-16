@@ -101,11 +101,11 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 "keyHigh": p.key_high,
                 "zoneOn": p.zone_switch,
                 "zoneOctave": p.zone_octave,
-                "drySend": getattr(p, "dry_send", 127),
-                "chorusSend": getattr(p, "chorus_send", 0),
-                "reverbSend": getattr(p, "reverb_send", 0),
-                "outputAssign": getattr(p, "output_assign", 13),
-                "mfxSelect": getattr(p, "mfx_select", 0),
+                "drySend": p.dry_send,
+                "chorusSend": p.chorus_send,
+                "reverbSend": p.reverb_send,
+                "outputAssign": p.output_assign,
+                "mfxSelect": p.mfx_select,
                 "hasFile": bool(p.patch_file),
             }
             for p in self.patch_state.perf_parts[:16]
@@ -144,9 +144,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     @pyqtProperty("QVariantList", notify=perfFxChanged)
     def perfFxSlots(self) -> list:
         """5 shared FX cards: MFX1-3 + chorus + reverb (origin-resolved content)."""
-        fx = getattr(self.patch_state, "perf_fx", None)
-        if fx is None:
-            return []
         return [self._rail_mfx_entry(1), self._rail_mfx_entry(2),
                 self._rail_mfx_entry(3), self._rail_cho_entry(),
                 self._rail_rev_entry()]
@@ -188,28 +185,27 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty(int, notify=perfFxChanged)
     def perfStructure(self) -> int:
-        fx = getattr(self.patch_state, "perf_fx", None)
-        return int(getattr(fx, "mfx_structure", 0)) if fx is not None else 0
+        return int(self.patch_state.perf_fx.mfx_structure)
 
     @pyqtProperty("QVariantMap", notify=perfPartsChanged)
     def perfHeader(self) -> dict:
         """Header pieces in PERFORM: performance name, edited part and its patch."""
-        idx = max(1, min(16, int(getattr(self.patch_state, "active_perf_part", 1))))
+        idx = max(1, min(16, int(self.patch_state.active_perf_part)))
         try:
             part = self.patch_state.perf_parts[idx - 1]
             patch = str(part.patch_name or part.name or f"Part {idx}")
         except IndexError:
             patch = f"Part {idx}"
-        perf = str(getattr(self.patch_state, "perf_name", "") or self._patch_name or "")
+        perf = str(self.patch_state.perf_name or self._patch_name or "")
         return {"perf": perf, "part": idx, "patch": patch}
 
     @pyqtProperty(str, notify=perfPartsChanged)
     def perfName(self) -> str:
-        return getattr(self.patch_state, "perf_name", "SPECTRE PERF")
+        return self.patch_state.perf_name
 
     @pyqtProperty(int, notify=perfPartsChanged)
     def activePerfPart(self) -> int:
-        return max(1, min(16, int(getattr(self.patch_state, "active_perf_part", 1))))
+        return max(1, min(16, int(self.patch_state.active_perf_part)))
 
     @pyqtProperty(float, notify=perfPushChanged)
     def perfPushProgress(self) -> float:
@@ -223,16 +219,13 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     def _set_push_progress(self, value: float) -> None:
         self._perf_push_progress = float(value)
-        try:
-            self.perfPushChanged.emit(float(value))
-        except Exception:
-            pass
+        self.perfPushChanged.emit(float(value))
 
     def refreshPartFileStatus(self) -> None:
         """Recompute file-link health for all 16 parts (call on load/save/pick)."""
         statuses = []
         for i, part in enumerate(self.patch_state.perf_parts[:16]):
-            link = str(getattr(part, "patch_file", "") or "")
+            link = str(part.patch_file or "")
             if part.modified and (not link or Path(link).is_file()):
                 statuses.append("edited")
                 continue
@@ -255,10 +248,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             except Exception:
                 statuses.append("missing" if snap is not None else "missing-dead")
         self._part_file_status = statuses
-        try:
-            self.partFileStatusChanged.emit()
-        except Exception:
-            pass
+        self.partFileStatusChanged.emit()
 
     def _on_perf_part_write(self, part_index: int) -> None:
         """A DT1 reached a part's temp buffer: its sound now differs from its source."""
@@ -266,16 +256,13 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         if not 1 <= int(part_index) <= len(parts) or parts[part_index - 1].modified:
             return
         parts[part_index - 1].modified = True
-        try:
-            self._part_file_status[part_index - 1] = "edited"
-            self.partFileStatusChanged.emit()
-        except Exception:
-            pass
+        self._part_file_status[part_index - 1] = "edited"
+        self.partFileStatusChanged.emit()
 
     def _read_part_image(self, part_index: int):
         """Read a part's sounding image from the synth, or None (offline/failed)."""
         juno = self.juno
-        if juno is None or not hasattr(juno, "read_perf_part_patch"):
+        if juno is None:
             return None
         # Don't read a buffer while a background push is still writing it.
         if not self._push_lock.acquire(timeout=10.0):
@@ -298,7 +285,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         snaps = {}
         for p in self.patch_state.perf_parts:
             key = str(p.part_index)
-            link = str(getattr(p, "patch_file", "") or "")
+            link = str(p.patch_file or "")
             if p.modified:
                 image = self._read_part_image(p.part_index)
                 if image is not None:
@@ -323,7 +310,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
         Edits ride the snapshot; an untouched file part follows its (newer) file.
         """
-        link = str(getattr(part, "patch_file", "") or "")
+        link = str(part.patch_file or "")
         snap = (part_snapshots or {}).get(str(part.part_index))
         if link and not part.modified and Path(link).is_file():
             try:
@@ -340,12 +327,12 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     @staticmethod
     def _part_write_target(part) -> tuple[str, str]:
         """Where an edited part's sound can be written back: ('file'|'slot'|'', label)."""
-        link = str(getattr(part, "patch_file", "") or "")
+        link = str(part.patch_file or "")
         if link:
             if Path(link).is_file():
                 return "file", f"file {Path(link).stem}"
             return "", "file missing, stays in the song"
-        if getattr(part, "memory_only", False):
+        if part.memory_only:
             return "", "memory only, stays in the song"
         try:
             JunoClient.user_slot_base(part.patch_msb, part.patch_lsb, part.patch_pc)
@@ -478,7 +465,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         if not 1 <= int(part_index) <= 16:
             return False
         part = self.patch_state.perf_parts[int(part_index) - 1]
-        link = str(getattr(part, "patch_file", "") or "")
+        link = str(part.patch_file or "")
         snap = (self._part_snapshots or {}).get(str(part.part_index))
         state = None
         if link and Path(link).is_file():
@@ -639,7 +626,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             self.patch_state.tones = state.tones
             self.patch_state.effects = state.effects
             self.patch_state.common = state.common
-            if getattr(state, "common", None) and getattr(state.common, "name", ""):
+            if state.common and state.common.name:
                 self._patch_name = state.common.name
             if len(state.tones) >= 4:
                 self.vector.tone_levels = (
@@ -653,10 +640,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         except Exception as e:
             logger.debug(f"_apply_patch_state_to_editors error: {e}")
 
-        try:
-            self._part_fx_cache[int(part_index)] = copy.deepcopy(state.effects)
-        except Exception:
-            pass
+        self._part_fx_cache[int(part_index)] = copy.deepcopy(state.effects)
 
         try:
             self._emit_all_state_signals()  # includes perfPartsChanged
@@ -666,7 +650,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     def _on_part_state_read(self, part_index: int, state) -> None:
         # Guard against the user switching part while reading
-        if getattr(self.patch_state, "active_perf_part", 1) == int(part_index):
+        if self.patch_state.active_perf_part == int(part_index):
             self._apply_patch_state_to_editors(state, int(part_index))
 
     def _refresh_editors_for_part(self, part_index: int, async_mode: bool = True) -> bool:
@@ -687,7 +671,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         link = ""
         if hasattr(self.patch_state, "perf_parts"):
             if 0 <= p_idx - 1 < len(self.patch_state.perf_parts):
-                link = str(getattr(self.patch_state.perf_parts[p_idx - 1], "patch_file", "") or "")
+                link = str(self.patch_state.perf_parts[p_idx - 1].patch_file or "")
 
         cached_state = None
         if link and Path(link).is_file():
@@ -705,7 +689,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             self._apply_patch_state_to_editors(cached_state, p_idx)
 
         juno = self.juno
-        if juno is None or not hasattr(juno, "read_full_patch"):
+        if juno is None:
             return cached_state is not None
 
         shown = cached_state
@@ -717,8 +701,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                     return
                 # Same sound as the snapshot already shown: skip a second
                 # full editor refresh (the costly part on a Pi)
-                if shown is not None and getattr(shown, "raw_regions", None) \
-                        and state.raw_regions and hasattr(juno, "patch_image_mismatches"):
+                if shown is not None and shown.raw_regions \
+                        and state.raw_regions:
                     try:
                         if not juno.patch_image_mismatches(state, shown.raw_regions):
                             return
@@ -765,9 +749,9 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             part = self.patch_state.perf_parts[int(part_index) - 1]
         except (IndexError, ValueError):
             return 0
-        if is_direct(int(getattr(part, "output_assign", 13))):
+        if is_direct(int(part.output_assign)):
             return 0
-        return max(0, min(2, int(getattr(part, "mfx_select", 0)))) + 1
+        return max(0, min(2, int(part.mfx_select))) + 1
 
     @pyqtSlot()
     def openEditTarget(self) -> None:
@@ -779,11 +763,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         return str(self._sound_mode).upper() == "PERFORM"
 
     def _perf_slot(self, slot: int):
-        fx = getattr(self.patch_state, "perf_fx", None)
-        if fx is None:
-            return None
-        s = max(1, min(3, int(slot)))
-        return (fx.mfx1, fx.mfx2, fx.mfx3)[s - 1]
+        fx = self.patch_state.perf_fx
+        return (fx.mfx1, fx.mfx2, fx.mfx3)[max(1, min(3, int(slot))) - 1]
 
     def _fx_origin(self, block: str, slot: int | None = None) -> int:
         """The performance FX origin of a block: 0 = PERFORM, n = PART n."""
@@ -849,10 +830,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         for sig in (self.mfxParamsChanged, self.mfxValuesChanged,
                     self.chorusParamsChanged, self.reverbParamsChanged,
                     self.routingChanged, self.perfFxChanged):
-            try:
-                sig.emit()
-            except Exception:
-                pass
+            sig.emit()
 
     def _mfx_view(self):
         """Resolved (type_shown, bypassed, dry, cho, rev, params) for MFX Studio."""
@@ -927,10 +905,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         self._capture_loaded()
         self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
         self.perfPartsChanged.emit()
-        try:
-            self._emit_fx_editor_signals()
-        except Exception:
-            pass
+        self._emit_fx_editor_signals()
 
     def _fold_patch_edits_into_part(self, juno, origin) -> None:
         """PATCH -> PERFORM: an edited PATCH-mode sound becomes its part's edited sound.
@@ -964,46 +939,35 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     def setPerfSource(self, which: str, origin: int) -> None:
         """Set FX origin: which mfx1/mfx2/mfx3/chorus/reverb, origin 0=PERFORM 1..16=PARTn."""
         o = max(0, min(16, int(origin)))
-        fx = getattr(self.patch_state, "perf_fx", None)
-        if fx is not None:
-            k = str(which or "").lower()
-            try:
-                if k == "mfx1": fx.mfx1.source = o
-                elif k == "mfx2": fx.mfx2.source = o
-                elif k == "mfx3": fx.mfx3.source = o
-                elif k in ("chorus", "cho"): fx.chorus_source = o
-                elif k in ("reverb", "rev"): fx.reverb_source = o
-            except Exception:
-                pass
+        fx = self.patch_state.perf_fx
+        k = str(which or "").lower()
+        if k in ("mfx1", "mfx2", "mfx3"):
+            self._perf_slot(int(k[3])).source = o
+        elif k in ("chorus", "cho"):
+            fx.chorus_source = o
+        elif k in ("reverb", "rev"):
+            fx.reverb_source = o
         juno = self.juno
         if juno is not None:
             try:
                 juno.set_perf_source(str(which), o)
             except Exception as e:
                 logger.debug(f"setPerfSource: synth write failed: {e}")
-        try:
-            if o != 0:
-                self._ensure_part_fx_cache(o)
-            self._emit_fx_editor_signals()
-        except Exception:
-            pass
+        if o != 0:
+            self._ensure_part_fx_cache(o)
+        self._emit_fx_editor_signals()
 
     @pyqtSlot(int)
     def setPerfStructure(self, structure: int) -> None:
         """Set MFX Structure TYPE01..16 (0..15 on the wire)."""
-        fx = getattr(self.patch_state, "perf_fx", None)
-        if fx is not None:
-            fx.mfx_structure = max(0, min(15, int(structure)))
+        self.patch_state.perf_fx.mfx_structure = max(0, min(15, int(structure)))
         juno = self.juno
         if juno is not None:
             try:
                 juno.set_perf_structure(int(structure))
             except Exception as e:
                 logger.debug(f"setPerfStructure: synth write failed: {e}")
-        try:
-            self.perfFxChanged.emit()
-        except Exception:
-            pass
+        self.perfFxChanged.emit()
 
     @pyqtSlot(int, int, int, int, int)
     def setPerfMfx(self, slot: int, mfx_type: int, dry: int, chorus: int, reverb: int) -> None:
@@ -1188,8 +1152,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     def _push_perf_fx_details(self) -> None:
         """Send the shared chorus/reverb detail parameters (song loads send type/level only)."""
         juno = self.juno
-        fx = getattr(self.patch_state, "perf_fx", None)
-        if juno is None or fx is None:
+        fx = self.patch_state.perf_fx
+        if juno is None:
             return
         try:
             for param, val in (("predelay", fx.chorus_predelay), ("rate", fx.chorus_rate),
@@ -1285,10 +1249,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         # Picking stays on: further taps audition other sounds on the same part
         # until OK (keep) or CANCEL (revert).
         self.perfPartsChanged.emit()
-        try:
-            self.refreshPartFileStatus()
-        except Exception:
-            pass
+        self.refreshPartFileStatus()
         self._pending_view = "PERFORMANCE"
         return True
 
@@ -1369,7 +1330,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         self._auto_forget()
         self.patch_state.sound_mode = "PERFORM"
         self._sound_mode = "PERFORM"
-        self._patch_name = getattr(state, "perf_name", "") or entry_name or self._patch_name
+        self._patch_name = state.perf_name or entry_name or self._patch_name
         if isinstance(part_snapshots, dict):
             self._part_snapshots = {str(k): v for k, v in part_snapshots.items()
                                     if isinstance(v, dict)}
@@ -1384,10 +1345,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 active = max(1, min(16, int(state.active_perf_part)))
                 jobs.append(("image", active, copy.deepcopy(state)))
             self._queue_push_jobs(jobs, replace=True)
-        try:
-            self.refreshPartFileStatus()
-        except Exception:
-            pass
+        self.refreshPartFileStatus()
         self._emit_all_state_signals()
         return True
 
@@ -1437,10 +1395,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     def _set_current_file_ref(self, path: str, kind: str) -> None:
         self._current_ref = {"source": "file", "kind": kind, "path": str(path)}
-        try:
-            self.currentRefChanged.emit()
-        except Exception:
-            pass
+        self.currentRefChanged.emit()
 
     def _restore_song_sequence(self, seq_raw: dict) -> None:
         """Swap in a saved sequencer song (stops playback, applies its tempo)."""

@@ -92,7 +92,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
         return base, 0
 
     def _editedPart(self) -> int:
-        return max(1, min(16, int(getattr(self.patch_state, "active_perf_part", 1) or 1)))
+        return max(1, min(16, int(self.patch_state.active_perf_part or 1)))
 
     def _linkParts(self, link, key: str) -> list[int]:
         """Parts a link drives in PERFORM: [] = edited part, [0] = sounding parts."""
@@ -751,18 +751,12 @@ class MacroBridgeMixin(BridgeBaseMixin):
         edited = self._editedPart()
         keys = {b for b, n in map(self._splitPart, keys) if n in (0, edited)}
         if any(k.startswith("tone.") and ".tvf_" in k or k.startswith("common.cutoff") or k.startswith("common.resonance") for k in keys):
-            try:
-                self.masterCutoffChanged.emit(self.masterCutoff)
-                self.masterResoChanged.emit(self.masterReso)
-            except Exception:
-                pass
+            self.masterCutoffChanged.emit(self.masterCutoff)
+            self.masterResoChanged.emit(self.masterReso)
         if any("tva_" in k or "tva-level" in k or k.endswith("tva_level") or "attack" in k or "release" in k for k in keys):
-            try:
-                self.masterAttackChanged.emit(self.masterAttack)
-                self.masterReleaseChanged.emit(self.masterRelease)
-                self.tvaLevelChanged.emit(self.tvaLevel)
-            except Exception:
-                pass
+            self.masterAttackChanged.emit(self.masterAttack)
+            self.masterReleaseChanged.emit(self.masterRelease)
+            self.tvaLevelChanged.emit(self.tvaLevel)
         params = {k.split(".", 2)[2] for k in keys if k.startswith("tone.") and k.count(".") >= 2}
         for param in params & self._TONE_PARAM_SIGNALS.keys():
             prop = self._TONE_PARAM_SIGNALS[param]
@@ -793,10 +787,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
         if any(k.startswith("effects.mfx") for k in keys):
             self.mfxParamsChanged.emit()
         if any(k.startswith("tone.") for k in keys):
-            try:
-                self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])
-            except Exception:
-                pass
+            self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])
             self.lfoParamsChanged.emit()
             self.pitchCoarseChanged.emit(self.pitchCoarse)
             self.pitchFineChanged.emit(self.pitchFine)

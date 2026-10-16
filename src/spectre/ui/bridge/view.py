@@ -84,10 +84,7 @@ class ViewBridgeMixin(BridgeBaseMixin):
         self.matrixCtrlChanged.emit()
         self.stepLfoChanged.emit()
         self.perfPartsChanged.emit()
-        try:
-            self.perfFxChanged.emit()
-        except Exception:
-            pass
+        self.perfFxChanged.emit()
         self.vaParamsChanged.emit()
         self.macrosChanged.emit()
         self.routingChanged.emit()
@@ -154,10 +151,7 @@ class ViewBridgeMixin(BridgeBaseMixin):
             self._pending_view = ""
             self._pick_target = 0
             self._discard_librarian_entry()
-            try:
-                self.librarianPickChanged.emit()
-            except Exception:
-                pass
+            self.librarianPickChanged.emit()
             self.setActiveView(dest)
         else:
             self.setActiveView("LIBRARIAN")
@@ -172,10 +166,7 @@ class ViewBridgeMixin(BridgeBaseMixin):
         if self._active_view == "LIBRARIAN":
             self._pending_view = ""
             self._pick_target = 0
-            try:
-                self.librarianPickChanged.emit()
-            except Exception:
-                pass
+            self.librarianPickChanged.emit()
             try:
                 self._restore_librarian_entry()
             except Exception as e:
@@ -195,10 +186,7 @@ class ViewBridgeMixin(BridgeBaseMixin):
         self._sound_mode = str(snap.get("sound_mode") or "PATCH")
         self.patch_state.sound_mode = self._sound_mode
         self._current_ref = snap.get("current_ref")
-        try:
-            self.currentRefChanged.emit()
-        except Exception:
-            pass
+        self.currentRefChanged.emit()
         self._part_snapshots = dict(snap.get("part_snapshots") or {})
         juno = self.juno
         if juno is not None:
@@ -212,16 +200,13 @@ class ViewBridgeMixin(BridgeBaseMixin):
                 # File patch or unsaved edit: re-push the entry image.
                 if self._sound_mode == "PERFORM":
                     self._restore_performance_sound(state, self._part_snapshots)
-                elif getattr(state, "raw_regions", None):
+                elif state.raw_regions:
                     try:
                         juno.set_sound_mode(SoundMode.PATCH)
                         juno.write_patch_regions(state, ADDR_TEMP_PATCH_PART_1)
                     except Exception as e:
                         logger.debug(f"cancel restore: patch push failed: {e}")
-        try:
-            self.refreshPartFileStatus()
-        except Exception:
-            pass
+        self.refreshPartFileStatus()
         self._emit_all_state_signals()
 
     def _reselect_slot_sound(self, ref: dict, sound_mode: str) -> bool:

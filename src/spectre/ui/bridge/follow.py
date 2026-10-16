@@ -145,11 +145,8 @@ class FollowBridgeMixin(BridgeBaseMixin):
 
     def _follow_mode(self, mode: str) -> None:
         """The panel switched sound mode: the app follows (no push either way)."""
-        juno = self.juno
-        try:
-            juno.note_sound_mode(SoundMode[mode])
-        except Exception:
-            pass
+        if self.juno is not None and mode in SoundMode.__members__:
+            self.juno.note_sound_mode(SoundMode[mode])
         if mode == str(self._sound_mode).upper():
             return
         self._patch_origin = None
@@ -192,12 +189,9 @@ class FollowBridgeMixin(BridgeBaseMixin):
     def _follow_patch_name(self, juno, part) -> str:
         repo = self._librarian_repo
         if repo is not None:
-            try:
-                name = repo.resolve_patch_name(part.patch_msb, part.patch_lsb, part.patch_pc)
-                if name:
-                    return name
-            except Exception:
-                pass
+            name = repo.resolve_patch_name(part.patch_msb, part.patch_lsb, part.patch_pc)
+            if name:
+                return name
         try:
             return juno.get_perf_part_patch_name(part.part_index, timeout=0.25) or ""
         except Exception:
@@ -250,10 +244,7 @@ class FollowBridgeMixin(BridgeBaseMixin):
                 logger.info(f"panel: part {new.part_index} now plays {new.patch_name}")
             current[i] = new
         self.perfPartsChanged.emit()
-        try:
-            self.partFileStatusChanged.emit()
-        except Exception:
-            pass
+        self.partFileStatusChanged.emit()
         if reload_active:
             self._refresh_editors_for_part(active, async_mode=True)
 

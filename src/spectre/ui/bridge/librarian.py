@@ -109,16 +109,13 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         """Capture the sounding temp buffer with app-side extras overlaid."""
 
         juno = self.juno
-        if juno is None or not hasattr(juno, "read_full_patch"):
+        if juno is None:
             raise ConnectionError("No synthesizer connected.")
         state = juno.read_full_patch(timeout=1.5)
         state.common.name = str(name)[:12]
         # Preserve app-side assignments the hardware image does not carry.
-        try:
-            state.macros = self.patch_state.macros
-            state.macro_bases = dict(self.patch_state.macro_bases)
-        except Exception:
-            pass
+        state.macros = self.patch_state.macros
+        state.macro_bases = dict(self.patch_state.macro_bases)
         return state
 
     @staticmethod
@@ -132,17 +129,10 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
 
     def _live_spectre_extras(self) -> dict:
         extras: dict = {"engine_mode": self._active_view}
-        try:
-            extras["vector"] = {"x": float(self.vector.x),
-                                "y": float(self.vector.y),
-                                "w": float(self.vector.w)}
-        except Exception:
-            pass
-        try:
-            # Tempo is global (owned by the song), so patches don't carry it
-            extras["motion"] = {"speed": float(self.vector.motion.speed)}
-        except Exception:
-            pass
+        extras["vector"] = {"x": float(self.vector.x),
+                            "y": float(self.vector.y),
+                            "w": float(self.vector.w)}
+        extras["motion"] = {"speed": float(self.vector.motion.speed)}
         extras.update(self._arp_extras())
         return extras
 
@@ -269,7 +259,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
                 synth_ref = {"source": origin["source"], "msb": origin.get("msb"),
                              "lsb": origin.get("lsb"), "pc": origin.get("pc")}
             if is_perf:
-                active = max(1, min(16, int(getattr(self.patch_state, "active_perf_part", 1))))
+                active = max(1, min(16, int(self.patch_state.active_perf_part)))
                 part = self.patch_state.perf_parts[active - 1]
                 try:
                     state = self._fresh_live_state(
@@ -279,7 +269,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
                     state = patch_state_from_dict(patch_state_to_dict(self.patch_state))
                 state.perf_parts = list(self.patch_state.perf_parts)
                 state.perf_name = str(
-                    name or getattr(self.patch_state, "perf_name", "") or "SPECTRE PERF")[:12]
+                    name or self.patch_state.perf_name or "SPECTRE PERF")[:12]
                 state.active_perf_part = active
                 state.sound_mode = "PERFORM"
                 file_name = state.perf_name
@@ -313,11 +303,8 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
             self.librarianChanged.emit()
             if is_perf:
                 self._setlist_recheck()  # a linked song may now differ from its snapshot
-            try:
-                self._patch_name = state.perf_name if is_perf else state.common.name
-                self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
-            except Exception:
-                pass
+            self._patch_name = state.perf_name if is_perf else state.common.name
+            self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
             return str(out)
         except Exception as e:
             logger.warning(f"saveCurrentToFile failed: {e}")
@@ -335,7 +322,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         if repo is None:
             return "librarian unavailable"
-        if juno is None or not hasattr(juno, "write_user_patch"):
+        if juno is None:
             return "no synthesizer connected"
         try:
             msb, lsb, pc = int(msb), int(lsb), int(pc)
@@ -363,7 +350,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
     def refreshUserPerfNames(self, progress=None) -> int:
         """Read the 128 user performance names from the keyboard. -1 = offline."""
         juno = self.juno
-        if juno is None or not hasattr(juno, "read_user_perf_name"):
+        if juno is None:
             return -1
         slots, fails = [], 0
         for n in range(1, 129):
@@ -396,7 +383,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
             if p.patch_file:
                 reasons.append(f"P{p.part_index} Spectre file")
             elif p.modified:
-                if getattr(p, "memory_only", False):
+                if p.memory_only:
                     reasons.append(f"P{p.part_index} memory only")
                 elif self._part_write_target(p)[0] == "slot":
                     if not assume_write_back:
@@ -416,7 +403,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         if repo is None:
             return "librarian unavailable"
-        if juno is None or not hasattr(juno, "write_user_performance"):
+        if juno is None:
             return "no synthesizer connected"
         blockers = self.perfKeyboardBlockers(False)
         if blockers:
@@ -459,7 +446,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         if repo is None:
             return "librarian unavailable"
-        if juno is None or not hasattr(juno, "write_user_patch"):
+        if juno is None:
             return "no synthesizer connected"
         backup_path = None
         try:
@@ -495,7 +482,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         """Rename a user flash slot (factory ROM can never be renamed)."""
         repo = self._librarian()
         juno = self.juno
-        if juno is None or not hasattr(juno, "rename_user_slot"):
+        if juno is None:
             return False
         try:
             ok = bool(juno.rename_user_slot(int(msb), int(lsb), int(pc), str(name)))
@@ -558,7 +545,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         if repo is None:
             return "librarian unavailable"
-        if juno is None or not hasattr(juno, "write_user_patch"):
+        if juno is None:
             return "no synthesizer connected"
         slot_backup = temp_backup = None
         try:
@@ -710,10 +697,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         except Exception as e:
             logger.warning(f"adopt performance: performance read failed: {e}")
         self._apply_performance_selected(int(msb), int(lsb), int(pc), navigate)
-        try:
-            self.partFileStatusChanged.emit()
-        except Exception:
-            pass
+        self.partFileStatusChanged.emit()
         return True
 
     def _apply_performance_selected(self, msb: int, lsb: int, pc: int,
@@ -723,10 +707,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         self.patch_state.sound_mode = "PERFORM"
         self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
         self.perfPartsChanged.emit()
-        try:
-            self._emit_fx_editor_signals()
-        except Exception:
-            pass
+        self._emit_fx_editor_signals()
         self._set_current_slot_ref(int(msb), int(lsb), int(pc), "performance")
         if navigate:
             self._pending_view = "PERFORMANCE"
@@ -809,10 +790,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         self._sound_mode = "PATCH"
         self.patch_state.sound_mode = "PATCH"
         self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
-        try:
-            self._emit_fx_editor_signals()
-        except Exception:
-            pass
+        self._emit_fx_editor_signals()
         self._set_current_slot_ref(int(msb), int(lsb), int(pc),
                                    "drum" if int(msb) == 86 else "patch")
         self._pending_view = "JUNO PCM"
