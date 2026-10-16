@@ -219,7 +219,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     def refreshPartFileStatus(self) -> None:
         """Recompute file-link health for all 16 parts (call on load/save/pick)."""
-        from ...core.spectre_format import load_spectre, patch_state_to_dict, snapshot_hash_of
+        from ...core.spectre_format import file_patch_hash, snapshot_hash_of
         statuses = []
         for i, part in enumerate(self.patch_state.perf_parts[:16]):
             link = str(getattr(part, "patch_file", "") or "")
@@ -237,8 +237,11 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 statuses.append("ok")
                 continue
             try:
-                live = patch_state_to_dict(load_spectre(link)["patch_state"])
-                statuses.append("ok" if snapshot_hash_of(live) == snapshot_hash_of(snap) else "updated")
+                held = self._snapshot_hashes.get(part.part_index)
+                if held is None or held[0] is not snap:  # snapshots are replaced, never edited
+                    held = (snap, snapshot_hash_of(snap))
+                    self._snapshot_hashes[part.part_index] = held
+                statuses.append("ok" if file_patch_hash(link) == held[1] else "updated")
             except Exception:
                 statuses.append("missing" if snap is not None else "missing-dead")
         self._part_file_status = statuses

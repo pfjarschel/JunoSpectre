@@ -428,6 +428,28 @@ def snapshot_hash_of(patch_dict: Any) -> str:
         return ""
 
 
+_FILE_HASHES: Dict[Tuple[str, int, int], str] = {}
+
+
+def file_patch_hash(path: str | Path) -> str:
+    """snapshot_hash_of() the patch state stored in a .spectre file.
+
+    Cached by (path, mtime, size): the link badges ask for it on every part
+    pick and setlist refresh, and a song file takes ~50 ms to parse on the
+    Pi. Raises like load_spectre() when the file is unreadable.
+    """
+    p = Path(path)
+    st = p.stat()
+    key = (str(p.resolve()), st.st_mtime_ns, st.st_size)
+    cached = _FILE_HASHES.get(key)
+    if cached is None:
+        cached = snapshot_hash_of(patch_state_to_dict(load_spectre(p)["patch_state"]))
+        if len(_FILE_HASHES) > 256:
+            _FILE_HASHES.clear()
+        _FILE_HASHES[key] = cached
+    return cached
+
+
 def entry_song_path(entry: Dict[str, Any]) -> str:
     """The song file a setlist entry links ('' when snapshot only)."""
     if not isinstance(entry, dict):
@@ -487,9 +509,7 @@ def playlist_entry_status(entry: Dict[str, Any]) -> str:
     if not p.is_file():
         return "missing"
     try:
-        loaded = load_spectre(p)
-        live_hash = snapshot_hash_of(patch_state_to_dict(loaded["patch_state"]))
-        return "ok" if live_hash == str(entry.get("snapshot_hash") or "") else "updated"
+        return "ok" if file_patch_hash(p) == str(entry.get("snapshot_hash") or "") else "updated"
     except Exception:
         return "missing"
 

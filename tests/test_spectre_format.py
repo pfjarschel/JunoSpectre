@@ -90,3 +90,27 @@ def test_tolerant_decode_survives_missing_keys():
     assert ps.tones[0].level == 10
     assert len(ps.tones) == 4
     assert patch_state_to_dict(ps)["common"]["name"] == "HALF"
+
+
+def test_file_patch_hash_is_cached_until_the_file_changes(tmp_path, monkeypatch):
+    import os
+
+    from src.spectre.core import spectre_format as sf
+
+    ps = PatchState()
+    path = save_spectre(tmp_path / "a.spectre", ps)
+    first = sf.file_patch_hash(path)
+    assert first == sf.snapshot_hash_of(sf.patch_state_to_dict(ps))
+
+    calls = []
+    real = sf.load_spectre
+    monkeypatch.setattr(sf, "load_spectre", lambda p: calls.append(p) or real(p))
+    assert sf.file_patch_hash(path) == first
+    assert calls == []
+
+    ps.common.level = 12
+    save_spectre(path, ps)
+    st = os.stat(path)
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))
+    assert sf.file_patch_hash(path) != first
+    assert len(calls) == 1

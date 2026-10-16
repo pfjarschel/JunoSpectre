@@ -106,6 +106,7 @@ class SpectreBridge(
         # performance file (part index str -> patch_state dict), link health,
         # and background SysEx push progress (-1.0 = idle).
         self._part_snapshots: dict = {}
+        self._snapshot_hashes: dict = {}  # part index -> (snapshot dict, its hash)
         self._part_file_status: list = [""] * 16
         # Deep FX cache: part index -> read_part_fx() dict for PARTn origins.
         # Lets MFX Studio / Master FX display a non-active part's patch FX
