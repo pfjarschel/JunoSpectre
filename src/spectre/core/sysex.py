@@ -344,7 +344,6 @@ REVERB_DETAIL_OFFSETS = {
 }
 
 # System Master Level lives at ADDR_SYSTEM_MASTER_LEVEL (documented).
-# (No Master EQ exists in the JUNO-DS MIDI implementation: removed.)
 
 ADDR_SYSTEM_MASTER_LEVEL = (0x02, 0x00, 0x00, 0x05)
 ADDR_SYSTEM_PROCESSING_SWITCH = (0x02, 0x00, 0x02, 0x00)

@@ -378,7 +378,8 @@ def test_surface_shows_names_values_and_leds(ui):
     assert sent[:2] == [(DAW, "9F 0C 7F"), (DAW, "B6 1E 02")]
     bridge._ctl_feedback_tick()
     msgs = [m for _, m in sent]
-    text = lambda cc, field, t: lcxl3.display_text(cc, field, t).hex()
+    def text(cc, field, t):
+        return lcxl3.display_text(cc, field, t).hex()
     assert text(13, 0, "MACRO 1") in msgs                    # knob A1 = macro 1
     assert text(13, 1, "CUTOFF OFS") in msgs
     assert text(13, 2, "+0%") in msgs
@@ -688,8 +689,10 @@ def test_alt_layer_tap_latches_and_hold_is_momentary(ui, monkeypatch):
             clock[0] += hold
         _send(app, bridge, _cc(104, 127 if down else 0), port=DAW)
 
-    alt = lambda: bridge._ctl_state()["ALT"] == "ON"
-    row_a = lambda: bridge._ctl_resolve(bridge._surface_binding(DAW, 13).target)
+    def alt():
+        return bridge._ctl_state()["ALT"] == "ON"
+    def row_a():
+        return bridge._ctl_resolve(bridge._surface_binding(DAW, 13).target)
 
     bridge.setActiveView("JUNO PCM")
     assert row_a() == "macro.1"

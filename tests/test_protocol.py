@@ -1,5 +1,6 @@
 """Unit tests for JunoClient protocol logic using mock MIDI transport."""
 
+import time
 from unittest.mock import MagicMock
 
 import mido
@@ -843,11 +844,12 @@ def test_coalesced_writes_send_latest_value_once():
 
     with client.coalesced_writes():
         client.send_data((0x11, 0, 0x20, 0x0C), [10])   # writer picks this, blocks on gate
-        import time; time.sleep(0.05)
+        time.sleep(0.05)
         for v in (20, 30, 40):
             client.send_data((0x11, 0, 0x20, 0x0D), [v])
         client.send_data((0x11, 0, 0x22, 0x0D), [99])
-    client._pending_lock.acquire(); queued = dict(client._pending_writes); client._pending_lock.release()
+    with client._pending_lock:
+        queued = dict(client._pending_writes)
     assert queued == {(0x11, 0, 0x20, 0x0D): bytes([40]), (0x11, 0, 0x22, 0x0D): bytes([99])}
 
     gate.set()

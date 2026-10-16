@@ -18,7 +18,7 @@ Rectangle {
         { text: "• TVF: Max Cutoff (127), 0 Resonance, 0 Env Depth, LPF", accent: false },
         { text: "• TVA: Instant Attack (0), 0 Decay, 100% Sustain, 0 Release", accent: false },
         { text: "• Modulation: All LFO 1 & 2 depths and Pitch Env zeroed", accent: false },
-        { text: "• Effects: MFX bypassed, Chorus & Reverb off, Master EQ flat", accent: false },
+        { text: "• Effects: MFX bypassed, Chorus & Reverb off", accent: false },
         { text: "• Tone Waves: Restored to 4 'JUNO SPECTRE' core waves", accent: true }
     ]
     readonly property var perfLines: [

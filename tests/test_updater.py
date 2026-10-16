@@ -339,7 +339,8 @@ def test_detect_package_manager(distro):
 
 def test_detect_immutable_fedora_and_missing_tools():
     aurora = 'ID=aurora\nID_LIKE="fedora"\nVARIANT_ID=aurora-dx\n'
-    tools = lambda t: f"/usr/bin/{t}"
+    def tools(t):
+        return f"/usr/bin/{t}"
     assert detect_package_manager(aurora, which=tools, ostree=True) == "rpm-ostree"
     assert detect_package_manager(aurora, which=tools, ostree=False) == "dnf"
     assert detect_package_manager("ID=ubuntu\n", which=lambda t: None, ostree=False) is None

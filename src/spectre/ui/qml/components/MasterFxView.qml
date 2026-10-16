@@ -104,7 +104,7 @@ Rectangle {
             PageLinks { group: "fx" }
         }
 
-        // 2 Cards: Chorus, Reverb (Master EQ removed: no SysEx control on JUNO-DS)
+        // 2 Cards: Chorus, Reverb
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
