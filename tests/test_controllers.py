@@ -11,7 +11,8 @@ from src.spectre.ui.app import create_application
 
 PORT = "LCXL3 1:LCXL3 1 MIDI In"
 DAW = "LCXL3 1:LCXL3 1 DAW In"
-PRESET = Path(__file__).resolve().parents[1] / "config" / "controller_presets" / "novation_lcxl3.json"
+PRESET = (Path(__file__).resolve().parents[1] / "src" / "spectre" / "assets" / "controller_presets"
+          / "novation_lcxl3.json")
 
 
 def _b(**kw):

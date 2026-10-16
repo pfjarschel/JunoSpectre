@@ -32,6 +32,9 @@ dependencies = [
     "sounddevice>=0.4.6",
 ]
 
+[project.scripts]
+juno-spectre = "spectre.launcher:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",

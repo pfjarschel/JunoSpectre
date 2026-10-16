@@ -3,7 +3,7 @@
 #
 # Usage: ./scripts/start_spectre.sh [--fullscreen] [--windowed] [--platform NAME] [...]
 #   All extra args are passed through to scripts/spectre_app.py
-#   (--juno-port, --controller-port, --profile, --list-ports, --exit-after, ...).
+#   (--juno-port, --list-ports, --no-splash, --exit-after, ...).
 #
 # Behaviour:
 #   - Desktop (DISPLAY / WAYLAND_DISPLAY / XDG_SESSION_TYPE=x11|wayland present):

@@ -55,8 +55,7 @@ TOUCH_LINGER_MS = 700
 ALT_TAP_S = 0.35
 # A knob that moved this recently is the source of its value: no feedback
 FEEDBACK_HOLD_S = 0.3
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]
-BUNDLED_PRESET_DIR = _PROJECT_ROOT / "config" / "controller_presets"
+BUNDLED_PRESET_DIR = Path(__file__).resolve().parents[2] / "assets" / "controller_presets"
 
 
 def user_preset_dir() -> Path:

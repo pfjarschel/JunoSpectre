@@ -20,9 +20,11 @@ the Launch Control XL3 surface is specified in [LCXL3_LAYOUT.md](LCXL3_LAYOUT.md
 
 - The app only writes the synth's **temporary** buffers, never its flash
   unless the user saves to a user slot.
-- `scripts/start_spectre.sh` → `scripts/spectre_app.py` (MIDI manager, port
+- `scripts/start_spectre.sh` (Qt platform: eglfs on the Pi) →
+  `scripts/spectre_app.py` → `launcher.py` `main()` (MIDI manager, port
   watcher, initial sync, splash, signal handling) → `ui/app.py`
-  `create_application()` (QML engine + bridge).
+  `create_application()` (QML engine + bridge). The `juno-spectre` command
+  of a pip install calls the same `main()`.
 
 ## 2. Packages
 
@@ -42,7 +44,7 @@ the Launch Control XL3 surface is specified in [LCXL3_LAYOUT.md](LCXL3_LAYOUT.md
 | `librarian/` | `PatchRepository` (user files + SQLite index) and the shipped factory catalog |
 | `ui/bridge/` | The QML-facing mixins, one per area: patch, performance, macros, sequencer, automation, audio, setlist, librarian, view, vector, controllers, hardware, follow, tmt, arpeggio, system, jobs |
 | `ui/qml/` | `main.qml`, `AppContent.qml` (one `StackLayout` page per view, indexed by `Bridge.activeView`), `components/` |
-| `assets/` | `init_template.json`, `mfx_catalog.json`, wave catalogs, `librarian/factory.db`, the splash picture |
+| `assets/` | `init_template.json`, `mfx_catalog.json`, wave catalogs, `librarian/factory.db`, controller presets, the splash picture |
 
 ## 3. Synth addresses the app uses
 
@@ -88,7 +90,7 @@ through `coalesced_writes()` for that reason.
 |---|---|
 | `~/.local/share/JunoSpectre/` (or `$JUNOSPECTRE_DATA_DIR`) | `hardware.json` (settings), `librarian.db`, `patches/` (user `.spectre` files), `controller_presets/`, `audio_cache/` |
 | `~/SpectreAudio/` (or `audio_dir` in `hardware.json`) | The audio clip media folder |
-| `config/controller_presets/` | Bundled controller presets (LCXL3) |
+| `src/spectre/assets/controller_presets/` | Bundled controller presets (LCXL3) |
 
 ## 6. Tests
 

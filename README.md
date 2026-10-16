@@ -125,6 +125,15 @@ for the Pi's own Qt and display; elsewhere pip installs it.
 The launcher always runs from `.venv`, and the in-app updater installs each
 release's new requirements into it before switching to that release.
 
+On a desktop you can also install it as a package and start it with the
+`juno-spectre` command (system packages such as PortAudio still come from
+your distro; the in-app updater and the Pi's eglfs setup need the checkout):
+
+```bash
+pip install .
+juno-spectre            # same options as start_spectre.sh, e.g. --list-ports
+```
+
 ### Run (desktop PC and Raspberry Pi)
 
 One unified launcher, with automatic hardware detection. No touchscreen or
@@ -172,7 +181,8 @@ unaffected).
 | Script | Purpose |
 |--------|---------|
 | `scripts/start_spectre.sh` | Production launch wrapper with display/platform detection |
-| `scripts/spectre_app.py` | Main touch UI launcher (what `start_spectre.sh` runs) |
+| `scripts/spectre_app.py` | Runs the app from the checkout (what `start_spectre.sh` runs) |
+| `juno-spectre` | The same app after `pip install .` (`spectre.launcher:main`) |
 | `scripts/spectre_probe.py` | SysEx device probe and identity verification |
 
 ### Developer & Data Tools (`tools/`)
@@ -203,8 +213,6 @@ pytest
 
 ```text
 JunoSpectre/
-├── config/
-│   └── controller_presets/    # MIDI controller binding presets (e.g. Launch Control XL3)
 ├── scripts/                   # Production launchers and runtime scripts
 ├── tools/                     # Offline data dumpers and asset compilers
 ├── src/spectre/
@@ -215,7 +223,8 @@ JunoSpectre/
 │   ├── audio/                 # Audio clips: media folder, playback worker, mixer
 │   ├── librarian/             # SQLite patch indexing, repository, tagging
 │   ├── ui/                    # Qt Quick app, modular Python↔QML bridge, QML views
-│   └── assets/                # JSON catalogs, factory DB, waveform metadata
+│   ├── launcher.py            # App start-up: MIDI, synth sync, Qt app (main())
+│   └── assets/                # JSON catalogs, factory DB, waveforms, controller presets
 ├── tests/                     # pytest suite
 └── Resources/                 # Roland reference PDFs (param guide, MIDI implementation)
 ```
