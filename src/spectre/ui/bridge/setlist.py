@@ -174,8 +174,7 @@ class SetlistBridgeMixin(BridgeBaseMixin):
             if entry is None:
                 extras: Dict[str, Any] = {"part_snapshots": self._capture_part_snapshots(),
                                           **self._arp_extras()}
-                if hasattr(self, "sequencer"):
-                    extras["sequencer"] = self.sequencer.song.to_dict()
+                extras["sequencer"] = self.sequencer.song.to_dict()
                 entry = make_playlist_entry(song_name, patch_state_to_dict(self.patch_state),
                                             spectre=extras)
         except Exception as e:

@@ -48,7 +48,7 @@ class AudioBridgeMixin(BridgeBaseMixin):
     _audioImported = pyqtSignal(int, int, str)
 
     def _init_audio(self) -> None:
-        hw = getattr(self, "_hw_settings", {}) or {}
+        hw = self._hw_settings or {}
         client = AudioClient(device=str(hw.get("audio_device", "")),
                              block=int(hw.get("audio_block", 512)),
                              latency=float(hw.get("audio_latency", 0.03)))
@@ -74,9 +74,8 @@ class AudioBridgeMixin(BridgeBaseMixin):
         # A BPM change asked for while synced audio plays (0 = none)
         self._pending_bpm = 0.0
         self._audio_cal_stop: threading.Event | None = None
-        if hasattr(self, "sequencer"):
-            self.sequencer.audio = self.audio_player
-            self.audio_player.song_bpm = self.sequencer.bpm
+        self.sequencer.audio = self.audio_player
+        self.audio_player.song_bpm = self.sequencer.bpm
         self._audio_song_changed()
 
     def _on_audio_bpm(self, bpm: float) -> None:
@@ -87,8 +86,7 @@ class AudioBridgeMixin(BridgeBaseMixin):
     def close_audio(self) -> None:
         if self._audio_cal_stop is not None:
             self._audio_cal_stop.set()
-        if hasattr(self, "audio_player"):
-            self.audio_player.close()
+        self.audio_player.close()
 
     # -- drift lock ------------------------------------------------------------------
 
@@ -141,7 +139,7 @@ class AudioBridgeMixin(BridgeBaseMixin):
         mode, a high C on the patch otherwise."""
         if self._in_perform():
             return self._part_rx_channel(10), 37
-        kbd = getattr(self, "_kbd_channel", -1)
+        kbd = self._kbd_channel
         return (kbd if kbd >= 0 else 0), 84
 
     def _audio_cal_loop(self, stop: threading.Event) -> None:
@@ -219,7 +217,7 @@ class AudioBridgeMixin(BridgeBaseMixin):
 
     def _audio_song_changed(self) -> None:
         """A song was loaded (or a track became AUDIO): get its files ready."""
-        player = getattr(self, "audio_player", None)
+        player = self.audio_player
         if player is None or not hasattr(self, "sequencer"):
             return
         audio_tracks = [t for t in self.sequencer.song.tracks if t.is_audio]
@@ -232,7 +230,7 @@ class AudioBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty("QVariantMap", notify=audioChanged)
     def audioStatus(self) -> dict:
-        p = getattr(self, "audio_player", None)
+        p = self.audio_player
         if p is None:
             return {}
         ppm = p.drift.ppm()
@@ -322,7 +320,7 @@ class AudioBridgeMixin(BridgeBaseMixin):
 
     def _audio_edit_clip(self):
         """(track index, clip) the clip editor works on: the active track's selected clip."""
-        t_idx = getattr(self, "_active_seq_track", 0)
+        t_idx = self._active_seq_track
         tracks = self.sequencer.song.tracks
         if 0 <= t_idx < len(tracks):
             track = tracks[t_idx]

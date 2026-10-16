@@ -56,7 +56,7 @@ class ArpBridgeMixin(BridgeBaseMixin):
         self.refreshArp()
 
     def _send_clock(self) -> bool:
-        mgr = getattr(self, "_midi_mgr", None) or getattr(self.juno, "midi", None)
+        mgr = self._midi_mgr or getattr(self.juno, "midi", None)
         out = getattr(mgr, "juno_out", None)
         if out is None or getattr(out, "closed", True):
             return False
@@ -180,7 +180,7 @@ class ArpBridgeMixin(BridgeBaseMixin):
 
     def _arp_resync_clock(self) -> None:
         """Sequencer started: restart the clock grid so the beats line up."""
-        clock = getattr(self, "_clock_out", None)
+        clock = self._clock_out
         if clock is not None:
             clock.resync()
 

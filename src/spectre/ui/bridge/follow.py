@@ -190,7 +190,7 @@ class FollowBridgeMixin(BridgeBaseMixin):
             pass
 
     def _follow_patch_name(self, juno, part) -> str:
-        repo = getattr(self, "_librarian_repo", None)
+        repo = self._librarian_repo
         if repo is not None:
             try:
                 name = repo.resolve_patch_name(part.patch_msb, part.patch_lsb, part.patch_pc)

@@ -158,7 +158,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
     SCULPT_VIEWS = ("VECTOR", "WAVETABLE", "VA")
 
     def _sculpt_view(self) -> bool:
-        return str(getattr(self, "_active_view", "")) in self.SCULPT_VIEWS
+        return str(self._active_view) in self.SCULPT_VIEWS
 
     def _target_tones(self, tone_index: Optional[int] = None) -> list[ToneState]:
         """Return list of target tones to mutate (single or all if linked)."""

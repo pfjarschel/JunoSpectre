@@ -120,8 +120,7 @@ class ViewBridgeMixin(BridgeBaseMixin):
                 self.setMorphMode("vector_2d")
             elif v == "WAVETABLE":
                 self.setMorphMode("wavetable_1d")
-            if hasattr(self, "recorder"):
-                self.recorder.audition_enabled = v == "SEQUENCER"
+            self.recorder.audition_enabled = v == "SEQUENCER"
             self.activeViewChanged.emit(self._active_view)
             self._update_telemetry_polling()
 
@@ -151,7 +150,7 @@ class ViewBridgeMixin(BridgeBaseMixin):
         the view open before the Librarian. OK keeps auditioned sounds.
         """
         if self._active_view == "LIBRARIAN":
-            dest = str(self._pending_view or "") or getattr(self, "_view_before_librarian", "") or "JUNO PCM"
+            dest = str(self._pending_view or "") or self._view_before_librarian or "JUNO PCM"
             self._pending_view = ""
             self._pick_target = 0
             self._discard_librarian_entry()
@@ -182,7 +181,7 @@ class ViewBridgeMixin(BridgeBaseMixin):
             except Exception as e:
                 logger.debug(f"librarian cancel restore failed: {e}")
             self._discard_librarian_entry()
-            self.setActiveView(getattr(self, "_view_before_librarian", "") or "JUNO PCM")
+            self.setActiveView(self._view_before_librarian or "JUNO PCM")
 
     def _restore_librarian_entry(self) -> None:
         """Revert app + synth sound to the Librarian-entry snapshot."""

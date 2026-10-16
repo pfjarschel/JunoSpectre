@@ -110,8 +110,7 @@ class VectorBridgeMixin(BridgeBaseMixin):
     @pyqtProperty(float, notify=bpmChanged)
     def bpm(self) -> float:
         """The one global tempo, owned by the sequencer song (saved with songs/setlists)."""
-        if hasattr(self, "sequencer"):
-            return self.sequencer.bpm
+        return self.sequencer.bpm
         return self.vector.motion.bpm
 
     @pyqtProperty(str, notify=automatorChanged)

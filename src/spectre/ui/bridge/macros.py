@@ -278,7 +278,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
                 self.vector.motion.speed = max(0.25, min(4.0, val))
                 self.speedChanged.emit(self.vector.motion.speed)
             elif key == "vector.bpm":
-                if not (hasattr(self, "_audio_hold_tempo") and self._audio_hold_tempo(val)):
+                if not (self._audio_hold_tempo(val)):
                     self._apply_tempo(val)
             return
         iv = int(round(max(0, val))) if is_int else val
@@ -389,7 +389,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
                 logger.debug(f"macro: reading part {part} failed: {e}")
                 st = None
         if st is None:
-            snap = (getattr(self, "_part_snapshots", None) or {}).get(str(part))
+            snap = (self._part_snapshots or {}).get(str(part))
             if isinstance(snap, dict):
                 try:
                     st = patch_state_from_dict(snap)

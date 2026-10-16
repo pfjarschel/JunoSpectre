@@ -153,7 +153,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty(int, notify=perfFxChanged)
     def editingPerfMfx(self) -> int:
-        return max(1, min(3, int(getattr(self, "_editing_perf_mfx", 1))))
+        return max(1, min(3, int(self._editing_perf_mfx)))
 
     @staticmethod
     def _origin_text(origin: int) -> str:
@@ -397,7 +397,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                     image.common.name = old["patch_state"].common.name
                     save_spectre(p.patch_file, image, meta=old["meta"], spectre=old["spectre"],
                                  synth_ref=old["synth_ref"], kind=old["kind"])
-                    repo = getattr(self, "_librarian_repo", None)
+                    repo = self._librarian_repo
                     if repo is not None:
                         repo.touch_file_row(p.patch_file)
                     self._part_snapshots[key] = patch_state_to_dict(
@@ -556,10 +556,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             juno = self.juno
             if juno is not None:
                 try:
-                    if hasattr(juno, "set_perf_zone_switch"):
-                        juno.set_perf_zone_switch(part_index, bool(enabled))
-                    else:
-                        juno.set_perf_zone(part_index, switch=bool(enabled))
+                    juno.set_perf_zone_switch(part_index, bool(enabled))
                 except Exception as e:
                     logger.debug(f"setPartZoneSwitch: synth write failed: {e}")
             self.perfPartsChanged.emit()
@@ -595,8 +592,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         if juno is not None:
             try:
-                if hasattr(juno, "set_perf_part_fx"):
-                    juno.set_perf_part_fx(int(part_index), **kwargs)
+                juno.set_perf_part_fx(int(part_index), **kwargs)
             except Exception as e:
                 logger.debug(f"setPartFx: synth write failed: {e}")
         if int(which) in (1, 2):
@@ -615,9 +611,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         if juno is not None:
             try:
-                if hasattr(juno, "set_perf_part_output"):
-                    juno.set_perf_part_output(int(part_index), assign=part.output_assign,
-                                              mfx_select=part.mfx_select)
+                juno.set_perf_part_output(int(part_index), assign=part.output_assign,
+                                          mfx_select=part.mfx_select)
             except Exception as e:
                 logger.debug(f"setPartOutput: synth write failed: {e}")
         self.perfPartsChanged.emit()
@@ -633,8 +628,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         if juno is not None:
             try:
-                if hasattr(juno, "set_perf_part_output"):
-                    juno.set_perf_part_output(int(part_index), mfx_select=s)
+                juno.set_perf_part_output(int(part_index), mfx_select=s)
             except Exception as e:
                 logger.debug(f"setPartMfxSelect: synth write failed: {e}")
         self.perfPartsChanged.emit()
@@ -689,9 +683,9 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             return False
 
         # Fast-path: if we have a snapshot or linked file for this part, apply it immediately
-        snap = (getattr(self, "_part_snapshots", None) or {}).get(str(p_idx))
+        snap = (self._part_snapshots or {}).get(str(p_idx))
         link = ""
-        if hasattr(self, "patch_state") and hasattr(self.patch_state, "perf_parts"):
+        if hasattr(self.patch_state, "perf_parts"):
             if 0 <= p_idx - 1 < len(self.patch_state.perf_parts):
                 link = str(getattr(self.patch_state.perf_parts[p_idx - 1], "patch_file", "") or "")
 
@@ -782,7 +776,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             self.requestOpenEditTarget.emit()
 
     def _in_perform(self) -> bool:
-        return str(getattr(self, "_sound_mode", "PATCH")).upper() == "PERFORM"
+        return str(self._sound_mode).upper() == "PERFORM"
 
     def _perf_slot(self, slot: int):
         fx = getattr(self.patch_state, "perf_fx", None)
@@ -888,7 +882,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         m = str(mode or "").upper()
         if m not in ("PATCH", "PERFORM"):
             return
-        prev = str(getattr(self, "_sound_mode", "")).upper()
+        prev = str(self._sound_mode).upper()
         juno = self.juno
         if juno is not None:
             origin = getattr(self, "_patch_origin", None)
@@ -925,7 +919,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                     self._queue_push_jobs(self._perf_push_jobs(), replace=True)
                 except Exception as e:
                     logger.debug(f"setSoundMode: performance push failed: {e}")
-        if m != str(getattr(self, "_sound_mode", "")).upper():
+        if m != str(self._sound_mode).upper():
             # Bases belong to one mode's sounds; re-capture them in the new one
             self._resetMacroBases()
         self._sound_mode = m
@@ -984,8 +978,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         if juno is not None:
             try:
-                if hasattr(juno, "set_perf_source"):
-                    juno.set_perf_source(str(which), o)
+                juno.set_perf_source(str(which), o)
             except Exception as e:
                 logger.debug(f"setPerfSource: synth write failed: {e}")
         try:
@@ -1004,8 +997,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         if juno is not None:
             try:
-                if hasattr(juno, "set_perf_structure"):
-                    juno.set_perf_structure(int(structure))
+                juno.set_perf_structure(int(structure))
             except Exception as e:
                 logger.debug(f"setPerfStructure: synth write failed: {e}")
         try:
@@ -1141,7 +1133,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         state.perf_fx = PerfFxState()
 
         old_parts = self.patch_state.perf_parts
-        old_snaps = getattr(self, "_part_snapshots", None) or {}
+        old_snaps = self._part_snapshots or {}
         snaps = {"1": patch_state_to_dict(state)}
         parts = []
         for i in range(1, 17):
@@ -1182,8 +1174,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 self.transportStateChanged.emit(self.vector.motion.state.value)
 
         self._restore_song_sequence(default_sequencer_song().to_dict())
-        if hasattr(self, "seqSelectTrack"):
-            self.seqSelectTrack(0)
+        self.seqSelectTrack(0)
         self._emit_all_state_signals()
         self.perfPartsChanged.emit()
         try:
@@ -1410,7 +1401,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         `path` is the song file it came from ('' for a snapshot).
         """
         extras = extras if isinstance(extras, dict) else {}
-        if hasattr(self, "sequencer") and self.sequencer.is_playing:
+        if self.sequencer.is_playing:
             self.seqStop()
         midi = getattr(self.juno, "midi", None) if self.juno is not None else None
         if midi is not None:
@@ -1453,8 +1444,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     def _restore_song_sequence(self, seq_raw: dict) -> None:
         """Swap in a saved sequencer song (stops playback, applies its tempo)."""
-        if not hasattr(self, "sequencer"):
-            return
         try:
             song = SequencerSong.from_dict(seq_raw)
         except Exception as e:
@@ -1463,10 +1452,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         self.sequencer.stop()
         self.sequencer.song = song
         self._apply_tempo(song.bpm)
-        if hasattr(self, "_seq_retarget_recorder"):
-            self._seq_retarget_recorder()
-        if hasattr(self, "_audio_song_changed"):
-            self._audio_song_changed()
+        self._seq_retarget_recorder()
+        self._audio_song_changed()
         self.seqTracksChanged.emit()
         self.seqActiveClipChanged.emit()
         self.seqStateChanged.emit()

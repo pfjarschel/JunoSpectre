@@ -430,7 +430,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     def _ctl_state(self) -> dict:
         """What binding contexts are matched against right now."""
-        return {"PAGE": str(getattr(self, "_active_view", "")), "MODE": self._ctl_mode(),
+        return {"PAGE": str(self._active_view), "MODE": self._ctl_mode(),
                 "LAYER": self._ctl_layer or "CONTROL", "ALT": "ON" if self._alt_on() else "",
                 "BANK": str(self.seqTrackBank + 1)}
 
@@ -682,7 +682,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 return ""
             target = knobs[n - 1] if 1 <= n <= len(knobs) else ""
         if target == "tone.sel.pitch_fine":
-            if str(getattr(self, "_active_view", "")) in ("WAVETABLE", "VECTOR"):
+            if str(self._active_view) in ("WAVETABLE", "VECTOR"):
                 return "detune.master"
             if self.patch_state.auto_detune:
                 return "detune.auto"
@@ -839,7 +839,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     def _capture_loaded(self) -> None:
         """After a full state refresh (a load, or a part switch): remember the sound
         as loaded. A part already edited keeps the copy from before its edits."""
-        if getattr(self, "_loaded_sounds", None) is None:
+        if self._loaded_sounds is None:
             return
         ps = self.patch_state
         slot = self._loaded_slot()
@@ -866,7 +866,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     def _forget_loaded(self, part: int | None = None) -> None:
         """A new sound: part `part` got one (its copy goes), or everything (None)."""
-        if getattr(self, "_loaded_sounds", None) is None:
+        if self._loaded_sounds is None:
             return
         if part is None:
             self._loaded_sounds, self._loaded_perf = {}, None
@@ -1067,7 +1067,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             on, color = bool(self.seqRecArmed), (127, 0, 0)
         elif t.startswith("action.view.goto."):
             view = t[len("action.view.goto."):]
-            on, color = str(getattr(self, "_active_view", "")) == view, _view_rgb(view)
+            on, color = str(self._active_view) == view, _view_rgb(view)
         elif t == "action.seq.scene_launch":
             on, color = any(tr.active_clip_idx == self._ctl_scene for tr in self.sequencer.song.tracks) \
                 and self.sequencer.is_playing, (127, 127, 127)
@@ -1110,7 +1110,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     def _ctl_context_changed(self, *_args) -> None:
         # patchInfoChanged also fires on every patch/part change; only a new
         # page, mode or bank changes which bindings are active
-        state = (str(getattr(self, "_active_view", "")), self._ctl_mode(), self.seqTrackBank)
+        state = (str(self._active_view), self._ctl_mode(), self.seqTrackBank)
         last = getattr(self, "_ctl_last_context", None)
         if state == last:
             return
@@ -1223,14 +1223,14 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                         st["leds"][num] = rgb
                 sel = (f"PART {self._editedPart()}" if self._in_perform()
                        else f"TONE {int(self._selected_tone)}")
-                page = str(getattr(self, "_active_view", ""))
+                page = str(self._active_view)
                 if self._ctl_layer == "MIXER":
                     page = "MIXER " + ("9-16" if self.seqTrackBank == 1 else "1-8") if self._in_perform() else "MIXER"
                 if self._alt_on():
                     page = f"CTX · SCENE {self._ctl_scene + 1}"
                 if self._reset_armed():
                     page = "MOVE TO RESET"
-                stat = (str(getattr(self, "_patch_name", "") or "JUNO SPECTRE"), page,
+                stat = (str(self._patch_name or "JUNO SPECTRE"), page,
                         f"{self._ctl_mode()} · {sel}")
                 if st["stat"] != stat:
                     if st["stat"] is None:
@@ -1245,8 +1245,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
 
     def _context_knob_targets(self) -> list:
         """The current page's 8 knob targets. The sequencer follows the visible track bank."""
-        view = str(getattr(self, "_active_view", ""))
-        if view == "SEQUENCER" and hasattr(self, "sequencer"):
+        view = str(self._active_view)
+        if view == "SEQUENCER":
             first = self.seqTrackBank * TRACK_BANK_SIZE
             last = min(len(self.sequencer.song.tracks), first + TRACK_BANK_SIZE)
             return [f"seq.swing.{i + 1}" for i in range(first, last)]
@@ -1283,7 +1283,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     @pyqtProperty(bool, notify=contextKnobsChanged)
     def contextKnobsAvailable(self) -> bool:
         """Whether the current page has context knobs (the strip is hidden otherwise)."""
-        return any(CONTEXT_KNOBS.get(str(getattr(self, "_active_view", "")), []))
+        return any(CONTEXT_KNOBS.get(str(self._active_view), []))
 
     @pyqtSlot(int, float)
     def setContextKnob(self, index: int, norm: float) -> None:
@@ -1365,7 +1365,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             elif action.startswith("view.goto."):
                 self.setActiveView(action[len("view.goto."):])
             elif action in ("view.next", "view.prev"):
-                view = str(getattr(self, "_active_view", ""))
+                view = str(self._active_view)
                 i = CONTEXT_PAGES.index(view) if view in CONTEXT_PAGES else -1
                 step = 1 if action == "view.next" else -1
                 self.setActiveView(CONTEXT_PAGES[(i + step) % len(CONTEXT_PAGES)])
@@ -1509,7 +1509,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self._ctl_preset_names.append((list(d["match"]), dict(d["controls"])))
 
     def _ctl_names_for(self, port: str) -> dict:
-        for match, names in getattr(self, "_ctl_preset_names", []):
+        for match, names in self._ctl_preset_names:
             if any(m in port for m in match):
                 return names
         return {}

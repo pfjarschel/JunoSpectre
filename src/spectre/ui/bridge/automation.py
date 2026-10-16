@@ -170,8 +170,8 @@ class AutomationBridgeMixin(BridgeBaseMixin):
 
     def _auto_forget(self) -> None:
         """A new sound was loaded: the saved values belong to the old one."""
-        getattr(self, "_auto_restore", {}).clear()
-        getattr(self, "_auto_applied", {}).clear()
+        self._auto_restore.clear()
+        self._auto_applied.clear()
 
     def _auto_owns(self, target: str) -> bool:
         """True when a lane drives what a knob bound to `target` would write."""

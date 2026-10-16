@@ -131,7 +131,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
             logger.debug(f"backup cleanup failed for {path}: {e}")
 
     def _live_spectre_extras(self) -> dict:
-        extras: dict = {"engine_mode": getattr(self, "_active_view", "JUNO PCM")}
+        extras: dict = {"engine_mode": self._active_view}
         try:
             extras["vector"] = {"x": float(self.vector.x),
                                 "y": float(self.vector.y),
@@ -293,11 +293,10 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
                 except Exception as e:
                     logger.debug(f"save performance: snapshots failed: {e}")
                 # A performance is the whole song: sounds + sequence + tempo.
-                if hasattr(self, "sequencer"):
-                    try:
-                        extras["sequencer"] = self.sequencer.song.to_dict()
-                    except Exception as e:
-                        logger.debug(f"save performance: sequence failed: {e}")
+                try:
+                    extras["sequencer"] = self.sequencer.song.to_dict()
+                except Exception as e:
+                    logger.debug(f"save performance: sequence failed: {e}")
             else:
                 state = self._fresh_live_state(name or self._patch_name)
                 file_name = state.common.name

@@ -533,7 +533,7 @@ class SystemBridgeMixin(BridgeBaseMixin):
             self._brightness = clamped
             self.brightnessChanged.emit(self._brightness)
         try:
-            backlight = getattr(self, "_backlight", None)
+            backlight = self._backlight
             if backlight is not None:
                 if not backlight.set_percent(clamped):
                     logger.debug(
@@ -565,7 +565,7 @@ class SystemBridgeMixin(BridgeBaseMixin):
             logger.error(f"Restart execv failed ({argv}): {e}")
             self.powerActionChanged.emit("")
             try:
-                if hasattr(self, "_timer") and not self._timer.isActive():
+                if not self._timer.isActive():
                     self._timer.start()
             except Exception:
                 pass
@@ -597,7 +597,7 @@ class SystemBridgeMixin(BridgeBaseMixin):
     def _perform_appliance_cleanup(self, reason: str) -> None:
         """Best-effort graceful teardown before restart/reboot/shutdown."""
         try:
-            if hasattr(self, "_timer") and self._timer.isActive():
+            if self._timer.isActive():
                 self._timer.stop()
         except Exception as e:
             logger.debug(f"Cleanup ({reason}): timer stop failed: {e}")
@@ -667,7 +667,7 @@ class SystemBridgeMixin(BridgeBaseMixin):
             logger.error(f"Host {action} failed: {last_err}")
             self.powerActionChanged.emit("")
             try:
-                if hasattr(self, "_timer") and not self._timer.isActive():
+                if not self._timer.isActive():
                     self._timer.start()
             except Exception:
                 pass

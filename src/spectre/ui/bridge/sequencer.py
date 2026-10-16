@@ -119,8 +119,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         elif kind == self._SYNC_CLIPS:
             self.seqTracksChanged.emit()
             self.seqAutomationChanged.emit()
-            if hasattr(self, "_audio_release_tempo"):
-                self._audio_release_tempo()   # synced audio may have stopped on the bar
+            self._audio_release_tempo()   # synced audio may have stopped on the bar
         elif kind == self._SYNC_RECORDER:
             self.seqCursorStepChanged.emit()
             self.seqActiveClipChanged.emit()
@@ -128,7 +127,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     def _part_rx_channel(self, part_num: int) -> int:
         """MIDI receive channel (0..15) of a performance part, defaulting to part - 1."""
-        parts = getattr(getattr(self, "patch_state", None), "perf_parts", None)
+        parts = getattr(self.patch_state, "perf_parts", None)
         if parts and 1 <= part_num <= len(parts):
             rx = int(getattr(parts[part_num - 1], "rx_channel", -1))
             if 0 <= rx <= 15:
@@ -141,30 +140,30 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty(bool, notify=seqStateChanged)
     def seqIsPlaying(self) -> bool:
-        return self.sequencer.is_playing if hasattr(self, "sequencer") else False
+        return self.sequencer.is_playing
 
     @pyqtProperty(int, notify=seqStateChanged)
     def seqMasterResync(self) -> int:
-        return self.sequencer.song.master_resync_bars if hasattr(self, "sequencer") else 0
+        return self.sequencer.song.master_resync_bars
 
     @pyqtProperty(int, notify=seqKbdChannelChanged)
     def seqKbdChannel(self) -> int:
         """MIDI channel (0..15) the keyboard last played on, -1 when unknown."""
-        return getattr(self, "_kbd_channel", -1)
+        return self._kbd_channel
 
     @pyqtProperty(int, notify=seqActiveTrackChanged)
     def seqActiveTrack(self) -> int:
-        return getattr(self, "_active_seq_track", 0)
+        return self._active_seq_track
 
     @pyqtProperty(int, notify=seqActiveClipChanged)
     def seqActiveClip(self) -> int:
         """Selected clip of the active track (each track keeps its own)."""
-        return self._seq_selected_clip(getattr(self, "_active_seq_track", 0))
+        return self._seq_selected_clip(self._active_seq_track)
 
     @pyqtProperty(int, notify=seqActiveTrackChanged)
     def seqTrackBank(self) -> int:
         """Part/track bank on every page (0 = 1-8, 1 = 9-16): the one holding the cursor."""
-        return getattr(self, "_active_seq_track", 0) // TRACK_BANK_SIZE
+        return self._active_seq_track // TRACK_BANK_SIZE
 
     @pyqtSlot(int)
     def seqSetTrackBank(self, bank: int) -> None:
@@ -172,28 +171,25 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         banks = NUM_TRACKS // TRACK_BANK_SIZE
         bank = max(0, min(banks - 1, int(bank)))
         if bank != self.seqTrackBank:
-            self.seqSelectTrack(bank * TRACK_BANK_SIZE + getattr(self, "_active_seq_track", 0) % TRACK_BANK_SIZE)
+            self.seqSelectTrack(bank * TRACK_BANK_SIZE + self._active_seq_track % TRACK_BANK_SIZE)
 
     def _seq_selected_clip(self, track_idx: int) -> int:
-        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+        if 0 <= track_idx < len(self.sequencer.song.tracks):
             return self.sequencer.song.tracks[track_idx].selected_clip_idx
         return 0
 
     def _seq_is_drum(self, track_idx: int) -> bool:
         """Drum tracks are the ones sending to the rhythm part."""
-        tracks = self.sequencer.song.tracks if hasattr(self, "sequencer") else []
+        tracks = self.sequencer.song.tracks
         return 0 <= track_idx < len(tracks) and tracks[track_idx].is_drum
 
     def _seq_retarget_recorder(self, step_idx: int = 0) -> None:
         """Point the recorder at the active track's selected clip."""
-        if hasattr(self, "recorder"):
-            t_idx = getattr(self, "_active_seq_track", 0)
-            self.recorder.set_target(t_idx, self._seq_selected_clip(t_idx), step_idx)
+        t_idx = self._active_seq_track
+        self.recorder.set_target(t_idx, self._seq_selected_clip(t_idx), step_idx)
 
     @pyqtProperty("QVariantList", notify=seqPlayheadsChanged)
     def seqPlayheads(self) -> list:
-        if not hasattr(self, "sequencer"):
-            return [0, 0, 0, 0, 0]
         return list(self.sequencer.track_steps)
 
     @pyqtProperty("QVariantList", notify=seqPlayheadsChanged)
@@ -203,8 +199,6 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty("QVariantList", notify=seqTracksChanged)
     def seqTracks(self) -> list:
-        if not hasattr(self, "sequencer"):
-            return []
         out = []
         for i, t in enumerate(self.sequencer.song.tracks):
             target_part = t.target_parts[0] if t.target_parts else (i + 1)
@@ -240,9 +234,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty("QVariantList", notify=seqActiveClipChanged)
     def seqActiveClipSteps(self) -> list:
-        if not hasattr(self, "sequencer"):
-            return []
-        t_idx = getattr(self, "_active_seq_track", 0)
+        t_idx = self._active_seq_track
         c_idx = self._seq_selected_clip(t_idx)
         if 0 <= t_idx < len(self.sequencer.song.tracks):
             track = self.sequencer.song.tracks[t_idx]
@@ -278,20 +270,20 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtProperty(bool, notify=seqRecordModeChanged)
     def seqStepRecordEnabled(self) -> bool:
-        return self.recorder.step_record_enabled if hasattr(self, "recorder") else False
+        return self.recorder.step_record_enabled
 
     @pyqtProperty(bool, notify=seqRecordModeChanged)
     def seqLiveRecordEnabled(self) -> bool:
-        return self.recorder.live_record_enabled if hasattr(self, "recorder") else False
+        return self.recorder.live_record_enabled
 
     @pyqtProperty(bool, notify=seqTracksChanged)
     def seqLiveRecordWaiting(self) -> bool:
         """Overdub armed, selected clip queued but not playing yet."""
-        return self.recorder.live_record_waiting if hasattr(self, "recorder") else False
+        return self.recorder.live_record_waiting
 
     @pyqtProperty(int, notify=seqCursorStepChanged)
     def seqCursorStep(self) -> int:
-        return self.recorder.cursor_step if hasattr(self, "recorder") else 0
+        return self.recorder.cursor_step
 
     # -------------------------------------------------------------------------
     # QML Transport & Session Slots
@@ -299,35 +291,30 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot()
     def seqPlay(self) -> None:
-        if hasattr(self, "sequencer"):
-            if self.sequencer.clock.is_stopped:
-                self._arp_resync_clock()
-            self.sequencer.play()
-            self.seqStateChanged.emit()
-            self.seqTracksChanged.emit()
+        if self.sequencer.clock.is_stopped:
+            self._arp_resync_clock()
+        self.sequencer.play()
+        self.seqStateChanged.emit()
+        self.seqTracksChanged.emit()
 
     @pyqtSlot()
     def seqStop(self) -> None:
-        if hasattr(self, "sequencer"):
-            self.sequencer.stop()
-            self.seqStateChanged.emit()
-            self.seqPlayheadsChanged.emit()
-            if hasattr(self, "_audio_release_tempo"):
-                self._audio_release_tempo()
+        self.sequencer.stop()
+        self.seqStateChanged.emit()
+        self.seqPlayheadsChanged.emit()
+        self._audio_release_tempo()
 
     @pyqtSlot()
     def seqTogglePlay(self) -> None:
-        if hasattr(self, "sequencer"):
-            if self.sequencer.is_playing:
-                self.seqStop()
-            else:
-                self.seqPlay()
+        if self.sequencer.is_playing:
+            self.seqStop()
+        else:
+            self.seqPlay()
 
     @pyqtSlot(int)
     def seqSetMasterResync(self, bars: int) -> None:
-        if hasattr(self, "sequencer"):
-            self.sequencer.song.master_resync_bars = max(0, min(64, int(bars)))
-            self.seqStateChanged.emit()
+        self.sequencer.song.master_resync_bars = max(0, min(64, int(bars)))
+        self.seqStateChanged.emit()
 
     def _part_is_active(self, part_num: int) -> bool:
         """Check if part exists / has sounding content in the current performance."""
@@ -372,7 +359,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(int, int)
     def seqSetTrackTargetPart(self, track_idx: int, part_num: int) -> None:
         """Assign the main Roland performance part (1..16) this track sends to (layers kept)."""
-        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+        if 0 <= track_idx < len(self.sequencer.song.tracks):
             part = max(1, min(16, int(part_num)))
             track = self.sequencer.song.tracks[track_idx]
             track.target_parts = [part] + [p for p in track.target_parts[1:] if p != part]
@@ -382,7 +369,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int, str)
     def seqRenameTrack(self, track_idx: int, name: str) -> None:
-        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+        if 0 <= track_idx < len(self.sequencer.song.tracks):
             name = str(name).strip()[:MAX_TRACK_NAME]
             self.sequencer.song.tracks[track_idx].name = name or f"Track {track_idx + 1}"
             self.seqTracksChanged.emit()
@@ -390,7 +377,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(int, int)
     def seqToggleTrackLayer(self, track_idx: int, part_num: int) -> None:
         """Add/remove an extra part the track also sends to (the main part stays)."""
-        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+        if 0 <= track_idx < len(self.sequencer.song.tracks):
             part = max(1, min(16, int(part_num)))
             track = self.sequencer.song.tracks[track_idx]
             main = track.target_parts[0] if track.target_parts else track_idx + 1
@@ -408,15 +395,15 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(int, bool)
     def seqSetTrackKbd(self, track_idx: int, enabled: bool) -> None:
         """Kbd switch for every part the track sends to (layers play together)."""
-        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+        if 0 <= track_idx < len(self.sequencer.song.tracks):
             for part in self.sequencer.song.tracks[track_idx].target_parts or [track_idx + 1]:
                 self.setPartZoneSwitch(int(part), bool(enabled))
 
     @pyqtSlot(int)
     def seqSelectClip(self, clip_idx: int) -> None:
         """Select the clip to edit on the active track (kept per track)."""
-        t_idx = getattr(self, "_active_seq_track", 0)
-        if hasattr(self, "sequencer") and 0 <= t_idx < len(self.sequencer.song.tracks):
+        t_idx = self._active_seq_track
+        if 0 <= t_idx < len(self.sequencer.song.tracks):
             track = self.sequencer.song.tracks[t_idx]
             track.selected_clip_idx = max(0, min(len(track.clips) - 1, int(clip_idx)))
         self._seq_retarget_recorder()
@@ -426,17 +413,15 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(int, int)
     def seqLaunchClip(self, track_idx: int, clip_idx: int, now: bool = False) -> None:
         """now: launch on the next tick instead of the next bar (controller Shift)."""
-        if hasattr(self, "sequencer"):
-            before = self.seqActiveClip
-            self.sequencer.launch_clip(track_idx, clip_idx, now)
-            self._seq_after_launch(before)
+        before = self.seqActiveClip
+        self.sequencer.launch_clip(track_idx, clip_idx, now)
+        self._seq_after_launch(before)
 
     @pyqtSlot(int)
     def seqLaunchScene(self, scene_idx: int) -> None:
-        if hasattr(self, "sequencer"):
-            before = self.seqActiveClip
-            self.sequencer.launch_scene(scene_idx)
-            self._seq_after_launch(before)
+        before = self.seqActiveClip
+        self.sequencer.launch_scene(scene_idx)
+        self._seq_after_launch(before)
 
     def _seq_after_launch(self, selected_before: int) -> None:
         if self.seqActiveClip != selected_before:
@@ -447,29 +432,26 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int)
     def seqStopTrack(self, track_idx: int, now: bool = False) -> None:
-        if hasattr(self, "sequencer"):
-            self.sequencer.stop_track(track_idx, now)
-            self.seqTracksChanged.emit()
+        self.sequencer.stop_track(track_idx, now)
+        self.seqTracksChanged.emit()
 
     @pyqtSlot()
     def seqStopAllClips(self, now: bool = False) -> None:
         """Stop every playing clip at the next bar (now: at once); the transport keeps running."""
-        if hasattr(self, "sequencer"):
-            self.sequencer.stop_all_clips(now)
-            self.seqTracksChanged.emit()
-            self.seqAutomationChanged.emit()
+        self.sequencer.stop_all_clips(now)
+        self.seqTracksChanged.emit()
+        self.seqAutomationChanged.emit()
 
     @pyqtSlot(int)
     def seqStopScene(self, scene_idx: int) -> None:
         """Stop the clips of one scene at the next bar; other scenes keep playing."""
-        if hasattr(self, "sequencer"):
-            self.sequencer.stop_scene(int(scene_idx))
-            self.seqTracksChanged.emit()
-            self.seqAutomationChanged.emit()
+        self.sequencer.stop_scene(int(scene_idx))
+        self.seqTracksChanged.emit()
+        self.seqAutomationChanged.emit()
 
     def _seq_clip_state(self, track_idx: int, clip_idx: int) -> str:
         """"empty" / "loaded" / "queued" / "playing" for a clip slot (controller LEDs)."""
-        tracks = self.sequencer.song.tracks if hasattr(self, "sequencer") else []
+        tracks = self.sequencer.song.tracks
         if not 0 <= track_idx < len(tracks) or not 0 <= clip_idx < len(tracks[track_idx].clips):
             return "empty"
         track, seq = tracks[track_idx], self.sequencer
@@ -492,9 +474,9 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(int, int, int)
     def seqToggleStepNote(self, step_idx: int, pitch: int, velocity: int = 100) -> None:
         """Toggle a note on or off on a step."""
-        t_idx = getattr(self, "_active_seq_track", 0)
+        t_idx = self._active_seq_track
         c_idx = self._seq_selected_clip(t_idx)
-        if hasattr(self, "sequencer") and 0 <= t_idx < len(self.sequencer.song.tracks):
+        if 0 <= t_idx < len(self.sequencer.song.tracks):
             track = self.sequencer.song.tracks[t_idx]
             if 0 <= c_idx < len(track.clips):
                 clip = track.clips[c_idx]
@@ -512,9 +494,9 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int, str, float)
     def seqSetStepParam(self, step_idx: int, param: str, value: float) -> None:
-        t_idx = getattr(self, "_active_seq_track", 0)
+        t_idx = self._active_seq_track
         c_idx = self._seq_selected_clip(t_idx)
-        if hasattr(self, "sequencer") and 0 <= t_idx < len(self.sequencer.song.tracks):
+        if 0 <= t_idx < len(self.sequencer.song.tracks):
             track = self.sequencer.song.tracks[t_idx]
             if 0 <= c_idx < len(track.clips):
                 clip = track.clips[c_idx]
@@ -548,23 +530,14 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int)
     def seqClearStep(self, step_idx: int) -> None:
-        if hasattr(self, "recorder"):
-            self.recorder.clear_step(step_idx)
-            self.seqActiveClipChanged.emit()
-            self.seqTracksChanged.emit()
+        self.recorder.clear_step(step_idx)
+        self.seqActiveClipChanged.emit()
+        self.seqTracksChanged.emit()
 
     @pyqtSlot()
     def seqClearActiveClip(self) -> None:
         """Clear all notes from the current active clip."""
-        t_idx = getattr(self, "_active_seq_track", 0)
-        c_idx = self._seq_selected_clip(t_idx)
-        if hasattr(self, "recorder"):
-            self.recorder.clear_clip()
-        elif hasattr(self, "sequencer") and 0 <= t_idx < len(self.sequencer.song.tracks):
-            track = self.sequencer.song.tracks[t_idx]
-            if 0 <= c_idx < len(track.clips):
-                for s in track.clips[c_idx].steps:
-                    s.notes.clear()
+        self.recorder.clear_clip()
         self.seqActiveClipChanged.emit()
         self.seqTracksChanged.emit()
 
@@ -574,9 +547,9 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     def _seq_edit_clip(self) -> Optional[Clip]:
         """The active track's selected clip, if any."""
-        t_idx = getattr(self, "_active_seq_track", 0)
+        t_idx = self._active_seq_track
         c_idx = self._seq_selected_clip(t_idx)
-        if hasattr(self, "sequencer") and 0 <= t_idx < len(self.sequencer.song.tracks):
+        if 0 <= t_idx < len(self.sequencer.song.tracks):
             track = self.sequencer.song.tracks[t_idx]
             if 0 <= c_idx < len(track.clips):
                 return track.clips[c_idx]
@@ -602,7 +575,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         if step is None or len(step.notes) >= MAX_STEP_NOTES:
             return -1
         used = {n.pitch for n in step.notes}
-        is_drum = self._seq_is_drum(getattr(self, "_active_seq_track", 0))
+        is_drum = self._seq_is_drum(self._active_seq_track)
         free_drums = [p for p in DRUM_ADD_ORDER if p not in used] if is_drum else []
         if free_drums:
             pitch = free_drums[0]
@@ -709,9 +682,9 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int)
     def seqSetClipLength(self, length: int) -> None:
-        t_idx = getattr(self, "_active_seq_track", 0)
+        t_idx = self._active_seq_track
         c_idx = self._seq_selected_clip(t_idx)
-        if hasattr(self, "sequencer") and 0 <= t_idx < len(self.sequencer.song.tracks):
+        if 0 <= t_idx < len(self.sequencer.song.tracks):
             track = self.sequencer.song.tracks[t_idx]
             if 0 <= c_idx < len(track.clips):
                 track.clips[c_idx].set_length(length)
@@ -720,20 +693,20 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int, str)
     def seqSetTrackClockDivider(self, track_idx: int, divider: str) -> None:
-        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+        if 0 <= track_idx < len(self.sequencer.song.tracks):
             self.sequencer.song.tracks[track_idx].clock_divider = str(divider)
             self.seqTracksChanged.emit()
 
     @pyqtSlot(int, float)
     def seqSetTrackSwing(self, track_idx: int, swing: float) -> None:
-        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+        if 0 <= track_idx < len(self.sequencer.song.tracks):
             self.sequencer.song.tracks[track_idx].swing = max(0.50, min(0.75, float(swing)))
             self.seqTracksChanged.emit()
 
     @pyqtSlot(int, int, int)
     def seqSetTrackDice(self, track_idx: int, timing: int, velocity: int) -> None:
         """Dice (humanize): random +/- ticks and +/- % of 127 velocity, rolled per note."""
-        if hasattr(self, "sequencer") and 0 <= track_idx < len(self.sequencer.song.tracks):
+        if 0 <= track_idx < len(self.sequencer.song.tracks):
             track = self.sequencer.song.tracks[track_idx]
             track.dice_timing = max(0, min(MAX_DICE_TIMING, int(timing)))
             track.dice_velocity = max(0, min(MAX_DICE_VELOCITY, int(velocity)))
@@ -741,55 +714,49 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int)
     def seqSetCursorStep(self, step_idx: int) -> None:
-        if hasattr(self, "recorder"):
-            self.recorder.cursor_step = max(0, int(step_idx))
-            self.seqCursorStepChanged.emit()
+        self.recorder.cursor_step = max(0, int(step_idx))
+        self.seqCursorStepChanged.emit()
 
     # -------------------------------------------------------------------------
     # QML Recording Slots
     # -------------------------------------------------------------------------
 
     def _seq_active_is_audio(self) -> bool:
-        tracks = self.sequencer.song.tracks if hasattr(self, "sequencer") else []
-        t_idx = getattr(self, "_active_seq_track", 0)
+        tracks = self.sequencer.song.tracks
+        t_idx = self._active_seq_track
         return 0 <= t_idx < len(tracks) and tracks[t_idx].is_audio
 
     @pyqtSlot(bool)
     def seqToggleStepRecord(self, enabled: bool) -> None:
         if enabled and self._seq_active_is_audio():
             return  # audio tracks don't record notes
-        if hasattr(self, "recorder"):
-            self.recorder.toggle_step_record(enabled)
-            self.seqRecordModeChanged.emit()
+        self.recorder.toggle_step_record(enabled)
+        self.seqRecordModeChanged.emit()
 
     @pyqtSlot(bool)
     def seqToggleLiveRecord(self, enabled: bool) -> None:
         if enabled and self._seq_active_is_audio():
             return
-        if hasattr(self, "recorder"):
-            self.recorder.toggle_live_record(enabled)
-            self.seqRecordModeChanged.emit()
-            self.seqTracksChanged.emit()
+        self.recorder.toggle_live_record(enabled)
+        self.seqRecordModeChanged.emit()
+        self.seqTracksChanged.emit()
 
     @pyqtSlot()
     def seqRecordRest(self) -> None:
-        if hasattr(self, "recorder"):
-            self.recorder.record_rest()
-            self.seqCursorStepChanged.emit()
+        self.recorder.record_rest()
+        self.seqCursorStepChanged.emit()
 
     @pyqtSlot()
     def seqRecordTie(self) -> None:
-        if hasattr(self, "recorder"):
-            self.recorder.record_tie()
-            self.seqCursorStepChanged.emit()
-            self.seqActiveClipChanged.emit()
+        self.recorder.record_tie()
+        self.seqCursorStepChanged.emit()
+        self.seqActiveClipChanged.emit()
 
     def _apply_tempo(self, bpm_val: float) -> float:
         """Set the global tempo: sequencer clock and vector motion follow the same value."""
         bpm_val = max(20.0, min(300.0, float(bpm_val)))
-        if hasattr(self, "sequencer"):
-            self.sequencer.set_bpm(bpm_val)
-            bpm_val = self.sequencer.bpm
+        self.sequencer.set_bpm(bpm_val)
+        bpm_val = self.sequencer.bpm
         self.vector.motion.bpm = bpm_val
         self.bpmChanged.emit(bpm_val)
         return bpm_val
@@ -797,7 +764,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(float)
     def setBpm(self, bpm_val: float) -> None:
         """Update the global tempo BPM (held while synced audio plays)."""
-        if hasattr(self, "_audio_hold_tempo") and self._audio_hold_tempo(bpm_val):
+        if self._audio_hold_tempo(bpm_val):
             return
         bpm_val = self._apply_tempo(bpm_val)
         self._rebaseDirect([("vector.bpm", bpm_val)])
@@ -805,7 +772,7 @@ class SequencerBridgeMixin(BridgeBaseMixin):
     @pyqtSlot()
     def panic(self) -> None:
         """Stop the sequencer and send All Notes Off / Reset All Controllers."""
-        if hasattr(self, "sequencer") and self.sequencer.is_playing:
+        if self.sequencer.is_playing:
             self.seqStop()
         try:
             if self.juno and self.juno.midi:
