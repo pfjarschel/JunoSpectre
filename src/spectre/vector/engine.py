@@ -1,13 +1,16 @@
 """Vector engine: 2D/1D morphing, motion loops and the tone-level writes.
 
 Level writes are rate-limited (50 Hz default), skipped when unchanged and
-queued for the writer thread, so morphing never blocks the UI.
+queued for the writer thread, so morphing never blocks the UI. A move that
+falls inside the rate window is sent when the window ends, so the synth
+always ends on the last position.
 """
 
 from __future__ import annotations
 
 import enum
 import logging
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -70,6 +73,7 @@ class VectorEngine:
         self._last_dispatched_levels: Tuple[int, int, int, int] = (-1, -1, -1, -1)
         self._subscribers: List[Callable[[VectorState], None]] = []
         self._hardware_write_holds: int = 0
+        self._trailing: Optional[threading.Timer] = None
 
         # Calculate initial levels
         self._recalculate_levels()
@@ -186,12 +190,17 @@ class VectorEngine:
         now = time.perf_counter()
         interval = 1.0 / max(1.0, self.max_update_hz)
 
-        # Check rate limit
-        if not force and (now - self._last_dispatch_time < interval):
+        # Only send if levels actually changed
+        if not force and self.tone_levels == self._last_dispatched_levels:
             return
 
-        # Check dirty state (only send if levels actually changed)
-        if not force and self.tone_levels == self._last_dispatched_levels:
+        # Rate limit: send the latest levels when the window ends
+        wait = interval - (now - self._last_dispatch_time)
+        if not force and wait > 0:
+            if self._trailing is None:
+                self._trailing = threading.Timer(wait, self._send_trailing)
+                self._trailing.daemon = True
+                self._trailing.start()
             return
 
         self._last_dispatch_time = now
@@ -206,6 +215,10 @@ class VectorEngine:
                     self.juno.set_tone_levels(self.tone_levels)
             except Exception as e:
                 logger.error(f"Failed to dispatch vector levels to synth: {e}")
+
+    def _send_trailing(self) -> None:
+        self._trailing = None
+        self._dispatch_if_needed()
 
     def _notify_subscribers(self) -> None:
         """Notify UI subscribers immediately when state values change."""

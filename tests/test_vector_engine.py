@@ -111,3 +111,16 @@ def test_vector_dispatch_goes_through_the_writer_queue():
     sent = [c.args[0] for c in midi.send_juno_sysex.call_args_list if c.args[0][5] == 0x12]
     assert len(sent) == 4
     assert [pkt[-2] for pkt in sent] == [127, 0, 0, 0]
+
+
+def test_vector_move_inside_the_rate_window_is_sent_after_it():
+    import time
+
+    mock_juno = MagicMock()
+    engine = VectorEngine(juno_client=mock_juno, max_update_hz=20.0)
+    engine.set_coordinates(0.0, 0.0)
+    engine.set_coordinates(0.0, 1.0)  # inside the 50 ms window
+    assert mock_juno.set_tone_levels.call_count == 1
+    time.sleep(0.15)
+    assert mock_juno.set_tone_levels.call_count == 2
+    assert mock_juno.set_tone_levels.call_args.args[0] == (127, 0, 0, 0)
