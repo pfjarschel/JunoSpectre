@@ -89,8 +89,6 @@ class SequencerBridgeMixin(BridgeBaseMixin):
         if hasattr(midi_mgr, "add_note_listener"):
             midi_mgr.add_note_listener(self.recorder.handle_midi_message)
             midi_mgr.add_note_listener(self._on_kbd_note)
-        if hasattr(midi_mgr, "start_input_worker"):
-            midi_mgr.start_input_worker()
 
     def _on_seq_ui_update(self, snapshot: dict) -> None:
         """Receive downsampled playback updates from SequencerEngine (clock thread)."""

@@ -1,6 +1,5 @@
 """Tests for Roland Zone Switch driver and MIDI input demuxer."""
 
-import time
 from unittest.mock import MagicMock
 
 import mido
@@ -30,10 +29,6 @@ def test_set_perf_zone_switch():
 
 def test_midi_input_demuxer_routes_notes_and_sysex():
     mgr = MidiDeviceManager()
-    mock_in = MagicMock()
-    mock_in.closed = False
-    mgr.juno_in = mock_in
-
     captured_notes = []
 
     def note_handler(msg):
@@ -44,11 +39,8 @@ def test_midi_input_demuxer_routes_notes_and_sysex():
     note_msg = mido.Message("note_on", channel=0, note=60, velocity=100)
     sysex_msg = mido.Message("sysex", data=[0x41, 0x10, 0x00, 0x00, 0x00, 0x37, 0x12, 0x00])
 
-    mock_in.iter_pending.return_value = [note_msg, sysex_msg]
-
-    mgr.start_input_worker()
-    time.sleep(0.05)
-    mgr.stop_input_worker()
+    for msg in (note_msg, sysex_msg):
+        mgr._on_juno_message(msg)
 
     assert len(captured_notes) >= 1
     assert captured_notes[0].note == 60
@@ -90,17 +82,12 @@ def test_sequencer_never_touches_kbd_switches():
 
 def test_midi_input_demuxer_keeps_only_sysex_and_is_bounded():
     mgr = MidiDeviceManager()
-    mock_in = MagicMock()
-    mock_in.closed = False
-    mgr.juno_in = mock_in
     cc = mido.Message("control_change", control=7, value=100)
     sysex = [mido.Message("sysex", data=[0x41, i % 128]) for i in range(300)]
-    mock_in.iter_pending.side_effect = [[cc] + sysex] + [[]] * 1000
+    for msg in [cc] + sysex:
+        mgr._on_juno_message(msg)
 
-    mgr.start_input_worker()
-    time.sleep(0.05)
-    items = list(mgr.iter_juno_messages())  # drained from the queue while the worker runs
-    mgr.stop_input_worker()
+    items = list(mgr.iter_juno_messages())
 
     assert all(m.type == "sysex" for m in items)
     assert len(items) == 256

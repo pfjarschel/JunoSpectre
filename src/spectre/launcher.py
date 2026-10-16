@@ -16,10 +16,9 @@ import logging
 import sys
 from typing import Optional, Sequence
 
-import mido
 from PyQt6.QtCore import QTimer
 
-from .core.midi import MidiDeviceManager
+from .core.midi import MidiDeviceManager, port_key
 from .core.protocol import JunoClient
 from .ui.app import create_application, quit_boot_splash
 
@@ -95,8 +94,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         try:
             if args.juno_port:
                 logger.info(f"Connecting to user-specified Roland synth port: {args.juno_port}...")
-                midi_mgr.juno_in = mido.open_input(args.juno_port)
-                midi_mgr.juno_out = mido.open_output(args.juno_port)
+                midi_mgr.connect_juno(port_key(args.juno_port))
             else:
                 logger.info("Scanning for Roland synth (JUNO-DS / XPS-30)...")
                 in_n, out_n = midi_mgr.connect_juno()

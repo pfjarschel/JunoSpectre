@@ -63,9 +63,6 @@ class FakeMidi:
     def add_note_listener(self, fn):
         pass
 
-    def start_input_worker(self):
-        pass
-
 
 @pytest.fixture
 def ui(monkeypatch, tmp_path):
