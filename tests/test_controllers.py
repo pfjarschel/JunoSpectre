@@ -1076,3 +1076,58 @@ def test_shift_move_resets_to_the_loaded_value(ui):
     part.modified = True
     bridge._emit_all_state_signals()             # e.g. switching back to this edited part
     assert bridge._loaded_value(bridge._ctl_keys("tone.1.tvf_cutoff")[0]) == 127
+
+
+@pytest.mark.ui
+def test_shift_tap_arms_a_reset_for_the_next_moved_knob(ui, monkeypatch):
+    from src.spectre.control import lcxl3
+    from src.spectre.ui.bridge import controllers as ctl_mod
+
+    clock = [100.0]
+    monkeypatch.setattr(ctl_mod.time, "monotonic", lambda: clock[0])
+    app, bridge, _ = ui
+    bridge._ctl_open[DAW] = object()
+    sent = []
+    bridge._ctl_send = lambda key, msg: sent.append(msg.hex())
+    bridge._hw_outputs = [PORT + " 36:0", DAW + " 36:1"]
+    bridge._ctl_sync_ports = lambda ins: None
+    assert bridge.loadControlPreset(str(SURFACE)) == ""
+    for b in bridge._ctl_bindings:
+        b.takeover = "jump"
+    tone = bridge.patch_state.tones[0]
+    bridge.setActiveView("JUNO PCM")
+    bridge.setLinkedMode(False)
+    bridge.setSelectedTone(1)
+    tone.tvf_cutoff = 100
+    bridge._emit_all_state_signals()                       # loaded: cutoff 100
+
+    def tap(hold=0.1):
+        _send(app, bridge, _cc(63, 127, ch=6), port=DAW)
+        clock[0] += hold
+        _send(app, bridge, _cc(63, 0, ch=6), port=DAW)
+
+    def turn(*values, gap=0.05):
+        for v in values:
+            clock[0] += gap
+            _send(app, bridge, _cc(29, v, ch=15), port=DAW)
+
+    turn(10)
+    assert tone.tvf_cutoff == 10
+    tap()                                                  # armed: the screen says so
+    assert bridge._reset_armed()
+    assert lcxl3.display_text(lcxl3.STATIONARY, 1, "MOVE TO RESET").hex() in sent
+    turn(11, 12, 13)                                       # the whole turn is the reset
+    assert tone.tvf_cutoff == 100 and not bridge._reset_armed()
+    clock[0] += 1.0                                        # rested: the knob works again
+    turn(20)
+    assert tone.tvf_cutoff == 20
+
+    tap()
+    clock[0] += 3.5                                        # too late: it expired
+    turn(21)
+    assert tone.tvf_cutoff == 21
+    tap()
+    tap()                                                  # a second tap cancels
+    assert not bridge._reset_armed()
+    tap(hold=1.0)                                          # a long press is no tap
+    assert not bridge._reset_armed()

@@ -164,7 +164,7 @@ other side.
 
 | Shift + | Does |
 |---|---|
-| Any knob / fader moved | Back to the value the sound had **when it was loaded** (each tone its own) |
+| Fader moved | Back to the value the sound had **when it was loaded** (each tone its own) |
 | Clip button | Launch that clip now, from its start (stop it now if it is playing) |
 | Stop selected track / Stop all clips | Stop now instead of at the next bar |
 | Play | Tap tempo (average of the last 4 taps; a 2 s pause starts over) |
@@ -172,6 +172,12 @@ other side.
 | Tone button 1–4 | Mute / unmute that tone (the selection stays) |
 | Setlist ◀ / ▶ | First / last song |
 | Solo / Mute | Clear all solos / unmute all |
+
+**Knobs: tap Shift, then turn.** The LCXL3 sends nothing for knobs while Shift is held (tested
+2026-10-16; faders are unaffected). A Shift tap (press and release, nothing else touched) arms a
+reset: the next knob or fader moved within 3 s goes back to its loaded value, and the rest of that
+turn is ignored until the knob rests for 0.4 s. The screen's middle line shows `MOVE TO RESET`
+while armed; a second tap cancels.
 
 "Loaded" is the sound as it was loaded (library, file, song, INIT, sync from the synth) or last
 saved; a part already edited keeps the copy from before its edits when you come back to it.

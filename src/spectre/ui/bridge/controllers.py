@@ -44,6 +44,11 @@ SHIFT_CC = 63
 # Tap tempo: taps further apart than this start a new count; up to this many intervals averaged
 TAP_RESET_S = 2.0
 TAP_INTERVALS = 4
+# A Shift tap arms a reset for the next control moved within RESET_ARM_S (the LCXL3
+# sends no knob moves while Shift is held). The rest of that turn is swallowed until
+# the control rests for RESET_ABSORB_S, so it doesn't undo the reset.
+RESET_ARM_S = 3.0
+RESET_ABSORB_S = 0.4
 # Touchscreen hint: kept this long after the touch ends (twice after a move without touch)
 TOUCH_LINGER_MS = 700
 # Alt layer button: released sooner than this, with nothing used meanwhile, is a tap (latch)
@@ -230,6 +235,9 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         self._alt_t0 = 0.0
         self._ctl_scene = 0                         # scene the alt layer's Play/Record act on
         self._ctl_shift = False                     # LCXL3 Shift held: buttons do their Shift action
+        self._shift_t0, self._shift_used = 0.0, False
+        self._reset_until = 0.0                     # a Shift tap armed a reset until then
+        self._reset_absorb: tuple | None = None     # (control, last move) of the turn that reset
         self._tap_times: list = []
         self._tone_solo: tuple | None = None        # PATCH-mode tone solo: (tone, mutes before it)
         # Shift + move resets a control to the value the sound had when loaded:
@@ -356,7 +364,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 del self._surface_state[k]
             self._ctl_layer = ""                      # on_connect starts the device fresh
             self._alt_held = self._alt_latched = self._alt_shown = False
-            self._ctl_shift = False
+            self._ctl_shift, self._reset_until = False, 0.0
             self._ctl_device_messages(client, self._ctl_devices[i].get("on_connect", []))
         self._ctl_connected_devices = live
 
@@ -534,9 +542,12 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             elif kind == "cc" and num == 30:
                 self._ctl_set_layer("MIXER" if raw == 1 else "")
             elif kind == "cc" and num == SHIFT_CC:
-                self._ctl_shift = raw >= 64
+                self._ctl_shift_edge(raw >= 64)
             return
-        self._ctl_moved[(port, ch, kind, num)] = (raw, time.monotonic())
+        now = time.monotonic()
+        self._ctl_moved[(port, ch, kind, num)] = (raw, now)
+        if self._ctl_shift:
+            self._shift_used = True         # Shift + a control: not a tap
         if self._ctl_learn_target:
             if raw == 0:
                 return        # a release or a control at its minimum: wait for a real move
@@ -575,8 +586,17 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             if self._auto_owns(eff):
                 self._ctl_set_activity(f"{label} = {raw} → {self._ctl_target_title(eff)}  (automated)")
                 continue
-            if self._ctl_shift:
-                # Shift + move: back to the loaded value; the control picks it up again after
+            ctl = (port, ch, kind, num)
+            absorb = self._reset_absorb
+            if absorb is not None and absorb[0] == ctl and now - absorb[1] < RESET_ABSORB_S:
+                self._reset_absorb = (ctl, now)     # still the turn that reset it
+                self._ctl_resolver.forget(b)
+                continue
+            if self._ctl_shift or self._reset_armed():
+                # Shift + move (faders), or the first move after a Shift tap (knobs):
+                # back to the loaded value; the control picks it up again after
+                if not self._ctl_shift:
+                    self._reset_until, self._reset_absorb = 0.0, (ctl, now)
                 done = self._ctl_reset(eff)
                 self._ctl_resolver.forget(b)
                 self._ctl_set_activity(f"{label} → {self._ctl_target_title(eff)}  "
@@ -1259,6 +1279,8 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                     page = "MIXER " + ("9-16" if self.seqTrackBank == 1 else "1-8") if self._in_perform() else "MIXER"
                 if self._alt_on():
                     page = f"CTX · SCENE {self._ctl_scene + 1}"
+                if self._reset_armed():
+                    page = "MOVE TO RESET"
                 stat = (str(getattr(self, "_patch_name", "") or "JUNO SPECTRE"), page,
                         f"{self._ctl_mode()} · {sel}")
                 if st["stat"] != stat:
@@ -1426,6 +1448,26 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 self._solo_mute_action(action)
         except Exception as e:
             logger.warning(f"controller action {action} failed: {e}")
+
+    def _ctl_shift_edge(self, down: bool) -> None:
+        """Shift pressed / released. A tap (nothing used while held) arms a reset
+        for the next control moved, or cancels one already armed."""
+        now = time.monotonic()
+        if down:
+            self._ctl_shift, self._shift_used, self._shift_t0 = True, False, now
+            return
+        if not self._ctl_shift:
+            return
+        self._ctl_shift = False
+        if self._shift_used or now - self._shift_t0 >= ALT_TAP_S:
+            return
+        armed = not self._reset_armed()
+        self._reset_until = now + RESET_ARM_S if armed else 0.0
+        self._ctl_set_activity("Move a control to reset it to its loaded value" if armed else "Reset cancelled")
+        self._surface_tick()                # the screen says so at once
+
+    def _reset_armed(self) -> bool:
+        return time.monotonic() < self._reset_until
 
     # Shift + a button: the same thing right now, or its other side
     _SHIFT_ACTIONS = {
