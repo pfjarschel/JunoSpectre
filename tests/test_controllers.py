@@ -38,6 +38,16 @@ def test_pickup_is_lost_when_the_target_moves_elsewhere():
     assert r.pending_pickup(b)
 
 
+def test_pickup_tolerates_a_coarse_targets_rounding():
+    # Pitch env depth: 25 values, ~5 control steps per value. The target only
+    # takes whole values, so the control sits up to half a value from it.
+    r, b, step = Resolver(), _b(target="tone.all.pitch_env_depth"), 1 / 24
+    assert Resolver().resolve(b, 66, 0.5) is None          # without the step: never caught
+    assert r.resolve(b, 66, 0.5, step) == pytest.approx(66 / 127)
+    assert r.resolve(b, 67, 0.5, step) == pytest.approx(67 / 127)   # still the same value: stays picked
+    assert not r.pending_pickup(b)
+
+
 def test_jump_applies_immediately_and_range_inverts():
     r = Resolver()
     assert r.resolve(_b(takeover="jump"), 127, 0.0) == 1.0
@@ -277,6 +287,26 @@ def test_feedback_sends_target_values_but_not_back_to_a_moving_knob(ui):
     bridge.patch_state.tones[0].tvf_cutoff = 64  # e.g. a patch load
     bridge._ctl_feedback_tick()
     assert sent[-1] == (13, 64)
+
+
+@pytest.mark.ui
+def test_feedback_leaves_a_knob_on_a_coarse_targets_value(ui):
+    app, bridge, _ = ui
+    sent = []
+    bridge._ctl_send = lambda key, msg: sent.append((msg.control, msg.value))
+    bridge._ctl_feedback[PORT] = True
+    bridge._ctl_bindings = [_b(target="tone.1.pitch_env_depth")]
+    bridge.patch_state.tones[0].pitch_env_depth = 64      # 0 st: knob position 64
+    bridge._ctl_feedback_tick()
+    assert sent == [(13, 64)]
+    _send(app, bridge, _cc(13, 65))                        # one slow step: still 0 st
+    assert bridge.patch_state.tones[0].pitch_env_depth == 64
+    bridge._ctl_moved[(PORT, 0, "cc", 13)] = (65, 0.0)     # the hold time is over
+    bridge._ctl_feedback_tick()
+    assert sent == [(13, 64)]       # not snapped back to 64: further slow steps add up
+    _send(app, bridge, _cc(13, 66))
+    _send(app, bridge, _cc(13, 67))
+    assert bridge.patch_state.tones[0].pitch_env_depth == 65   # the next value: +1 st
 
 
 @pytest.mark.ui
@@ -718,7 +748,7 @@ def test_touch_events_are_not_controls(ui, monkeypatch):
     bridge._hw_outputs = [PORT + " 36:0", DAW + " 36:1"]
     bridge._ctl_sync_ports = lambda ins: None
     assert bridge.loadControlPreset(str(SURFACE)) == ""
-    assert "B6 47 7F" in sent                              # touch events on at connect
+    assert "B6 47 00" in sent      # touch events off: the LCXL3 sends them on move start/stop
     before = bridge.patch_state.common.cutoff_offset
     _send(app, bridge, _cc(29, 127, ch=14), port=DAW)      # touch knob C1 (cutoff)
     assert bridge.patch_state.common.cutoff_offset == before

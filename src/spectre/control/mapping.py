@@ -151,11 +151,14 @@ class Resolver:
     def forget(self, b: Binding) -> None:
         self.states.pop(id(b), None)
 
-    def resolve(self, b: Binding, raw: int, current: Optional[float]) -> Optional[float]:
+    def resolve(self, b: Binding, raw: int, current: Optional[float],
+                step: float = 0.0) -> Optional[float]:
         """t to write, or None to leave the target alone.
 
         current: the target's t right now (None when unknown; pickup then
-        takes over immediately).
+        takes over immediately). step: t size of one target value when the
+        target is coarser than the control (pitch env depth: 1/24), so
+        rounding to the nearest value doesn't count as moved elsewhere.
         """
         st = self.state(b)
         raw = max(0, min(127, int(raw)))
@@ -178,16 +181,17 @@ class Resolver:
             return st.last_sent
 
         t = b.lo + (b.hi - b.lo) * raw / 127.0
+        slack = max(0.0, float(step)) / 2      # rounding to the target's own steps
         if b.takeover == "scale" and current is not None:
-            return self._scale(b, st, raw / 127.0, current)
+            return self._scale(b, st, raw / 127.0, current, slack)
         if b.takeover == "jump" or current is None:
             st.picked, st.prev_t, st.last_sent = True, t, t
             return t
-        if st.picked and st.last_sent is not None and abs(current - st.last_sent) > _MOVED:
+        if st.picked and st.last_sent is not None and abs(current - st.last_sent) > _MOVED + slack:
             st.picked = False          # moved elsewhere: pick it up again
         if not st.picked:
             crossed = st.prev_t is not None and (st.prev_t - current) * (t - current) <= 0
-            if abs(t - current) <= _CATCH or crossed:
+            if abs(t - current) <= _CATCH + slack or crossed:
                 st.picked = True
         st.prev_t = t
         if not st.picked:
@@ -196,7 +200,8 @@ class Resolver:
         return t
 
     @staticmethod
-    def _scale(b: Binding, st: BindingState, u: float, current: float) -> Optional[float]:
+    def _scale(b: Binding, st: BindingState, u: float, current: float,
+               slack: float = 0.0) -> Optional[float]:
         """Smooth scaling, in control space u (0..1 along the control's travel)."""
         span = b.hi - b.lo
         if span == 0:
@@ -204,10 +209,11 @@ class Resolver:
         cur_u = max(0.0, min(1.0, (current - b.lo) / span))
         prev = st.prev_t
         st.prev_t = u
-        if st.picked and st.last_sent is not None and abs(current - st.last_sent) > _MOVED:
+        if st.picked and st.last_sent is not None and abs(current - st.last_sent) > _MOVED + slack:
             st.picked = False          # moved elsewhere: converge again
         # Lock 1:1 only where the control meets the value (never snap it back)
-        met = abs(u - cur_u) < 0.5 / 127.0 or (prev is not None and (prev - cur_u) * (u - cur_u) <= 0)
+        met = (abs(u - cur_u) < 0.5 / 127.0 + slack / abs(span)
+               or (prev is not None and (prev - cur_u) * (u - cur_u) <= 0))
         if not st.picked and met:
             st.picked = True
         if st.picked:

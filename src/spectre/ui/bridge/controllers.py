@@ -554,7 +554,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             # Stepped targets switch right away: their value is quantized, so
             # pickup would always see it as "moved elsewhere"
             current = None if eff in STEPPED else self._ctl_current(eff)
-            t = self._ctl_resolver.resolve(b, raw, current)
+            t = self._ctl_resolver.resolve(b, raw, current, self._ctl_step(eff))
             title = self._ctl_target_title(eff)
             if t is None:
                 if self._ctl_resolver.pending_pickup(b):
@@ -746,6 +746,18 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             out.append(self._scopedKey(k))
         return out
 
+    def _ctl_step(self, target: str) -> float:
+        """t size of one value of `target` (0 for continuous targets).
+
+        Many targets have fewer values than a control's 128 steps (pitch env
+        depth 25, key follow 41): several control positions are one value.
+        """
+        eff = self._ctl_resolve(target)
+        if not eff or eff.startswith(("macro.", "vector.", "seq.")):
+            return 0.0
+        lo, hi = self._ctl_range(eff)
+        return 1.0 / (hi - lo) if hi - lo >= 1 else 0.0
+
     def _ctl_current(self, target: str) -> Optional[float]:
         target = self._ctl_resolve(target)
         if not target:
@@ -893,6 +905,12 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                 continue
             raw = int(round(max(0.0, min(1.0, (t - b.lo) / (b.hi - b.lo))) * 127))
             if self._ctl_fb_sent.get(ctl) == raw:
+                continue
+            if moved and abs(b.lo + (b.hi - b.lo) * moved[0] / 127.0 - t) <= self._ctl_step(b.target) / 2:
+                # The knob still sits on this value (a coarse target spans several
+                # positions): sending the value's own position would snap it back,
+                # so slow turns could never reach the next value
+                self._ctl_fb_sent[ctl] = moved[0]
                 continue
             self._ctl_fb_sent[ctl] = raw
             self._ctl_send(b.port, mido.Message("control_change", channel=b.channel,

@@ -11,8 +11,8 @@ that changes a control's meaning is something you do on purpose and can see:
 - the device's own **DAW Control / DAW Mixer** mode buttons (sound shaping vs mixing);
 - the **Novation button** layer (context knobs, page shortcuts, scenes, pitch envelope).
 
-The screen and LEDs always say what is under your hand, and touching a control shows its name
-and value before you move it.
+The screen and LEDs always say what is under your hand, and moving a control shows its name
+and value.
 
 ## Global navigation (both modes)
 
@@ -151,16 +151,24 @@ The Novation button has no LED, so the layer shows itself through:
 
 ## Touch events
 
-Enabled with feature message `B6 47 7F`. Touch on/off arrive as CC 127/0 on channel 15, numbered
-like the control (movement CCs are on channel 16, so they don't collide).
+**Off.** The LCXL3 can report touch on/off (feature message `B6 47 7F`, CC 127/0 on channel 15,
+numbered like the control), but tested on hardware (2026-10-15) its knobs have no touch sensor:
+"touch on" comes when a control starts moving and "touch off" when it stops, a pair around every
+step or two of a slow turn. Treated as grabs they reset the takeover on every step, so the app
+sends `B6 47 00` at connect.
 
-- **Touch shows** the control's name and value on the LCXL3 screen before it moves. On the
-  touchscreen, the matching control of the current page (slider, context strip card, mixer strip)
-  gets a white outline; when the page has none, a toast shows the name and value. Both stay a
-  moment after the touch ends, and a move without a touch report shows them too.
-- **Fader takeover** uses touch-on/off instead of guessing when a fader is grabbed and released.
-- **Envelope faders** take their shape snapshot on touch (below).
-- **The Novation hold rule** counts a touch as "used while held".
+What touch was meant for works from movement instead:
+
+- **Moving shows** the control's name and value on the LCXL3 screen. On the touchscreen, the
+  matching control of the current page (slider, context strip card, mixer strip) gets a white
+  outline; when the page has none, a toast shows the name and value. Both stay a moment after the
+  last move.
+- **Takeover** works from the values alone (pickup / scale).
+- **Envelope faders** keep their shape snapshot until the curve changes some other way (editor,
+  patch load), so no grab signal is needed.
+- **The Novation hold rule** counts a control moved while held.
+
+The app still understands touch messages, for a device with real touch sensing.
 
 ## Envelope faders
 
@@ -192,8 +200,8 @@ The patch's own curve is kept and the faders move **groups of segments** around 
 | R | T4 |
 
 All times in a group move by the **same delta**, which keeps the curve's character (the time scale
-is exponential, so equal deltas ≈ equal ratios). Deltas apply to a **snapshot taken on fader
-touch**, so clamping at 0/127 never flattens the shape over repeated moves.
+is exponential, so equal deltas ≈ equal ratios). Deltas apply to a **snapshot of the curve**
+(kept until the curve changes some other way), so clamping at 0/127 never flattens the shape over repeated moves.
 
 ### Switching
 
@@ -220,15 +228,13 @@ Each step is usable on its own:
 2. Global bank + one part/track cursor; Page ◀▶ / Track ◀▶ in both modes.
 3. New preset layout (Control and Mixer), clip row with clip-state LEDs, stop track / stop all.
 4. Novation layer: tap/hold, context row, page shortcuts, scene select/launch/stop, LEDs, screen line.
-5. Touch events: show on touch, fader takeover.
+5. Touch events (later turned off: the LCXL3 has no touch sensor, see above).
 6. Envelope modes: ADSR switch, segment groups, snapshots, stored originals; pitch envelope on the layer.
 
 ## Not yet verified on hardware
 
 `tools/lcxl3_probe.py` puts the device in DAW mode and prints everything it sends. Open points:
 
-- whether the knobs send touch events, or only the faders (if not, the Novation hold rule and
-  "show on touch" fall back to movement for knobs);
 - whether Shift and the Solo / Mute buttons report in DAW mode;
 - whether Play / Record take LED colours;
 - how much of the permanent screen's title line is visible.
