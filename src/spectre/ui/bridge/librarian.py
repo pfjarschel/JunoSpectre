@@ -88,11 +88,6 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
                     logger.error(f"Error setting wave on synth: {e}")
             self.toneWavesChanged.emit()
 
-    @pyqtSlot(str, int, result="QVariantMap")
-    def getWaveInfo(self, bank: str, wave_num: int) -> dict:
-        """Get wave metadata from catalog."""
-        return self._wave_catalog.get_wave(bank, wave_num)
-
     @pyqtSlot(str)
     @pyqtSlot(str, str)
     def setPatchName(self, name: str, mode: str = "PATCH") -> None:
@@ -166,26 +161,6 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         """Request UI to open the Save Patch dialog."""
         logger.debug("UI requested openSavePatchModal")
         self.requestOpenSavePatchModal.emit()
-
-    @pyqtSlot(str, result="QVariantList")
-    def getUserSlots(self, kind: str = "patch") -> list:
-        """List user flash slots with live names. Only patches for now."""
-        juno = self.juno
-        if juno is None or kind != "patch":
-            return []
-        slots = []
-        for idx in range(256):
-            msb, lsb, pc = 87, (0 if idx < 128 else 1), idx % 128
-            try:
-                raw = juno.request_data((0x30 if idx < 128 else 0x31, idx % 128,
-                                         0x00, 0x00), (0x00, 0x00, 0x00, 0x0C),
-                                        timeout=1.0)
-                nm = bytes(raw[:12]).decode("latin1", errors="replace").strip() if raw else "?"
-            except Exception:
-                nm = "?"
-            slots.append({"number": 501 + idx, "msb": msb, "lsb": lsb, "pc": pc,
-                          "name": nm, "free": nm in ("INIT PATCH", "")})
-        return slots
 
     @pyqtSlot(result="QVariantList")
     def getUserSlotIndex(self) -> list:

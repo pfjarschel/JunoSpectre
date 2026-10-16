@@ -60,9 +60,6 @@ class SequencerClock:
     def swing(self) -> float:
         return self._swing
 
-    def set_swing(self, swing: float) -> None:
-        self._swing = max(0.50, min(0.75, float(swing)))
-
     @property
     def is_running(self) -> bool:
         return self._running and not self._paused
@@ -73,20 +70,12 @@ class SequencerClock:
         return not self._running
 
     @property
-    def current_tick(self) -> int:
-        return self._tick_counter
-
-    @property
     def total_ticks(self) -> int:
         return self._total_ticks
 
     def register_tick_callback(self, callback: Callable[[int, int], None]) -> None:
         if callback not in self._tick_callbacks:
             self._tick_callbacks.append(callback)
-
-    def unregister_tick_callback(self, callback: Callable[[int, int], None]) -> None:
-        if callback in self._tick_callbacks:
-            self._tick_callbacks.remove(callback)
 
     def start(self, at: Optional[float] = None) -> None:
         """Run from tick 0, the first tick at perf_counter() time `at` (None = now)."""
@@ -101,12 +90,6 @@ class SequencerClock:
 
     def pause(self) -> None:
         self._paused = True
-
-    def resume(self) -> None:
-        if self._running and self._paused:
-            self._paused = False
-        elif not self._running:
-            self.start()
 
     def stop(self) -> None:
         self._running = False

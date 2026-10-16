@@ -32,7 +32,6 @@ from ...core.routing import (
     is_direct,
     mfx_chain,
     tone_send_attrs,
-    tone_sends,
 )
 from .base import BridgeBaseMixin
 
@@ -71,8 +70,6 @@ class PatchBridgeMixin(BridgeBaseMixin):
     toneLevelsChanged = pyqtSignal(int, int, int, int)
     toneWavesChanged = pyqtSignal()
     toneMutesChanged = pyqtSignal()
-    tvfCutoffChanged = pyqtSignal(int)
-    tvfResonanceChanged = pyqtSignal(int)
     tvfEnvDepthChanged = pyqtSignal(int)
     tvfAttackChanged = pyqtSignal(int)
     tvfDecayChanged = pyqtSignal(int)
@@ -560,27 +557,6 @@ class PatchBridgeMixin(BridgeBaseMixin):
     def routingPreset(self) -> str:
         return self.patch_state.effects.routing_preset
 
-    @pyqtProperty(bool, notify=routingChanged)
-    def manualRoutingUnlocked(self) -> bool:
-        return self.patch_state.effects.manual_routing_unlocked
-
-    @pyqtProperty("QVariantList", notify=routingChanged)
-    def toneOutputAssigns(self) -> list:
-        return [t.output_assign for t in self.patch_state.tones]
-
-    @pyqtProperty("QVariantList", notify=routingChanged)
-    def toneOutputLevels(self) -> list:
-        return [t.output_level for t in self.patch_state.tones]
-
-    @pyqtProperty("QVariantList", notify=routingChanged)
-    def toneChorusSends(self) -> list:
-        """Chorus sends in effect (the pair each tone's route uses)."""
-        return [tone_sends(self.patch_state.common, t)[0] for t in self.patch_state.tones]
-
-    @pyqtProperty("QVariantList", notify=routingChanged)
-    def toneReverbSends(self) -> list:
-        return [tone_sends(self.patch_state.common, t)[1] for t in self.patch_state.tones]
-
     @pyqtProperty("QVariantList", notify=routingGraphChanged)
     def routingPitfalls(self) -> list:
         return self._sorted_notes(self._cached_routing_graph())
@@ -640,18 +616,6 @@ class PatchBridgeMixin(BridgeBaseMixin):
     @pyqtProperty(int, notify=stepLfoChanged)
     def stepLfoCurve(self) -> int:
         return self._active_tone().step_lfo_type
-
-    @pyqtProperty(int, notify=stepLfoChanged)
-    def stepLfoRateIdx(self) -> int:
-        return self.patch_state.step_lfo.sync_rate_idx
-
-    @pyqtProperty(int, notify=stepLfoChanged)
-    def stepLfoDestIdx(self) -> int:
-        return self.patch_state.step_lfo.dest_idx
-
-    @pyqtProperty(int, notify=stepLfoChanged)
-    def stepLfoDepth(self) -> int:
-        return self.patch_state.step_lfo.depth
 
     @pyqtProperty(bool, notify=vaParamsChanged)
     def autoDetune(self) -> bool:
@@ -915,10 +879,6 @@ class PatchBridgeMixin(BridgeBaseMixin):
         self.envShapeChanged.emit("TVA")
 
     @pyqtSlot(int)
-    def setMasterAttack(self, val: int) -> None:
-        self.setTvaAttack(val)
-
-    @pyqtSlot(int)
     def setTvaDecay(self, val: int) -> None:
         clamped = max(0, min(127, int(val)))
         targets = self._target_tones()
@@ -952,10 +912,6 @@ class PatchBridgeMixin(BridgeBaseMixin):
         self.tvaReleaseChanged.emit(clamped)
         self.masterReleaseChanged.emit(clamped)
         self.envShapeChanged.emit("TVA")
-
-    @pyqtSlot(int)
-    def setMasterRelease(self, val: int) -> None:
-        self.setTvaRelease(val)
 
     @pyqtSlot(int)
     def setTvaPan(self, val: int) -> None:
@@ -2001,16 +1957,6 @@ class PatchBridgeMixin(BridgeBaseMixin):
         self.routingChanged.emit()
         self.macrosChanged.emit()
 
-    @pyqtSlot(str, str, int)
-    def setEffectParam(self, block: str, param: str, val: int) -> None:
-        """Unified table-driven effect param dispatch ('chorus' or 'reverb')."""
-        b = str(block).lower().strip()
-        if b == "chorus":
-            self.setChorusParam(param, val)
-        elif b == "reverb":
-            self.setReverbParam(param, val)
-        self.macrosChanged.emit()
-
     def _apply_mfx_algo(self, store, algo_id: int) -> int:
         """Shared algo-select onto an MFX-like store (EffectsState or PerfMfxSlotState).
 
@@ -2417,11 +2363,6 @@ class PatchBridgeMixin(BridgeBaseMixin):
     def patchOutputAssign(self) -> int:
         return int(self.patch_state.common.patch_output_assign)
 
-    @pyqtSlot(result="QVariantList")
-    def detectRoutingPitfalls(self) -> list:
-        """Routing notes (warnings first) for the sound as it plays now."""
-        return self._sorted_notes(self._build_routing_graph())
-
     @staticmethod
     def _sorted_notes(graph: dict) -> list:
         order = {"warning": 0, "caution": 1, "info": 2}
@@ -2525,12 +2466,6 @@ class PatchBridgeMixin(BridgeBaseMixin):
         self.chorusParamsChanged.emit()
         self.reverbParamsChanged.emit()
         self.macrosChanged.emit()
-
-    @pyqtSlot(bool)
-    def setManualRoutingUnlocked(self, unlocked: bool) -> None:
-        """Kept for old layouts; routing controls are always editable now."""
-        self.patch_state.effects.manual_routing_unlocked = bool(unlocked)
-        self.routingChanged.emit()
 
     def _set_patch_assign(self, value: int) -> None:
         common = self.patch_state.common
@@ -2710,7 +2645,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(str, "QVariant")
     def setStepLfoParam(self, param: str, val) -> None:
-        """Set curve (step type), rate, destination, or depth for the Step LFO."""
+        """Set the Step LFO curve (step type) of the target tones."""
         if param == "curve":
             step_type = max(0, min(1, int(val)))
             targets = self._target_tones()
@@ -2721,15 +2656,6 @@ class PatchBridgeMixin(BridgeBaseMixin):
                         self.juno.set_tone_step_lfo_type(tone.tone_index, step_type)
                     except Exception as e:
                         logger.error(f"Error setting Step LFO type on tone {tone.tone_index}: {e}")
-            self.stepLfoChanged.emit()
-        elif param == "rateIdx":
-            self.patch_state.step_lfo.sync_rate_idx = int(val)
-            self.stepLfoChanged.emit()
-        elif param == "destIdx":
-            self.patch_state.step_lfo.dest_idx = int(val)
-            self.stepLfoChanged.emit()
-        elif param == "depth":
-            self.patch_state.step_lfo.depth = max(0, min(127, int(val)))
             self.stepLfoChanged.emit()
 
     @pyqtSlot(int)

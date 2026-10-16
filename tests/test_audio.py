@@ -507,6 +507,7 @@ def test_play_starts_audio_in_a_real_worker(tmp_path):
     """Bridge -> engine -> player -> worker process (no device): Play sounds the clip."""
     sf = pytest.importorskip("soundfile")
     from PyQt6.QtCore import QCoreApplication
+
     from src.spectre.ui.bridge import SpectreBridge
     from tests.test_sequencer_bridge import DummyJuno
 

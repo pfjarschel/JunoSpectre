@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from PyQt6.QtCore import Qt, pyqtProperty, pyqtSignal, pyqtSlot
 
@@ -309,12 +309,6 @@ class SequencerBridgeMixin(BridgeBaseMixin):
             self.seqTracksChanged.emit()
 
     @pyqtSlot()
-    def seqPause(self) -> None:
-        if hasattr(self, "sequencer"):
-            self.sequencer.pause()
-            self.seqStateChanged.emit()
-
-    @pyqtSlot()
     def seqStop(self) -> None:
         if hasattr(self, "sequencer"):
             self.sequencer.stop()
@@ -556,8 +550,6 @@ class SequencerBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int)
     def seqClearStep(self, step_idx: int) -> None:
-        t_idx = getattr(self, "_active_seq_track", 0)
-        c_idx = self._seq_selected_clip(t_idx)
         if hasattr(self, "recorder"):
             self.recorder.clear_step(step_idx)
             self.seqActiveClipChanged.emit()
@@ -577,45 +569,6 @@ class SequencerBridgeMixin(BridgeBaseMixin):
                     s.notes.clear()
         self.seqActiveClipChanged.emit()
         self.seqTracksChanged.emit()
-
-    @pyqtSlot(int, int)
-    def seqSetStepPitch(self, step_idx: int, pitch: int) -> None:
-        """Set primary pitch of a step (adds note if empty, clamps 0..127)."""
-        t_idx = getattr(self, "_active_seq_track", 0)
-        c_idx = self._seq_selected_clip(t_idx)
-        if hasattr(self, "sequencer") and 0 <= t_idx < len(self.sequencer.song.tracks):
-            track = self.sequencer.song.tracks[t_idx]
-            if 0 <= c_idx < len(track.clips):
-                clip = track.clips[c_idx]
-                if 0 <= step_idx < len(clip.steps):
-                    step = clip.steps[step_idx]
-                    p = max(0, min(127, int(pitch)))
-                    if step.notes:
-                        step.notes[0].pitch = p
-                    else:
-                        step.notes.append(NoteEvent(pitch=p, velocity=100))
-                    self.seqActiveClipChanged.emit()
-                    self.seqTracksChanged.emit()
-
-    @pyqtSlot(int, int)
-    def seqNudgeStepPitch(self, step_idx: int, semitones: int) -> None:
-        """Nudge primary pitch of step by semitones (+1, -1, +12, -12)."""
-        t_idx = getattr(self, "_active_seq_track", 0)
-        c_idx = self._seq_selected_clip(t_idx)
-        if hasattr(self, "sequencer") and 0 <= t_idx < len(self.sequencer.song.tracks):
-            track = self.sequencer.song.tracks[t_idx]
-            if 0 <= c_idx < len(track.clips):
-                clip = track.clips[c_idx]
-                if 0 <= step_idx < len(clip.steps):
-                    step = clip.steps[step_idx]
-                    curr_pitch = step.notes[0].pitch if step.notes else (36 if self._seq_is_drum(t_idx) else 60)
-                    new_pitch = max(0, min(127, curr_pitch + int(semitones)))
-                    if step.notes:
-                        step.notes[0].pitch = new_pitch
-                    else:
-                        step.notes.append(NoteEvent(pitch=new_pitch, velocity=100))
-                    self.seqActiveClipChanged.emit()
-                    self.seqTracksChanged.emit()
 
     # -- Per-note editing (the pad's note grid). Notes are addressed by pitch,
     # since a step never holds the same pitch twice; slots that move a note

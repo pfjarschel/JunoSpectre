@@ -10,7 +10,7 @@ from src.spectre.core.protocol import JunoClient, SoundMode
 from src.spectre.core.sysex import (
     ADDR_SETUP,
     ADDR_TEMP_PATCH_PART_1,
-    ADDR_TEMP_PERF_PART_1,
+    ADDR_TEMP_PERF_PATCH_1,
     calculate_checksum,
 )
 
@@ -235,7 +235,7 @@ def test_init_patch_refreshes_cached_base_and_mode(mock_midi_mgr, monkeypatch):
     expected = {
         address: expected_bytes
         for _, address, expected_bytes in JunoClient._expected_template_writes(
-            payload, ADDR_TEMP_PERF_PART_1
+            payload, ADDR_TEMP_PERF_PATCH_1
         )
     }
 
@@ -248,7 +248,7 @@ def test_init_patch_refreshes_cached_base_and_mode(mock_midi_mgr, monkeypatch):
 
     assert client.init_patch(write_gap=0) is True
     assert client._cached_sound_mode is SoundMode.PERFORM
-    assert client._cached_patch_base == ADDR_TEMP_PERF_PART_1
+    assert client._cached_patch_base == ADDR_TEMP_PERF_PATCH_1
 
 
 def test_juno_client_set_tone_tvf_adsr_atomic(mock_midi_mgr):

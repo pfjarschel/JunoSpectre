@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import dataclasses
 import uuid
 from typing import Any, Dict, List, Optional
@@ -29,8 +28,6 @@ AUDIO_MODES = ("loop", "oneshot", "full")
 # Whether a mode starts on the bar by default (one-shots fire at once, like pads)
 AUDIO_MODE_SYNC = {"loop": True, "oneshot": False, "full": True}
 AUDIO_GAIN_RANGE = (-60.0, 6.0)         # dB
-# Stretch (MATCH SONG) range as a tempo factor; transpose range
-AUDIO_STRETCH_RANGE = (0.5, 1.5)
 AUDIO_SEMITONES = 12
 AUDIO_CENTS = 50
 

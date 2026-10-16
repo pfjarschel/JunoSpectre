@@ -178,11 +178,6 @@ class HardwareBridgeMixin(BridgeBaseMixin):
         return [v for k, v in keys.items()
                 if "Midi Through" not in k and not k.startswith(("RtMidiIn Client", "RtMidiOut Client"))]
 
-    @pyqtSlot()
-    def refreshPorts(self) -> None:
-        self._on_ports_scanned(*self._scan_ports())
-        self.hardwareChanged.emit()
-
     @pyqtSlot(str)
     def setSynthPort(self, key: str) -> None:
         """Pick the synth port by name ("" = auto-detect) and reconnect."""

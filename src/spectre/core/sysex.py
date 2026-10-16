@@ -38,9 +38,6 @@ ADDR_SYSTEM = (0x02, 0x00, 0x00, 0x00)
 # - 1F 00 00 00 Temporary Patch/Drum in Patch mode
 ADDR_TEMP_PERFORMANCE = (0x10, 0x00, 0x00, 0x00)
 ADDR_TEMP_PERF_PATCH_1 = (0x11, 0x00, 0x00, 0x00)
-# Legacy alias: this was misnamed "PERF_PART" but is actually the Part-1
-# *patch edit buffer* in Performance mode (11 00 ...), NOT the mixer entry.
-ADDR_TEMP_PERF_PART_1 = ADDR_TEMP_PERF_PATCH_1
 ADDR_TEMP_PATCH_PART_1 = (0x1F, 0x00, 0x00, 0x00)
 ADDR_TEMP_PATCH_PART_2 = (0x1F, 0x20, 0x00, 0x00)
 
@@ -110,17 +107,6 @@ def perf_common_fx_base(slot: int) -> tuple[int, int, int, int]:
         return ADDR_PERF_MFX3
     raise ValueError(f"Performance MFX slot must be 1..3, got {slot}")
 
-
-def perf_common_fx_offset(slot: int) -> tuple[int, int, int, int]:
-    """Offset of Performance Common MFX slot 1..3 from 10 00 00 00."""
-    s = int(slot)
-    if s == 1:
-        return OFFSET_PERF_MFX1
-    if s == 2:
-        return OFFSET_PERF_MFX2
-    if s == 3:
-        return OFFSET_PERF_MFX3
-    raise ValueError(f"Performance MFX slot must be 1..3, got {slot}")
 
 # Offsets inside one Performance Zone block (0x1B bytes)
 PERF_ZONE_OCTAVE_SHIFT = 0x00    # 61..67 (-3..+3)

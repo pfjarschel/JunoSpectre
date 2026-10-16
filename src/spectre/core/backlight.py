@@ -247,13 +247,3 @@ class BacklightController:
         logger.debug(f"Backlight {pct}% has no hardware path (UI-only)")
         return False
 
-    def get_percent(self) -> Optional[int]:
-        """Read current sysfs brightness as percent, or None if unknown."""
-        dev = self._sysfs_device or find_sysfs_device(self._sysfs_root)
-        if dev is None:
-            return None
-        try:
-            raw = int((dev.path / "brightness").read_text().strip())
-            return max(MIN_PERCENT, min(MAX_PERCENT, round(raw * 100.0 / dev.max_brightness)))
-        except (OSError, ValueError):
-            return None

@@ -209,8 +209,6 @@ def test_macro_binding_and_controller_sets_the_base_under_a_macro(ui):
 @pytest.mark.ui
 def test_targets_include_macros_and_the_catalog(ui):
     app, bridge, _ = ui
-    cats = bridge.getControlCategories()
-    assert cats[:2] == ["ALL", "MACRO"]
     macros = bridge.getControlTargets("MACRO", "")
     assert [m["key"] for m in macros] == [f"macro.{i}" for i in range(1, 9)]
     keys = [t["key"] for t in bridge.getControlTargets("ALL", "")]
@@ -424,7 +422,6 @@ def test_screen_text_is_ascii_and_fits():
 def test_screen_names_fit_for_every_target():
     from src.spectre.control.lcxl3 import screen_names
     from src.spectre.core.macro_targets import get_macro_catalog
-    from src.spectre.ui.bridge.controllers import ACTIONS
 
     assert screen_names("tone.all.lfo1_tvf_depth", "All LFO1 Filter Depth", "LFO") == ("ALL TONES", "LFO1 Flt Dep")
     assert screen_names("tone.3.tvf_cutoff", "T3 Cutoff", "FILTER") == ("TONE 3", "Cutoff")
@@ -648,7 +645,6 @@ def test_clip_launch_actions(tmp_path, monkeypatch):
     clips = b.getControlTargets("CLIP", "")
     assert len(clips) == 16 * 8 and clips[0]["key"] == "action.seq.launch.1.1"
     assert clips[-1]["title"] == "Launch Track 16 Clip 8"
-    assert "CLIP" in b.getControlCategories()
     assert any(a["key"] == "action.seq.launch.12.3" for a in b.getControlTargets("ALL", "track 12 clip 3"))
     b._ctl_run_action("seq.launch.12.3")
     track = b.sequencer.song.tracks[11]

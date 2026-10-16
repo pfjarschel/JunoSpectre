@@ -167,29 +167,6 @@ class MidiDeviceManager:
         logger.info(f"Connected to Launch Control XL In: '{in_name}'")
         return in_name, out_name
 
-    def connect_controller(
-        self,
-        in_port_name: str,
-        out_port_name: Optional[str] = None,
-    ) -> None:
-        """Connect to an arbitrary MIDI controller input and optional output."""
-        self.lcxl_in = mido.open_input(in_port_name)
-        if out_port_name:
-            try:
-                self.lcxl_out = mido.open_output(out_port_name)
-            except Exception as e:
-                logger.warning(f"Could not open controller output '{out_port_name}': {e}")
-
-    def send_controller_message(self, msg: mido.Message) -> None:
-        """Send a MIDI message to the active controller (for feedback / LED / sync)."""
-        if self.lcxl_out and not self.lcxl_out.closed:
-            self.lcxl_out.send(msg)
-
-    def send_controller_cc(self, control: int, value: int, channel: int = 0) -> None:
-        """Send a Control Change message to the active controller."""
-        msg = mido.Message("control_change", channel=channel, control=control, value=max(0, min(127, value)))
-        self.send_controller_message(msg)
-
     @property
     def is_juno_connected(self) -> bool:
         """True if bidirectional Juno ports are currently open and valid."""
@@ -233,23 +210,6 @@ class MidiDeviceManager:
             self.close_juno()
             raise ConnectionError(f"Error sending SysEx to Juno: {e}") from e
 
-    def send_juno_cc(self, control: int, value: int, channel: int = 0) -> None:
-        """Send a Control Change message to the Roland synth with disconnect recovery."""
-        if not self.juno_out or getattr(self.juno_out, "closed", False):
-            raise ConnectionError("JUNO-DS output port is not connected.")
-        msg = mido.Message(
-            "control_change",
-            channel=int(channel) & 0x0F,
-            control=int(control) & 0x7F,
-            value=max(0, min(127, int(value))),
-        )
-        try:
-            self.juno_out.send(msg)
-        except Exception as e:
-            logger.warning(f"Error sending CC to Juno: {e}")
-            self.close_juno()
-            raise ConnectionError(f"Error sending CC to Juno: {e}") from e
-
     def send_all_notes_off(self, include_reset: bool = True, cut_sound: bool = False) -> int:
         """Panic: All Notes Off (CC 123) on all 16 channels.
 
@@ -284,19 +244,10 @@ class MidiDeviceManager:
         if listener not in self._note_listeners:
             self._note_listeners.append(listener)
 
-    def remove_note_listener(self, listener: Callable[[mido.Message], None]) -> None:
-        """Unregister a note callback."""
-        if listener in self._note_listeners:
-            self._note_listeners.remove(listener)
-
     def add_message_listener(self, listener: Callable[[mido.Message], None]) -> None:
         """Register a callback for incoming program/control changes and SysEx."""
         if listener not in self._message_listeners:
             self._message_listeners.append(listener)
-
-    def remove_message_listener(self, listener: Callable[[mido.Message], None]) -> None:
-        if listener in self._message_listeners:
-            self._message_listeners.remove(listener)
 
     def start_input_worker(self) -> None:
         """Start asynchronous MIDI input demuxer thread."""

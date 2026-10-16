@@ -19,7 +19,6 @@ import logging
 import os
 import shutil
 import sqlite3
-import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -84,15 +83,6 @@ def factory_key(msb: int, lsb: int, pc: int, kind: str = "patch") -> str:
 def synth_user_key(msb: int, lsb: int, pc: int, kind: str = "patch") -> str:
     kind = kind if kind in ("patch", "drum", "performance") else "patch"
     return f"synth:{kind}:{int(msb)}:{int(lsb)}:{int(pc)}"
-
-
-def legacy_factory_key(msb: int, lsb: int, pc: int) -> str:
-    """Pre-kind key format (v1 dumps). Kept so old DB rows stay addressable."""
-    return f"factory:{int(msb)}:{int(lsb)}:{int(pc)}"
-
-
-def legacy_synth_user_key(msb: int, lsb: int, pc: int) -> str:
-    return f"synth:{int(msb)}:{int(lsb)}:{int(pc)}"
 
 
 def _tags_to_str(tags: Any) -> str:
@@ -533,12 +523,6 @@ class PatchRepository:
         )
         return path
 
-    def upsert_factory(
-        self, msb: int, lsb: int, pc: int, name: str, category: str = "",
-        tags: Any = None, kind: str = "patch",
-    ) -> None:
-        self.upsert_entry("factory", kind, msb, lsb, pc, name, category, tags)
-
     def bulk_upsert_factory(self, rows: list[dict[str, Any]]) -> int:
         # Preserve user-set favorite/rating on existing rows: loop (dumps are ~2k rows).
         n = 0
@@ -692,26 +676,6 @@ class PatchRepository:
             except Exception:
                 pass
         return ""
-
-    def list_categories(self, source: Optional[str] = None) -> list[str]:
-        cats: set[str] = set()
-        if source != "factory":
-            sql = "SELECT DISTINCT category FROM patches"
-            args: list[Any] = []
-            if source:
-                sql += " WHERE source=?"
-                args.append(source)
-            rows = self._conn.execute(sql, args).fetchall()
-            cats.update(r["category"] for r in rows if r["category"])
-        if source in (None, "factory") and self._factory is not None:
-            try:
-                rows = self._factory.execute(
-                    "SELECT DISTINCT category FROM patches WHERE model_variant=?",
-                    (self.model_variant,)).fetchall()
-                cats.update(r[0] for r in rows if r[0])
-            except Exception:
-                pass
-        return sorted(cats)
 
     @staticmethod
     def _row_to_dict(r: sqlite3.Row) -> dict[str, Any]:
@@ -883,5 +847,3 @@ class PatchRepository:
         self._conn.commit()
         return True
 
-    def backup_mtime(self) -> int:
-        return int(time.time())

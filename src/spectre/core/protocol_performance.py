@@ -32,6 +32,7 @@ from .sysex import (
     OFFSET_PATCH_COMMON_CHORUS,
     OFFSET_PATCH_COMMON_MFX,
     OFFSET_PATCH_COMMON_REVERB,
+    PATCH_PARAM_NAME,
     PERF_CHORUS_BLOCK_SIZE,
     PERF_COMMON_CHORUS_SOURCE,
     PERF_COMMON_MFX1_SOURCE,
@@ -40,7 +41,6 @@ from .sysex import (
     PERF_COMMON_MFX_STRUCTURE,
     PERF_COMMON_NAME,
     PERF_COMMON_NAME_SIZE,
-    PATCH_PARAM_NAME,
     PERF_COMMON_REVERB_SOURCE,
     PERF_COMMON_SOLO_PART,
     PERF_MFX_BLOCK_SIZE,
@@ -105,17 +105,6 @@ class PerformanceProtocolMixin:
         addr = add_address(perf_part_base(part), PERF_PART_PAN)
         self.send_data(addr, [max(0, min(127, int(pan)))])
 
-    def set_perf_part_rx(self, part_index: int, channel: int | None = None,
-                         enabled: bool | None = None) -> None:
-        part = self._check_part(part_index)
-        base = perf_part_base(part)
-        if channel is not None:
-            self.send_data(add_address(base, PERF_PART_RX_CHANNEL),
-                            [max(0, min(15, int(channel)))])
-        if enabled is not None:
-            self.send_data(add_address(base, PERF_PART_RX_SWITCH),
-                            [1 if enabled else 0])
-
     def set_perf_part_mute(self, part_index: int, muted: bool) -> None:
         """Mute Switch: 0 = sounding (OFF), 1 = MUTE."""
         part = self._check_part(part_index)
@@ -136,18 +125,6 @@ class PerformanceProtocolMixin:
         self.send_data(add_address(base, PERF_PART_PATCH_MSB),
                        [max(0, min(127, int(msb))), max(0, min(127, int(lsb))),
                         max(0, min(127, int(pc)))])
-
-    def set_perf_part_coarse_fine(self, part_index: int,
-                                  coarse: int | None = None,
-                                  fine: int | None = None) -> None:
-        part = self._check_part(part_index)
-        base = perf_part_base(part)
-        if coarse is not None:
-            self.send_data(add_address(base, PERF_PART_COARSE_TUNE),
-                           [max(16, min(112, int(coarse)))])
-        if fine is not None:
-            self.send_data(add_address(base, PERF_PART_FINE_TUNE),
-                           [max(14, min(114, int(fine)))])
 
     def set_perf_part_fx(self, part_index: int,
                          dry: int | None = None,
@@ -677,9 +654,6 @@ class PerformanceProtocolMixin:
     # save copies the sounding performance block by block. Part blocks only
     # reference patches by Bank/PC: Pi-only part images are not carried.
     # ------------------------------------------------------------------
-
-    USER_PERF_MSB = 85
-    USER_PERF_LSB = 0
 
     #: (offset, size) of every block in a performance (MIDI Implementation p.20-27).
     PERF_BLOCKS = (

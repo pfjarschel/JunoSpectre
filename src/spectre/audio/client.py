@@ -113,9 +113,6 @@ class AudioClient:
     def set_gain(self, slot: str, gain: float) -> bool:
         return self.send({"cmd": "gain", "slot": slot, "gain": float(gain)})
 
-    def set_master(self, gain: float) -> bool:
-        return self.send({"cmd": "master", "gain": float(gain)})
-
     # -- events --------------------------------------------------------------
 
     def _read_events(self, proc: subprocess.Popen) -> None:

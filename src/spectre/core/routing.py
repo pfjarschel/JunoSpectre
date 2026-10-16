@@ -35,8 +35,7 @@ DIRECT_ASSIGNS = (ASSIGN_LR, ASSIGN_L, ASSIGN_R)
 TONE_ASSIGNS = (ASSIGN_MFX, ASSIGN_LR, ASSIGN_L, ASSIGN_R)
 ASSIGN_LABELS = {ASSIGN_MFX: "MFX", ASSIGN_LR: "L+R", ASSIGN_L: "L", ASSIGN_R: "R"}
 
-# Tone send pair offsets by route: into MFX / direct
-TONE_SEND_OFFSETS = {False: (0x0D, 0x0E), True: (0x0F, 0x10)}
+# Tone send pair by route: into MFX / direct
 TONE_SEND_ATTRS = {False: ("chorus_send", "reverb_send"),
                    True: ("chorus_send_direct", "reverb_send_direct")}
 
@@ -82,10 +81,6 @@ def patch_route(common, tone) -> int:
 def tone_send_attrs(common, tone) -> tuple[str, str]:
     """ToneState attributes holding the send pair the Juno uses right now."""
     return TONE_SEND_ATTRS[is_direct(patch_route(common, tone))]
-
-
-def tone_send_offsets(common, tone) -> tuple[int, int]:
-    return TONE_SEND_OFFSETS[is_direct(patch_route(common, tone))]
 
 
 def tone_sends(common, tone) -> tuple[int, int]:

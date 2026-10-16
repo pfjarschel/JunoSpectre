@@ -26,7 +26,7 @@ from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 from ...control import lcxl3
 from ...control.mapping import BEHAVIORS, TAKEOVERS, Binding, Resolver, pick_bindings
 from ...core.arpeggio import FIELD_LABELS as ARP_FIELD_LABELS
-from ...core.macro_targets import filter_macro_targets, get_macro_categories
+from ...core.macro_targets import filter_macro_targets
 from ...core.midi import port_key
 from ...core.patch_state import PatchState
 from ...sequencer.models import NUM_TRACKS, TRACK_BANK_SIZE
@@ -1767,11 +1767,6 @@ class ControllersBridgeMixin(BridgeBaseMixin):
                     if not q or q in title.lower():
                         fixed.append({**e, "key": f"{e['key']}@{n}", "title": title})
         return macros + editor + filter_macro_targets(category, query) + fixed + actions
-
-    @pyqtSlot(result="QVariantList")
-    def getControlCategories(self) -> list:
-        cats = get_macro_categories()
-        return cats[:1] + ["MACRO", "EDITOR", "ACTION", "CLIP"] + cats[1:]
 
     @pyqtSlot(int, str, str)
     def setControlBindingOption(self, index: int, option: str, value: str) -> None:

@@ -111,10 +111,6 @@ class SystemBridgeMixin(BridgeBaseMixin):
     def brightness(self) -> int:
         return self._brightness
 
-    @pyqtProperty(str, notify=brightnessChanged)
-    def brightnessMethod(self) -> str:
-        return str(getattr(getattr(self, "_backlight", None), "method", "none"))
-
     @pyqtProperty(str, notify=telemetryChanged)
     def cpuLoadText(self) -> str:
         return f"{self._telemetry.cpu_percent:.0f}%"
@@ -196,33 +192,12 @@ class SystemBridgeMixin(BridgeBaseMixin):
         return str(self._wifi_status.ssid or "")
 
     @pyqtProperty(str, notify=wifiChanged)
-    def wifiIp(self) -> str:
-        return str(self._wifi_status.ip or "")
-
-    @pyqtProperty(int, notify=wifiChanged)
-    def wifiSignal(self) -> int:
-        s = self._wifi_status.signal
-        return int(s) if s is not None else -1
-
-    @pyqtProperty(str, notify=wifiChanged)
-    def wifiSignalText(self) -> str:
-        return str(self._wifi_status.signal_text)
-
-    @pyqtProperty(str, notify=wifiChanged)
-    def wifiQuality(self) -> str:
-        return str(self._wifi_status.quality)
-
-    @pyqtProperty(str, notify=wifiChanged)
     def wifiStatusText(self) -> str:
         return str(self._wifi_status.status_text)
 
     @pyqtProperty(str, notify=wifiChanged)
     def wifiDetailText(self) -> str:
         return str(self._wifi_status.detail_text)
-
-    @pyqtProperty(str, notify=wifiChanged)
-    def wifiIface(self) -> str:
-        return str(self._wifi_status.iface or "")
 
     @pyqtProperty(str, notify=wifiChanged)
     def wifiError(self) -> str:

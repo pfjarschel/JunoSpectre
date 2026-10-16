@@ -34,7 +34,6 @@ class SetlistBridgeMixin(BridgeBaseMixin):
         self._setlist_entries: List[Dict[str, Any]] = []
         self._setlist_index: int = -1  # the song sounding now (-1: none activated)
         self._setlist_path: str = ""
-        self._setlist_title: str = "Untitled Setlist"
         # Link health per entry (by identity): each check reads the song file,
         # so it runs on changes and when the page opens, not on every read.
         self._setlist_status: Dict[int, str] = {}
@@ -90,16 +89,6 @@ class SetlistBridgeMixin(BridgeBaseMixin):
         except Exception:
             return ""
 
-    @pyqtProperty(str, notify=setlistChanged)
-    def setlistTitle(self) -> str:
-        return self._setlist_title
-
-    @pyqtProperty(str, notify=setlistChanged)
-    def setlistCurrentSongName(self) -> str:
-        if 0 <= self._setlist_index < len(self._setlist_entries):
-            return str(self._setlist_entries[self._setlist_index].get("name") or "")
-        return ""
-
     # -------------------------------------------------------------------------
     # QML Setlist File & Entry Operations
     # -------------------------------------------------------------------------
@@ -110,7 +99,6 @@ class SetlistBridgeMixin(BridgeBaseMixin):
         self._setlist_entries = []
         self._setlist_index = -1
         self._setlist_path = ""
-        self._setlist_title = "Untitled Setlist"
         self._setlist_changed(recheck=True)
 
     @pyqtSlot(str, result=bool)
@@ -124,7 +112,6 @@ class SetlistBridgeMixin(BridgeBaseMixin):
         self._setlist_entries = data.get("entries", [])
         self._setlist_index = -1
         self._setlist_path = str(path)
-        self._setlist_title = data.get("meta", {}).get("name") or Path(path).stem
         self._setlist_changed(recheck=True)
         return True
 
@@ -143,7 +130,6 @@ class SetlistBridgeMixin(BridgeBaseMixin):
             logger.warning(f"saveSetlist failed: {e}")
             return False
         self._setlist_path = str(p)
-        self._setlist_title = Path(p).stem
         repo = self._librarian()
         if repo is not None:
             try:

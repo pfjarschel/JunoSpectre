@@ -255,8 +255,6 @@ class FlashProtocolMixin:
                         logger.warning(f"User write failed for tone_{idx}@0x{start:03X}: {e}")
         return failures
 
-    _write_patch_regions = write_patch_regions
-
     @staticmethod
     def patch_image_mismatches(state: PatchState, actual: dict) -> list[str]:
         """Compare a PatchState image with raw regions read back. [] = same sound."""
@@ -298,8 +296,6 @@ class FlashProtocolMixin:
         else:
             return [f"unreadable after write: {last_err}"]
         return self.patch_image_mismatches(state, actual)
-
-    _verify_patch_regions = verify_patch_regions
 
     def restore_temp_patch(self, state: PatchState,
                            base: Optional[Tuple[int, int, int, int]] = None,

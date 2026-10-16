@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from contextlib import contextmanager
 
 from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
@@ -12,7 +11,6 @@ from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 from ...core.macro_targets import (
     filter_macro_targets,
     get_macro_catalog,
-    get_macro_categories,
     macro_delta,
     resolve_sounding,
 )
@@ -870,10 +868,6 @@ class MacroBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(str, str, result="QVariantList")
     def getMacroTargets(self, category: str = "ALL", query: str = "") -> list:
         return filter_macro_targets(category, query)
-
-    @pyqtSlot(result="QVariantList")
-    def getMacroCategories(self) -> list:
-        return get_macro_categories()
 
     @pyqtSlot(int, str)
     def setMacroName(self, index: int, name: str) -> None:

@@ -362,8 +362,7 @@ def test_bridge_status_scan_connect_disconnect_flow(wifi_bridge):
     b.connectWifi("Home", "s3cret")
     assert _wait_for(lambda: not b.wifiBusy and b.wifiConnected)
     assert b.wifiSsid == "Home"
-    assert b.wifiIp == "192.168.1.5"
-    assert b.wifiSignal == 80
+    assert b._wifi_status.ip == "192.168.1.5"
     assert "Home" in b.wifiStatusText
     assert b.wifiError == ""
 

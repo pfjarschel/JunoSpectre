@@ -332,7 +332,7 @@ def test_pick_rejects_containers(tmp_path):
     bridge.openPartPicker(1)
     assert bridge.pickPartPatch(85, 0, 0, "", "Perf", "performance") is False
     assert bridge.librarianPickTarget == 1  # still picking
-    bridge.cancelPartPick()
+    bridge.cancelLibrarian()
     assert bridge.librarianPickTarget == 0
     # Cancel returns to the view open before the picker (default PCM here).
     assert bridge._active_view == "JUNO PCM"
@@ -898,7 +898,7 @@ def test_bridge_perf_sources_and_editing(tmp_path):
     assert juno._store[(0x10, 0x00, 0x00, 0x30)] == bytes([4])
     bridge.setPerfStructure(7)
     assert bridge.patch_state.perf_fx.mfx_structure == 7
-    assert bridge.perfFxSources["structure"] == 7
+    assert bridge.patch_state.perf_fx.mfx_structure == 7
     # copy-to-PERFORM head-start: PARTn -> PERFORM takes part 4's FX,
     # not the edited part's
     from src.spectre.core.patch_state import EffectsState
@@ -963,7 +963,7 @@ def test_setlist_song_pushes_part_and_common_fx(tmp_path):
     assert juno._store[(0x10, 0x00, 0x00, 0x30)] == bytes([4])
     assert juno._store[(0x10, 0x00, 0x00, 0x37)] == bytes([7])
     assert bridge.patch_state.perf_fx.chorus_type == 2
-    assert bridge.perfFxSources["mfx1"] == 4
+    assert bridge.patch_state.perf_fx.mfx1.source == 4
 
 
 # --- origin-resolved editors: MFX Studio / Master FX follow rail selection ---
@@ -1498,8 +1498,7 @@ def _patch_round_trip_rig(tmp_path):
 
 
 def _edit_temp_patch_common(juno, offset, value):
-    from src.spectre.core.sysex import ADDR_TEMP_PATCH_PART_1
-    from src.spectre.core.sysex import add_address
+    from src.spectre.core.sysex import ADDR_TEMP_PATCH_PART_1, add_address
     addr = tuple(add_address(ADDR_TEMP_PATCH_PART_1, juno.USER_REGION_OFFSETS["common"]))
     raw = bytearray(juno._store[addr])
     raw[offset] = value

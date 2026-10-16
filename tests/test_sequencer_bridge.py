@@ -1,6 +1,7 @@
 """Tests for SequencerBridgeMixin and SetlistBridgeMixin in SpectreBridge."""
 
 from unittest.mock import MagicMock
+
 import pytest
 
 from src.spectre.ui.bridge import SpectreBridge
@@ -38,11 +39,6 @@ def test_sequencer_transport_properties_and_slots(bridge):
     bridge.seqPlay()
     assert bridge.seqIsPlaying is True
 
-    bridge.seqPause()
-    assert bridge.seqIsPlaying is False
-
-    bridge.seqPlay()
-    assert bridge.seqIsPlaying is True
     bridge.seqStop()
     assert bridge.seqIsPlaying is False
 
@@ -204,23 +200,6 @@ def test_sequencer_operational_fixes(bridge):
     bridge.seqClearActiveClip()
     assert bridge.seqActiveClipSteps[0]["isActive"] is False
     assert bridge.seqActiveClipSteps[1]["isActive"] is False
-
-    # 2. Pitch Set and Nudge
-    bridge.seqSetStepPitch(3, 72)
-    assert bridge.seqActiveClipSteps[3]["isActive"] is True
-    assert bridge.seqActiveClipSteps[3]["primaryPitch"] == 72
-
-    bridge.seqNudgeStepPitch(3, 1)  # +1 semitone -> 73
-    assert bridge.seqActiveClipSteps[3]["primaryPitch"] == 73
-
-    bridge.seqNudgeStepPitch(3, -12)  # -1 octave -> 61
-    assert bridge.seqActiveClipSteps[3]["primaryPitch"] == 61
-
-    # Clamping test
-    bridge.seqSetStepPitch(3, 150)
-    assert bridge.seqActiveClipSteps[3]["primaryPitch"] == 127
-    bridge.seqNudgeStepPitch(3, -200)
-    assert bridge.seqActiveClipSteps[3]["primaryPitch"] == 0
 
     # 3. Track target part
     bridge.seqSetTrackTargetPart(0, 5)

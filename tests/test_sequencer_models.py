@@ -5,8 +5,8 @@ import pytest
 from src.spectre.core.patch_state import PatchState
 from src.spectre.core.spectre_format import (
     FORMAT_VERSION,
-    load_playlist,
     load_performance,
+    load_playlist,
     save_playlist,
     save_spectre,
 )
@@ -19,7 +19,6 @@ from src.spectre.sequencer.models import (
     NoteEvent,
     SequencerSong,
     Step,
-    Track,
     default_sequencer_song,
     default_tracks,
 )

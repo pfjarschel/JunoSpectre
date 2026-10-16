@@ -131,15 +131,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 self._rail_mfx_entry(3), self._rail_cho_entry(),
                 self._rail_rev_entry()]
 
-    @pyqtProperty("QVariantMap", notify=perfFxChanged)
-    def perfFxSources(self) -> dict:
-        fx = getattr(self.patch_state, "perf_fx", None)
-        if fx is None:
-            return {"mfx1": 0, "mfx2": 0, "mfx3": 0, "chorus": 0, "reverb": 0, "structure": 0}
-        return {"mfx1": int(fx.mfx1.source), "mfx2": int(fx.mfx2.source),
-                "mfx3": int(fx.mfx3.source), "chorus": int(fx.chorus_source),
-                "reverb": int(fx.reverb_source), "structure": int(fx.mfx_structure)}
-
     @pyqtProperty(int, notify=perfFxChanged)
     def editingPerfMfx(self) -> int:
         return max(1, min(3, int(getattr(self, "_editing_perf_mfx", 1))))
@@ -208,22 +199,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     @pyqtProperty(int, notify=perfPartsChanged)
     def activePerfPart(self) -> int:
         return max(1, min(16, int(getattr(self.patch_state, "active_perf_part", 1))))
-
-    @pyqtProperty(str, notify=perfPartsChanged)
-    def perfContext(self) -> str:
-        """Header context in PERFORM: 'PERFNAME / N-PATCHNAME', else ''."""
-        if str(self._sound_mode).upper() != "PERFORM":
-            return ""
-        perf = str(getattr(self.patch_state, "perf_name", "") or self._patch_name or "")
-        idx = max(1, min(16, int(getattr(self.patch_state, "active_perf_part", 1))))
-        try:
-            part = self.patch_state.perf_parts[idx - 1]
-            pname = str(part.patch_name or part.name or f"Part {idx}")
-        except Exception:
-            pname = f"Part {idx}"
-        if perf:
-            return f"{perf} / {idx}-{pname}"
-        return f"{idx}-{pname}"
 
     @pyqtProperty(float, notify=perfPushChanged)
     def perfPushProgress(self) -> float:
@@ -539,10 +514,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                 except Exception as e:
                     logger.debug(f"setPartSolo: synth write failed: {e}")
             self.perfPartsChanged.emit()
-
-    def _part_zone_channel(self, part_index: int) -> int:
-        """Performance zone index (zones 1..16 at 0x50..0x5F correspond directly to parts 1..16)."""
-        return max(1, min(16, int(part_index)))
 
     @pyqtSlot(int, int, int)
     def setPartZone(self, part_index: int, low: int, high: int) -> None:
@@ -1486,11 +1457,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             self.editPerfPart(int(part_index))
             self.librarianPickChanged.emit()
             self.setActiveView("LIBRARIAN")
-
-    @pyqtSlot()
-    def cancelPartPick(self) -> None:
-        """Leave pick mode and close the Librarian back to the previous view."""
-        self.cancelLibrarian()
 
     @pyqtSlot(int, int, int, str, str, str, result=bool)
     def pickPartPatch(self, msb: int, lsb: int, pc: int,

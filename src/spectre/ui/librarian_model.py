@@ -147,6 +147,3 @@ class PatchListModel(QAbstractListModel):
             return False
         return self.setFavorite(row, not bool(self._rows[row].get("favorite", False)))
 
-    def setRepository(self, repository: PatchRepository) -> None:
-        self._repo = repository
-        self._reload()

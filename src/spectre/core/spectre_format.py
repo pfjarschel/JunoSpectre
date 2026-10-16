@@ -34,7 +34,6 @@ from .sysex import TMT_TONE_RANGE_FIELDS
 
 FORMAT_VERSION = 1
 KINDS = ("patch", "performance", "vector_set", "session", "playlist")
-SOURCES = ("factory", "synth-user", "file", None)
 
 _TOP_LEVEL_KNOWN = {"format_version", "kind", "meta", "hw_patch", "spectre", "synth_ref"}
 

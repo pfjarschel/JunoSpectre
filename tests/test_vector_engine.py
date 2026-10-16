@@ -74,9 +74,7 @@ def test_vector_engine_tone_mutes():
     engine.set_tone_mute(1, True)
     assert engine.tone_levels == (0, 0, 0, 0)
 
-    # Unmute tone 1 via toggle
-    muted = engine.toggle_tone_mute(1)
-    assert not muted
+    engine.set_tone_mute(1, False)
     assert engine.tone_levels == (127, 0, 0, 0)
 
 

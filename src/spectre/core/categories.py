@@ -50,7 +50,6 @@ CATEGORIES: list[tuple[str, str]] = [
     ("CMB", "Combination"),    # 38
 ]
 
-CODE_TO_INDEX = {code: i for i, (code, _) in enumerate(CATEGORIES)}
 CODE_TO_LABEL = {code: label for code, label in CATEGORIES}
 
 # Librarian touch chips (8 fit the 1024px bar) -> Roland codes.

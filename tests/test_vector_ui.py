@@ -32,9 +32,9 @@ def test_ui_bridge_slots_and_properties():
 
     # Test mode toggle
     bridge.setMorphMode("wavetable_1d")
-    assert bridge.morphMode == "wavetable_1d"
+    assert bridge.vector.mode.value == "wavetable_1d"
     bridge.setMorphMode("vector_2d")
-    assert bridge.morphMode == "vector_2d"
+    assert bridge.vector.mode.value == "vector_2d"
 
     # Test transport slots
     bridge.startRecording()
@@ -53,7 +53,7 @@ def test_ui_bridge_slots_and_properties():
     assert bridge.activeView == "MACROS"
     bridge.setActiveView("VECTOR")
     assert bridge.activeView == "VECTOR"
-    assert bridge.morphMode == "vector_2d"
+    assert bridge.vector.mode.value == "vector_2d"
 
     # Test Tone Mute slots
     bridge.toggleToneMute(1)
@@ -70,10 +70,6 @@ def test_ui_bridge_slots_and_properties():
     assert bridge.masterCutoff == 80
     bridge.setMasterReso(50)
     assert bridge.masterReso == 50
-    bridge.setMasterAttack(70)
-    assert bridge.masterAttack == 70
-    bridge.setMasterRelease(90)
-    assert bridge.masterRelease == 90
     bridge.setMasterLevel(115)
     assert bridge.masterLevel == 115
 
@@ -103,9 +99,9 @@ def test_workstation_views_switching():
         bridge.setActiveView(v)
         assert bridge.activeView == v
         if v == "VECTOR":
-            assert bridge.morphMode == "vector_2d"
+            assert bridge.vector.mode.value == "vector_2d"
         elif v == "WAVETABLE":
-            assert bridge.morphMode == "wavetable_1d"
+            assert bridge.vector.mode.value == "wavetable_1d"
 
     # Test legacy aliases normalize cleanly
     bridge.setActiveView("PATCH EDIT")
@@ -381,7 +377,7 @@ def test_va_plus_waves():
     bridge.setToneWave(2, "INTA", 1)  # e.g. picked in the wave browser or on JUNO PCM
     assert bridge.vaOsc2Wave == VA_WAVE_PLUS
     assert va_view.property("osc2Wave") == VA_WAVE_PLUS
-    assert va_view.property("waveNames").toVariant()[1] == bridge.getWaveInfo("INTA", 1)["name"]
+    assert va_view.property("waveNames").toVariant()[1] == bridge._wave_catalog.get_wave("INTA", 1)["name"]
 
     bridge.setVaOscWave(2, 2)
     assert bridge.patch_state.tones[1].wave_num_l == 621
@@ -1331,7 +1327,7 @@ def test_env_modifier_bridge_api():
 
 
 def test_bridge_set_effect_param_table_driven():
-    """Verify table-driven setEffectParam and setChorusParam/setReverbParam clamping and signals."""
+    """setChorusParam/setReverbParam clamping and signals."""
     from src.spectre.ui.bridge import SpectreBridge
 
     bridge = SpectreBridge()
@@ -1341,33 +1337,34 @@ def test_bridge_set_effect_param_table_driven():
     bridge.chorusParamsChanged.connect(lambda: chorus_signals.append(True))
     bridge.reverbParamsChanged.connect(lambda: reverb_signals.append(True))
 
-    # Unified setEffectParam for Chorus
-    bridge.setEffectParam("chorus", "level", 110)
+    # Chorus
+    bridge.setChorusParam("level", 110)
     assert bridge.chorusLevel == 110
     assert len(chorus_signals) >= 1
 
     # Clamping out-of-range value
-    bridge.setEffectParam("chorus", "type", 999)
+    bridge.setChorusParam("type", 999)
     assert bridge.chorusType == 3  # clamped to max 3
 
-    bridge.setEffectParam("chorus", "type", -5)
+    bridge.setChorusParam("type", -5)
     assert bridge.chorusType == 0  # clamped to min 0
 
-    # Unified setEffectParam for Reverb
-    bridge.setEffectParam("reverb", "level", 95)
+    # Reverb
+    bridge.setReverbParam("level", 95)
     assert bridge.reverbLevel == 95
     assert len(reverb_signals) >= 1
 
-    bridge.setEffectParam("reverb", "type", 999)
+    bridge.setReverbParam("type", 999)
     assert bridge.reverbType == 5  # clamped to max 5
 
-    bridge.setEffectParam("reverb", "time", 150)
+    bridge.setReverbParam("time", 150)
     assert bridge.reverbTime == 127  # clamped to max 127
 
 
 def test_bridge_no_duplicate_signals():
     """Verify that SpectreBridge metaObject contains no duplicate signal definitions."""
     from collections import defaultdict
+
     from src.spectre.ui.bridge import SpectreBridge
 
     bridge = SpectreBridge()

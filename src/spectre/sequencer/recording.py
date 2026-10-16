@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional
 
 import mido
 
 from .engine import SequencerEngine
-from .models import MAX_STEP_NOTES, NUM_TRACKS, Clip, NoteEvent, Step
+from .models import MAX_STEP_NOTES, NUM_TRACKS, Clip, NoteEvent
 
 logger = logging.getLogger(__name__)
 

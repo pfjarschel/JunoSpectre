@@ -1,9 +1,9 @@
 """Tests for Roland Zone Switch driver and MIDI input demuxer."""
 
-from unittest.mock import MagicMock
-import mido
-import pytest
 import time
+from unittest.mock import MagicMock
+
+import mido
 
 from src.spectre.core.midi import MidiDeviceManager
 from src.spectre.core.protocol import JunoClient

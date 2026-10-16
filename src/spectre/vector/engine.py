@@ -42,7 +42,6 @@ class VectorState:
     recorder_state: RecorderState
     loop_mode: LoopMode
     automator: AutomatorType
-    is_converged: bool
 
 
 class VectorEngine:
@@ -78,11 +77,6 @@ class VectorEngine:
     def subscribe(self, callback: Callable[[VectorState], None]) -> None:
         """Register a subscriber callback for vector state changes."""
         self._subscribers.append(callback)
-
-    def unsubscribe(self, callback: Callable[[VectorState], None]) -> None:
-        """Unregister a subscriber callback."""
-        if callback in self._subscribers:
-            self._subscribers.remove(callback)
 
     @contextmanager
     def hold_hardware_writes(self):
@@ -138,16 +132,6 @@ class VectorEngine:
             self._recalculate_levels()
             self._dispatch_if_needed(force=True)
             self._notify_subscribers()
-
-    def toggle_tone_mute(self, tone_idx: int) -> bool:
-        """Toggle mute state for tone 1..4. Returns new muted state."""
-        if 1 <= tone_idx <= 4:
-            self.tone_mutes[tone_idx - 1] = not self.tone_mutes[tone_idx - 1]
-            self._recalculate_levels()
-            self._dispatch_if_needed(force=True)
-            self._notify_subscribers()
-            return self.tone_mutes[tone_idx - 1]
-        return False
 
     def set_tone_mute(self, tone_idx: int, muted: bool) -> None:
         """Set mute state for tone 1..4."""
@@ -248,5 +232,4 @@ class VectorEngine:
             recorder_state=self.motion.state,
             loop_mode=self.motion.loop_mode,
             automator=self.motion.automator,
-            is_converged=True,
         )

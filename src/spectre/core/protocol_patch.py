@@ -50,13 +50,13 @@ from .sysex import (
     PATCH_PARAM_MONO_POLY,
     PATCH_PARAM_NAME,
     PATCH_PARAM_OUTPUT_ASSIGN,
-    PATCH_PARAM_TMT_CONTROL_SWITCH,
     PATCH_PARAM_PAN,
     PATCH_PARAM_PORTAMENTO_MODE,
     PATCH_PARAM_PORTAMENTO_SWITCH,
     PATCH_PARAM_PORTAMENTO_TIME,
     PATCH_PARAM_RELEASE_OFFSET,
     PATCH_PARAM_RESONANCE_OFFSET,
+    PATCH_PARAM_TMT_CONTROL_SWITCH,
     REVERB_PARAM_DIFFUSION,
     REVERB_PARAM_HF_DAMP,
     REVERB_PARAM_LEVEL,
@@ -224,20 +224,6 @@ class PatchProtocolMixin:
         """Set TVA Levels for all 4 tones sequentially in real time."""
         for idx, lvl in enumerate(tone_levels, start=1):
             self.set_tone_level(idx, lvl)
-
-    def set_patch_cutoff_offset(self, offset_val: int) -> None:
-        """Set Cutoff Frequency Offset (1..127, where 64 = 0 neutral)."""
-        clamped = max(1, min(127, int(offset_val)))
-        base = self.get_active_patch_base()
-        addr = add_address(base, PATCH_PARAM_CUTOFF_OFFSET)
-        self.send_data(addr, [clamped])
-
-    def set_patch_resonance_offset(self, offset_val: int) -> None:
-        """Set Resonance Offset (1..127, where 64 = 0 neutral)."""
-        clamped = max(1, min(127, int(offset_val)))
-        base = self.get_active_patch_base()
-        addr = add_address(base, PATCH_PARAM_RESONANCE_OFFSET)
-        self.send_data(addr, [clamped])
 
     def set_patch_param(self, param_name: str, value: int) -> None:
         """Set a Patch Common parameter by name."""
@@ -1380,17 +1366,6 @@ class PatchProtocolMixin:
         base = self.get_active_patch_base(timeout=timeout)
         res = self._read_reverb_raw(base, timeout=timeout)
         return self._decode_reverb_block(bytes(res))
-
-    def read_tmt_mutes(self, timeout: float = 1.0) -> Tuple[bool, bool, bool, bool]:
-        """Read Tone Mix Table switches and return per-tone muted flags (True=muted)."""
-        base = self.get_active_patch_base(timeout=timeout)
-        res = self._read_tmt_raw(base, timeout=timeout)
-        return (
-            res[TMT_PARAM_TONE1_SWITCH] == 0,
-            res[TMT_PARAM_TONE2_SWITCH] == 0,
-            res[TMT_PARAM_TONE3_SWITCH] == 0,
-            res[TMT_PARAM_TONE4_SWITCH] == 0,
-        )
 
     def read_full_patch(self, timeout: float = 1.0) -> PatchState:
         """Read complete patch state from Roland synth RAM.

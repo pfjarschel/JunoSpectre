@@ -218,7 +218,7 @@ def test_bridge_routing_presets():
     bridge.applyRoutingPreset("SERIAL_CHAIN")
     assert bridge.routingPreset == "SERIAL_CHAIN"
     assert bridge.patchOutputAssign == 13          # presets route per tone
-    assert bridge.toneOutputAssigns == [0, 0, 0, 0]
+    assert [t.output_assign for t in bridge.patch_state.tones] == [0, 0, 0, 0]
     assert (bridge.mfxDrySend, bridge.mfxChorusSend, bridge.mfxReverbSend) == (0, 127, 0)
     assert bridge.chorusToReverb == 1
     g = bridge.routingGraph
@@ -226,8 +226,9 @@ def test_bridge_routing_presets():
     assert g["edges"]["rev->out"]["active"] and not g["edges"]["mfx->out"]["active"]
 
     bridge.applyRoutingPreset("VINTAGE_SYNTH")
-    assert bridge.toneOutputAssigns == [1, 1, 1, 1]
-    assert bridge.toneChorusSends == [70] * 4      # the direct pair, the one that plays
+    assert [t.output_assign for t in bridge.patch_state.tones] == [1, 1, 1, 1]
+    assert [R.tone_sends(bridge.patch_state.common, t)[0]
+            for t in bridge.patch_state.tones] == [70] * 4  # the direct pair, the one that plays
     assert [t.chorus_send_direct for t in bridge.patch_state.tones] == [70] * 4
     assert [t.chorus_send for t in bridge.patch_state.tones] == [0] * 4
     g = bridge.routingGraph
@@ -250,7 +251,7 @@ def test_bridge_routing_presets():
     assert bridge.chorusTypeName != "OFF" and bridge.reverbTypeName != "OFF"
 
     bridge.setToneRoutingParam(0, "level", 95)
-    assert bridge.toneOutputLevels == [95, 95, 95, 95]
+    assert [t.output_level for t in bridge.patch_state.tones] == [95, 95, 95, 95]
     assert bridge.routingPreset == "CUSTOM"
 
 
@@ -259,9 +260,9 @@ def test_bridge_tone_assign_rejects_fake_values():
 
     bridge = SpectreBridge()
     bridge.setToneRoutingParam(1, "assign", 2)     # old fake "BOTH"
-    assert bridge.toneOutputAssigns[0] == 0
+    assert [t.output_assign for t in bridge.patch_state.tones][0] == 0
     bridge.setToneRoutingParam(1, "assign", 6)     # R
-    assert bridge.toneOutputAssigns[0] == 6
+    assert [t.output_assign for t in bridge.patch_state.tones][0] == 6
     bridge.setPatchOutputAssign(4)                 # unused wire value
     assert bridge.patchOutputAssign == 13
 

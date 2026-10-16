@@ -81,10 +81,6 @@ class VectorBridgeMixin(BridgeBaseMixin):
     def wavetablePos(self) -> float:
         return self.vector.w
 
-    @pyqtProperty(str, notify=morphModeChanged)
-    def morphMode(self) -> str:
-        return self.vector.mode.value
-
     @pyqtProperty(str, notify=transportStateChanged)
     def recorderState(self) -> str:
         return self.vector.motion.state.value

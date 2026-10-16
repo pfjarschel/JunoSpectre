@@ -25,7 +25,6 @@ from typing import List, Optional
 import numpy as np
 
 SAMPLE_RATE = 44100          # the JUNO-DS USB audio rate (the only one it takes)
-CHANNELS = 2
 PEAK_COLUMNS = 16384         # waveform overview resolution (min/max pairs); closer zooms read the audio
 AUDIO_EXTENSIONS = (".wav", ".flac", ".ogg", ".mp3", ".aif", ".aiff")
 DEFAULT_AUDIO_DIR = Path.home() / "SpectreAudio"

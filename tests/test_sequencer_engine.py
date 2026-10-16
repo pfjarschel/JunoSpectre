@@ -7,12 +7,10 @@ import mido
 import pytest
 
 from src.spectre.sequencer import (
-    Clip,
     NoteEvent,
     SequencerClock,
     SequencerEngine,
     SequencerRecorder,
-    Step,
     default_sequencer_song,
 )
 

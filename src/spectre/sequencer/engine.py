@@ -128,10 +128,6 @@ class SequencerEngine:
         if callback not in self._ui_subscribers:
             self._ui_subscribers.append(callback)
 
-    def unsubscribe_ui(self, callback: Callable[[dict], None]) -> None:
-        if callback in self._ui_subscribers:
-            self._ui_subscribers.remove(callback)
-
     @property
     def is_playing(self) -> bool:
         return self.clock.is_running

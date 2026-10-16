@@ -103,8 +103,6 @@ def build_macro_catalog() -> list[dict]:
     ]
     for i in range(1, 5):
         for param, title, category, lo, hi, span in per_tone:
-            cat.append(_trio("tobe_placeholder", "", "", 0, 0, 0))  # placeholder removed below
-            cat.pop()
             cat.append(_trio(f"tone.{i}.{param}", f"T{i} {title}", category, lo, hi, span))
     for param, title, category, lo, hi, span in per_tone:
         cat.append(_trio(f"tone.all.{param}", f"All {title}", category, lo, hi, span))
@@ -142,10 +140,6 @@ def get_macro_catalog() -> list[dict]:
     if _CATALOG is None:
         _CATALOG = build_macro_catalog()
     return _CATALOG
-
-
-def get_macro_categories() -> list[str]:
-    return ["ALL", "FILTER", "AMP", "PITCH", "LFO", "FX", "COMMON", "MORPH", "PART", "MATRIX", "SEQ"]
 
 
 def filter_macro_targets(category: str = "ALL", query: str = "") -> list[dict]:

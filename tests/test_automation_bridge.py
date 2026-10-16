@@ -1,6 +1,5 @@
 """Sequencer automation lanes in the bridge: writes, macros, restore, knobs, load."""
 
-import mido
 import pytest
 
 from src.spectre.control.mapping import Binding

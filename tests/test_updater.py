@@ -1,10 +1,10 @@
 """Unit tests for the git release-based appliance self updater."""
 
 import subprocess
-import tomllib
 from pathlib import Path
 
 import pytest
+import tomllib
 
 from src.spectre.core.updater import GitUpdater, UpdaterError, detect_package_manager
 

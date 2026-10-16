@@ -7,12 +7,10 @@ interpolation, and provides algorithmic modulation curves (Lissajous, Circle, Ch
 from __future__ import annotations
 
 import enum
-import json
 import math
 import random
 import time
 from dataclasses import asdict, dataclass
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .math import clamp_coordinate
@@ -174,11 +172,6 @@ class MotionRecorder:
         if self.sync_bars > 0:
             return (4.0 * 60.0 / self.bpm) * self.sync_bars
         return self.points[-1].timestamp
-
-    @property
-    def is_empty(self) -> bool:
-        """True if no trajectory points are currently stored."""
-        return len(self.points) == 0
 
     def start_recording(self, clear_existing: bool = True) -> None:
         """Begin capturing touch trajectory points."""
@@ -674,20 +667,4 @@ class MotionRecorder:
         ]
         return rec
 
-    def save_json(self, path: Path | str) -> None:
-        """Save trajectory to JSON file."""
-        p = Path(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=2)
 
-    def load_json(self, path: Path | str) -> None:
-        """Load trajectory from JSON file."""
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        loaded = self.from_dict(data)
-        self.bpm = loaded.bpm
-        self.speed = loaded.speed
-        self.loop_mode = loaded.loop_mode
-        self.sync_bars = loaded.sync_bars
-        self.points = loaded.points

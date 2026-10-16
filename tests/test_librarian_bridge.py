@@ -96,19 +96,6 @@ def test_origin_tracking(rig):
     assert "Unsaved" in b.currentRefLabel
 
 
-def test_get_user_slots(rig):
-    slots = rig.bridge.getUserSlots("patch")
-    assert len(slots) == 256
-    assert slots[0]["number"] == 501 and slots[255]["number"] == 756
-    # Temp image is the INIT template: every slot seeded? No — slots read
-    # from the empty store -> "?" names. Seed one and re-check.
-    _template_state_at(rig.juno, (0x30, 0, 0, 0))
-    slots = rig.bridge.getUserSlots("patch")
-    assert slots[0]["name"] == "JUNO SPECTRE"
-    assert slots[0]["free"] is False
-    assert rig.bridge.getUserSlots("drum") == []  # not supported yet
-
-
 def test_save_to_file_always_writes_pi(rig):
     out = rig.bridge.saveCurrentToFile("MY SOUND", "HLD", "fat,lead", True, "")
     assert out.endswith(".spectre")
@@ -255,5 +242,4 @@ def test_toggle_librarian_returns_to_previous_view(rig):
 def test_refresh_without_synth_returns_minus_one(rig):
     rig.bridge.juno = None
     assert rig.bridge.refreshUserSlotNames() == -1
-    assert rig.bridge.getUserSlots("patch") == []
 

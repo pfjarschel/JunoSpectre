@@ -27,7 +27,6 @@ S = L2 = L3, R = T4.
 
 from __future__ import annotations
 
-STAGES = ("attack", "decay", "sustain", "release")
 TOP = 127
 
 

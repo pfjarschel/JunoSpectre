@@ -13,7 +13,6 @@ import time
 from pathlib import Path
 
 import numpy as np
-
 from PyQt6.QtCore import Qt, QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...audio import media
