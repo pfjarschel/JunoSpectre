@@ -17,7 +17,6 @@ import hashlib
 import json
 import logging
 import os
-import shutil
 import sqlite3
 from pathlib import Path
 from typing import Any, Optional
@@ -783,30 +782,6 @@ class PatchRepository:
         self._conn.execute("UPDATE patches SET tags=? WHERE path=?", (_tags_to_str(tags), path))
         self._conn.commit()
         return True
-
-    def import_file(self, src: str | Path, dest_name: Optional[str] = None) -> Path:
-        """Copy a .spectre/.syx from USB/disk into the user dir and index it."""
-        s = Path(src)
-        if s.suffix not in (".spectre", ".syx"):
-            raise ValueError(f"unsupported import type: {s.suffix}")
-        dest = self.user_dir / (dest_name or s.name)
-        if dest.suffix != s.suffix:
-            dest = dest.with_suffix(s.suffix)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(s, dest)
-        self._touch_file_row(str(dest)) if dest.suffix == ".spectre" else self._index_and_commit(dest)
-        return dest
-
-    def _index_and_commit(self, f: Path) -> None:
-        try:
-            st_mtime = int(f.stat().st_mtime)
-        except OSError:
-            return
-        if f.suffix == ".spectre":
-            self._index_spectre_file(f, st_mtime)
-        else:
-            self._index_syx_file(f, st_mtime)
-        self._conn.commit()
 
     def save_current_as(
         self,

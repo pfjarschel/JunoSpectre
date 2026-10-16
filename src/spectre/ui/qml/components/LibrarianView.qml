@@ -83,12 +83,6 @@ Rectangle {
             && root.selectedRow.kind === "patch"
     }
 
-    function firstUsbDrive() {
-        var drives = []
-        try { drives = Bridge.listUsbDrives() || [] } catch (e) { drives = [] }
-        return drives.length > 0 ? drives[0] : ""
-    }
-
     Connections {
         target: Bridge
         function onLibrarianChanged() { root.applyFilter() }

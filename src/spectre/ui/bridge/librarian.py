@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import time
 from pathlib import Path
 
@@ -634,71 +633,6 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
             logger.warning(f"reinitUserSlot failed: {e}")
             return str(e)
 
-    @pyqtSlot(result="QVariantList")
-    def listUsbDrives(self) -> list:
-        """Removable media roots for import/export (eglfs has no file dialog)."""
-        import getpass
-        from pathlib import Path as _P
-
-        roots = []
-        try:
-            user = getpass.getuser()
-        except Exception:
-            user = ""
-        for base in (f"/media/{user}", "/run/media/{user}", "/media", "/mnt"):
-            try:
-                p = _P(base)
-                if not p.is_dir():
-                    continue
-                for child in sorted(p.iterdir()):
-                    try:
-                        if child.is_dir() and os.access(child, os.R_OK | os.W_OK):
-                            roots.append(str(child))
-                    except OSError:
-                        continue
-            except OSError:
-                continue
-        return roots
-
-    @pyqtSlot(str, str, str, result=str)
-    def exportLibraryFile(self, path: str, driveDir: str, filename: str = "") -> str:
-        """Copy a Pi patch file to USB. Returns '' on success."""
-        import shutil
-        from pathlib import Path as _P
-
-        try:
-            src = _P(path)
-            if src.suffix not in (".spectre", ".syx") or not src.is_file():
-                return "not a patch file"
-            dest_dir = _P(driveDir)
-            if not dest_dir.is_dir():
-                return "USB drive not found"
-            dest = dest_dir / (filename or src.name)
-            if dest.suffix != src.suffix:
-                dest = dest.with_suffix(src.suffix)
-            shutil.copy2(src, dest)
-            return ""
-        except Exception as e:
-            logger.warning(f"exportLibraryFile failed: {e}")
-            return str(e)
-
-    @pyqtSlot(str, str, result=str)
-    def importUsbFile(self, driveDir: str, filename: str) -> str:
-        """Import a .spectre/.syx from USB into the Pi library. Returns path or ''."""
-        repo = self._librarian()
-        if repo is None:
-            return ""
-        try:
-            from pathlib import Path as _P
-
-            src = _P(driveDir) / filename
-            out = repo.import_file(src)
-            self.librarianChanged.emit()
-            return str(out)
-        except Exception as e:
-            logger.warning(f"importUsbFile failed: {e}")
-            return ""
-
     @pyqtSlot(str, result=bool)
     def deleteLibraryFile(self, path: str) -> bool:
         """Delete a Pi patch file (flash slots are reinitialized, never deleted)."""
@@ -713,115 +647,6 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         if ok:
             self.librarianChanged.emit()
         return ok
-
-    @pyqtSlot(str, result="QVariantList")
-    def listUsbFiles(self, driveDir: str) -> list:
-        """List importable patch files at a USB drive root."""
-        from pathlib import Path as _P
-
-        try:
-            root = _P(driveDir)
-            if not root.is_dir():
-                return []
-            out = []
-            for child in sorted(root.iterdir()):
-                try:
-                    if child.is_file() and child.suffix in (".spectre", ".syx"):
-                        out.append({"name": child.name, "suffix": child.suffix})
-                except OSError:
-                    continue
-            return out
-        except Exception as e:
-            logger.debug(f"listUsbFiles failed: {e}")
-            return []
-
-    @pyqtSlot(str, result=int)
-    def importUsbAll(self, driveDir: str) -> int:
-        """Import every .spectre/.syx at a USB drive root. Returns count."""
-        repo = self._librarian()
-        if repo is None:
-            return 0
-        try:
-            from pathlib import Path as _P
-
-            root = _P(driveDir)
-            if not root.is_dir():
-                return 0
-            count = 0
-            for child in sorted(root.iterdir()):
-                try:
-                    if child.is_file() and child.suffix in (".spectre", ".syx"):
-                        repo.import_file(child)
-                        count += 1
-                except Exception as e:
-                    logger.debug(f"import skipped {child}: {e}")
-            self.librarianChanged.emit()
-            return count
-        except Exception as e:
-            logger.warning(f"importUsbAll failed: {e}")
-            return 0
-
-    @pyqtSlot(str, str, result=str)
-    def exportLiveSyx(self, driveDir: str, filename: str = "") -> str:
-        """Export the live temp sound as .syx to USB. Returns '' on success."""
-        juno = self.juno
-        if juno is None or not hasattr(juno, "encode_patch_sysex"):
-            return "no synthesizer connected"
-        try:
-            from pathlib import Path as _P
-
-            dest_dir = _P(driveDir)
-            if not dest_dir.is_dir():
-                return "USB drive not found"
-            state = juno.read_full_patch(timeout=1.5)
-            blob = juno.encode_patch_sysex(state)
-            safe = "".join(c if (c.isalnum() or c in ("-", "_", " ")) else "_"
-                           for c in (filename or state.common.name)).strip() or "Untitled"
-            dest = dest_dir / f"{safe}.syx"
-            dest.write_bytes(blob)
-            return ""
-        except Exception as e:
-            logger.warning(f"exportLiveSyx failed: {e}")
-            return str(e)
-
-    @pyqtSlot(str, result=str)
-    def applySyxFile(self, path: str) -> str:
-        """Push a .syx file into the live temp buffer and sync. Returns '' on success."""
-        juno = self.juno
-        if juno is None or not hasattr(juno, "apply_sysex_blob"):
-            return "no synthesizer connected"
-        try:
-            from pathlib import Path as _P
-
-            blob = _P(path).read_bytes()
-            if not blob or blob[0] != 0xF0:
-                return "not a .syx file"
-            applied = juno.apply_sysex_blob(blob)
-            if applied == 0:
-                return "no valid DT1 messages found"
-            try:
-                self.syncPatchFromSynth()
-            except Exception as e:
-                logger.debug(f"applySyxFile: sync failed: {e}")
-            self._current_ref = {"source": "file", "kind": "patch", "path": str(path)}
-            self.currentRefChanged.emit()
-            return ""
-        except Exception as e:
-            logger.warning(f"applySyxFile failed: {e}")
-            return str(e)
-
-    @pyqtSlot(result=int)
-    def rescanLibrary(self) -> int:
-        repo = self._librarian()
-        if repo is None:
-            return 0
-        try:
-            stats = repo.rescan_files()
-        except Exception as e:
-            logger.warning(f"rescanLibrary failed: {e}")
-            return 0
-        self.librarianChanged.emit()
-        return int(stats.get("added", 0) + stats.get("updated", 0) + stats.get("removed", 0))
 
     @pyqtSlot(int)
     def openWaveBrowser(self, tone_index: int) -> None:

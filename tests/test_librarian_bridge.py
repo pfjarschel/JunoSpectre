@@ -156,12 +156,11 @@ def test_reinit_user_slot_restores_init_and_temp(rig):
     assert rig.repo.search("BACKUP") == []
 
 
-def test_delete_and_rescan(rig):
+def test_delete_library_file(rig):
     out = rig.bridge.saveCurrentToFile("DOOMED", "", "", False, "")
     assert rig.repo.search("DOOMED")
     assert rig.bridge.deleteLibraryFile(out) is True
     assert not rig.repo.search("DOOMED")
-    assert rig.bridge.rescanLibrary() >= 0
 
 
 def test_refresh_user_slot_names(rig):
