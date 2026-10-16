@@ -153,17 +153,17 @@ def test_sound_sculptor_and_mod_properties():
 
     # LFO Params
     bridge.setLfoParam(1, "wave", "SQR")
-    assert bridge.lfo1Wave == "SQR"
+    assert bridge.lfo1Data["wave"] == "SQR"
     bridge.setLfoParam(1, "pan_depth", 30)
-    assert bridge.lfo1PanDepth == 30
+    assert bridge.lfo1Data["panDepth"] == 30
     bridge.setLfoParam(1, "delay_time", 20)
-    assert bridge.lfo1DelayTime == 20
+    assert bridge.lfo1Data["delayTime"] == 20
     bridge.setLfoParam(1, "fade_mode", "ON-OUT")
-    assert bridge.lfo1FadeMode == "ON-OUT"
+    assert bridge.lfo1Data["fadeMode"] == "ON-OUT"
     bridge.setLfoParam(1, "fade_time", 40)
-    assert bridge.lfo1FadeTime == 40
+    assert bridge.lfo1Data["fadeTime"] == 40
     bridge.setLfoParam(2, "rate", 99)
-    assert bridge.lfo2Rate == 99
+    assert bridge.lfo2Data["rate"] == 99
 
     # Brightness
     bridge.setBrightness(75)
@@ -718,8 +718,8 @@ def test_init_patch_workflow():
     assert bridge.tvaSustain == 127
     assert bridge.masterAttack == 0
     assert bridge.portamentoSwitch is False
-    assert bridge.lfo1PitchDepth == 0
-    assert bridge.lfo2TvfDepth == 0
+    assert bridge.lfo1Data["pitchDepth"] == 0
+    assert bridge.lfo2Data["tvfDepth"] == 0
     assert bridge.patch_state.effects.routing_preset == ""  # raw template patch, no preset
     assert bridge.macroNames[6] == "CHORUS LEVEL"
     assert bridge.macroNames[7] == "REVERB LEVEL"
@@ -1126,14 +1126,14 @@ def test_ui_bridge_step_lfo():
     # 7. Test Quick Assign to LFO 1 and LFO 2
     bridge.setLinkedMode(False)
     bridge.setSelectedTone(1)
-    assert bridge.lfo1Wave != "STEP"
+    assert bridge.lfo1Data["wave"] != "STEP"
     bridge.assignStepLfoToLfo(1)
-    assert bridge.lfo1Wave == "STEP"
+    assert bridge.lfo1Data["wave"] == "STEP"
     assert bridge.patch_state.tones[0].lfo1_waveform == 12
 
     # Toggle off
     bridge.assignStepLfoToLfo(1)
-    assert bridge.lfo1Wave != "STEP"
+    assert bridge.lfo1Data["wave"] != "STEP"
     assert bridge.patch_state.tones[0].lfo1_waveform == 1 # TRI
 
 
@@ -1456,6 +1456,7 @@ def test_lpf2_lpf3_reach_the_synth():
     mgr.send_juno_sysex.reset_mock()
 
     def type_writes():
+        assert client.flush_writes()  # tone edits go through the writer thread
         return [(tuple(c[0][0][6:10]), c[0][0][10]) for c in mgr.send_juno_sysex.call_args_list
                 if c[0][0][9] == 0x48]
 

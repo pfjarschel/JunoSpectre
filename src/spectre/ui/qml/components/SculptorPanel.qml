@@ -16,29 +16,7 @@ Rectangle {
     property int activeLfoTab: 1 // 1: LFO 1, 2: LFO 2
 
     // Active LFO properties helper
-    readonly property var lfoData: activeLfoTab === 1 ? {
-        rate: Bridge.lfo1Rate,
-        wave: Bridge.lfo1Wave,
-        pitchDepth: Bridge.lfo1PitchDepth,
-        tvfDepth: Bridge.lfo1TvfDepth,
-        tvaDepth: Bridge.lfo1TvaDepth,
-        panDepth: Bridge.lfo1PanDepth,
-        delayTime: Bridge.lfo1DelayTime,
-        fadeMode: Bridge.lfo1FadeMode,
-        fadeTime: Bridge.lfo1FadeTime,
-        sync: Bridge.lfo1Sync
-    } : {
-        rate: Bridge.lfo2Rate,
-        wave: Bridge.lfo2Wave,
-        pitchDepth: Bridge.lfo2PitchDepth,
-        tvfDepth: Bridge.lfo2TvfDepth,
-        tvaDepth: Bridge.lfo2TvaDepth,
-        panDepth: Bridge.lfo2PanDepth,
-        delayTime: Bridge.lfo2DelayTime,
-        fadeMode: Bridge.lfo2FadeMode,
-        fadeTime: Bridge.lfo2FadeTime,
-        sync: Bridge.lfo2Sync
-    }
+    readonly property var lfoData: activeLfoTab === 1 ? Bridge.lfo1Data : Bridge.lfo2Data
 
     ColumnLayout {
         anchors.fill: parent

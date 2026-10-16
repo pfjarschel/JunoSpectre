@@ -15,8 +15,8 @@ Rectangle {
     property int curveType: Bridge.stepLfoCurve
     property int selectedTone: Bridge.selectedTone
     property bool isLinked: Bridge.linkedMode
-    property string lfo1Wave: Bridge.lfo1Wave
-    property string lfo2Wave: Bridge.lfo2Wave
+    property string lfo1Wave: Bridge.lfo1Data.wave
+    property string lfo2Wave: Bridge.lfo2Data.wave
 
     Connections {
         target: Bridge
@@ -33,8 +33,8 @@ Rectangle {
             root.isLinked = Bridge.linkedMode;
         }
         function onLfoParamsChanged() {
-            root.lfo1Wave = Bridge.lfo1Wave;
-            root.lfo2Wave = Bridge.lfo2Wave;
+            root.lfo1Wave = Bridge.lfo1Data.wave;
+            root.lfo2Wave = Bridge.lfo2Data.wave;
         }
     }
 

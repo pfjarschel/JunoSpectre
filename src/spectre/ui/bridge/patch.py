@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from contextlib import contextmanager
 from typing import Optional
 
 from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
@@ -325,85 +326,26 @@ class PatchBridgeMixin(BridgeBaseMixin):
     def legatoSwitch(self) -> bool:
         return self.patch_state.common.legato_switch
 
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo1Rate(self) -> int:
-        return self._active_tone().lfo1_rate
+    def _lfo_data(self, n: int) -> dict:
+        t = self._active_tone()
 
-    @pyqtProperty(str, notify=lfoParamsChanged)
-    def lfo1Wave(self) -> str:
-        return self._active_tone().lfo1_wave_str
+        def g(field: str):
+            return getattr(t, f"lfo{n}_{field}")
 
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo1PitchDepth(self) -> int:
-        return self._active_tone().lfo1_pitch_depth - 64
+        return {"rate": g("rate"), "wave": g("wave_str"),
+                "pitchDepth": g("pitch_depth") - 64, "tvfDepth": g("tvf_depth") - 64,
+                "tvaDepth": g("tva_depth") - 64, "panDepth": g("pan_depth") - 64,
+                "delayTime": g("delay_time"), "fadeMode": g("fade_mode_str"),
+                "fadeTime": g("fade_time")}
 
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo1TvfDepth(self) -> int:
-        return self._active_tone().lfo1_tvf_depth - 64
+    @pyqtProperty("QVariantMap", notify=lfoParamsChanged)
+    def lfo1Data(self) -> dict:
+        """The selected tone's LFO1 (depths -63..+63, wave and fade mode by name)."""
+        return self._lfo_data(1)
 
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo1TvaDepth(self) -> int:
-        return self._active_tone().lfo1_tva_depth - 64
-
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo1PanDepth(self) -> int:
-        return self._active_tone().lfo1_pan_depth - 64
-
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo1DelayTime(self) -> int:
-        return self._active_tone().lfo1_delay_time
-
-    @pyqtProperty(str, notify=lfoParamsChanged)
-    def lfo1FadeMode(self) -> str:
-        return self._active_tone().lfo1_fade_mode_str
-
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo1FadeTime(self) -> int:
-        return self._active_tone().lfo1_fade_time
-
-    @pyqtProperty(bool, notify=lfoParamsChanged)
-    def lfo1Sync(self) -> bool:
-        return False
-
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo2Rate(self) -> int:
-        return self._active_tone().lfo2_rate
-
-    @pyqtProperty(str, notify=lfoParamsChanged)
-    def lfo2Wave(self) -> str:
-        return self._active_tone().lfo2_wave_str
-
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo2PitchDepth(self) -> int:
-        return self._active_tone().lfo2_pitch_depth - 64
-
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo2TvfDepth(self) -> int:
-        return self._active_tone().lfo2_tvf_depth - 64
-
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo2TvaDepth(self) -> int:
-        return self._active_tone().lfo2_tva_depth - 64
-
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo2PanDepth(self) -> int:
-        return self._active_tone().lfo2_pan_depth - 64
-
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo2DelayTime(self) -> int:
-        return self._active_tone().lfo2_delay_time
-
-    @pyqtProperty(str, notify=lfoParamsChanged)
-    def lfo2FadeMode(self) -> str:
-        return self._active_tone().lfo2_fade_mode_str
-
-    @pyqtProperty(int, notify=lfoParamsChanged)
-    def lfo2FadeTime(self) -> int:
-        return self._active_tone().lfo2_fade_time
-
-    @pyqtProperty(bool, notify=lfoParamsChanged)
-    def lfo2Sync(self) -> bool:
-        return False
+    @pyqtProperty("QVariantMap", notify=lfoParamsChanged)
+    def lfo2Data(self) -> dict:
+        return self._lfo_data(2)
 
     @pyqtProperty(int, notify=pitchEnvChanged)
     def pitchEnvDepth(self) -> int:
@@ -741,35 +683,130 @@ class PatchBridgeMixin(BridgeBaseMixin):
     def analogFeel(self) -> int:
         return self.patch_state.common.analog_feel
 
+    # Per-tone parameters: UI name -> (ToneState attr, UI min, UI max, raw offset
+    # or raw(ui) function, synth writer, macro rebase key, signals, envelope).
+    # The writer is ("tvf" | "tva" | "pitch", keyword of set_tone_<group>) or
+    # "tvf_env" / "tva_env" (the whole envelope block).
+    _TONE_PARAMS = {
+        "cutoff": ("tvf_cutoff", 0, 127, 0, ("tvf", "cutoff"), "tvf_cutoff",
+                   ("masterCutoffChanged",), None),
+        "reso": ("tvf_resonance", 0, 127, 0, ("tvf", "resonance"), "tvf_resonance",
+                 ("masterResoChanged",), None),
+        "tvf_keyfollow": ("tvf_cutoff_keyfollow", -100, 100, lambda v: 64 + v // 10,
+                          ("tvf", "key_follow"), "tvf_keyfollow", ("tvfKeyFollowChanged",), None),
+        "tvf_env_depth": ("tvf_env_depth", -63, 63, 64, ("tvf", "env_depth"), "tvf_env_depth",
+                          ("tvfEnvDepthChanged",), "TVF"),
+        "tvf_velo": ("tvf_env_velo_sens", 0, 127, 0, ("tvf", "env_vel_sens"), None,
+                     ("tvfVeloSensChanged",), "TVF"),
+        "tvf_attack": ("tvf_attack", 0, 127, 0, "tvf_env", "tvf_attack", ("tvfAttackChanged",), "TVF"),
+        "tvf_decay": ("tvf_decay", 0, 127, 0, "tvf_env", "tvf_decay", ("tvfDecayChanged",), "TVF"),
+        "tvf_sustain": ("tvf_sustain", 0, 127, 0, "tvf_env", "tvf_sustain", ("tvfSustainChanged",), "TVF"),
+        "tvf_release": ("tvf_release", 0, 127, 0, "tvf_env", "tvf_release", ("tvfReleaseChanged",), "TVF"),
+        "tva_attack": ("tva_attack", 0, 127, 0, "tva_env", "tva_attack",
+                       ("tvaAttackChanged", "masterAttackChanged"), "TVA"),
+        "tva_decay": ("tva_decay", 0, 127, 0, "tva_env", "tva_decay", ("tvaDecayChanged",), "TVA"),
+        "tva_sustain": ("tva_sustain", 0, 127, 0, "tva_env", "tva_sustain", ("tvaSustainChanged",), "TVA"),
+        "tva_release": ("tva_release", 0, 127, 0, "tva_env", "tva_release",
+                        ("tvaReleaseChanged", "masterReleaseChanged"), "TVA"),
+        "tva_pan": ("pan", -64, 63, 64, ("tva", "pan"), "tva_pan", ("tvaPanChanged",), None),
+        "tva_velo": ("tva_velo_sens", 0, 127, 0, ("tva", "env_vel_sens"), None,
+                     ("tvaVeloSensChanged",), "TVA"),
+        "pitch_coarse": ("coarse_tune", -48, 48, 64, ("pitch", "coarse"), "pitch_coarse",
+                         ("pitchCoarseChanged",), None),
+    }
+
+    @contextmanager
+    def _tone_writes(self):
+        """Queue tone writes for the writer thread: a LINK or sculptor edit
+        writes all 4 tones on every move, which must not block the UI."""
+        if self.juno is None:
+            yield
+            return
+        with self.juno.coalesced_writes():
+            yield
+
+    def _edit_tones(self, all_tones: bool) -> list[ToneState]:
+        """All 4 tones (sculptor) or the selected / linked ones (PCM editors)."""
+        return list(self.patch_state.tones) if all_tones else self._target_tones()
+
+    def _set_tone_param(self, name: str, val: int, all_tones: bool = False) -> None:
+        attr, lo, hi, raw_of, writer, rebase, signals, env = self._TONE_PARAMS[name]
+        v = max(lo, min(hi, int(val)))
+        raw = raw_of(v) if callable(raw_of) else v + raw_of
+        targets = self._edit_tones(all_tones)
+        with self._tone_writes():
+            for t in targets:
+                setattr(t, attr, raw)
+                if writer == "tvf_env":
+                    self._push_tvf_env(t)
+                elif writer == "tva_env":
+                    self._push_tva_env(t)
+                elif self.juno:
+                    try:
+                        getattr(self.juno, f"set_tone_{writer[0]}")(t.tone_index, **{writer[1]: raw})
+                    except Exception as e:
+                        logger.error(f"Error setting {name} on synth: {e}")
+        if rebase:
+            self._rebaseDirect([(f"tone.{t.tone_index}.{rebase}", raw) for t in targets])
+        for sig in signals:
+            getattr(self, sig).emit(v)
+        if env:
+            self.envShapeChanged.emit(env)
+
+    def _set_tvf_type(self, type_str: str, all_tones: bool) -> None:
+        idx = TVF_TYPE_NAMES.index(type_str) if type_str in TVF_TYPE_NAMES else 1
+        with self._tone_writes():
+            for t in self._edit_tones(all_tones):
+                t.tvf_filter_type = idx
+                if self.juno:
+                    try:
+                        self.juno.set_tone_tvf(t.tone_index, filter_type=idx)
+                    except Exception as e:
+                        logger.error(f"Error setting TVF filter type on synth: {e}")
+        self.tvfTypeChanged.emit(type_str)
+
+    _LFO_DEPTHS = ("pitch_depth", "tvf_depth", "tva_depth", "pan_depth")
+
+    def _set_lfo_param(self, lfo_idx: int, param: str, val, all_tones: bool) -> None:
+        """LFO 1/2 field: wave (name), rate, depths (-63..+63), delay/fade time, fade mode (name)."""
+        if lfo_idx not in (1, 2):
+            return
+        if param == "wave":
+            val = "SAW-UP" if val == "SAW" else val
+            if val not in LFO_WAVE_NAMES:
+                return
+            field, raw = "waveform", LFO_WAVE_NAMES.index(val)
+        elif param == "fade_mode":
+            if val not in LFO_FADE_MODE_NAMES:
+                return
+            field, raw = param, LFO_FADE_MODE_NAMES.index(val)
+        elif param in self._LFO_DEPTHS:
+            field, raw = param, max(1, min(127, int(val) + 64))
+        elif param in ("rate", "delay_time", "fade_time"):
+            field, raw = param, max(0, min(127, int(val)))
+        else:
+            return
+        targets = self._edit_tones(all_tones)
+        with self._tone_writes():
+            for t in targets:
+                setattr(t, f"lfo{lfo_idx}_{field}", raw)
+                if self.juno:
+                    try:
+                        self.juno.set_tone_lfo(t.tone_index, lfo_index=lfo_idx, **{field: raw})
+                    except Exception as e:
+                        logger.error(f"Error setting LFO{lfo_idx} {param} on synth: {e}")
+        self._rebaseLfoParam(lfo_idx, param, targets)
+        self.lfoParamsChanged.emit()
+
     @pyqtSlot(int)
     def setMasterCutoff(self, val: int) -> None:
-        """Set TVF Cutoff (0..127). Ganged across all 4 tones if linked."""
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tvf_cutoff = clamped
-            if self.juno:
-                try:
-                    self.juno.set_tone_tvf(t.tone_index, cutoff=clamped)
-                except Exception as e:
-                    logger.error(f"Error setting cutoff on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_cutoff", clamped) for t in targets])
-        self.masterCutoffChanged.emit(clamped)
+        """TVF cutoff (0..127): the selected tone, or all 4 when linked."""
+        self._set_tone_param("cutoff", val)
 
     @pyqtSlot(int)
     def setMasterReso(self, val: int) -> None:
-        """Set TVF Resonance (0..127). Ganged across all 4 tones if linked."""
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tvf_resonance = clamped
-            if self.juno:
-                try:
-                    self.juno.set_tone_tvf(t.tone_index, resonance=clamped)
-                except Exception as e:
-                    logger.error(f"Error setting resonance on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_resonance", clamped) for t in targets])
-        self.masterResoChanged.emit(clamped)
+        """TVF resonance (0..127): the selected tone, or all 4 when linked."""
+        self._set_tone_param("reso", val)
 
     @pyqtSlot(int)
     def setMasterLevel(self, val: int) -> None:
@@ -787,206 +824,70 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(str)
     def setTvfType(self, type_str: str) -> None:
-        """Set TVF filter type (OFF, LPF, BPF, HPF, PKG, LPF2, LPF3)."""
-        val_idx = 1
-        if type_str in TVF_TYPE_NAMES:
-            val_idx = TVF_TYPE_NAMES.index(type_str)
-        targets = self._target_tones()
-        for t in targets:
-            t.tvf_filter_type = val_idx
-            if self.juno:
-                try:
-                    self.juno.set_tone_tvf(t.tone_index, filter_type=val_idx)
-                except Exception as e:
-                    logger.error(f"Error setting TVF filter type on synth: {e}")
-        self.tvfTypeChanged.emit(type_str)
+        """TVF filter type (OFF, LPF, BPF, HPF, PKG, LPF2, LPF3)."""
+        self._set_tvf_type(type_str, all_tones=False)
 
     @pyqtSlot(int)
     def setTvfKeyFollow(self, val: int) -> None:
-        """Set TVF Cutoff Keyfollow (-100..+100%)."""
-        clamped = max(-100, min(100, int(val)))
-        raw_val = 64 + (clamped // 10)
-        targets = self._target_tones()
-        for t in targets:
-            t.tvf_cutoff_keyfollow = raw_val
-            if self.juno:
-                try:
-                    self.juno.set_tone_param(t.tone_index, 0x004A, raw_val)
-                except Exception as e:
-                    logger.error(f"Error setting TVF keyfollow on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_keyfollow", raw_val) for t in targets])
-        self.tvfKeyFollowChanged.emit(clamped)
+        """TVF cutoff keyfollow (-100..+100%): the selected tone, or all 4 when linked."""
+        self._set_tone_param("tvf_keyfollow", val)
 
     @pyqtSlot(int)
     def setTvfEnvDepth(self, depth: int) -> None:
-        """Set TVF envelope depth (-63..+63)."""
-        clamped = max(-63, min(63, int(depth)))
-        raw_val = 64 + clamped
-        targets = self._target_tones()
-        for t in targets:
-            t.tvf_env_depth = raw_val
-            if self.juno:
-                try:
-                    self.juno.set_tone_tvf(t.tone_index, env_depth=raw_val)
-                except Exception as e:
-                    logger.error(f"Error setting TVF env depth on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_env_depth", raw_val) for t in targets])
-        self.tvfEnvDepthChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        """TVF envelope depth (-63..+63): the selected tone, or all 4 when linked."""
+        self._set_tone_param("tvf_env_depth", depth)
 
     @pyqtSlot(int)
     def setTvfVeloSens(self, val: int) -> None:
-        """Set TVF velocity sensitivity (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tvf_env_velo_sens = clamped
-            if self.juno:
-                try:
-                    self.juno.set_tone_tvf(t.tone_index, env_vel_sens=clamped)
-                except Exception as e:
-                    logger.error(f"Error setting TVF velo sens on synth: {e}")
-        self.tvfVeloSensChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        """TVF velocity sensitivity (0..127): the selected tone, or all 4 when linked."""
+        self._set_tone_param("tvf_velo", val)
 
     @pyqtSlot(int)
     def setTvfAttack(self, val: int) -> None:
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tvf_attack = clamped
-            self._push_tvf_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_attack", clamped) for t in targets])
-        self.tvfAttackChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        self._set_tone_param("tvf_attack", val)
 
     @pyqtSlot(int)
     def setTvfDecay(self, val: int) -> None:
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tvf_decay = clamped
-            self._push_tvf_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_decay", clamped) for t in targets])
-        self.tvfDecayChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        self._set_tone_param("tvf_decay", val)
 
     @pyqtSlot(int)
     def setTvfSustain(self, val: int) -> None:
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tvf_sustain = clamped
-            self._push_tvf_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_sustain", clamped) for t in targets])
-        self.tvfSustainChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        self._set_tone_param("tvf_sustain", val)
 
     @pyqtSlot(int)
     def setTvfRelease(self, val: int) -> None:
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tvf_release = clamped
-            self._push_tvf_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_release", clamped) for t in targets])
-        self.tvfReleaseChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        self._set_tone_param("tvf_release", val)
 
     @pyqtSlot(int)
     def setTvaAttack(self, val: int) -> None:
-        """Set TVA Attack time (0..127). Ganged if linked."""
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tva_attack = clamped
-            self._push_tva_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tva_attack", clamped) for t in targets])
-        self.tvaAttackChanged.emit(clamped)
-        self.masterAttackChanged.emit(clamped)
-        self.envShapeChanged.emit("TVA")
+        self._set_tone_param("tva_attack", val)
 
     @pyqtSlot(int)
     def setTvaDecay(self, val: int) -> None:
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tva_decay = clamped
-            self._push_tva_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tva_decay", clamped) for t in targets])
-        self.tvaDecayChanged.emit(clamped)
-        self.envShapeChanged.emit("TVA")
+        self._set_tone_param("tva_decay", val)
 
     @pyqtSlot(int)
     def setTvaSustain(self, val: int) -> None:
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tva_sustain = clamped
-            self._push_tva_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tva_sustain", clamped) for t in targets])
-        self.tvaSustainChanged.emit(clamped)
-        self.envShapeChanged.emit("TVA")
+        self._set_tone_param("tva_sustain", val)
 
     @pyqtSlot(int)
     def setTvaRelease(self, val: int) -> None:
-        """Set TVA Release time (0..127). Ganged if linked."""
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tva_release = clamped
-            self._push_tva_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tva_release", clamped) for t in targets])
-        self.tvaReleaseChanged.emit(clamped)
-        self.masterReleaseChanged.emit(clamped)
-        self.envShapeChanged.emit("TVA")
+        self._set_tone_param("tva_release", val)
 
     @pyqtSlot(int)
     def setTvaPan(self, val: int) -> None:
-        """Set Tone TVA Pan (-64..+63, 0=Center)."""
-        clamped = max(-64, min(63, int(val)))
-        raw_val = clamped + 64
-        targets = self._target_tones()
-        for t in targets:
-            t.pan = raw_val
-            if self.juno:
-                try:
-                    self.juno.set_tone_tva(t.tone_index, pan=raw_val)
-                except Exception as e:
-                    logger.error(f"Error setting TVA pan on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.tva_pan", raw_val) for t in targets])
-        self.tvaPanChanged.emit(clamped)
+        """Tone pan (-64..+63, 0 = centre): the selected tone, or all 4 when linked."""
+        self._set_tone_param("tva_pan", val)
 
     @pyqtSlot(int)
     def setTvaVeloSens(self, val: int) -> None:
-        """Set Tone TVA Velocity Sensitivity (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        targets = self._target_tones()
-        for t in targets:
-            t.tva_velo_sens = clamped
-            if self.juno:
-                try:
-                    self.juno.set_tone_param(t.tone_index, 0x0062, clamped)
-                except Exception as e:
-                    logger.error(f"Error setting TVA velo sens on synth: {e}")
-        self.tvaVeloSensChanged.emit(clamped)
-        self.envShapeChanged.emit("TVA")
+        """TVA velocity sensitivity (0..127): the selected tone, or all 4 when linked."""
+        self._set_tone_param("tva_velo", val)
 
     @pyqtSlot(int)
     def setPitchCoarse(self, val: int) -> None:
-        """Set Tone Coarse Tune in semitones (-48..+48)."""
-        clamped = max(-48, min(48, int(val)))
-        raw_val = clamped + 64
-        targets = self._target_tones()
-        for t in targets:
-            t.coarse_tune = raw_val
-            if self.juno:
-                try:
-                    self.juno.set_tone_pitch(t.tone_index, coarse=raw_val)
-                except Exception as e:
-                    logger.error(f"Error setting coarse tune on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.pitch_coarse", raw_val) for t in targets])
-        self.pitchCoarseChanged.emit(clamped)
+        """Coarse tune in semitones (-48..+48): the selected tone, or all 4 when linked."""
+        self._set_tone_param("pitch_coarse", val)
 
     @pyqtSlot(int)
     def setPitchFine(self, val: int) -> None:
@@ -1066,394 +967,89 @@ class PatchBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(int, str, "QVariant")
     def setLfoParam(self, lfo_idx: int, param: str, val) -> None:
-        """Set LFO 1 or LFO 2 parameter for active tone (or all if linked)."""
-        if param == "wave" and val == "SAW":
-            val = "SAW-UP"
-        targets = self._target_tones()
-        for t in targets:
-            if lfo_idx == 1:
-                if param == "wave" and val in LFO_WAVE_NAMES:
-                    t.lfo1_waveform = LFO_WAVE_NAMES.index(val)
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, waveform=t.lfo1_waveform)
-                elif param == "rate":
-                    t.lfo1_rate = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, rate=t.lfo1_rate)
-                elif param == "pitch_depth":
-                    t.lfo1_pitch_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, pitch_depth=t.lfo1_pitch_depth)
-                elif param == "tvf_depth":
-                    t.lfo1_tvf_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, tvf_depth=t.lfo1_tvf_depth)
-                elif param == "tva_depth":
-                    t.lfo1_tva_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, tva_depth=t.lfo1_tva_depth)
-                elif param == "pan_depth":
-                    t.lfo1_pan_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, pan_depth=t.lfo1_pan_depth)
-                elif param == "delay_time":
-                    t.lfo1_delay_time = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0072, t.lfo1_delay_time)
-                elif param == "fade_mode" and val in LFO_FADE_MODE_NAMES:
-                    t.lfo1_fade_mode = LFO_FADE_MODE_NAMES.index(val)
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0074, t.lfo1_fade_mode)
-                elif param == "fade_time":
-                    t.lfo1_fade_time = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0075, t.lfo1_fade_time)
-            elif lfo_idx == 2:
-                if param == "wave" and val in LFO_WAVE_NAMES:
-                    t.lfo2_waveform = LFO_WAVE_NAMES.index(val)
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, waveform=t.lfo2_waveform)
-                elif param == "rate":
-                    t.lfo2_rate = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, rate=t.lfo2_rate)
-                elif param == "pitch_depth":
-                    t.lfo2_pitch_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, pitch_depth=t.lfo2_pitch_depth)
-                elif param == "tvf_depth":
-                    t.lfo2_tvf_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, tvf_depth=t.lfo2_tvf_depth)
-                elif param == "tva_depth":
-                    t.lfo2_tva_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, tva_depth=t.lfo2_tva_depth)
-                elif param == "pan_depth":
-                    t.lfo2_pan_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, pan_depth=t.lfo2_pan_depth)
-                elif param == "delay_time":
-                    t.lfo2_delay_time = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0100, t.lfo2_delay_time)
-                elif param == "fade_mode" and val in LFO_FADE_MODE_NAMES:
-                    t.lfo2_fade_mode = LFO_FADE_MODE_NAMES.index(val)
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0102, t.lfo2_fade_mode)
-                elif param == "fade_time":
-                    t.lfo2_fade_time = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0103, t.lfo2_fade_time)
-
-        self._rebaseLfoParam(lfo_idx, param, targets)
-        self.lfoParamsChanged.emit()
+        """LFO 1 or 2 parameter of the selected tone (or all 4 when linked)."""
+        self._set_lfo_param(lfo_idx, param, val, all_tones=False)
 
     @pyqtSlot(int)
     def sculptCutoff(self, val: int) -> None:
-        """Sculpt TVF Cutoff across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tvf_cutoff = clamped
-            if self.juno:
-                try:
-                    self.juno.set_tone_tvf(t.tone_index, cutoff=clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting cutoff on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_cutoff", clamped) for t in self.patch_state.tones])
-        self.masterCutoffChanged.emit(clamped)
+        """TVF cutoff (0..127): all 4 tones (sculptor)."""
+        self._set_tone_param("cutoff", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptReso(self, val: int) -> None:
-        """Sculpt TVF Resonance across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tvf_resonance = clamped
-            if self.juno:
-                try:
-                    self.juno.set_tone_tvf(t.tone_index, resonance=clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting resonance on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_resonance", clamped) for t in self.patch_state.tones])
-        self.masterResoChanged.emit(clamped)
+        """TVF resonance (0..127): all 4 tones (sculptor)."""
+        self._set_tone_param("reso", val, all_tones=True)
 
     @pyqtSlot(str)
     def sculptTvfType(self, type_str: str) -> None:
-        """Sculpt TVF filter type across all 4 tones."""
-        val_idx = 1
-        if type_str in TVF_TYPE_NAMES:
-            val_idx = TVF_TYPE_NAMES.index(type_str)
-        for t in self.patch_state.tones:
-            t.tvf_filter_type = val_idx
-            if self.juno:
-                try:
-                    self.juno.set_tone_tvf(t.tone_index, filter_type=val_idx)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVF filter type on synth: {e}")
-        self.tvfTypeChanged.emit(type_str)
+        self._set_tvf_type(type_str, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvfKeyFollow(self, val: int) -> None:
-        """Sculpt TVF Cutoff Keyfollow across all 4 tones (-100..+100%)."""
-        clamped = max(-100, min(100, int(val)))
-        raw_val = 64 + (clamped // 10)
-        for t in self.patch_state.tones:
-            t.tvf_cutoff_keyfollow = raw_val
-            if self.juno:
-                try:
-                    self.juno.set_tone_param(t.tone_index, 0x004A, raw_val)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVF keyfollow on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_keyfollow", raw_val) for t in self.patch_state.tones])
-        self.tvfKeyFollowChanged.emit(clamped)
+        """TVF cutoff keyfollow (-100..+100%): all 4 tones (sculptor)."""
+        self._set_tone_param("tvf_keyfollow", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvfEnvDepth(self, depth: int) -> None:
-        """Sculpt TVF envelope depth across all 4 tones (-63..+63)."""
-        clamped = max(-63, min(63, int(depth)))
-        raw_val = 64 + clamped
-        for t in self.patch_state.tones:
-            t.tvf_env_depth = raw_val
-            if self.juno:
-                try:
-                    self.juno.set_tone_tvf(t.tone_index, env_depth=raw_val)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVF env depth on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_env_depth", raw_val) for t in self.patch_state.tones])
-        self.tvfEnvDepthChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        """TVF envelope depth (-63..+63): all 4 tones (sculptor)."""
+        self._set_tone_param("tvf_env_depth", depth, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvfVeloSens(self, val: int) -> None:
-        """Sculpt TVF velocity sensitivity across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tvf_env_velo_sens = clamped
-            if self.juno:
-                try:
-                    self.juno.set_tone_param(t.tone_index, 0x0051, clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVF velo sens on synth: {e}")
-        self.tvfVeloSensChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        """TVF velocity sensitivity (0..127): all 4 tones (sculptor)."""
+        self._set_tone_param("tvf_velo", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvfAttack(self, val: int) -> None:
-        """Sculpt TVF Attack across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tvf_attack = clamped
-            self._push_tvf_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_attack", clamped) for t in self.patch_state.tones])
-        self.tvfAttackChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        self._set_tone_param("tvf_attack", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvfDecay(self, val: int) -> None:
-        """Sculpt TVF Decay across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tvf_decay = clamped
-            self._push_tvf_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_decay", clamped) for t in self.patch_state.tones])
-        self.tvfDecayChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        self._set_tone_param("tvf_decay", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvfSustain(self, val: int) -> None:
-        """Sculpt TVF Sustain across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tvf_sustain = clamped
-            self._push_tvf_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_sustain", clamped) for t in self.patch_state.tones])
-        self.tvfSustainChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        self._set_tone_param("tvf_sustain", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvfRelease(self, val: int) -> None:
-        """Sculpt TVF Release across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tvf_release = clamped
-            self._push_tvf_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tvf_release", clamped) for t in self.patch_state.tones])
-        self.tvfReleaseChanged.emit(clamped)
-        self.envShapeChanged.emit("TVF")
+        self._set_tone_param("tvf_release", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvaPan(self, val: int) -> None:
-        """Sculpt Tone TVA Pan across all 4 tones (-64..+63)."""
-        clamped = max(-64, min(63, int(val)))
-        raw_val = clamped + 64
-        for t in self.patch_state.tones:
-            t.pan = raw_val
-            if self.juno:
-                try:
-                    self.juno.set_tone_tva(t.tone_index, pan=raw_val)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVA pan on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.tva_pan", raw_val) for t in self.patch_state.tones])
-        self.tvaPanChanged.emit(clamped)
+        """Tone pan (-64..+63, 0 = centre): all 4 tones (sculptor)."""
+        self._set_tone_param("tva_pan", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvaVeloSens(self, val: int) -> None:
-        """Sculpt Tone TVA Velocity Sensitivity across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tva_velo_sens = clamped
-            if self.juno:
-                try:
-                    self.juno.set_tone_param(t.tone_index, 0x0062, clamped)
-                except Exception as e:
-                    logger.error(f"Error sculpting TVA velo sens on synth: {e}")
-        self.tvaVeloSensChanged.emit(clamped)
-        self.envShapeChanged.emit("TVA")
+        """TVA velocity sensitivity (0..127): all 4 tones (sculptor)."""
+        self._set_tone_param("tva_velo", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvaAttack(self, val: int) -> None:
-        """Sculpt TVA Attack time across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tva_attack = clamped
-            self._push_tva_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tva_attack", clamped) for t in self.patch_state.tones])
-        self.tvaAttackChanged.emit(clamped)
-        self.masterAttackChanged.emit(clamped)
-        self.envShapeChanged.emit("TVA")
+        self._set_tone_param("tva_attack", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvaDecay(self, val: int) -> None:
-        """Sculpt TVA Decay time across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tva_decay = clamped
-            self._push_tva_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tva_decay", clamped) for t in self.patch_state.tones])
-        self.tvaDecayChanged.emit(clamped)
-        self.envShapeChanged.emit("TVA")
+        self._set_tone_param("tva_decay", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvaSustain(self, val: int) -> None:
-        """Sculpt TVA Sustain level across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tva_sustain = clamped
-            self._push_tva_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tva_sustain", clamped) for t in self.patch_state.tones])
-        self.tvaSustainChanged.emit(clamped)
-        self.envShapeChanged.emit("TVA")
+        self._set_tone_param("tva_sustain", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptTvaRelease(self, val: int) -> None:
-        """Sculpt TVA Release time across all 4 tones (0..127)."""
-        clamped = max(0, min(127, int(val)))
-        for t in self.patch_state.tones:
-            t.tva_release = clamped
-            self._push_tva_env(t)
-        self._rebaseDirect([(f"tone.{t.tone_index}.tva_release", clamped) for t in self.patch_state.tones])
-        self.tvaReleaseChanged.emit(clamped)
-        self.masterReleaseChanged.emit(clamped)
-        self.envShapeChanged.emit("TVA")
+        self._set_tone_param("tva_release", val, all_tones=True)
 
     @pyqtSlot(int, str, "QVariant")
     def sculptLfoParam(self, lfo_idx: int, param: str, val) -> None:
-        """Sculpt LFO 1 or LFO 2 parameters across all 4 tones."""
-        if param == "wave" and val == "SAW":
-            val = "SAW-UP"
-        for t in self.patch_state.tones:
-            if lfo_idx == 1:
-                if param == "wave" and val in LFO_WAVE_NAMES:
-                    t.lfo1_waveform = LFO_WAVE_NAMES.index(val)
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, waveform=t.lfo1_waveform)
-                elif param == "rate":
-                    t.lfo1_rate = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, rate=t.lfo1_rate)
-                elif param == "pitch_depth":
-                    t.lfo1_pitch_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, pitch_depth=t.lfo1_pitch_depth)
-                elif param == "tvf_depth":
-                    t.lfo1_tvf_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, tvf_depth=t.lfo1_tvf_depth)
-                elif param == "tva_depth":
-                    t.lfo1_tva_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, tva_depth=t.lfo1_tva_depth)
-                elif param == "pan_depth":
-                    t.lfo1_pan_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=1, pan_depth=t.lfo1_pan_depth)
-                elif param == "delay_time":
-                    t.lfo1_delay_time = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0072, t.lfo1_delay_time)
-                elif param == "fade_mode" and val in LFO_FADE_MODE_NAMES:
-                    t.lfo1_fade_mode = LFO_FADE_MODE_NAMES.index(val)
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0074, t.lfo1_fade_mode)
-                elif param == "fade_time":
-                    t.lfo1_fade_time = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0075, t.lfo1_fade_time)
-            elif lfo_idx == 2:
-                if param == "wave" and val in LFO_WAVE_NAMES:
-                    t.lfo2_waveform = LFO_WAVE_NAMES.index(val)
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, waveform=t.lfo2_waveform)
-                elif param == "rate":
-                    t.lfo2_rate = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, rate=t.lfo2_rate)
-                elif param == "pitch_depth":
-                    t.lfo2_pitch_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, pitch_depth=t.lfo2_pitch_depth)
-                elif param == "tvf_depth":
-                    t.lfo2_tvf_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, tvf_depth=t.lfo2_tvf_depth)
-                elif param == "tva_depth":
-                    t.lfo2_tva_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, tva_depth=t.lfo2_tva_depth)
-                elif param == "pan_depth":
-                    t.lfo2_pan_depth = max(1, min(127, int(val) + 64))
-                    if self.juno:
-                        self.juno.set_tone_lfo(t.tone_index, lfo_index=2, pan_depth=t.lfo2_pan_depth)
-                elif param == "delay_time":
-                    t.lfo2_delay_time = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0100, t.lfo2_delay_time)
-                elif param == "fade_mode" and val in LFO_FADE_MODE_NAMES:
-                    t.lfo2_fade_mode = LFO_FADE_MODE_NAMES.index(val)
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0102, t.lfo2_fade_mode)
-                elif param == "fade_time":
-                    t.lfo2_fade_time = max(0, min(127, int(val)))
-                    if self.juno:
-                        self.juno.set_tone_param(t.tone_index, 0x0103, t.lfo2_fade_time)
-
-        self._rebaseLfoParam(lfo_idx, param, list(self.patch_state.tones))
-        self.lfoParamsChanged.emit()
+        """LFO 1 or 2 parameter of all 4 tones (sculptor)."""
+        self._set_lfo_param(lfo_idx, param, val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptPitchCoarse(self, val: int) -> None:
-        """Sculpt Tone Coarse Tune across all 4 tones (-48..+48)."""
-        clamped = max(-48, min(48, int(val)))
-        raw_val = clamped + 64
-        for t in self.patch_state.tones:
-            t.coarse_tune = raw_val
-            if self.juno:
-                try:
-                    self.juno.set_tone_pitch(t.tone_index, coarse=raw_val)
-                except Exception as e:
-                    logger.error(f"Error sculpting coarse tune on synth: {e}")
-        self._rebaseDirect([(f"tone.{t.tone_index}.pitch_coarse", raw_val) for t in self.patch_state.tones])
-        self.pitchCoarseChanged.emit(clamped)
+        """Coarse tune in semitones (-48..+48): all 4 tones (sculptor)."""
+        self._set_tone_param("pitch_coarse", val, all_tones=True)
 
     @pyqtSlot(int)
     def sculptPitchFine(self, val: int) -> None:
