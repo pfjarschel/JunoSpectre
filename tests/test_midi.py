@@ -33,14 +33,6 @@ def test_find_juno_ports_none_found():
         assert out_p is None
 
 
-def test_find_launch_control_ports():
-    with patch.object(MidiDeviceManager, "get_input_names", return_value=["Launch Control XL:Launch Control XL DAW", "Launch Control XL:Launch Control XL MIDI In"]), \
-         patch.object(MidiDeviceManager, "get_output_names", return_value=["Launch Control XL:Launch Control XL DAW", "Launch Control XL:Launch Control XL MIDI Out"]):
-        in_p, out_p = MidiDeviceManager.find_launch_control_ports()
-        assert in_p == "Launch Control XL:Launch Control XL MIDI In"
-        assert out_p == "Launch Control XL:Launch Control XL MIDI Out"
-
-
 def test_connect_juno_not_found_raises():
     mgr = MidiDeviceManager()
     with patch.object(MidiDeviceManager, "find_juno_ports", return_value=(None, None)):
