@@ -11,11 +11,13 @@ if TYPE_CHECKING:
 
 from .arpeggio import ADDR_SETUP_ARP, ARP_SETUP_SIZE, SETUP_OFFSETS, ArpSettings
 from .patch_state import (
+    EffectsState,
     PerfFxState,
     PerfPartState,
     decode_chorus_block,
     decode_mfx_block,
     decode_reverb_block,
+    effects_from_blocks,
 )
 from .sysex import (
     ADDR_PERF_CHORUS,
@@ -329,7 +331,11 @@ class PerformanceProtocolMixin:
 
     def set_part_patch_mfx_param(self, part_index: int, param_index: int, value: int) -> None:
         """Write one MFX parameter of a part-patch MFX block."""
-        self.write_mfx_params([self._part_patch_fx_base(part_index, "mfx")], [value], param_index)
+        self.set_part_patch_mfx_params_bulk(part_index, [value], param_index)
+
+    def set_part_patch_mfx_params_bulk(self, part_index: int, values, start_index: int = 0) -> None:
+        """Write contiguous MFX parameters of a part-patch MFX block in one DT1."""
+        self.write_mfx_params([self._part_patch_fx_base(part_index, "mfx")], values, start_index)
 
     def set_part_patch_chorus(self, part_index: int, chorus_type: int | None = None,
                               level: int | None = None,
@@ -353,35 +359,22 @@ class PerformanceProtocolMixin:
         self.write_fx_detail([self._part_patch_fx_base(part_index, "reverb")],
                              REVERB_DETAIL_OFFSETS, param, val)
 
-    def read_part_fx(self, part_index: int, timeout: float = 1.0) -> dict:
-        """Read one part-patch MFX + chorus + reverb into decoded dicts.
+    def read_part_fx(self, part_index: int, timeout: float = 1.0) -> EffectsState:
+        """Read one part-patch MFX + chorus + reverb.
 
-        Raises TimeoutError when any block is unreadable (caller falls back).
+        Raises TimeoutError when any block is unreadable.
         """
         part = self._check_part(part_index)
         base = temp_perf_patch_base(part)
-        mfx_raw = self.request_data(add_address(base, OFFSET_PATCH_COMMON_MFX),
-                                    PERF_MFX_BLOCK_SIZE, timeout=timeout)
-        if mfx_raw is None or len(mfx_raw) < 4:
-            raise TimeoutError(f"Timed out reading part {part} patch MFX.")
-        cho_raw = self.request_data(add_address(base, OFFSET_PATCH_COMMON_CHORUS),
-                                    PERF_CHORUS_BLOCK_SIZE, timeout=timeout)
-        if cho_raw is None or len(cho_raw) < 4:
-            raise TimeoutError(f"Timed out reading part {part} patch chorus.")
-        rev_raw = self.request_data(add_address(base, OFFSET_PATCH_COMMON_REVERB),
-                                    PERF_REVERB_BLOCK_SIZE, timeout=timeout)
-        if rev_raw is None or len(rev_raw) < 2:
-            raise TimeoutError(f"Timed out reading part {part} patch reverb.")
-        m_type, m_dry, m_cho, m_rev, m_params = decode_mfx_block(bytes(mfx_raw))
-        c_type, c_lvl, c_out, c_pre, c_rate, c_depth, c_fb = decode_chorus_block(bytes(cho_raw))
-        r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = decode_reverb_block(bytes(rev_raw))
-        return {
-            "mfx": {"type": m_type, "dry": m_dry, "chorus": m_cho, "reverb": m_rev, "params": m_params},
-            "chorus": {"type": c_type, "level": c_lvl, "toReverb": c_out,
-                       "predelay": c_pre, "rate": c_rate, "depth": c_depth, "feedback": c_fb},
-            "reverb": {"type": r_type, "level": r_lvl, "predelay": r_pre, "time": r_time,
-                       "damp": r_damp, "diffusion": r_diff, "tone": r_tone},
-        }
+        blocks = []
+        for which, offset, size in (("MFX", OFFSET_PATCH_COMMON_MFX, PERF_MFX_BLOCK_SIZE),
+                                    ("chorus", OFFSET_PATCH_COMMON_CHORUS, PERF_CHORUS_BLOCK_SIZE),
+                                    ("reverb", OFFSET_PATCH_COMMON_REVERB, PERF_REVERB_BLOCK_SIZE)):
+            raw = self.request_data(add_address(base, offset), size, timeout=timeout)
+            if raw is None or len(raw) < 4:
+                raise TimeoutError(f"Timed out reading part {part} patch {which}.")
+            blocks.append(bytes(raw))
+        return effects_from_blocks(*blocks)
 
     def get_perf_name(self, timeout: float = 1.0) -> str:
         res = self.request_data(add_address(ADDR_TEMP_PERFORMANCE, PERF_COMMON_NAME),

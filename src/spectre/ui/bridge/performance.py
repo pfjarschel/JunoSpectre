@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import threading
 from pathlib import Path
@@ -32,6 +33,7 @@ from ...librarian.repository import PatchRepository
 from ...sequencer.models import SequencerSong, default_sequencer_song
 from ...vector.motion import RecorderState
 from .base import BridgeBaseMixin
+from .fx_target import CHORUS_ATTRS, REVERB_ATTRS, FxTarget
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +66,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         self._part_snapshots: dict = {}
         self._snapshot_hashes: dict = {}  # part index -> (snapshot dict, its hash)
         self._part_file_status: list = [""] * 16
-        # Part index -> read_part_fx() dict for PARTn origins. Lets MFX Studio /
+        # Part index -> that part patch's FX (EffectsState) for PARTn origins. Lets MFX Studio /
         # Master FX show a non-active part's patch FX without blocking QML
         # getters on hardware reads.
         self._part_fx_cache: dict = {}
@@ -102,54 +104,35 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             for p in self.patch_state.perf_parts[:16]
         ]
 
+    def _rail_fx_target(self, block: str, slot: int | None = None) -> FxTarget:
+        """A rail card shows the sounding processor: the source part's FX when
+        cached, else the performance common values."""
+        t = self._fx_target(block, slot=slot)
+        if t.kind == "part" and t.store is not None:
+            return t
+        fx = self.patch_state.perf_fx
+        return FxTarget("perf", slot or 0, self._perf_slot(slot) if block == "mfx" else fx)
+
     def _rail_mfx_entry(self, n: int) -> dict:
         """Rail card content: the sounding processor (origin-resolved)."""
-        holder = self._perf_slot(n)
-        source = int(getattr(holder, "source", 0)) if holder is not None else 0
-        shown = {"type": 0, "drySend": 127, "chorusSend": 0, "reverbSend": 0}
-        if source != 0 and self._in_perform():
-            cached = self._part_cached(source)
-            if cached is not None:
-                m = cached["mfx"]
-                shown = {"type": int(m["type"]), "drySend": int(m["dry"]),
-                         "chorusSend": int(m["chorus"]), "reverbSend": int(m["reverb"])}
-            elif holder is not None:
-                shown = {"type": int(holder.mfx_type), "drySend": int(holder.dry_send),
-                         "chorusSend": int(holder.chorus_send), "reverbSend": int(holder.reverb_send)}
-        elif holder is not None:
-            shown = {"type": int(holder.mfx_type), "drySend": int(holder.dry_send),
-                     "chorusSend": int(holder.chorus_send), "reverbSend": int(holder.reverb_send)}
-        algo = get_mfx_algo(int(shown["type"]))
+        t = self._rail_fx_target("mfx", n)
+        shown = {"type": int(t.mfx("type")), "drySend": int(t.mfx("dry")),
+                 "chorusSend": int(t.mfx("chorus")), "reverbSend": int(t.mfx("reverb"))}
+        algo = get_mfx_algo(shown["type"])
         shown["name"] = algo["name"].split(" ", 1)[-1] if algo else "THRU"
-        return {"kind": f"MFX{n}", "slot": n, **shown, "source": source,
-                "editing": int(getattr(self, "_editing_perf_mfx", 1)) == n}
+        return {"kind": f"MFX{n}", "slot": n, **shown, "source": int(self._perf_slot(n).source),
+                "editing": self._editing_perf_mfx == n}
 
     def _rail_cho_entry(self) -> dict:
-        fx = getattr(self.patch_state, "perf_fx", None)
-        source = int(getattr(fx, "chorus_source", 0)) if fx is not None else 0
-        if source != 0 and self._in_perform():
-            cached = self._part_cached(source)
-            if cached is not None:
-                c = cached["chorus"]
-                return {"kind": "CHORUS", "type": int(c["type"]), "level": int(c["level"]),
-                        "toReverb": int(c["toReverb"]), "source": source}
-        return {"kind": "CHORUS", "type": int(fx.chorus_type),
-                "level": int(fx.chorus_level), "toReverb": int(fx.chorus_to_reverb),
-                "source": source} if fx is not None else {"kind": "CHORUS", "type": 0,
-                "level": 0, "toReverb": 0, "source": 0}
+        s = self._rail_fx_target("chorus").store
+        return {"kind": "CHORUS", "type": int(s.chorus_type), "level": int(s.chorus_level),
+                "toReverb": int(s.chorus_to_reverb),
+                "source": int(self.patch_state.perf_fx.chorus_source)}
 
     def _rail_rev_entry(self) -> dict:
-        fx = getattr(self.patch_state, "perf_fx", None)
-        source = int(getattr(fx, "reverb_source", 0)) if fx is not None else 0
-        if source != 0 and self._in_perform():
-            cached = self._part_cached(source)
-            if cached is not None:
-                r = cached["reverb"]
-                return {"kind": "REVERB", "type": int(r["type"]), "level": int(r["level"]),
-                        "source": source}
-        return {"kind": "REVERB", "type": int(fx.reverb_type),
-                "level": int(fx.reverb_level), "source": source} if fx is not None else {
-                "kind": "REVERB", "type": 0, "level": 0, "source": 0}
+        s = self._rail_fx_target("reverb").store
+        return {"kind": "REVERB", "type": int(s.reverb_type), "level": int(s.reverb_level),
+                "source": int(self.patch_state.perf_fx.reverb_source)}
 
     @pyqtProperty("QVariantList", notify=perfFxChanged)
     def perfFxSlots(self) -> list:
@@ -172,33 +155,24 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     @pyqtProperty(str, notify=perfFxChanged)
     def mfxEditTargetLabel(self) -> str:
         """MFX Studio context chip: which MFX + origin it shows/edits (compact)."""
-        tgt = self._mfx_target()
-        if tgt[0] == "perf":
-            return f"MFX{tgt[1]}\u00b7PERF"
-        if tgt[0] == "part":
-            s = max(1, min(3, int(getattr(self, "_editing_perf_mfx", 1))))
-            return f"MFX{s}\u00b7P{tgt[1]}"
+        t = self._fx_target("mfx")
+        if t.kind == "perf":
+            return f"MFX{t.index}\u00b7PERF"
+        if t.kind == "part":
+            return f"MFX{self.editingPerfMfx}\u00b7P{t.index}"
         return "PATCH"
 
     @pyqtProperty(str, notify=perfFxChanged)
     def choEditTargetLabel(self) -> str:
         """Master FX chorus context chip (compact)."""
-        tgt = self._cho_target()
-        if tgt[0] == "perf":
-            return "CHO\u00b7PERF"
-        if tgt[0] == "part":
-            return f"CHO\u00b7P{tgt[1]}"
-        return "PATCH"
+        t = self._fx_target("chorus")
+        return {"perf": "CHO\u00b7PERF", "part": f"CHO\u00b7P{t.index}"}.get(t.kind, "PATCH")
 
     @pyqtProperty(str, notify=perfFxChanged)
     def revEditTargetLabel(self) -> str:
         """Master FX reverb context chip (compact)."""
-        tgt = self._rev_target()
-        if tgt[0] == "perf":
-            return "REV\u00b7PERF"
-        if tgt[0] == "part":
-            return f"REV\u00b7P{tgt[1]}"
-        return "PATCH"
+        t = self._fx_target("reverb")
+        return {"perf": "REV\u00b7PERF", "part": f"REV\u00b7P{t.index}"}.get(t.kind, "PATCH")
 
     @pyqtProperty("QVariantList", constant=True)
     def perfMfxStructures(self) -> list:
@@ -665,7 +639,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             logger.debug(f"_apply_patch_state_to_editors error: {e}")
 
         try:
-            self._part_fx_cache[int(part_index)] = self._cache_from_effects(state.effects)
+            self._part_fx_cache[int(part_index)] = copy.deepcopy(state.effects)
         except Exception:
             pass
 
@@ -796,72 +770,56 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         s = max(1, min(3, int(slot)))
         return (fx.mfx1, fx.mfx2, fx.mfx3)[s - 1]
 
-    def _mfx_target(self):
-        """Where MFX Studio edits: ('perf', slot) | ('part', n) | ('patch',)."""
-        if not self._in_perform():
-            return ("patch",)
-        s = max(1, min(3, int(getattr(self, "_editing_perf_mfx", 1))))
-        holder = self._perf_slot(s)
-        origin = int(getattr(holder, "source", 0)) if holder is not None else 0
-        if origin == 0:
-            return ("perf", s)
-        return ("part", max(1, min(16, origin)))
+    def _fx_origin(self, block: str, slot: int | None = None) -> int:
+        """The performance FX origin of a block: 0 = PERFORM, n = PART n."""
+        fx = self.patch_state.perf_fx
+        if block == "mfx":
+            return int(self._perf_slot(slot or self._editing_perf_mfx).source)
+        return int(fx.chorus_source if block == "chorus" else fx.reverb_source)
 
-    def _cho_target(self):
-        """Where Master FX chorus edits: ('perf',) | ('part', n) | ('patch',)."""
-        if not self._in_perform():
-            return ("patch",)
-        fx = getattr(self.patch_state, "perf_fx", None)
-        origin = int(getattr(fx, "chorus_source", 0)) if fx is not None else 0
-        if origin == 0:
-            return ("perf",)
-        return ("part", max(1, min(16, origin)))
+    def _origin_target(self, block: str, slot: int | None = None, fetch: bool = False) -> FxTarget:
+        """The performance-side target of a block (by origin, whatever the mode).
 
-    def _rev_target(self):
-        """Where Master FX reverb edits: ('perf',) | ('part', n) | ('patch',)."""
-        if not self._in_perform():
-            return ("patch",)
-        fx = getattr(self.patch_state, "perf_fx", None)
-        origin = int(getattr(fx, "reverb_source", 0)) if fx is not None else 0
+        A PART n target has store None while that part's FX are not cached;
+        fetch=True reads them from the synth first.
+        """
+        origin = self._fx_origin(block, slot)
         if origin == 0:
-            return ("perf",)
-        return ("part", max(1, min(16, origin)))
+            if block == "mfx":
+                s = max(1, min(3, int(slot or self._editing_perf_mfx)))
+                return FxTarget("perf", s, self._perf_slot(s))
+            return FxTarget("perf", 0, self.patch_state.perf_fx)
+        n = max(1, min(16, origin))
+        if fetch:
+            self._ensure_part_fx_cache(n)
+        return FxTarget("part", n, self._part_fx_cache.get(n))
 
-    @staticmethod
-    def _cache_from_effects(eff) -> dict:
-        """Build a read_part_fx-shaped cache entry from an EffectsState."""
-        try:
-            params = list(eff.mfx_params[:32])
-        except Exception:
-            params = [0] * 32
-        return {
-            "mfx": {"type": int(eff.mfx_type), "dry": int(eff.mfx_dry_send),
-                    "chorus": int(eff.mfx_chorus_send), "reverb": int(eff.mfx_reverb_send),
-                    "params": params + [0] * (32 - len(params)),
-                    "lastActive": int(getattr(eff, "mfx_last_active_type", 15) or 15)},
-            "chorus": {"type": int(eff.chorus_type), "level": int(eff.chorus_level),
-                       "toReverb": int(eff.chorus_to_reverb),
-                       "predelay": int(eff.chorus_predelay), "rate": int(eff.chorus_rate),
-                       "depth": int(eff.chorus_depth), "feedback": int(eff.chorus_feedback)},
-            "reverb": {"type": int(eff.reverb_type), "level": int(eff.reverb_level),
-                       "predelay": int(eff.reverb_predelay), "time": int(eff.reverb_time),
-                       "damp": int(eff.reverb_damp), "diffusion": int(eff.reverb_diffusion),
-                       "tone": int(eff.reverb_tone)},
-        }
+    def _fx_target(self, block: str, slot: int | None = None, fetch: bool = False) -> FxTarget:
+        """Where an MFX / chorus / reverb edit lands (see fx_target): the patch
+        FX in PATCH mode, else the origin's (block: "mfx" | "chorus" | "reverb";
+        slot: MFX slot 1..3, default the one being edited)."""
+        if not self._in_perform():
+            return FxTarget("patch", 0, self.patch_state.effects)
+        return self._origin_target(block, slot, fetch)
+
+    def _fx_edit_target(self, block: str, fetch: bool = True) -> FxTarget:
+        """The editors' target: a part not readable falls back to the edited
+        patch's FX (what the editors show offline)."""
+        t = self._fx_target(block, fetch=fetch)
+        if t.store is None:
+            return FxTarget("patch", 0, self.patch_state.effects)
+        return t
+
+
 
     def _refresh_part_fx_cache(self, part_index: int) -> bool:
         """Best-effort hardware read of one part-patch FX into the cache."""
         juno = self.juno
-        if juno is None or not hasattr(juno, "read_part_fx"):
+        if juno is None:
             return False
         try:
-            data = juno.read_part_fx(int(part_index), timeout=1.0)
-            if isinstance(data, dict) and "mfx" in data:
-                data["mfx"].setdefault("lastActive", int(data["mfx"].get("type") or 15) or 15)
-                if int(data["mfx"].get("type") or 0) > 0:
-                    data["mfx"]["lastActive"] = int(data["mfx"]["type"])
-                self._part_fx_cache[int(part_index)] = data
-                return True
+            self._part_fx_cache[int(part_index)] = juno.read_part_fx(int(part_index), timeout=1.0)
+            return True
         except Exception as e:
             logger.debug(f"_refresh_part_fx_cache({part_index}) failed: {e}")
         return False
@@ -871,9 +829,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         n = max(1, min(16, int(part_index)))
         if n not in self._part_fx_cache:
             self._refresh_part_fx_cache(n)
-
-    def _part_cached(self, part_index: int):
-        return self._part_fx_cache.get(max(1, min(16, int(part_index))))
 
     def _emit_fx_editor_signals(self) -> None:
         for sig in (self.mfxParamsChanged, self.mfxValuesChanged,
@@ -886,70 +841,19 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     def _mfx_view(self):
         """Resolved (type_shown, bypassed, dry, cho, rev, params) for MFX Studio."""
-        tgt = self._mfx_target()
-        eff = self.patch_state.effects
-        if tgt[0] == "perf":
-            holder = self._perf_slot(tgt[1])
-            mtype = int(holder.mfx_type)
-            last = int(getattr(holder, "last_active_type", 15) or 15)
-            try:
-                params = list(holder.params[:32])
-            except Exception:
-                params = [0] * 32
-            shown = mtype if mtype != 0 else last
-            return (shown, mtype == 0, int(holder.dry_send),
-                    int(holder.chorus_send), int(holder.reverb_send), params)
-        if tgt[0] == "part":
-            cached = self._part_cached(tgt[1])
-            if cached is not None:
-                m = cached["mfx"]
-                shown = int(m["type"]) if int(m["type"]) != 0 else int(m.get("lastActive") or 15)
-                return (shown, int(m["type"]) == 0, int(m["dry"]),
-                        int(m["chorus"]), int(m["reverb"]), list(m["params"][:32]))
-        shown = eff.mfx_type if not eff.mfx_bypassed else eff.mfx_last_active_type
-        return (shown, bool(eff.mfx_bypassed), int(eff.mfx_dry_send),
-                int(eff.mfx_chorus_send), int(eff.mfx_reverb_send),
-                list(eff.mfx_params[:32]))
+        t = self._fx_edit_target("mfx", fetch=False)
+        return (t.mfx_shown_type, t.mfx_bypassed, int(t.mfx("dry")), int(t.mfx("chorus")),
+                int(t.mfx("reverb")), list(t.mfx("params")[:32]))
 
     def _cho_view(self):
         """Resolved (type, level, toReverb, rate, depth, predelay, feedback)."""
-        tgt = self._cho_target()
-        eff = self.patch_state.effects
-        if tgt[0] == "perf":
-            fx = self.patch_state.perf_fx
-            return (int(fx.chorus_type), int(fx.chorus_level), int(fx.chorus_to_reverb),
-                    int(fx.chorus_rate), int(fx.chorus_depth),
-                    int(fx.chorus_predelay), int(fx.chorus_feedback))
-        if tgt[0] == "part":
-            cached = self._part_cached(tgt[1])
-            if cached is not None:
-                c = cached["chorus"]
-                return (int(c["type"]), int(c["level"]), int(c["toReverb"]),
-                        int(c["rate"]), int(c["depth"]),
-                        int(c["predelay"]), int(c["feedback"]))
-        return (int(eff.chorus_type), int(eff.chorus_level), int(eff.chorus_to_reverb),
-                int(eff.chorus_rate), int(eff.chorus_depth),
-                int(eff.chorus_predelay), int(eff.chorus_feedback))
+        s = self._fx_edit_target("chorus", fetch=False).store
+        return tuple(int(getattr(s, a)) for a in CHORUS_ATTRS)
 
     def _rev_view(self):
         """Resolved (type, level, predelay, time, damp, diffusion, tone)."""
-        tgt = self._rev_target()
-        eff = self.patch_state.effects
-        if tgt[0] == "perf":
-            fx = self.patch_state.perf_fx
-            return (int(fx.reverb_type), int(fx.reverb_level),
-                    int(fx.reverb_predelay), int(fx.reverb_time),
-                    int(fx.reverb_damp), int(fx.reverb_diffusion), int(fx.reverb_tone))
-        if tgt[0] == "part":
-            cached = self._part_cached(tgt[1])
-            if cached is not None:
-                r = cached["reverb"]
-                return (int(r["type"]), int(r["level"]), int(r["predelay"]),
-                        int(r["time"]), int(r["damp"]),
-                        int(r["diffusion"]), int(r["tone"]))
-        return (int(eff.reverb_type), int(eff.reverb_level),
-                int(eff.reverb_predelay), int(eff.reverb_time),
-                int(eff.reverb_damp), int(eff.reverb_diffusion), int(eff.reverb_tone))
+        s = self._fx_edit_target("reverb", fetch=False).store
+        return tuple(int(getattr(s, a)) for a in REVERB_ATTRS)
 
     @pyqtSlot(str)
     def setSoundMode(self, mode: str) -> None:
@@ -1038,13 +942,8 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     def setEditingPerfMfx(self, slot: int) -> None:
         """Editing radio: which shared MFX the MFX Studio shows/edits (1..3)."""
         self._editing_perf_mfx = max(1, min(3, int(slot)))
-        try:
-            tgt = self._mfx_target()
-            if tgt[0] == "part":
-                self._ensure_part_fx_cache(tgt[1])
-            self._emit_fx_editor_signals()
-        except Exception:
-            pass
+        self._fx_target("mfx", fetch=True)
+        self._emit_fx_editor_signals()
 
     @pyqtSlot(str, int)
     def setPerfSource(self, which: str, origin: int) -> None:
@@ -1101,50 +1000,21 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         that part's patch (same as MFX Studio would).
         """
         s = max(1, min(3, int(slot)))
-        fx = getattr(self.patch_state, "perf_fx", None)
-        holder = (fx.mfx1, fx.mfx2, fx.mfx3)[s - 1] if fx is not None else None
-        origin = int(getattr(holder, "source", 0)) if holder is not None else 0
-        juno = self.juno
-        if self._in_perform() and origin != 0:
-            cached = self._part_cached(origin)
-            if cached is None:
-                self._ensure_part_fx_cache(origin)
-                cached = self._part_cached(origin)
-            if cached is not None:
-                m = cached["mfx"]
-                m["type"] = max(0, min(80, int(mfx_type)))
-                m["dry"] = max(0, min(127, int(dry)))
-                m["chorus"] = max(0, min(127, int(chorus)))
-                m["reverb"] = max(0, min(127, int(reverb)))
-                if juno is not None and hasattr(juno, "set_part_patch_mfx"):
-                    try:
-                        juno.set_part_patch_mfx(origin, mfx_type=m["type"], dry_send=m["dry"],
-                                                chorus_send=m["chorus"], reverb_send=m["reverb"])
-                    except Exception as e:
-                        logger.debug(f"setPerfMfx: part synth write failed: {e}")
-                for send in ("dry", "chorus", "reverb"):
-                    self._rebasePerfFx(f"mfx{s}", send, m[send])
-                self._emit_fx_editor_signals()
-                return
-        if holder is not None:
-            holder.mfx_type = max(0, min(80, int(mfx_type)))
-            holder.dry_send = max(0, min(127, int(dry)))
-            holder.chorus_send = max(0, min(127, int(chorus)))
-            holder.reverb_send = max(0, min(127, int(reverb)))
-        if juno is not None:
+        t = self._fx_target("mfx", slot=s, fetch=True)
+        if t.store is None:  # the part could not be read: the rail shows the slot
+            t = FxTarget("perf", s, self._perf_slot(s))
+        values = {"type": max(0, min(80, int(mfx_type))), "dry": max(0, min(127, int(dry))),
+                  "chorus": max(0, min(127, int(chorus))), "reverb": max(0, min(127, int(reverb)))}
+        for name, v in values.items():
+            t.set_mfx(name, v)
+        if self.juno is not None:
             try:
-                if hasattr(juno, "set_perf_mfx"):
-                    juno.set_perf_mfx(s, mfx_type=int(mfx_type), dry_send=int(dry),
-                                      chorus_send=int(chorus), reverb_send=int(reverb))
+                t.write_mfx(self.juno, values["type"], values["dry"], values["chorus"], values["reverb"])
             except Exception as e:
                 logger.debug(f"setPerfMfx: synth write failed: {e}")
-        if holder is not None:
-            for send in ("dry", "chorus", "reverb"):
-                self._rebasePerfFx(f"mfx{s}", send, getattr(holder, f"{send}_send"))
-        try:
-            self.perfFxChanged.emit(); self.mfxParamsChanged.emit(); self.routingChanged.emit()
-        except Exception:
-            pass
+        for send in ("dry", "chorus", "reverb"):
+            self._rebasePerfFx(f"mfx{s}", send, values[send])
+        self._emit_fx_editor_signals()
 
     def setPerfMfxSlotSend(self, slot: int, send: str, val: int) -> None:
         """One send (dry/chorus/reverb) of MFX slot 1..3, origin-resolved (macros)."""
@@ -1152,26 +1022,15 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         if send not in ("dry", "chorus", "reverb"):
             return
         v = max(0, min(127, int(val)))
-        holder = self._perf_slot(s)
-        if holder is None:
+        t = self._fx_target("mfx", slot=s, fetch=True)
+        if t.store is None:
             return
-        origin = int(getattr(holder, "source", 0))
-        juno = self.juno
-        try:
-            if origin != 0:
-                self._ensure_part_fx_cache(origin)
-                cached = self._part_cached(origin)
-                if cached is None:
-                    return
-                cached["mfx"][send] = v
-                if juno is not None:
-                    juno.set_part_patch_mfx(origin, **{f"{send}_send": v})
-            else:
-                setattr(holder, f"{send}_send", v)
-                if juno is not None:
-                    juno.set_perf_mfx(s, **{f"{send}_send": v})
-        except Exception as e:
-            logger.debug(f"setPerfMfxSlotSend: synth write failed: {e}")
+        t.set_mfx(send, v)
+        if self.juno is not None:
+            try:
+                t.write_mfx(self.juno, **{send: v})
+            except Exception as e:
+                logger.debug(f"setPerfMfxSlotSend: synth write failed: {e}")
         self._rebasePerfFx(f"mfx{s}", send, v)
         self._emit_fx_editor_signals()
 
@@ -1185,88 +1044,62 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         reverb are written from the part's cached values. Offline without a
         cached copy of that part, only the source switches. Returns True on success.
         """
-        k = str(which or "").lower()
+        k = {"cho": "chorus", "rev": "reverb"}.get(str(which or "").lower(), str(which or "").lower())
+        if k not in ("mfx1", "mfx2", "mfx3", "chorus", "reverb"):
+            return False
         fx = self.patch_state.perf_fx
         juno = self.juno
-        try:
-            if k in ("mfx1", "mfx2", "mfx3"):
-                s = {"mfx1": 1, "mfx2": 2, "mfx3": 3}[k]
-                holder = (fx.mfx1, fx.mfx2, fx.mfx3)[s - 1]
-                origin = int(holder.source)
-                if origin == 0:
-                    return True  # already PERFORM
-                if juno is not None:
-                    try:
-                        src = add_address(temp_perf_patch_base(origin), OFFSET_PATCH_COMMON_MFX)
-                        raw = juno.request_data(src, PERF_MFX_BLOCK_SIZE, timeout=1.0)
-                        if raw is not None and len(raw) >= 4:
-                            juno.send_data(perf_common_fx_base(s), list(bytes(raw)))
-                    except Exception as e:
-                        logger.debug(f"copyOriginToPerform mfx HW copy failed: {e}")
-                self._ensure_part_fx_cache(origin)
-                cached = self._part_cached(origin)
-                if cached is not None:
-                    m = cached["mfx"]
-                    holder.mfx_type = int(m["type"])
-                    holder.dry_send = int(m["dry"])
-                    holder.chorus_send = int(m["chorus"])
-                    holder.reverb_send = int(m["reverb"])
-                    holder.params = (list(m["params"][:32]) + [0] * 32)[:32]
-                holder.source = 0
-                if juno is not None:
-                    try:
-                        juno.set_perf_source(k, 0)
-                    except Exception as e:
-                        logger.debug(f"copyOriginToPerform {k} source write failed: {e}")
-                self._emit_fx_editor_signals()
+        if k.startswith("mfx"):
+            s = int(k[3])
+            src = self._origin_target("mfx", slot=s, fetch=True)
+            if src.kind != "part":
+                return True  # already PERFORM
+            if juno is not None:
+                try:
+                    addr = add_address(temp_perf_patch_base(src.index), OFFSET_PATCH_COMMON_MFX)
+                    raw = juno.request_data(addr, PERF_MFX_BLOCK_SIZE, timeout=1.0)
+                    if raw is not None and len(raw) >= 4:
+                        juno.send_data(perf_common_fx_base(s), list(bytes(raw)))
+                except Exception as e:
+                    logger.debug(f"copyOriginToPerform mfx HW copy failed: {e}")
+            holder = self._perf_slot(s)
+            if src.store is not None:
+                dst = FxTarget("perf", s, holder)
+                for name in ("type", "dry", "chorus", "reverb", "last"):
+                    dst.set_mfx(name, int(src.mfx(name)))
+                holder.params = list(src.mfx("params")[:32])
+            holder.source = 0
+        else:
+            src = self._origin_target(k, fetch=True)
+            if src.kind != "part":
                 return True
-            elif k in ("chorus", "cho", "reverb", "rev"):
-                is_cho = k in ("chorus", "cho")
-                origin = int(fx.chorus_source if is_cho else fx.reverb_source)
-                if origin == 0:
-                    return True
-                self._ensure_part_fx_cache(origin)
-                cached = self._part_cached(origin)
-                if cached is not None:
-                    if is_cho:
-                        c = cached["chorus"]
-                        fx.chorus_type = int(c["type"]); fx.chorus_level = int(c["level"])
-                        fx.chorus_to_reverb = int(c["toReverb"])
-                        fx.chorus_predelay = int(c["predelay"]); fx.chorus_rate = int(c["rate"])
-                        fx.chorus_depth = int(c["depth"]); fx.chorus_feedback = int(c["feedback"])
-                    else:
-                        r = cached["reverb"]
-                        fx.reverb_type = int(r["type"]); fx.reverb_level = int(r["level"])
-                        fx.reverb_predelay = int(r["predelay"]); fx.reverb_time = int(r["time"])
-                        fx.reverb_damp = int(r["damp"]); fx.reverb_diffusion = int(r["diffusion"])
-                        fx.reverb_tone = int(r["tone"])
-                if is_cho:
-                    fx.chorus_source = 0
-                else:
-                    fx.reverb_source = 0
-                if juno is not None:
-                    try:
-                        if cached is not None and is_cho:
-                            juno.set_perf_chorus(fx.chorus_type, level=fx.chorus_level,
-                                                 output_select=fx.chorus_to_reverb)
-                            for param, val in (("predelay", fx.chorus_predelay), ("rate", fx.chorus_rate),
-                                               ("depth", fx.chorus_depth), ("feedback", fx.chorus_feedback)):
-                                juno.set_perf_chorus_param(param, int(val))
-                        elif cached is not None:
-                            juno.set_perf_reverb(fx.reverb_type, level=fx.reverb_level)
-                            for param, val in (("predelay", fx.reverb_predelay), ("time", fx.reverb_time),
-                                               ("damp", fx.reverb_damp), ("diffusion", fx.reverb_diffusion),
-                                               ("tone", fx.reverb_tone)):
-                                juno.set_perf_reverb_param(param, int(val))
-                        juno.set_perf_source("chorus" if is_cho else "reverb", 0)
-                    except Exception as e:
-                        logger.debug(f"copyOriginToPerform {'cho' if is_cho else 'rev'} HW failed: {e}")
-                self._emit_fx_editor_signals()
-                return True
-        except Exception as e:
-            logger.debug(f"copyOriginToPerform failed: {e}")
-            return False
-        return False
+            dst = FxTarget("perf", 0, fx)
+            if src.store is not None:
+                for a in CHORUS_ATTRS if k == "chorus" else REVERB_ATTRS:
+                    setattr(fx, a, int(getattr(src.store, a)))
+            setattr(fx, f"{k}_source", 0)
+            if juno is not None:
+                try:
+                    if src.store is not None and k == "chorus":
+                        dst.write_chorus(juno)
+                        for param, val in (("predelay", fx.chorus_predelay), ("rate", fx.chorus_rate),
+                                           ("depth", fx.chorus_depth), ("feedback", fx.chorus_feedback)):
+                            dst.write_chorus_detail(juno, param, int(val))
+                    elif src.store is not None:
+                        dst.write_reverb(juno)
+                        for param, val in (("predelay", fx.reverb_predelay), ("time", fx.reverb_time),
+                                           ("damp", fx.reverb_damp), ("diffusion", fx.reverb_diffusion),
+                                           ("tone", fx.reverb_tone)):
+                            dst.write_reverb_detail(juno, param, int(val))
+                except Exception as e:
+                    logger.debug(f"copyOriginToPerform {k} HW failed: {e}")
+        if juno is not None:
+            try:
+                juno.set_perf_source(k, 0)
+            except Exception as e:
+                logger.debug(f"copyOriginToPerform {k} source write failed: {e}")
+        self._emit_fx_editor_signals()
+        return True
 
     @pyqtSlot()
     @pyqtSlot(bool)

@@ -905,7 +905,7 @@ def test_bridge_perf_sources_and_editing(tmp_path):
     part4.mfx_params[20] = 7
     part4.chorus_type = 2
     part4.chorus_rate = 55
-    bridge._part_fx_cache[4] = bridge._cache_from_effects(part4)
+    bridge._part_fx_cache[4] = part4
     bridge.patch_state.effects.mfx_type = 15
     assert bridge.copyOriginToPerform("mfx1") is True
     assert bridge.patch_state.perf_fx.mfx1.source == 0
@@ -1022,21 +1022,21 @@ def test_master_fx_follows_chorus_origin(tmp_path):
 
 def test_part_origin_routes_to_part_patch(tmp_path):
     bridge, juno = _perform_bridge(tmp_path)
-    bridge._part_fx_cache[3] = {
-        "mfx": {"type": 20, "dry": 90, "chorus": 10, "reverb": 10,
-                "params": [5] * 32, "lastActive": 20},
-        "chorus": {"type": 2, "level": 70, "toReverb": 1, "predelay": 1,
-                   "rate": 2, "depth": 3, "feedback": 4},
-        "reverb": {"type": 3, "level": 71, "predelay": 1, "time": 2,
-                   "damp": 3, "diffusion": 4, "tone": 5},
-    }
+    from spectre.core.patch_state import EffectsState
+    bridge._part_fx_cache[3] = EffectsState(
+        mfx_type=20, mfx_dry_send=90, mfx_chorus_send=10, mfx_reverb_send=10,
+        mfx_params=[5] * 32, mfx_last_active_type=20,
+        chorus_type=2, chorus_level=70, chorus_to_reverb=1, chorus_predelay=1,
+        chorus_rate=2, chorus_depth=3, chorus_feedback=4,
+        reverb_type=3, reverb_level=71, reverb_predelay=1, reverb_time=2,
+        reverb_damp=3, reverb_diffusion=4, reverb_tone=5)
     juno._store.clear()  # entering PERFORM pushed the shared FX; only edits count
     bridge.setPerfSource("mfx1", 3)
     assert bridge.mfxEditTargetLabel == "MFX1\u00b7P3"
     assert bridge.mfxAlgoId == 20
     assert bridge.mfxParamValues[0] == 5
     bridge.setMfxSend("dry", 50)
-    assert bridge._part_fx_cache[3]["mfx"]["dry"] == 50
+    assert bridge._part_fx_cache[3].mfx_dry_send == 50
     # Part 3 temp patch MFX dry: 11 40 00 00 + 00 00 02 01.
     assert juno._store[(0x11, 0x40, 0x02, 0x01)] == bytes([50])
     # Perf-common slot untouched.
@@ -1045,7 +1045,7 @@ def test_part_origin_routes_to_part_patch(tmp_path):
     assert bridge.choEditTargetLabel == "CHO\u00b7P3"
     assert bridge.chorusLevel == 70
     bridge.setChorusParam("level", 33)
-    assert bridge._part_fx_cache[3]["chorus"]["level"] == 33
+    assert bridge._part_fx_cache[3].chorus_level == 33
     assert juno._store[(0x11, 0x40, 0x04, 0x01)] == bytes([33])
 
 
@@ -1071,9 +1071,9 @@ def test_read_part_fx_decode():
     assert len(mfx) == 145 and len(cho) == 84 and len(rev) == 83
     client.request_data = MagicMock(side_effect=[mfx, cho, rev])
     out = client.read_part_fx(3)
-    assert out["mfx"]["type"] == 15 and out["mfx"]["params"][0] == 40
-    assert out["chorus"]["level"] == 80 and out["chorus"]["predelay"] == 12
-    assert out["reverb"]["level"] == 60 and out["reverb"]["predelay"] == 15
+    assert out.mfx_type == 15 and out.mfx_params[0] == 40
+    assert out.chorus_level == 80 and out.chorus_predelay == 12
+    assert out.reverb_level == 60 and out.reverb_predelay == 15
 
 
 def test_sync_performance_resolves_part_names(tmp_path):

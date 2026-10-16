@@ -1827,445 +1827,149 @@ class PatchBridgeMixin(BridgeBaseMixin):
         """Request the UI to open the quick-edit Envelope Overlay for an envelope."""
         self.requestOpenEnvOverlay.emit(env.upper())
 
-    CHORUS_PARAM_SPECS: dict[str, tuple[str, int, int, str]] = {
-        "type": ("chorus_type", 0, 3, "type"),
-        "level": ("chorus_level", 0, 127, "level"),
-        "toReverb": ("chorus_to_reverb", 0, 2, "toReverb"),
-        "rate": ("chorus_rate", 0, 127, "rate"),
-        "depth": ("chorus_depth", 0, 127, "depth"),
-        "preDelay": ("chorus_predelay", 0, 127, "predelay"),
-        "feedback": ("chorus_feedback", 0, 127, "feedback"),
+    CHORUS_PARAM_SPECS: dict[str, tuple[str, int, int]] = {
+        "type": ("chorus_type", 0, 3),
+        "level": ("chorus_level", 0, 127),
+        "toReverb": ("chorus_to_reverb", 0, 2),
+        "rate": ("chorus_rate", 0, 127),
+        "depth": ("chorus_depth", 0, 127),
+        "preDelay": ("chorus_predelay", 0, 127),
+        "feedback": ("chorus_feedback", 0, 127),
     }
 
-    REVERB_PARAM_SPECS: dict[str, tuple[str, int, int, str]] = {
-        "type": ("reverb_type", 0, 5, "type"),
-        "level": ("reverb_level", 0, 127, "level"),
-        "time": ("reverb_time", 0, 127, "time"),
-        "damp": ("reverb_damp", 0, 127, "damp"),
-        "preDelay": ("reverb_predelay", 0, 127, "predelay"),
-        "diffusion": ("reverb_diffusion", 0, 127, "diffusion"),
-        "tone": ("reverb_tone", 0, 127, "tone"),
+    REVERB_PARAM_SPECS: dict[str, tuple[str, int, int]] = {
+        "type": ("reverb_type", 0, 5),
+        "level": ("reverb_level", 0, 127),
+        "time": ("reverb_time", 0, 127),
+        "damp": ("reverb_damp", 0, 127),
+        "preDelay": ("reverb_predelay", 0, 127),
+        "diffusion": ("reverb_diffusion", 0, 127),
+        "tone": ("reverb_tone", 0, 127),
     }
 
     @pyqtSlot(str, int)
     def setChorusParam(self, param: str, val: int) -> None:
-        """Set Master Chorus parameter (origin-resolved in PERFORM mode)."""
-        spec = self.CHORUS_PARAM_SPECS.get(param)
+        """Set a chorus parameter on the edit target (origin-resolved in PERFORM)."""
+        self._set_master_fx_param("chorus", param, val)
+
+    def _set_master_fx_param(self, block: str, param: str, val: int) -> None:
+        spec = (self.CHORUS_PARAM_SPECS if block == "chorus" else self.REVERB_PARAM_SPECS).get(param)
         if not spec:
             return
-        attr, lo, hi, key = spec
+        attr, lo, hi = spec
         clamped = max(lo, min(hi, int(val)))
-        tgt = self._cho_target()
+        t = self._fx_edit_target(block)
+        setattr(t.store, attr, clamped)
         juno = self.juno
-
-        if tgt[0] == "perf":
-            fx = self.patch_state.perf_fx
-            setattr(fx, attr, clamped)
-            if juno is not None:
-                try:
-                    if param in ("type", "level", "toReverb") and hasattr(juno, "set_perf_chorus"):
-                        juno.set_perf_chorus(fx.chorus_type, level=fx.chorus_level, output_select=fx.chorus_to_reverb)
-                    elif hasattr(juno, "set_perf_chorus_param"):
-                        juno.set_perf_chorus_param(param, clamped)
-                except Exception as e:
-                    logger.error(f"Error setting perf chorus on synth: {e}")
-            self._rebasePerfFx("chorus", param, clamped)
-            self.chorusParamsChanged.emit()
-            self.routingChanged.emit()
-            try:
-                self.perfFxChanged.emit()
-            except Exception:
-                pass
-            return
-
-        if tgt[0] == "part":
-            n = tgt[1]
-            cached = self._part_cached(n)
-            if cached is None:
-                self._ensure_part_fx_cache(n)
-                cached = self._part_cached(n)
-            if cached is not None:
-                c = cached["chorus"]
-                c[key] = clamped
-                if juno is not None:
-                    try:
-                        if param in ("type", "level", "toReverb") and hasattr(juno, "set_part_patch_chorus"):
-                            juno.set_part_patch_chorus(n, chorus_type=c["type"], level=c["level"], output_select=c["toReverb"])
-                        elif hasattr(juno, "set_part_patch_chorus_param"):
-                            juno.set_part_patch_chorus_param(n, param, clamped)
-                    except Exception as e:
-                        logger.error(f"Error setting part {n} chorus on synth: {e}")
-                self._rebasePerfFx("chorus", param, clamped)
-                self.chorusParamsChanged.emit()
-                self.routingChanged.emit()
-                return
-
-        eff = self.patch_state.effects
-        setattr(eff, attr, clamped)
         if juno is not None:
             try:
-                if param in ("type", "level", "toReverb"):
-                    juno.set_chorus(eff.chorus_type, level=eff.chorus_level, output_select=eff.chorus_to_reverb)
+                if block == "chorus" and param in ("type", "level", "toReverb"):
+                    t.write_chorus(juno)
+                elif block == "chorus":
+                    t.write_chorus_detail(juno, param, clamped)
+                elif param in ("type", "level"):
+                    t.write_reverb(juno)
                 else:
-                    juno.set_chorus_param(param, clamped)
+                    t.write_reverb_detail(juno, param, clamped)
             except Exception as e:
-                logger.error(f"Error setting chorus on synth: {e}")
-
-        self._rebaseChorusParam(param)
-        self.chorusParamsChanged.emit()
+                logger.error(f"Error setting {block} {param} on synth: {e}")
+        if t.kind == "patch":
+            (self._rebaseChorusParam if block == "chorus" else self._rebaseReverbParam)(param)
+            self.macrosChanged.emit()
+        else:
+            self._rebasePerfFx(block, param, clamped)
+            self.perfFxChanged.emit()
+        (self.chorusParamsChanged if block == "chorus" else self.reverbParamsChanged).emit()
         self.routingChanged.emit()
-        self.macrosChanged.emit()
 
     @pyqtSlot(str, int)
     def setReverbParam(self, param: str, val: int) -> None:
-        """Set Master Reverb parameter (origin-resolved in PERFORM mode)."""
-        spec = self.REVERB_PARAM_SPECS.get(param)
-        if not spec:
-            return
-        attr, lo, hi, key = spec
-        clamped = max(lo, min(hi, int(val)))
-        tgt = self._rev_target()
-        juno = self.juno
+        """Set a reverb parameter on the edit target (origin-resolved in PERFORM)."""
+        self._set_master_fx_param("reverb", param, val)
 
-        if tgt[0] == "perf":
-            fx = self.patch_state.perf_fx
-            setattr(fx, attr, clamped)
-            if juno is not None:
-                try:
-                    if param in ("type", "level") and hasattr(juno, "set_perf_reverb"):
-                        juno.set_perf_reverb(fx.reverb_type, level=fx.reverb_level)
-                    elif hasattr(juno, "set_perf_reverb_param"):
-                        juno.set_perf_reverb_param(param, clamped)
-                except Exception as e:
-                    logger.error(f"Error setting perf reverb on synth: {e}")
-            self._rebasePerfFx("reverb", param, clamped)
-            self.reverbParamsChanged.emit()
-            self.routingChanged.emit()
-            try:
-                self.perfFxChanged.emit()
-            except Exception:
-                pass
-            return
-
-        if tgt[0] == "part":
-            n = tgt[1]
-            cached = self._part_cached(n)
-            if cached is None:
-                self._ensure_part_fx_cache(n)
-                cached = self._part_cached(n)
-            if cached is not None:
-                r = cached["reverb"]
-                r[key] = clamped
-                if juno is not None:
-                    try:
-                        if param in ("type", "level") and hasattr(juno, "set_part_patch_reverb"):
-                            juno.set_part_patch_reverb(n, reverb_type=r["type"], level=r["level"])
-                        elif hasattr(juno, "set_part_patch_reverb_param"):
-                            juno.set_part_patch_reverb_param(n, param, clamped)
-                    except Exception as e:
-                        logger.error(f"Error setting part {n} reverb on synth: {e}")
-                self._rebasePerfFx("reverb", param, clamped)
-                self.reverbParamsChanged.emit()
-                self.routingChanged.emit()
-                return
-
-        eff = self.patch_state.effects
-        setattr(eff, attr, clamped)
-        if juno is not None:
-            try:
-                if param in ("type", "level"):
-                    juno.set_reverb(eff.reverb_type, level=eff.reverb_level)
-                else:
-                    juno.set_reverb_param(param, clamped)
-            except Exception as e:
-                logger.error(f"Error setting reverb on synth: {e}")
-
-        self._rebaseReverbParam(param)
-        self.reverbParamsChanged.emit()
-        self.routingChanged.emit()
-        self.macrosChanged.emit()
-
-    def _apply_mfx_algo(self, store, algo_id: int) -> int:
-        """Shared algo-select onto an MFX-like store (EffectsState or PerfMfxSlotState).
-
-        Returns the clamped id. Loads catalog default params when selecting
-        a real algorithm; marks bypass when selecting 0.
-        """
+    @staticmethod
+    def _apply_mfx_algo(t, algo_id: int) -> int:
+        """Select an MFX algorithm on a target's store: 0 bypasses, a real one
+        loads the catalog default params. Returns the clamped id."""
         clamped = max(0, min(80, int(algo_id)))
-        store.mfx_type = clamped
+        t.set_mfx("type", clamped)
         if clamped > 0:
-            store.last_active_type = clamped
-            if hasattr(store, "mfx_last_active_type"):
-                store.mfx_last_active_type = clamped
-            if hasattr(store, "mfx_bypassed"):
-                store.mfx_bypassed = False
+            t.set_mfx("last", clamped)
             algo = get_mfx_algo(clamped)
-            if algo and "params" in algo:
-                for pp in algo["params"]:
-                    idx = pp["idx"]
-                    if 0 <= idx < 32:
-                        try:
-                            store.params[idx] = pp.get("val", 0)
-                        except Exception:
-                            pass
-                        if hasattr(store, "mfx_params"):
-                            store.mfx_params[idx] = pp.get("val", 0)
-        else:
-            if hasattr(store, "mfx_bypassed"):
-                store.mfx_bypassed = True
+            params = t.mfx("params")
+            for pp in (algo or {}).get("params", []):
+                if 0 <= pp["idx"] < 32:
+                    params[pp["idx"]] = pp.get("val", 0)
         return clamped
 
-    def _push_mfx_algo(self, juno, kind, slot_or_part, store, clamped: int) -> None:
+    @staticmethod
+    def _push_mfx_algo(juno, t, clamped: int) -> None:
         """Push an algo-select to hardware (catalog defaults included)."""
         try:
+            t.write_mfx(juno, mfx_type=clamped)
             algo = get_mfx_algo(clamped) if clamped > 0 else None
-            if kind == "perf":
-                juno.set_perf_mfx(slot_or_part, mfx_type=store.mfx_type)
-                if algo and "params" in algo:
-                    for pp in algo["params"]:
-                        try:
-                            juno.set_perf_mfx_param(slot_or_part, pp["idx"], store.params[pp["idx"]])
-                        except Exception:
-                            pass
-            elif kind == "part":
-                juno.set_part_patch_mfx(slot_or_part, mfx_type=store.mfx_type)
-                if algo and "params" in algo:
-                    for pp in algo["params"]:
-                        try:
-                            juno.set_part_patch_mfx_param(slot_or_part, pp["idx"], store.params[pp["idx"]])
-                        except Exception:
-                            pass
-            else:
-                params = getattr(store, "mfx_params", getattr(store, "params", []))
-                juno.set_mfx(store.mfx_type)
-                if algo and "params" in algo:
-                    vals = [params[pp["idx"]] for pp in algo["params"]]
-                    juno.set_mfx_params_bulk(vals)
+            idxs = [pp["idx"] for pp in (algo or {}).get("params", []) if 0 <= pp["idx"] < 32]
+            if idxs:
+                t.write_mfx_params(juno, list(t.mfx("params")[:max(idxs) + 1]))
         except Exception as e:
             logger.error(f"Error setting MFX type on synth: {e}")
 
     @pyqtSlot(int)
     def setMfxAlgoId(self, algo_id: int) -> None:
         """Select active MFX Algorithm (0..80), origin-resolved in PERFORM mode."""
-        tgt = self._mfx_target()
-        juno = self.juno
-        if tgt[0] == "perf":
-            holder = self._perf_slot(tgt[1])
-            clamped = self._apply_mfx_algo(holder, algo_id)
-            if juno is not None and hasattr(juno, "set_perf_mfx"):
-                self._push_mfx_algo(juno, "perf", tgt[1], holder, clamped)
-            self._emit_fx_editor_signals()
-            return
-        if tgt[0] == "part":
-            n = tgt[1]
-            cached = self._part_cached(n)
-            if cached is None:
-                self._ensure_part_fx_cache(n)
-                cached = self._part_cached(n)
-            if cached is not None:
-                entry = dict(cached["mfx"])
-                store = type("M", (), {})()
-                store.mfx_type = entry["type"]; store.params = list(entry["params"])
-                store.last_active_type = entry.get("lastActive", 15)
-                store.mfx_last_active_type = entry.get("lastActive", 15)
-                clamped = self._apply_mfx_algo(store, algo_id)
-                entry["type"] = store.mfx_type; entry["params"] = list(store.params[:32])
-                entry["lastActive"] = int(getattr(store, "last_active_type", 15) or 15)
-                cached["mfx"] = entry
-                if juno is not None and hasattr(juno, "set_part_patch_mfx"):
-                    self._push_mfx_algo(juno, "part", n, store, clamped)
-                self._emit_fx_editor_signals()
-                return
-        eff = self.patch_state.effects
-        clamped = self._apply_mfx_algo(eff, algo_id)
-        if self.juno:
-            self._push_mfx_algo(self.juno, "patch", 0, eff, clamped)
-
-        self.mfxValuesChanged.emit()
-        self.mfxParamsChanged.emit()
-        self.routingChanged.emit()
+        t = self._fx_edit_target("mfx")
+        clamped = self._apply_mfx_algo(t, algo_id)
+        if self.juno is not None:
+            self._push_mfx_algo(self.juno, t, clamped)
+        self._emit_fx_editor_signals()
 
     @pyqtSlot(int, int)
     def setMfxParam(self, param_index: int, val: int) -> None:
         """Set an individual MFX parameter (0..31), origin-resolved in PERFORM mode."""
         if not (0 <= param_index < 32):
             return
-        tgt = self._mfx_target()
-        juno = self.juno
-        if tgt[0] == "perf":
-            holder = self._perf_slot(tgt[1])
-            holder.params[param_index] = int(val)
-            if juno is not None:
-                try:
-                    if hasattr(juno, "set_perf_mfx_param"):
-                        juno.set_perf_mfx_param(tgt[1], int(param_index), int(val))
-                except Exception as e:
-                    logger.error(f"Error setting perf MFX param on synth: {e}")
-            self.mfxValuesChanged.emit()
+        t = self._fx_edit_target("mfx")
+        t.mfx("params")[param_index] = int(val)
+        if self.juno is not None:
             try:
-                self.perfFxChanged.emit()
-            except Exception:
-                pass
-            return
-        if tgt[0] == "part":
-            n = tgt[1]
-            cached = self._part_cached(n)
-            if cached is None:
-                self._ensure_part_fx_cache(n)
-                cached = self._part_cached(n)
-            if cached is not None:
-                cached["mfx"]["params"][param_index] = int(val)
-                if juno is not None:
-                    try:
-                        if hasattr(juno, "set_part_patch_mfx_param"):
-                            juno.set_part_patch_mfx_param(n, int(param_index), int(val))
-                    except Exception as e:
-                        logger.error(f"Error setting part MFX param on synth: {e}")
-                self.mfxValuesChanged.emit()
-                return
-        eff = self.patch_state.effects
-        eff.mfx_params[param_index] = int(val)
-
-        if self.juno:
-            try:
-                self.juno.set_mfx_param(param_index, int(val))
+                t.write_mfx_params(self.juno, [int(val)], int(param_index))
             except Exception as e:
                 logger.error(f"Error setting MFX param {param_index} on synth: {e}")
-
         self.mfxValuesChanged.emit()
+        if t.kind != "patch":
+            self.perfFxChanged.emit()
 
     @pyqtSlot(bool)
     def setMfxBypass(self, bypassed: bool) -> None:
         """Toggle MFX Bypass switch (origin-resolved in PERFORM mode)."""
-        tgt = self._mfx_target()
-        juno = self.juno
-        if tgt[0] == "perf":
-            holder = self._perf_slot(tgt[1])
-            if bypassed:
-                holder.mfx_type = 0
-            else:
-                holder.mfx_type = int(getattr(holder, "last_active_type", 15) or 15)
-            if juno is not None:
-                try:
-                    if hasattr(juno, "set_perf_mfx"):
-                        juno.set_perf_mfx(tgt[1], mfx_type=int(holder.mfx_type))
-                except Exception as e:
-                    logger.error(f"Error toggling perf MFX bypass on synth: {e}")
-            self._emit_fx_editor_signals()
-            return
-        if tgt[0] == "part":
-            n = tgt[1]
-            cached = self._part_cached(n)
-            if cached is None:
-                self._ensure_part_fx_cache(n)
-                cached = self._part_cached(n)
-            if cached is not None:
-                m = cached["mfx"]
-                if bypassed:
-                    m["type"] = 0
-                else:
-                    m["type"] = int(m.get("lastActive") or 15)
-                if juno is not None:
-                    try:
-                        if hasattr(juno, "set_part_patch_mfx"):
-                            juno.set_part_patch_mfx(n, mfx_type=int(m["type"]))
-                    except Exception as e:
-                        logger.error(f"Error toggling part MFX bypass on synth: {e}")
-                self._emit_fx_editor_signals()
-                return
-        eff = self.patch_state.effects
-        eff.mfx_bypassed = bypassed
-        target_type = 0 if bypassed else eff.mfx_last_active_type
-        eff.mfx_type = target_type
-
-        if self.juno:
+        t = self._fx_edit_target("mfx")
+        mfx_type = 0 if bypassed else int(t.mfx("last") or 15)
+        t.set_mfx("type", mfx_type)
+        if self.juno is not None:
             try:
-                self.juno.set_mfx(target_type)
+                t.write_mfx(self.juno, mfx_type=mfx_type)
             except Exception as e:
                 logger.error(f"Error toggling MFX bypass on synth: {e}")
-
-        self.mfxParamsChanged.emit()
-        self.routingChanged.emit()
+        self._emit_fx_editor_signals()
 
     @pyqtSlot(str, int)
     def setMfxSend(self, send_type: str, val: int) -> None:
         """Set MFX Dry, Chorus, or Reverb send level (0..127), origin-resolved."""
-        tgt = self._mfx_target()
-        clamped = max(0, min(127, int(val)))
-        juno = self.juno
-        if tgt[0] == "perf":
-            holder = self._perf_slot(tgt[1])
-            if send_type == "dry":
-                holder.dry_send = clamped
-            elif send_type == "chorus":
-                holder.chorus_send = clamped
-            elif send_type == "reverb":
-                holder.reverb_send = clamped
-            if juno is not None:
-                try:
-                    if hasattr(juno, "set_perf_mfx"):
-                        juno.set_perf_mfx(tgt[1], dry_send=int(holder.dry_send),
-                                          chorus_send=int(holder.chorus_send),
-                                          reverb_send=int(holder.reverb_send))
-                except Exception as e:
-                    logger.error(f"Error setting perf MFX sends on synth: {e}")
-            self._rebasePerfFx(f"mfx{tgt[1]}", send_type, clamped)
-            self.mfxParamsChanged.emit()
-            self.routingChanged.emit()
-            try:
-                self.perfFxChanged.emit()
-            except Exception:
-                pass
+        if send_type not in ("dry", "chorus", "reverb"):
             return
-        if tgt[0] == "part":
-            n = tgt[1]
-            cached = self._part_cached(n)
-            if cached is None:
-                self._ensure_part_fx_cache(n)
-                cached = self._part_cached(n)
-            if cached is not None:
-                m = cached["mfx"]
-                if send_type == "dry":
-                    m["dry"] = clamped
-                elif send_type == "chorus":
-                    m["chorus"] = clamped
-                elif send_type == "reverb":
-                    m["reverb"] = clamped
-                if juno is not None:
-                    try:
-                        if hasattr(juno, "set_part_patch_mfx"):
-                            juno.set_part_patch_mfx(n, dry_send=int(m["dry"]),
-                                                    chorus_send=int(m["chorus"]),
-                                                    reverb_send=int(m["reverb"]))
-                    except Exception as e:
-                        logger.error(f"Error setting part MFX sends on synth: {e}")
-                self._rebasePerfFx(f"mfx{self.editingPerfMfx}", send_type, clamped)
-                self.mfxParamsChanged.emit()
-                self.routingChanged.emit()
-                return
-        eff = self.patch_state.effects
-        if send_type == "dry":
-            eff.mfx_dry_send = clamped
-        elif send_type == "chorus":
-            eff.mfx_chorus_send = clamped
-        elif send_type == "reverb":
-            eff.mfx_reverb_send = clamped
-
-        if self.juno:
+        clamped = max(0, min(127, int(val)))
+        t = self._fx_edit_target("mfx")
+        t.set_mfx(send_type, clamped)
+        if self.juno is not None:
             try:
-                self.juno.set_mfx(
-                    eff.mfx_type,
-                    dry_send=eff.mfx_dry_send,
-                    chorus_send=eff.mfx_chorus_send,
-                    reverb_send=eff.mfx_reverb_send,
-                )
+                t.write_mfx_sends(self.juno)
             except Exception as e:
                 logger.error(f"Error setting MFX sends on synth: {e}")
-
-        key = {"dry": "effects.mfx_dry_send", "chorus": "effects.mfx_chorus_send",
-               "reverb": "effects.mfx_reverb_send"}.get(send_type)
-        if key:
-            self._rebaseDirect([(key, clamped)])
+        if t.kind == "patch":
+            self._rebaseDirect([(f"effects.mfx_{send_type}_send", clamped)])
+        else:
+            self._rebasePerfFx(f"mfx{self.editingPerfMfx}", send_type, clamped)
+            self.perfFxChanged.emit()
         self.mfxParamsChanged.emit()
         self.routingChanged.emit()
 

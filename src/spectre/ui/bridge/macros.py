@@ -548,13 +548,10 @@ class MacroBridgeMixin(BridgeBaseMixin):
             if block.startswith("mfx"):
                 self.setPerfMfxSlotSend(int(block[3]), param, iv)
                 return
-            target = self._cho_target() if block == "chorus" else self._rev_target()
-            if target[0] == "part":
-                # Without the source part's FX cached the setters would fall back
-                # to the edited part's patch FX; skip instead.
-                self._ensure_part_fx_cache(target[1])
-                if self._part_cached(target[1]) is None:
-                    return
+            # Without the source part's FX the setters would fall back to the
+            # edited part's patch FX; skip instead.
+            if self._fx_target(block, fetch=True).store is None:
+                return
             if block == "chorus":
                 self.setChorusParam(param, iv)
             else:
