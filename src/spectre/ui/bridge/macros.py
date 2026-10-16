@@ -69,6 +69,10 @@ class MacroBridgeMixin(BridgeBaseMixin):
 
     _REV_VIEW_IDX = {"level": 1, "preDelay": 2, "time": 3, "damp": 4, "diffusion": 5, "tone": 6}
 
+    def _init_macros(self) -> None:
+        # Macro part mirrors load off-thread; join them on the UI thread
+        self.macroPartLoaded.connect(self._onMacroPartLoaded)
+
     @classmethod
     def _macroEntry(cls, key: str) -> dict | None:
         if cls._macro_catalog_by_key is None:

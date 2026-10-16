@@ -9,10 +9,12 @@ import threading
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
-from ...core.updater import UpdaterError
-from ...core.wifi import WifiStatus
+from ...core.backlight import BacklightController
+from ...core.telemetry import SystemTelemetry
+from ...core.updater import GitUpdater, UpdaterError
+from ...core.wifi import WifiManager, WifiStatus
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,44 @@ class SystemBridgeMixin(BridgeBaseMixin):
     powerActionChanged = pyqtSignal(str)
     telemetryChanged = pyqtSignal()
 
+
+    def _init_system(self) -> None:
+        """Display, updater, Wi-Fi and telemetry (all degrade quietly on a dev PC)."""
+        self._brightness: int = 85
+        try:
+            self._backlight = BacklightController()
+        except Exception as e:
+            logger.debug(f"Backlight controller unavailable: {e}")
+            self._backlight = None
+
+        # Appliance git-release self updater
+        self._updater = GitUpdater(Path(__file__).resolve().parents[3])
+        self._updater_busy: bool = False
+        self._updater_log: str = "IDLE • RELEASE CHANNEL: GIT TAGS"
+        self._latest_version: str = ""
+        self._update_available: bool = False
+        self._update_applied: bool = False
+        try:
+            self._version: str = self._updater.version
+        except UpdaterError as e:
+            self._version = "DEV"
+            logger.warning(f"Updater unavailable: {e}")
+
+        # Wi-Fi manager (NetworkManager / nmcli)
+        self._wifi = WifiManager()
+        self._wifi_status: WifiStatus = WifiStatus()
+        self._wifi_networks: list[dict] = []
+        self._wifi_busy: bool = False
+        self._wifi_error: str = ""
+        self._wifi_last_scan: str = "NEVER"
+        self._wifi_last_status_poll: float = 0.0
+
+        # Hardware telemetry (System page only, ~1.5 s cadence)
+        self._telemetry: SystemTelemetry = SystemTelemetry()
+        self._telemetry_prev_cpu = None
+        self._telemetry_timer = QTimer(self)
+        self._telemetry_timer.setInterval(1500)
+        self._telemetry_timer.timeout.connect(self._poll_telemetry)
 
     def _poll_telemetry(self) -> None:
         """Refresh host stats; timer-gated to the SYSTEM view only."""

@@ -32,6 +32,7 @@ from ...core.routing import (
     mfx_chain,
     tone_send_attrs,
 )
+from ...core.waves import WaveCatalogManager
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,28 @@ class PatchBridgeMixin(BridgeBaseMixin):
     patchInfoChanged = pyqtSignal(str, str)
     patchInitialized = pyqtSignal()
     syncBusyChanged = pyqtSignal(bool)
+
+    def _init_patch(self) -> None:
+        """Editor state: selected tone, waves, header name/mode, routing redraws."""
+        self._sync_busy: bool = False
+        self._wave_catalog = WaveCatalogManager.get_instance()
+        self._selected_tone: int = 1
+        self._linked_mode: bool = False
+        # Active tone waveforms (Bank, WaveNum)
+        self._tone_waves: list[tuple[str, int]] = [
+            (t.wave_bank_l, t.wave_num_l) for t in self.patch_state.tones
+        ]
+        self._cached_tone_wave_data: list[dict] = [
+            self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
+        ]
+        self._patch_name: str = self.patch_state.common.name
+        self._sound_mode: str = self.patch_state.sound_mode
+        # Routing schematic: anything that changes the signal path redraws it
+        for sig in (self.routingChanged, self.perfPartsChanged, self.perfFxChanged,
+                    self.mfxParamsChanged, self.chorusParamsChanged,
+                    self.reverbParamsChanged, self.patchInfoChanged,
+                    self.toneMutesChanged, self.toneLevelsChanged):
+            sig.connect(self._emit_routing_graph)
 
     @pyqtProperty(bool, notify=syncBusyChanged)
     def syncBusy(self) -> bool:

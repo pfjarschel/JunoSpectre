@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 
-from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...vector.engine import MorphMode, VectorState
 from ...vector.math import CrossfadeCurve
@@ -33,6 +33,20 @@ class VectorBridgeMixin(BridgeBaseMixin):
     smoothingChanged = pyqtSignal(bool)
     motionPointsChanged = pyqtSignal()
     curveChanged = pyqtSignal(str)
+
+    def _init_vector(self) -> None:
+        """Engine dirty-check state and the 60 FPS animation/transport tick."""
+        self._last_tick_time: float = time.perf_counter()
+        self._last_x: float = self.vector.x
+        self._last_y: float = self.vector.y
+        self._last_w: float = self.vector.w
+        self._last_tone_levels: tuple[int, int, int, int] = self.vector.tone_levels
+        self._last_transport: str = self.vector.motion.state.value
+        self.vector.subscribe(self._on_vector_state_changed)
+        self._timer = QTimer(self)
+        self._timer.setInterval(16)  # ~60 Hz
+        self._timer.timeout.connect(self._on_timer_tick)
+        self._timer.start()
 
     def _on_timer_tick(self) -> None:
         """Tick engine time forward to update motion loops and automators."""

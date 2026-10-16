@@ -21,6 +21,10 @@ class ViewBridgeMixin(BridgeBaseMixin):
     requestOpenSavePatchModal = pyqtSignal()
     requestOpenEnvOverlay = pyqtSignal(str)
 
+    def _init_view(self) -> None:
+        self._active_view: str = "JUNO PCM"
+        self._view_before_librarian: str = "JUNO PCM"
+
     def _emit_all_state_signals(self) -> None:
         """Emit signals for all properties to trigger complete UI refresh.
 

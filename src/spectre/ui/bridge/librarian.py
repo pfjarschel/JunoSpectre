@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
+from typing import Optional
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
@@ -24,6 +25,23 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
     libraryErrorChanged = pyqtSignal()
 
     _ENGINE_VIEWS = ("JUNO PCM", "VECTOR", "WAVETABLE", "VA")
+
+    def _init_librarian(self) -> None:
+        """Librarian state: sound origin, pick mode, Cancel snapshot, repository."""
+        # Where the current temp sound came from. None = edited/unknown (e.g.
+        # after INIT). Shape: {source, kind, msb, lsb, pc} for slots, or
+        # {source: "file", path} for Pi files. Drives the save dialog defaults.
+        self._current_ref: Optional[dict] = None
+        # Pick mode: 0 = normal audition, N = picking a patch for part N.
+        self._pick_target: int = 0
+        # Destination view proposed after Librarian closes (set by auditions,
+        # consumed by toggleLibrarian; Cancel clears it and goes back).
+        self._pending_view: str = ""
+        # Sound snapshot taken on Librarian entry; Cancel restores it.
+        self._librarian_entry_snapshot: dict | None = None
+        # Bound by app.py (attach_library); None in unit tests.
+        self._librarian_repo = None
+        self._library_error: str = ""
 
     def _set_current_slot_ref(self, msb: int, lsb: int, pc: int, kind: str) -> None:
         """Record which synth slot the temp buffer was auditioned from."""

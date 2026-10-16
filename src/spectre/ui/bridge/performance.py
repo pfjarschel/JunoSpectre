@@ -43,6 +43,22 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     partFileStatusChanged = pyqtSignal()
     requestOpenEditTarget = pyqtSignal()
 
+    def _init_performance(self) -> None:
+        """Part file links, the part FX cache and the background push state."""
+        # Embedded snapshots from the last loaded performance file (part index
+        # str -> patch_state dict) and their link health
+        self._part_snapshots: dict = {}
+        self._snapshot_hashes: dict = {}  # part index -> (snapshot dict, its hash)
+        self._part_file_status: list = [""] * 16
+        # Part index -> read_part_fx() dict for PARTn origins. Lets MFX Studio /
+        # Master FX show a non-active part's patch FX without blocking QML
+        # getters on hardware reads.
+        self._part_fx_cache: dict = {}
+        self._perf_push_progress: float = -1.0  # -1.0 = idle
+        self._editing_perf_mfx: int = 1
+        self._push_lock = threading.Lock()
+        self.partStateRead.connect(self._on_part_state_read)
+
     @pyqtProperty("QVariantList", notify=perfPartsChanged)
     def perfParts(self) -> list:
         return [
