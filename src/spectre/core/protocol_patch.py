@@ -948,6 +948,19 @@ class PatchProtocolMixin:
         if l4 is not None:
             self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_L4, max(1, min(127, l4)))
 
+    # Raw ranges of the contiguous pitch envelope block at 0x003A..0x0047
+    _PITCH_ENV_RANGES = ((52, 76), (1, 127), (1, 127), (1, 127), (54, 74),
+                         (0, 127), (0, 127), (0, 127), (0, 127),
+                         (1, 127), (1, 127), (1, 127), (1, 127), (1, 127))
+
+    def set_tone_pitch_env_block(self, tone_index: int, block: Sequence[int]) -> None:
+        """Write the whole pitch envelope in one DT1: [depth, vel sens, T1 vel sens,
+        T4 vel sens, time keyfollow, T1..T4, L0..L4] at 0x003A (raw values)."""
+        if len(block) != len(self._PITCH_ENV_RANGES):
+            raise ValueError(f"pitch envelope block must have 14 values, got {len(block)}")
+        data = [max(lo, min(hi, int(v))) for v, (lo, hi) in zip(block, self._PITCH_ENV_RANGES)]
+        self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_DEPTH, data)
+
     # ------------------------------------------------------------------
     # Raw image readers (parity with init_template.json regions). These return
     # the exact device bytes so callers can preserve unmodeled residue in

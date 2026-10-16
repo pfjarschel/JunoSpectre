@@ -590,7 +590,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         if eff.startswith("tone."):
             _, which, param = eff.split(".", 2)
             if which == "sel":
-                tones = [self._active_tone()] if self._sculpt_view() else self._target_tones()
+                tones = self._ctl_sel_tones(param)
                 which = str(tones[0].tone_index) if len(tones) == 1 else "all"
             return f"tone.{param}" if which == "all" else f"tone.{which}.{param}"
         if eff.startswith("part.") and "@" not in eff:
@@ -720,12 +720,21 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         entry = self._ctl_entry(target)
         return (float(entry["min"]), float(entry["max"])) if entry else (0.0, 127.0)
 
+    def _ctl_sel_tones(self, param: str) -> list:
+        """Tones a "tone.sel.<param>" target edits: on JUNO PCM the selected tone
+        (all when linked); VA/Wavetable/Vector ignore the PCM link, and their
+        filter is a master filter over every tone."""
+        if not self._sculpt_view():
+            return self._target_tones()
+        if param.startswith("tvf_"):
+            return list(self.patch_state.tones)
+        return [self._active_tone()]
+
     def _ctl_keys(self, target: str) -> list[str]:
         """Concrete keys a direct edit of `target` touches right now (edited part)."""
         if target.startswith("tone.sel."):     # the tone(s) the editors are on
             param = target[len("tone.sel."):]
-            tones = [self._active_tone()] if self._sculpt_view() else self._target_tones()
-            return [self._scopedKey(f"tone.{t.tone_index}.{param}") for t in tones]
+            return [self._scopedKey(f"tone.{t.tone_index}.{param}") for t in self._ctl_sel_tones(param)]
         if "@" in target:      # a fixed part ("part.level@3"): PERFORM only
             return [target] if self._in_perform() else []
         out = []
@@ -796,16 +805,17 @@ class ControllersBridgeMixin(BridgeBaseMixin):
             return
         if target.endswith("pitch_fine") and self.patch_state.auto_detune:
             return      # Auto Detune owns the fine tunes (the screen's are locked too)
-        touched = set()
+        touched, linked = set(), False
         for k in self._ctl_keys(target):
             if self._macroLinksFor(k):
                 self.patch_state.macro_bases[k] = value
                 self._recomputeTarget(k)
+                linked = True
             else:
                 self._applyAbsolute(k, value)
             touched.add(k)
         if touched:
-            self._emitForMacroKeys(touched)
+            self._emitForMacroKeys(touched, macros=linked)
 
     def _ctl_target_title(self, target: str) -> str:
         if target.startswith("context."):
@@ -1014,7 +1024,7 @@ class ControllersBridgeMixin(BridgeBaseMixin):
         if target in DETUNE:
             return "ALL TONES", {"detune.master": "Master Fine", "detune.auto": "Auto Detune"}[target]
         if target.startswith("tone.sel."):
-            tones = [self._active_tone()] if self._sculpt_view() else self._target_tones()
+            tones = self._ctl_sel_tones(target[len("tone.sel."):])
             scope = f"TONE {tones[0].tone_index}" if len(tones) == 1 else "LINKED TONES"
             return scope, lcxl3.short_title(title.removeprefix("Edited Tone "))
         if target.startswith("mfx.p."):

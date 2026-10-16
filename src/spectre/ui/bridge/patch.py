@@ -1548,19 +1548,15 @@ class PatchBridgeMixin(BridgeBaseMixin):
                 logger.error(f"Error setting TVA envelope block on synth: {e}")
 
     def _push_pitch_env(self, t: ToneState) -> None:
-        """Send all Pitch Envelope parameters for a tone."""
+        """Send all Pitch Envelope parameters for a tone (one block DT1, not 14)."""
         t.env_forget_broken_original("pitch")
         if self.juno:
             try:
-                kwargs = {
-                    "depth": t.pitch_env_depth, "vel_sens": t.pitch_env_vel_sens,
-                    "time_keyfollow": t.pitch_env_time_keyfollow,
-                    "t1_vel_sens": t.pitch_env_t1_vel_sens, "t4_vel_sens": t.pitch_env_t4_vel_sens,
-                    "t1": t.pitch_env_t1, "t2": t.pitch_env_t2, "t3": t.pitch_env_t3, "t4": t.pitch_env_t4,
-                    "l0": t.pitch_env_l0, "l1": t.pitch_env_l1, "l2": t.pitch_env_l2,
-                    "l3": t.pitch_env_l3, "l4": t.pitch_env_l4,
-                }
-                self.juno.set_tone_pitch_env(t.tone_index, **kwargs)
+                self.juno.set_tone_pitch_env_block(t.tone_index, [
+                    t.pitch_env_depth, t.pitch_env_vel_sens,
+                    t.pitch_env_t1_vel_sens, t.pitch_env_t4_vel_sens, t.pitch_env_time_keyfollow,
+                    t.pitch_env_t1, t.pitch_env_t2, t.pitch_env_t3, t.pitch_env_t4,
+                    t.pitch_env_l0, t.pitch_env_l1, t.pitch_env_l2, t.pitch_env_l3, t.pitch_env_l4])
             except Exception as e:
                 logger.error(f"Error setting pitch env on synth: {e}")
 

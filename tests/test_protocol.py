@@ -594,6 +594,22 @@ def test_juno_client_set_tone_tvf_env_block(mock_midi_mgr):
         client.set_tone_tvf_env(1, [1, 2, 3])
 
 
+def test_juno_client_set_tone_pitch_env_block(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    client._cached_sound_mode = SoundMode.PATCH
+
+    # One DT1 for the whole envelope (not 14), out-of-range values clamped
+    client.set_tone_pitch_env_block(1, [99, 64, 64, 64, 0, 10, 20, 30, 40, 64, 127, 64, 64, 0])
+    assert mock_midi_mgr.send_juno_sysex.call_count == 1
+    sent_packet = mock_midi_mgr.send_juno_sysex.call_args[0][0]
+    # Tone 1 base + pitch env depth offset: 1F 00 20 3A, contiguous 14-byte block
+    assert sent_packet[6:10] == [0x1F, 0x00, 0x20, 0x3A]
+    assert sent_packet[10:24] == [76, 64, 64, 64, 54, 10, 20, 30, 40, 64, 127, 64, 64, 1]
+
+    with pytest.raises(ValueError):
+        client.set_tone_pitch_env_block(1, [64] * 9)
+
+
 def test_juno_client_set_tone_tva_env_block_clamps(mock_midi_mgr):
     client = JunoClient(mock_midi_mgr)
     client._cached_sound_mode = SoundMode.PATCH

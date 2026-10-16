@@ -7,7 +7,7 @@ import threading
 import time
 from contextlib import contextmanager
 
-from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...core.macro_targets import (
     filter_macro_targets,
@@ -21,6 +21,9 @@ from ...core.routing import tone_send_attrs, tone_sends
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
+
+# Controller-driven part mixer moves refresh the part strips at most this often
+PARTS_EMIT_MS = 50
 
 
 class MacroBridgeMixin(BridgeBaseMixin):
@@ -325,7 +328,33 @@ class MacroBridgeMixin(BridgeBaseMixin):
                     juno.set_perf_part_fx(part, reverb=v)
         except Exception as e:
             logger.debug(f"macro mixer push failed for part {part} {param}: {e}")
+        self._emitPerfPartsThrottled()
+
+    def _emitPerfPartsThrottled(self) -> None:
+        """perfPartsChanged at most every PARTS_EMIT_MS while a control moves.
+
+        Every emit rebuilds the part strips and the routing graph (~30 ms on
+        the Pi), too much per fader step. The first move shows at once, the
+        last one when the interval ends.
+        """
+        timer = self.__dict__.get("_parts_emit_timer")
+        if timer is None:
+            timer = self._parts_emit_timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.setInterval(PARTS_EMIT_MS)
+            timer.timeout.connect(self._flushPerfParts)
+            self._parts_emit_pending = False
+        if timer.isActive():
+            self._parts_emit_pending = True
+            return
         self.perfPartsChanged.emit()
+        timer.start()
+
+    def _flushPerfParts(self) -> None:
+        if self._parts_emit_pending:
+            self._parts_emit_pending = False
+            self.perfPartsChanged.emit()
+            self._parts_emit_timer.start()
 
     def _macroPartState(self, part: int):
         """Mirror of a non-edited part's patch for macro bases and writes.
@@ -702,7 +731,19 @@ class MacroBridgeMixin(BridgeBaseMixin):
             key, base = mapping[param]
             self._rebaseDirect([(key, base)])
 
-    def _emitForMacroKeys(self, keys: set[str]) -> None:
+    # Tone params whose editor property has its own notify signal
+    _TONE_PARAM_SIGNALS = {
+        "tvf_env_depth": "tvfEnvDepth", "tva_pan": "tvaPan",
+        "tvf_attack": "tvfAttack", "tvf_decay": "tvfDecay", "tvf_sustain": "tvfSustain", "tvf_release": "tvfRelease",
+        "tva_attack": "tvaAttack", "tva_decay": "tvaDecay", "tva_sustain": "tvaSustain", "tva_release": "tvaRelease",
+    }
+
+    def _emitForMacroKeys(self, keys: set[str], macros: bool = True) -> None:
+        """Refresh the editors showing `keys`.
+
+        macros=False when the caller emits macrosChanged itself, or no macro
+        drives the keys (it re-reads every macro list: ~7 ms on the Pi).
+        """
         # Editors only show the edited part; other parts need no refresh
         edited = self._editedPart()
         keys = {b for b, n in map(self._splitPart, keys) if n in (0, edited)}
@@ -719,6 +760,16 @@ class MacroBridgeMixin(BridgeBaseMixin):
                 self.tvaLevelChanged.emit(self.tvaLevel)
             except Exception:
                 pass
+        params = {k.split(".", 2)[2] for k in keys if k.startswith("tone.") and k.count(".") >= 2}
+        for param in params & self._TONE_PARAM_SIGNALS.keys():
+            prop = self._TONE_PARAM_SIGNALS[param]
+            getattr(self, prop + "Changed").emit(getattr(self, prop))
+        if any(p.startswith("tvf_") and p not in ("tvf_cutoff", "tvf_resonance", "tvf_keyfollow") for p in params):
+            self.envShapeChanged.emit("TVF")
+        if any(p in ("tva_attack", "tva_decay", "tva_sustain", "tva_release") for p in params):
+            self.envShapeChanged.emit("TVA")
+        if params & {"output_level", "chorus_send", "reverb_send"}:
+            self.routingChanged.emit()
         if any(k.endswith(".tvf_keyfollow") for k in keys):
             self.tvfKeyFollowChanged.emit(self.tvfKeyFollow)
         if "common.level" in keys:
@@ -748,7 +799,8 @@ class MacroBridgeMixin(BridgeBaseMixin):
             self.pitchFineChanged.emit(self.pitchFine)
             if any(k.endswith(".pitch_fine") for k in keys):
                 self.vaParamsChanged.emit()     # master fine / oscillator tunes
-        self.macrosChanged.emit()
+        if macros:
+            self.macrosChanged.emit()
 
     def _macro_name(self, index: int) -> str:
         """Shown name of macro `index` (1-based): its own, else named after its links."""
@@ -930,7 +982,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
                 self._recomputeTarget(concrete)
                 touched.add(concrete)
         if touched:
-            self._emitForMacroKeys(touched)
+            self._emitForMacroKeys(touched, macros=False)   # every caller emits macrosChanged
 
     @pyqtSlot(int)
     def openMacroAssign(self, index: int) -> None:

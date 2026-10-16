@@ -34,11 +34,18 @@ Rectangle {
 
         // 4x2 Grid of 8 Bipolar Touch Macro Dials
         GridLayout {
+            id: macroGrid
             Layout.fillWidth: true
             Layout.fillHeight: true
             columns: 4
             rowSpacing: ScaleMetrics.dp(10)
             columnSpacing: ScaleMetrics.dp(10)
+
+            // Read each list once per change: on Qt 6.8 every Bridge.list[i]
+            // access calls the Python getter again (8 knobs x 3 reads each)
+            readonly property var names: Bridge.macroNames
+            readonly property var values: Bridge.macroValues
+            readonly property var linkCounts: Bridge.macroLinkCounts
 
             Repeater {
                 model: 8
@@ -46,13 +53,13 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     macroIndex: modelData + 1
-                    macroTitle: (Bridge.macroNames && Bridge.macroNames.length > modelData)
-                                ? Bridge.macroNames[modelData] : ("M" + (modelData + 1))
+                    macroTitle: (macroGrid.names && macroGrid.names.length > modelData)
+                                ? macroGrid.names[modelData] : ("M" + (modelData + 1))
                     macroColor: root.knobColors[modelData]
-                    macroValue01: (Bridge.macroValues && Bridge.macroValues.length > modelData)
-                                  ? Bridge.macroValues[modelData] : 0.0
-                    linkCount: (Bridge.macroLinkCounts && Bridge.macroLinkCounts.length > modelData)
-                               ? Bridge.macroLinkCounts[modelData] : 0
+                    macroValue01: (macroGrid.values && macroGrid.values.length > modelData)
+                                  ? macroGrid.values[modelData] : 0.0
+                    linkCount: (macroGrid.linkCounts && macroGrid.linkCounts.length > modelData)
+                               ? macroGrid.linkCounts[modelData] : 0
                 }
             }
         }

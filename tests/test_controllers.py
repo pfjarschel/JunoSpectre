@@ -356,7 +356,7 @@ def test_surface_shows_names_values_and_leds(ui):
     assert lcxl3.led_rgb(13, lcxl3.by_value(lcxl3.CATEGORY_COLORS["MACRO"], 0.5)).hex() in msgs
     assert text(21, 0, "ALL TONES") in msgs                  # row B = LFOs, on every page
     assert text(21, 1, "LFO1 Rate") in msgs
-    assert text(33, 1, "Flt Key Follow") in msgs              # row C = sound core
+    assert text(31, 1, "Flt Key Follow") in msgs              # row C = sound core
     assert text(34, 0, "TONE 1") in msgs                     # fine tune: the edited tone
     assert lcxl3.led_rgb(45, lcxl3.OFF).hex() in msgs        # clip row: empty clip
     bridge.setActiveView("SETLIST")
@@ -756,24 +756,24 @@ def test_touched_control_highlights_or_toasts(ui):
         for _ in range(5):
             app.processEvents()
 
-    # Cutoff offset (knob C1) has no slider on the PCM page: the toast shows it
-    _send(app, bridge, _cc(29, 127, ch=14), port=DAW)
+    # Portamento (knob C7) has no slider on the PCM page: the toast shows it
+    _send(app, bridge, _cc(35, 127, ch=14), port=DAW)
     settle()
-    assert bridge.touchedKey == "common.cutoff_offset"
-    assert bridge.touchedControl["name"] == "Cutoff Ofs"
+    assert bridge.touchedKey == "common.portamento_time"
+    assert bridge.touchedControl["name"] == "Porta Time"
     assert toast.property("showing")
-    _send(app, bridge, _cc(29, 0, ch=14), port=DAW)
+    _send(app, bridge, _cc(35, 0, ch=14), port=DAW)
     assert bridge._touch_timer.isActive()        # lingers a moment, then hides
     bridge._touch_hide()
     settle()
     assert bridge.touchedKey == "" and not toast.property("showing")
 
-    # Key follow (knob C5) is on the page: highlighted there, no toast
-    _send(app, bridge, _cc(33, 127, ch=14), port=DAW)
+    # Key follow (knob C3) is on the page: highlighted there, no toast
+    _send(app, bridge, _cc(31, 127, ch=14), port=DAW)
     settle()
-    assert bridge.touchedKey == "tone.tvf_keyfollow"
+    assert bridge.touchedKey == "tone.1.tvf_keyfollow"
     assert not toast.property("showing")
-    _send(app, bridge, _cc(33, 0, ch=14), port=DAW)
+    _send(app, bridge, _cc(31, 0, ch=14), port=DAW)
     bridge._touch_hide()
 
     # A move without a touch report shows it too (and its new value)
@@ -781,7 +781,9 @@ def test_touched_control_highlights_or_toasts(ui):
         b.takeover = "jump"
     _send(app, bridge, _cc(29, 127, ch=15), port=DAW)
     settle()
-    assert bridge.touchedKey == "common.cutoff_offset" and bridge.touchedControl["value"] == "+63"
+    # Cutoff writes the selected tone's own filter (not the patch offset)
+    assert bridge.touchedKey == "tone.1.tvf_cutoff" and bridge.touchedControl["value"] == "127"
+    assert bridge.patch_state.tones[0].tvf_cutoff == 127
     assert bridge._touch_timer.isActive()
 
 
@@ -875,3 +877,66 @@ def test_fine_tune_knob_follows_the_page_and_auto_detune(ui):
     assert bridge._ctl_resolve("tone.sel.pitch_fine") == "tone.sel.pitch_fine"
     bridge.setActiveView("VA")
     assert bridge._ctl_resolve("tone.sel.pitch_fine") == "tone.sel.pitch_fine"
+
+
+@pytest.mark.ui
+def test_sculpt_page_filter_knobs_move_every_tone(ui):
+    app, bridge, _ = ui
+    tones = bridge.patch_state.tones
+    for t in tones:
+        t.tvf_cutoff = 64
+    bridge.setLinkedMode(False)
+    bridge.setSelectedTone(2)
+    bridge.setActiveView("JUNO PCM")            # the selected tone only
+    bridge._ctl_apply("tone.sel.tvf_cutoff", 1.0)
+    assert [t.tvf_cutoff for t in tones] == [64, 127, 64, 64]
+    bridge.setActiveView("VA")                  # master filter: every tone
+    bridge._ctl_apply("tone.sel.tvf_cutoff", 0.0)
+    assert [t.tvf_cutoff for t in tones] == [0, 0, 0, 0]
+    bridge._ctl_apply("tone.sel.pitch_fine", 0.0)   # oscillator params stay per tone
+    assert [t.fine_tune for t in tones].count(14) == 1
+
+
+@pytest.mark.ui
+def test_controller_moves_notify_the_editors(ui):
+    app, bridge, _ = ui
+    bridge.setActiveView("JUNO PCM")
+    fired = []
+    for sig in ("tvfEnvDepthChanged", "tvaPanChanged", "tvfAttackChanged", "tvaSustainChanged",
+                "envShapeChanged", "routingChanged", "macrosChanged"):
+        getattr(bridge, sig).connect(lambda *a, s=sig: fired.append((s,) + a))
+
+    def moved(target, t=0.9):
+        fired.clear()
+        bridge._ctl_apply(target, t)
+        return {f[0] for f in fired}
+
+    assert {"tvfEnvDepthChanged", "envShapeChanged"} <= moved("tone.sel.tvf_env_depth")
+    assert ("envShapeChanged", "TVF") in fired
+    assert "tvaPanChanged" in moved("tone.1.tva_pan")
+    assert "tvfAttackChanged" in moved("tone.all.tvf_attack")
+    assert "tvaSustainChanged" in moved("tone.all.tva_sustain")
+    assert ("envShapeChanged", "TVA") in fired
+    assert "routingChanged" in moved("tone.sel.chorus_send")
+    # macrosChanged re-reads every macro list (~7 ms on the Pi): only when a macro drives it
+    assert "macrosChanged" not in moved("tone.all.lfo2_rate")
+    assert "macrosChanged" in moved("common.analog_feel")     # macro 6 of the default deck
+    fired.clear()
+    bridge.setMacro(1, 0.5)
+    assert [f[0] for f in fired].count("macrosChanged") == 1
+
+
+@pytest.mark.ui
+def test_part_mixer_moves_refresh_the_strips_throttled(ui):
+    app, bridge, _ = ui
+    bridge._sound_mode = "PERFORM"
+    count = []
+    bridge.perfPartsChanged.connect(lambda: count.append(1))
+    for i in range(20):
+        bridge._ctl_apply("part.level@1", i / 40)
+    assert len(count) == 1                      # the first move shows at once
+    assert bridge.patch_state.perf_parts[0].volume == round(19 / 40 * 127)
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline and len(count) < 2:
+        app.processEvents()
+    assert len(count) == 2                      # and the last one when the interval ends

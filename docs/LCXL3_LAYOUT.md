@@ -39,12 +39,13 @@ and value before you move it.
 |---|---|---|---|---|---|---|---|---|
 | **Row A** | Macro 1 | Macro 2 | Macro 3 | Macro 4 | Macro 5 | Macro 6 | Macro 7 | Macro 8 |
 | **Row B** | LFO1 Rate | LFO1 Pitch | LFO1 Filter | LFO1 Amp | LFO2 Rate | LFO2 Pitch | LFO2 Filter | LFO2 Amp |
-| **Row C** | Cutoff | Resonance | Filter Env Depth | Pitch Env Depth | Key Follow | Fine Tune | Portamento | Analog Feel |
+| **Row C** | Cutoff | Resonance | Key Follow | Filter Env Depth | Pitch Env Depth | Fine Tune | Portamento | Analog Feel |
 
 - Row C is the row nearest the hand, so it holds the most-used controls.
-- Cutoff and Resonance are the patch offsets (`common.cutoff_offset` / `common.resonance_offset`):
-  centred, non-destructive, like the Juno panel knobs.
-- Key Follow is filter key follow on all tones. **Not in the macro catalog yet.**
+- The filter knobs (Cutoff, Resonance, Key Follow, Filter Env Depth) write the tones' own filter
+  values (`tone.sel.*`), not the patch offsets: on JUNO PCM the selected tone, or all tones when
+  the page's link switch is on; on VA, Wavetable and Vector every tone (their filter is a master
+  filter). Key Follow sits next to Cutoff/Resonance so the two env depths stay side by side.
 - Fine Tune follows what the page offers:
 
   | Page | Auto Detune off | Auto Detune on |
