@@ -10,6 +10,13 @@ from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...core.mfx_catalog import get_mfx_algo
 from ...core.routing import is_direct, mfx_structure_layout
+from ...core.sysex import (
+    OFFSET_PATCH_COMMON_MFX,
+    PERF_MFX_BLOCK_SIZE,
+    add_address,
+    perf_common_fx_base,
+    temp_perf_patch_base,
+)
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -1191,89 +1198,91 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(str)
     def copyOriginToPerform(self, which: str) -> bool:
-        """Copy current origin block to PERFORM and switch origin to PERFORM.
+        """Copy the sourced part's FX block to PERFORM and switch origin to PERFORM.
 
-        Head-start for MFX editing: reads the sourced block (part patch when
-        PARTn, perf-common when already PERFORM) and writes it into the
-        perf-common block, then sets source=PERFORM. Returns True on success.
-        Offline: copies state only.
+        Head-start for FX editing: the source part's patch MFX/chorus/reverb
+        (not the edited part's) goes into the perf-common block, then
+        source=PERFORM. MFX is copied on the synth byte for byte; chorus and
+        reverb are written from the part's cached values. Offline without a
+        cached copy of that part, only the source switches. Returns True on success.
         """
         k = str(which or "").lower()
-        fx = getattr(self.patch_state, "perf_fx", None)
+        fx = self.patch_state.perf_fx
         juno = self.juno
         try:
             if k in ("mfx1", "mfx2", "mfx3"):
                 s = {"mfx1": 1, "mfx2": 2, "mfx3": 3}[k]
-                holder = (fx.mfx1, fx.mfx2, fx.mfx3)[s - 1] if fx is not None else None
-                origin = int(getattr(holder, "source", 0)) if holder is not None else 0
+                holder = (fx.mfx1, fx.mfx2, fx.mfx3)[s - 1]
+                origin = int(holder.source)
                 if origin == 0:
                     return True  # already PERFORM
-                # Try hardware copy: part patch MFX -> perf common MFX slot.
-                if juno is not None and hasattr(juno, "request_data"):
+                if juno is not None:
                     try:
-                        from ...core.protocol import temp_perf_patch_base as _ppb
-                        from ...core.sysex import OFFSET_PATCH_COMMON_MFX as _MFX
-                        from ...core.sysex import PERF_MFX_BLOCK_SIZE as _SZ
-                        from ...core.sysex import add_address as _add
-                        src = _add(_ppb(origin), _MFX)
-                        raw = juno.request_data(src, _SZ, timeout=1.0)
+                        src = add_address(temp_perf_patch_base(origin), OFFSET_PATCH_COMMON_MFX)
+                        raw = juno.request_data(src, PERF_MFX_BLOCK_SIZE, timeout=1.0)
                         if raw is not None and len(raw) >= 4:
-                            juno.send_data(__import__("src.spectre.core.sysex", fromlist=["perf_common_fx_base"]).perf_common_fx_base(s), list(bytes(raw)))
+                            juno.send_data(perf_common_fx_base(s), list(bytes(raw)))
                     except Exception as e:
                         logger.debug(f"copyOriginToPerform mfx HW copy failed: {e}")
-                # State copy: mirror active part editor MFX into the slot.
-                if fx is not None and holder is not None:
-                    try:
-                        eff = self.patch_state.effects
-                        holder.mfx_type = int(eff.mfx_type)
-                        holder.dry_send = int(eff.mfx_dry_send)
-                        holder.chorus_send = int(eff.mfx_chorus_send)
-                        holder.reverb_send = int(eff.mfx_reverb_send)
-                        holder.params = list(eff.mfx_params[:32])
-                        holder.source = 0
-                    except Exception:
-                        holder.source = 0
-                if juno is not None and hasattr(juno, "set_perf_source"):
+                self._ensure_part_fx_cache(origin)
+                cached = self._part_cached(origin)
+                if cached is not None:
+                    m = cached["mfx"]
+                    holder.mfx_type = int(m["type"])
+                    holder.dry_send = int(m["dry"])
+                    holder.chorus_send = int(m["chorus"])
+                    holder.reverb_send = int(m["reverb"])
+                    holder.params = (list(m["params"][:32]) + [0] * 32)[:32]
+                holder.source = 0
+                if juno is not None:
                     try:
                         juno.set_perf_source(k, 0)
-                    except Exception:
-                        pass
-                try:
-                    self._emit_fx_editor_signals()
-                except Exception:
-                    pass
+                    except Exception as e:
+                        logger.debug(f"copyOriginToPerform {k} source write failed: {e}")
+                self._emit_fx_editor_signals()
                 return True
             elif k in ("chorus", "cho", "reverb", "rev"):
                 is_cho = k in ("chorus", "cho")
-                origin = int(fx.chorus_source if is_cho else fx.reverb_source) if fx is not None else 0
+                origin = int(fx.chorus_source if is_cho else fx.reverb_source)
                 if origin == 0:
                     return True
-                if fx is not None:
-                    try:
-                        eff = self.patch_state.effects
-                        if is_cho:
-                            fx.chorus_type = int(eff.chorus_type); fx.chorus_level = int(eff.chorus_level)
-                            fx.chorus_to_reverb = int(eff.chorus_to_reverb); fx.chorus_source = 0
-                        else:
-                            fx.reverb_type = int(eff.reverb_type); fx.reverb_level = int(eff.reverb_level)
-                            fx.reverb_source = 0
-                    except Exception:
-                        pass
+                self._ensure_part_fx_cache(origin)
+                cached = self._part_cached(origin)
+                if cached is not None:
+                    if is_cho:
+                        c = cached["chorus"]
+                        fx.chorus_type = int(c["type"]); fx.chorus_level = int(c["level"])
+                        fx.chorus_to_reverb = int(c["toReverb"])
+                        fx.chorus_predelay = int(c["predelay"]); fx.chorus_rate = int(c["rate"])
+                        fx.chorus_depth = int(c["depth"]); fx.chorus_feedback = int(c["feedback"])
+                    else:
+                        r = cached["reverb"]
+                        fx.reverb_type = int(r["type"]); fx.reverb_level = int(r["level"])
+                        fx.reverb_predelay = int(r["predelay"]); fx.reverb_time = int(r["time"])
+                        fx.reverb_damp = int(r["damp"]); fx.reverb_diffusion = int(r["diffusion"])
+                        fx.reverb_tone = int(r["tone"])
+                if is_cho:
+                    fx.chorus_source = 0
+                else:
+                    fx.reverb_source = 0
                 if juno is not None:
                     try:
-                        if is_cho and hasattr(juno, "set_perf_chorus") and fx is not None:
+                        if cached is not None and is_cho:
                             juno.set_perf_chorus(fx.chorus_type, level=fx.chorus_level,
                                                  output_select=fx.chorus_to_reverb)
-                        elif not is_cho and hasattr(juno, "set_perf_reverb") and fx is not None:
+                            for param, val in (("predelay", fx.chorus_predelay), ("rate", fx.chorus_rate),
+                                               ("depth", fx.chorus_depth), ("feedback", fx.chorus_feedback)):
+                                juno.set_perf_chorus_param(param, int(val))
+                        elif cached is not None:
                             juno.set_perf_reverb(fx.reverb_type, level=fx.reverb_level)
-                        if hasattr(juno, "set_perf_source"):
-                            juno.set_perf_source("chorus" if is_cho else "reverb", 0)
+                            for param, val in (("predelay", fx.reverb_predelay), ("time", fx.reverb_time),
+                                               ("damp", fx.reverb_damp), ("diffusion", fx.reverb_diffusion),
+                                               ("tone", fx.reverb_tone)):
+                                juno.set_perf_reverb_param(param, int(val))
+                        juno.set_perf_source("chorus" if is_cho else "reverb", 0)
                     except Exception as e:
                         logger.debug(f"copyOriginToPerform {'cho' if is_cho else 'rev'} HW failed: {e}")
-                try:
-                    self._emit_fx_editor_signals()
-                except Exception:
-                    pass
+                self._emit_fx_editor_signals()
                 return True
         except Exception as e:
             logger.debug(f"copyOriginToPerform failed: {e}")
@@ -1620,11 +1629,14 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                                               reverb_send=int(_h.reverb_send))
                         except Exception as e:
                             logger.debug(f"perf push: mfx{_s} push failed: {e}")
-                        if int(_h.source) == 0 and hasattr(juno, "set_perf_mfx_param"):
+                        if int(_h.source) == 0:
+                            # Every parameter the type uses, zeros included: the
+                            # synth may still hold another song's values there.
                             try:
-                                for _pi, _pv in enumerate(list(getattr(_h, "params", []) or [])[:32]):
-                                    if int(_pv) != 0:
-                                        juno.set_perf_mfx_param(_s, _pi, int(_pv))
+                                algo = get_mfx_algo(int(_h.mfx_type)) if int(_h.mfx_type) > 0 else None
+                                n = len(algo.get("params", [])) if algo else 0
+                                if n:
+                                    juno.set_perf_mfx_params_bulk(_s, list(_h.params)[:n])
                             except Exception as e:
                                 logger.debug(f"perf push: mfx{_s} params push failed: {e}")
                 if hasattr(juno, "set_perf_chorus"):

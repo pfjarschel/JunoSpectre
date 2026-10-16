@@ -102,7 +102,9 @@ def bridge_and_mgr(mock_midi_mgr):
 
 
 def _writes(mgr):
-    return [(tuple(c[0][0][6:10]), c[0][0][10]) for c in mgr.send_juno_sysex.call_args_list]
+    # DT1s only: the bridge's background arp read sends an RQ1 at any moment
+    return [(tuple(c[0][0][6:10]), c[0][0][10]) for c in mgr.send_juno_sysex.call_args_list
+            if c[0][0][5] == 0x12]
 
 
 def test_bridge_structure_booster_and_velocity_control(bridge_and_mgr):

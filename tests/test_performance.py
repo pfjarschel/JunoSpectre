@@ -796,6 +796,48 @@ def test_perf_common_fx_addresses(mock_midi_mgr):
     assert addr == (0x10, 0x00, 0x00, 0x37) and payload == [5]
 
 
+def test_get_perf_fx_decodes_all_32_mfx_params(mock_midi_mgr):
+    from src.spectre.core.sysex import pack_4nibbles
+    client = JunoClient(mock_midi_mgr)
+    blk = bytearray(145)
+    blk[0] = 6                                    # STEP FILTER (25 params)
+    for i in range(32):
+        blk[0x11 + 4 * i:0x15 + 4 * i] = pack_4nibbles(32768 + i + 1)
+    client.get_perf_mfx_block = lambda slot, timeout=1.0: bytes(blk)
+    client.get_perf_sources = lambda timeout=1.0: {}
+    client.request_data = MagicMock(return_value=None)
+    fx = client.get_perf_fx(timeout=0.05)
+    assert fx.mfx1.mfx_type == 6
+    assert fx.mfx1.params == [i + 1 for i in range(32)]
+
+
+def test_perf_push_writes_every_mfx_param_including_zeros(tmp_path):
+    from src.spectre.core.mfx_catalog import get_mfx_algo
+    bridge, _juno, repo = _bridge_rig(tmp_path)
+    slot = bridge.patch_state.perf_fx.mfx1
+    slot.source = 0
+    slot.mfx_type = 6                             # STEP FILTER
+    slot.params = [0] * 32
+    slot.params[20] = 30
+    juno = MagicMock()
+    bridge._push_perf_to_synth(juno)
+    n = len(get_mfx_algo(6)["params"])
+    calls = [c for c in juno.set_perf_mfx_params_bulk.call_args_list if c.args[0] == 1]
+    assert len(calls) == 1
+    assert calls[0].args[1] == slot.params[:n]    # zeros go out too
+    repo.close()
+
+
+def test_perf_mfx_params_bulk_address(mock_midi_mgr):
+    client = JunoClient(mock_midi_mgr)
+    client.set_perf_mfx_params_bulk(2, [0, 5])
+    addr, payload = _sysex_addr(mock_midi_mgr)
+    assert addr == (0x10, 0x00, 0x08, 0x11)
+    assert len(payload) == 8
+    with pytest.raises(ValueError):
+        client.set_perf_mfx_params_bulk(1, [0] * 33)
+
+
 def test_get_perf_parts_decodes_fx():
     from unittest.mock import MagicMock
 
@@ -857,11 +899,27 @@ def test_bridge_perf_sources_and_editing(tmp_path):
     bridge.setPerfStructure(7)
     assert bridge.patch_state.perf_fx.mfx_structure == 7
     assert bridge.perfFxSources["structure"] == 7
-    # copy-to-PERFORM head-start: PARTn -> PERFORM
+    # copy-to-PERFORM head-start: PARTn -> PERFORM takes part 4's FX,
+    # not the edited part's
+    from src.spectre.core.patch_state import EffectsState
+    part4 = EffectsState()
+    part4.mfx_type = 22
+    part4.mfx_params = [0] * 32
+    part4.mfx_params[20] = 7
+    part4.chorus_type = 2
+    part4.chorus_rate = 55
+    bridge._part_fx_cache[4] = bridge._cache_from_effects(part4)
     bridge.patch_state.effects.mfx_type = 15
     assert bridge.copyOriginToPerform("mfx1") is True
     assert bridge.patch_state.perf_fx.mfx1.source == 0
-    assert bridge.patch_state.perf_fx.mfx1.mfx_type == 15
+    assert bridge.patch_state.perf_fx.mfx1.mfx_type == 22
+    assert bridge.patch_state.perf_fx.mfx1.params[20] == 7
+    bridge.setPerfSource("chorus", 4)
+    bridge.patch_state.effects.chorus_type = 1
+    assert bridge.copyOriginToPerform("chorus") is True
+    fx = bridge.patch_state.perf_fx
+    assert (fx.chorus_source, fx.chorus_type, fx.chorus_rate) == (0, 2, 55)
+    assert juno._store[(0x10, 0x00, 0x04, 0x00)] == bytes([2])
 
 
 def test_bridge_perf_mfx_live_edit(tmp_path):

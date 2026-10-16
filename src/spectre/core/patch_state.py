@@ -1026,7 +1026,8 @@ class PatchState:
         if mfx[0] != 0:
             eff.mfx_last_active_type = mfx[0]
         eff.mfx_params = [
-            cls._param4v(mfx, 0x11 + 4 * i) for i in range(14)
+            cls._param4v(mfx, 0x11 + 4 * i) if len(mfx) >= 0x15 + 4 * i else 0
+            for i in range(32)
         ]
         # The golden image is a raw patch: no routing preset was selected on it.
         eff.routing_preset = ""

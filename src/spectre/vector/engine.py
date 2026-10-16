@@ -213,11 +213,13 @@ class VectorEngine:
         self._last_dispatch_time = now
         self._last_dispatched_levels = self.tone_levels
 
-        # Dispatch SysEx to Roland synth
+        # Queued for the writer thread: the 4 DT1s (~16 ms of MIDI pacing)
+        # never block the UI thread, and a level that changes again before
+        # it went out is sent once.
         if self.juno:
             try:
-                # Send all 4 tone levels
-                self.juno.set_tone_levels(self.tone_levels)
+                with self.juno.coalesced_writes():
+                    self.juno.set_tone_levels(self.tone_levels)
             except Exception as e:
                 logger.error(f"Failed to dispatch vector levels to synth: {e}")
 

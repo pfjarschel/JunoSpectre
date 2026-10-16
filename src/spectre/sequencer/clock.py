@@ -122,7 +122,12 @@ class SequencerClock:
         self._total_ticks = 0
 
     def _run_loop(self) -> None:
-        """High-resolution hybrid sleep / spin-wait loop."""
+        """Sleep-until-target loop.
+
+        Linux sleeps are accurate to ~0.1 ms (finer than USB-MIDI's 1 ms
+        frames), so the thread sleeps to ~0.2 ms before the tick and covers the
+        rest with sleep(0), which releases the GIL instead of spinning on it.
+        """
         target_time = self._start_at if self._start_at is not None else time.perf_counter()
         ticks_per_16th = self.ppqn // 4  # 24 ticks per 16th note at 96 PPQN
 
@@ -134,11 +139,11 @@ class SequencerClock:
 
             now = time.perf_counter()
             remaining = target_time - now
-            if remaining > 0.002:
-                time.sleep(remaining - 0.001)
+            if remaining > 0.0003:
+                time.sleep(remaining - 0.0002)
                 continue
             elif remaining > 0.0:
-                # Sub-millisecond spin-wait for rock-solid precision
+                time.sleep(0)
                 continue
 
             # Calculate interval for this tick taking swing into account

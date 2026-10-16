@@ -98,3 +98,18 @@ def test_vector_engine_hold_suppresses_hardware_dispatch():
 
     engine.flush()
     assert mock_juno.set_tone_levels.call_count >= 1
+
+
+def test_vector_dispatch_goes_through_the_writer_queue():
+    from src.spectre.core.midi import MidiDeviceManager
+    from src.spectre.core.protocol import JunoClient
+
+    midi = MagicMock(spec=MidiDeviceManager)
+    juno = JunoClient(midi)
+    juno.get_active_patch_base = lambda timeout=1.0: (0x1F, 0x00, 0x00, 0x00)
+    engine = VectorEngine(juno_client=juno, max_update_hz=1000.0)
+    engine.set_coordinates(0.0, 1.0)
+    assert juno.flush_writes(timeout=2.0)
+    sent = [c.args[0] for c in midi.send_juno_sysex.call_args_list if c.args[0][5] == 0x12]
+    assert len(sent) == 4
+    assert [pkt[-2] for pkt in sent] == [127, 0, 0, 0]

@@ -260,6 +260,20 @@ class PerformanceProtocolMixin:
         addr = add_address(base, MFX_PARAM_DATA_START + int(param_index) * 4)
         self.send_data(addr, pack_4nibbles(int(value) + 32768))
 
+    def set_perf_mfx_params_bulk(self, slot: int, values, start_index: int = 0) -> None:
+        """Write contiguous MFX parameters of a Performance Common slot in one DT1."""
+        s = self._check_perf_mfx_slot(slot)
+        values = list(values)
+        if not values:
+            return
+        if not (0 <= int(start_index) and int(start_index) + len(values) <= 32):
+            raise ValueError(f"MFX parameters {start_index}..{start_index + len(values) - 1} out of 0..31")
+        nibbles = []
+        for v in values:
+            nibbles.extend(pack_4nibbles(int(v) + 32768))
+        addr = add_address(perf_common_fx_base(s), MFX_PARAM_DATA_START + int(start_index) * 4)
+        self.send_data(addr, nibbles)
+
     def set_perf_chorus(self, chorus_type: int | None = None,
                         level: int | None = None,
                         output_select: int | None = None) -> None:
@@ -310,7 +324,6 @@ class PerformanceProtocolMixin:
 
     def get_perf_fx(self, timeout: float = 1.0) -> PerfFxState:
         """Read shared Performance FX into PerfFxState (tolerant per-block)."""
-        from .patch_state import PatchState as _PS
         fx = PerfFxState()
         try:
             src = self.get_perf_sources(timeout=timeout)
@@ -325,14 +338,8 @@ class PerformanceProtocolMixin:
         for slot, holder in ((1, fx.mfx1), (2, fx.mfx2), (3, fx.mfx3)):
             try:
                 blk = self.get_perf_mfx_block(slot, timeout=timeout)
-                holder.mfx_type = int(blk[0]) if len(blk) > 0 else 0
-                holder.dry_send = int(blk[1]) if len(blk) > 1 else 127
-                holder.chorus_send = int(blk[2]) if len(blk) > 2 else 0
-                holder.reverb_send = int(blk[3]) if len(blk) > 3 else 0
-                try:
-                    holder.params = [_PS._param4v(bytes(blk), 0x11 + 4 * i) for i in range(14)] + [0] * 18
-                except Exception as e:
-                    logger.debug(f"get_perf_fx: param decode failed for slot {slot}: {e}")
+                (holder.mfx_type, holder.dry_send, holder.chorus_send,
+                 holder.reverb_send, holder.params) = self._decode_mfx_block(blk)
             except Exception as e:
                 logger.debug(f"get_perf_fx: mfx block read failed for slot {slot}: {e}")
                 continue
