@@ -72,11 +72,22 @@ def _describe_ports() -> str:
         return f"<port enumeration failed: {e}>"
 
 
+def _log_uncaught(exc_type, exc, tb) -> None:
+    """Log an exception nothing caught. PyQt6 aborts the app on an exception
+    escaping a slot unless a hook is set: a bug in one control must not end
+    the show."""
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc, tb)
+        return
+    logger.error("Uncaught exception", exc_info=(exc_type, exc, tb))
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+    sys.excepthook = _log_uncaught
     args = parse_args(argv)
 
     if args.list_ports:
