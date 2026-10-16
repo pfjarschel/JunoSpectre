@@ -9,6 +9,24 @@ import "components"
 Item {
     id: appContent
 
+    // A page is built the first time it is shown and then stays (keeping its
+    // local state): startup builds only the boot page, and pages never opened
+    // don't re-evaluate their bindings on every state broadcast.
+    component Page: Loader {
+        id: page
+        required property int pageIndex
+        active: false
+        function show() {
+            if (!active && workspaceStack.currentIndex === pageIndex)
+                active = true;
+        }
+        Component.onCompleted: show()
+        Connections {
+            target: workspaceStack
+            function onCurrentIndexChanged() { page.show(); }
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -65,27 +83,27 @@ Item {
             // =================================================================
 
             // View 0 JUNO PCM: 4-tone PCM sound designer (boot screen)
-            PatchEditView {
-                id: pcmView
-                objectName: "pcmView"
+            Page {
+                pageIndex: 0
+                sourceComponent: PatchEditView { objectName: "pcmView" }
             }
 
             // View 1 VECTOR: 2D vector touch pad & morph orbit
-            VectorPad {
-                id: padView
-                objectName: "padView"
+            Page {
+                pageIndex: 1
+                sourceComponent: VectorPad { objectName: "padView" }
             }
 
             // View 2 WAVETABLE: 1D wavetable morph slider & scope
-            WavetableSlider {
-                id: wtView
-                objectName: "wtView"
+            Page {
+                pageIndex: 2
+                sourceComponent: WavetableSlider { objectName: "wtView" }
             }
 
             // View 3 VA: 4-osc virtual analog console
-            VaView {
-                id: vaView
-                objectName: "vaView"
+            Page {
+                pageIndex: 3
+                sourceComponent: VaView { objectName: "vaView" }
             }
 
             // =================================================================
@@ -93,39 +111,39 @@ Item {
             // =================================================================
 
             // View 4 MOD MATRIX: 4 matrix controllers
-            ModMatrixView {
-                id: modMatrixView
-                objectName: "modMatrixView"
+            Page {
+                pageIndex: 4
+                sourceComponent: ModMatrixView { objectName: "modMatrixView" }
             }
 
             // View 5 STEP LFO: 16-step pattern LFO
-            StepLfoView {
-                id: stepLfoView
-                objectName: "stepLfoView"
+            Page {
+                pageIndex: 5
+                sourceComponent: StepLfoView { objectName: "stepLfoView" }
             }
 
             // View 6 MSEG ENVELOPES: TVF / TVA / PITCH envelope editor
-            EnvEditorView {
-                id: envEditorView
-                objectName: "envEditorView"
+            Page {
+                pageIndex: 6
+                sourceComponent: EnvEditorView { objectName: "envEditorView" }
             }
 
             // View 7 MFX: multi-effects studio (80 algorithms)
-            MfxView {
-                id: mfxView
-                objectName: "mfxView"
+            Page {
+                pageIndex: 7
+                sourceComponent: MfxView { objectName: "mfxView" }
             }
 
             // View 8 ROUTING: tone & FX routing graph
-            RoutingView {
-                id: routingView
-                objectName: "routingView"
+            Page {
+                pageIndex: 8
+                sourceComponent: RoutingView { objectName: "routingView" }
             }
 
             // View 9 MASTER FX: chorus & reverb
-            MasterFxView {
-                id: masterFxView
-                objectName: "masterFxView"
+            Page {
+                pageIndex: 9
+                sourceComponent: MasterFxView { objectName: "masterFxView" }
             }
 
             // =================================================================
@@ -133,33 +151,33 @@ Item {
             // =================================================================
 
             // View 10 LIVE: live session matrix & macros
-            LiveModeView {
-                id: liveView
-                objectName: "liveView"
+            Page {
+                pageIndex: 10
+                sourceComponent: LiveModeView { objectName: "liveView" }
             }
 
             // View 11 SEQUENCER: polyphonic step sequencer & motion
-            SeqView {
-                id: seqView
-                objectName: "seqView"
+            Page {
+                pageIndex: 11
+                sourceComponent: SeqView { objectName: "seqView" }
             }
 
             // View 12 SETLIST: setlist & repertoire
-            SetlistView {
-                id: setlistView
-                objectName: "setlistView"
+            Page {
+                pageIndex: 12
+                sourceComponent: SetlistView { objectName: "setlistView" }
             }
 
             // View 13 PERFORMANCE: 16-part mixer, zones & layers
-            PerfMixerView {
-                id: mixerView
-                objectName: "mixerView"
+            Page {
+                pageIndex: 13
+                sourceComponent: PerfMixerView { objectName: "mixerView" }
             }
 
             // View 14 MACROS: macro play deck (8 large dials)
-            MacroDeck {
-                id: macroView
-                objectName: "macroView"
+            Page {
+                pageIndex: 14
+                sourceComponent: MacroDeck { objectName: "macroView" }
             }
 
             // =================================================================
@@ -167,33 +185,33 @@ Item {
             // =================================================================
 
             // View 15 LIBRARIAN: patches, performances & songs
-            LibrarianView {
-                id: librarianView
-                objectName: "librarianView"
+            Page {
+                pageIndex: 15
+                sourceComponent: LibrarianView { objectName: "librarianView" }
             }
 
             // View 16 MIDI LEARN: controller bindings
-            MidiLearnView {
-                id: midiLearnView
-                objectName: "midiLearnView"
+            Page {
+                pageIndex: 16
+                sourceComponent: MidiLearnView { objectName: "midiLearnView" }
             }
 
             // View 17 HARDWARE: Juno-DS & external controllers
-            HardwareConfigView {
-                id: hardwareView
-                objectName: "hardwareView"
+            Page {
+                pageIndex: 17
+                sourceComponent: HardwareConfigView { objectName: "hardwareView" }
             }
 
             // View 18 SYSTEM: Pi telemetry, brightness, Wi-Fi, updates
-            SystemView {
-                id: systemView
-                objectName: "systemView"
+            Page {
+                pageIndex: 18
+                sourceComponent: SystemView { objectName: "systemView" }
             }
 
             // View 19 ARPEGGIO: synth arp + MIDI clock out
-            ArpView {
-                id: arpView
-                objectName: "arpView"
+            Page {
+                pageIndex: 19
+                sourceComponent: ArpView { objectName: "arpView" }
             }
         }
     }

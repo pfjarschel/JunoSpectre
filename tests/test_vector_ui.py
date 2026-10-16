@@ -7,6 +7,15 @@ from spectre.ui.app import create_application
 pytestmark = pytest.mark.ui
 
 
+
+def _load_pages(app, bridge):
+    """Build every page (pages are built on first visit), back on the boot page."""
+    for view in ("VECTOR", "WAVETABLE", "VA", "MOD MATRIX", "STEP LFO", "MSEG ENVELOPES", "MFX",
+                 "ROUTING", "MASTER FX", "LIVE", "SEQUENCER", "SETLIST", "PERFORMANCE", "MACROS",
+                 "LIBRARIAN", "MIDI LEARN", "HARDWARE", "SYSTEM", "ARPEGGIO", "JUNO PCM"):
+        bridge.setActiveView(view)
+        app.processEvents()
+
 def test_ui_application_creation():
     app, qml_engine, bridge = create_application(platform="offscreen")
 
@@ -334,6 +343,8 @@ def test_vaview_pw_pwm():
     from PyQt6.QtCore import QObject
 
     app, qml_engine, bridge = create_application(platform="offscreen")
+
+    _load_pages(app, bridge)
     root = qml_engine.rootObjects()[0]
 
     va_view = root.findChild(QObject, "vaView")
@@ -361,6 +372,8 @@ def test_va_plus_waves():
     assert va_wave_chip("INTB", 579) == VA_WAVE_PLUS  # same number, other bank
 
     app, qml_engine, bridge = create_application(platform="offscreen")
+
+    _load_pages(app, bridge)
     va_view = qml_engine.rootObjects()[0].findChild(QObject, "vaView")
 
     bridge.setToneWave(2, "INTA", 1)  # e.g. picked in the wave browser or on JUNO PCM
@@ -396,6 +409,8 @@ def test_modmatrix_picker():
     from PyQt6.QtCore import QObject
 
     app, qml_engine, bridge = create_application(platform="offscreen")
+
+    _load_pages(app, bridge)
     root = qml_engine.rootObjects()[0]
 
     matrix_view = root.findChild(QObject, "modMatrixView")
@@ -447,6 +462,8 @@ def test_mseg_env_editor_view():
     from PyQt6.QtCore import QObject
 
     app, qml_engine, bridge = create_application(platform="offscreen")
+
+    _load_pages(app, bridge)
     root = qml_engine.rootObjects()[0]
 
     env_view = root.findChild(QObject, "envEditorView")
@@ -538,6 +555,8 @@ def test_mfx_view_features():
     from PyQt6.QtCore import QObject
 
     app, qml_engine, bridge = create_application(platform="offscreen")
+
+    _load_pages(app, bridge)
     root = qml_engine.rootObjects()[0]
 
     mfx_view = root.findChild(QObject, "mfxView")
@@ -613,6 +632,8 @@ def test_master_fx_view_controls():
     from PyQt6.QtCore import QObject
 
     app, qml_engine, bridge = create_application(platform="offscreen")
+
+    _load_pages(app, bridge)
     root = qml_engine.rootObjects()[0]
 
     master_fx_view = root.findChild(QObject, "masterFxView")
@@ -654,6 +675,8 @@ def test_init_patch_workflow():
     from PyQt6.QtCore import QObject
 
     app, qml_engine, bridge = create_application(platform="offscreen")
+
+    _load_pages(app, bridge)
     root = qml_engine.rootObjects()[0]
 
     # Check modal exists
@@ -1152,6 +1175,8 @@ def test_envelope_adsr_switch():
     from PyQt6.QtCore import QObject
 
     app, qml_engine, bridge = create_application(platform="offscreen")
+
+    _load_pages(app, bridge)
     root = qml_engine.rootObjects()[0]
     chip = root.findChild(QObject, "pcmTvfEnvMode")
     assert chip is not None and root.findChild(QObject, "sculptPitchEnvMode") is not None
@@ -1188,6 +1213,8 @@ def test_envelope_overlay_bridge_api():
     from PyQt6.QtCore import QObject
 
     app, qml_engine, bridge = create_application(platform="offscreen")
+
+    _load_pages(app, bridge)
     root = qml_engine.rootObjects()[0]
 
     # Global overlay + thumbnails are instantiated
@@ -1467,3 +1494,18 @@ def test_lpf2_lpf3_reach_the_synth():
     bridge.sculptTvfType("LPF3")
     assert [v for _, v in type_writes()] == [6, 6, 6, 6]
     assert all(t.tvf_filter_type == 6 for t in bridge.patch_state.tones)
+
+
+def test_pages_are_built_on_first_visit():
+    from PyQt6.QtCore import QObject
+
+    app, qml_engine, bridge = create_application(platform="offscreen")
+    root = qml_engine.rootObjects()[0]
+    assert root.findChild(QObject, "pcmView") is not None      # the boot page
+    assert root.findChild(QObject, "seqView") is None
+    bridge.setActiveView("SEQUENCER")
+    app.processEvents()
+    assert root.findChild(QObject, "seqView") is not None
+    bridge.setActiveView("JUNO PCM")
+    app.processEvents()
+    assert root.findChild(QObject, "seqView") is not None      # stays built
