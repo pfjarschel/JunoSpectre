@@ -251,9 +251,11 @@ class BaseProtocolMixin:
         """Send RQ1 data request and await matching DT1 response.
 
         One reader at a time: a concurrent reader would drain (and drop)
-        the other's reply.
+        the other's reply. Queued coalesced writes go out first, so the
+        read sees them.
         """
         with self._io_lock:
+            self._drain_pending()
             return self._request_data_locked(address, size, timeout)
 
     def _request_data_locked(self, address, size, timeout) -> Optional[bytes]:
@@ -354,19 +356,35 @@ class BaseProtocolMixin:
     def _writer_loop(self) -> None:
         while True:
             self._pending_event.wait()
+            # Pop and send under the wire lock, so a read that drains the
+            # queue first (_drain_pending) never misses a popped write.
+            with self._io_lock:
+                with self._pending_lock:
+                    if not self._pending_writes:
+                        self._pending_event.clear()
+                        continue
+                    addr, data = self._pending_writes.popitem(last=False)
+                    self._writer_busy = True
+                try:
+                    self._send_now(addr, data)
+                except Exception as e:
+                    logger.debug(f"coalesced write {addr} failed: {e}")
+                finally:
+                    with self._pending_lock:
+                        self._writer_busy = False
+
+    def _drain_pending(self) -> None:
+        """Send the queued coalesced writes now (call with _io_lock held):
+        a read must see every write queued before it."""
+        while True:
             with self._pending_lock:
                 if not self._pending_writes:
-                    self._pending_event.clear()
-                    continue
+                    return
                 addr, data = self._pending_writes.popitem(last=False)
-                self._writer_busy = True
             try:
                 self._send_now(addr, data)
             except Exception as e:
                 logger.debug(f"coalesced write {addr} failed: {e}")
-            finally:
-                with self._pending_lock:
-                    self._writer_busy = False
 
     def flush_writes(self, timeout: float = 2.0) -> bool:
         """Wait until queued coalesced writes are sent. True when drained."""

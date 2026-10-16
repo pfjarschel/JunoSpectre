@@ -124,3 +124,19 @@ def test_vector_move_inside_the_rate_window_is_sent_after_it():
     time.sleep(0.15)
     assert mock_juno.set_tone_levels.call_count == 2
     assert mock_juno.set_tone_levels.call_args.args[0] == (127, 0, 0, 0)
+
+
+def test_a_read_sends_queued_writes_first():
+    from spectre.core.midi import MidiDeviceManager
+    from spectre.core.protocol import JunoClient
+
+    midi = MagicMock(spec=MidiDeviceManager)
+    midi.iter_juno_messages.return_value = iter(())
+    juno = JunoClient(midi)
+    juno._ensure_writer = lambda: None  # keep the writes queued until the read
+    with juno.coalesced_writes():
+        juno.send_data((0x1F, 0x00, 0x20, 0x00), [10])
+        juno.send_data((0x1F, 0x00, 0x22, 0x00), [20])
+    juno.request_data((0x1F, 0x00, 0x00, 0x00), (0, 0, 0, 1), timeout=0.01)
+    cmds = [c.args[0][5] for c in midi.send_juno_sysex.call_args_list]
+    assert cmds == [0x12, 0x12, 0x11]  # both DT1s, then the RQ1
