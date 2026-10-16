@@ -7,10 +7,8 @@ from typing import Optional, Sequence, Tuple
 
 from .patch_state import (
     EffectsState,
-    MatrixCtrlState,
     PatchCommonState,
     PatchState,
-    StepLfoState,
     ToneState,
 )
 from .sysex import (
@@ -97,19 +95,6 @@ from .sysex import (
     TONE_PARAM_MATRIX_CTRL_SW_BASE,
     TONE_PARAM_OUTPUT_ASSIGN,
     TONE_PARAM_PITCH_ENV_DEPTH,
-    TONE_PARAM_PITCH_ENV_L0,
-    TONE_PARAM_PITCH_ENV_L1,
-    TONE_PARAM_PITCH_ENV_L2,
-    TONE_PARAM_PITCH_ENV_L3,
-    TONE_PARAM_PITCH_ENV_L4,
-    TONE_PARAM_PITCH_ENV_T1,
-    TONE_PARAM_PITCH_ENV_T1_VEL_SENS,
-    TONE_PARAM_PITCH_ENV_T2,
-    TONE_PARAM_PITCH_ENV_T3,
-    TONE_PARAM_PITCH_ENV_T4,
-    TONE_PARAM_PITCH_ENV_T4_VEL_SENS,
-    TONE_PARAM_PITCH_ENV_TIME_KEYFOLLOW,
-    TONE_PARAM_PITCH_ENV_VEL_SENS,
     TONE_PARAM_REVERB_SEND,
     TONE_PARAM_REVERB_SEND_DIRECT,
     TONE_PARAM_TVA_BIAS_LEVEL,
@@ -145,7 +130,6 @@ from .sysex import (
     add_address,
     pack_2nibbles,
     pack_4nibbles,
-    unpack_2nibbles,
     unpack_4nibbles,
 )
 
@@ -481,41 +465,6 @@ class PatchProtocolMixin:
         self.send_data(add_address(t_addr, TONE_PARAM_TVA_BIAS_LEVEL), [64])  # 64 = 0 neutral (no keyboard attenuation)
         self.send_data(add_address(t_addr, TONE_PARAM_MATRIX_CTRL_SW_BASE), [1] * 16)  # Default all 16 matrix switches to ON
 
-    def get_tone_wave(self, tone_index: int, timeout: float = 1.0) -> Tuple[str, int, int]:
-        """Query active wave (bank, wave_num, group_type) for a tone (1..4)."""
-        if tone_index not in (1, 2, 3, 4):
-            raise ValueError(f"Tone index must be 1..4, got {tone_index}")
-        base = self.get_active_patch_base(timeout=timeout)
-        offsets = {
-            1: OFFSET_PATCH_TONE_1,
-            2: OFFSET_PATCH_TONE_2,
-            3: OFFSET_PATCH_TONE_3,
-            4: OFFSET_PATCH_TONE_4,
-        }
-        t_addr = add_address(base, offsets[tone_index])
-        wave_addr = add_address(t_addr, TONE_PARAM_WAVE_GROUP_TYPE)
-        # Size 9: 1 byte group type, 4 nibbles group id, 4 nibbles wave num L
-        res = self.request_data(wave_addr, (0x00, 0x00, 0x00, 0x09), timeout=timeout)
-        if res is None or len(res) < 9:
-            raise TimeoutError(f"Timed out querying Tone {tone_index} wave info.")
-        group_type = res[0]
-        group_id = unpack_4nibbles(res[1:5])
-        wave_num = unpack_4nibbles(res[5:9])
-        bank = "INTA" if group_id == 1 else "INTB" if group_id == 2 else f"GROUP_{group_id}"
-        return (bank, wave_num, group_type)
-
-    def get_all_tone_waves(self, timeout: float = 1.0) -> list[Tuple[str, int]]:
-        """Query active waveform (bank, wave_num) for all 4 tones."""
-        waves = []
-        for i in (1, 2, 3, 4):
-            try:
-                bank, wnum, _ = self.get_tone_wave(i, timeout=timeout)
-                waves.append((bank, wnum))
-            except Exception as e:
-                logger.debug(f"get_all_tone_waves: read failed for tone {i}: {e}")
-                waves.append(("INTA", 0))
-        return waves
-
     def set_tone_wave(
         self,
         tone_index: int,
@@ -625,14 +574,6 @@ class PatchProtocolMixin:
         if len(raw_steps) < 16:
             raw_steps.extend([64] * (16 - len(raw_steps)))
         self.set_tone_param(tone_index, TONE_PARAM_LFO_STEP_1, raw_steps)
-
-    def set_tone_step_lfo_all(self, tone_index: int, step_type: int, steps: Sequence[int]) -> None:
-        """Set all 16 steps and Step Type in a single contiguous 17-byte block to 0x0109."""
-        t_type = max(0, min(1, int(step_type)))
-        raw_steps = [max(28, min(100, int(s) + 64)) for s in steps[:16]]
-        if len(raw_steps) < 16:
-            raw_steps.extend([64] * (16 - len(raw_steps)))
-        self.set_tone_param(tone_index, TONE_PARAM_LFO_STEP_TYPE, [t_type] + raw_steps)
 
     def set_portamento(self, enabled: bool, time: Optional[int] = None) -> None:
         """Set Portamento switch and optional time."""
@@ -886,54 +827,6 @@ class PatchProtocolMixin:
         if self._mirrors_perf_fx(base):
             self.send_data((0x10, 0x00, 0x06, offset), nibbles)
 
-    def set_tone_pitch_env(
-        self,
-        tone_index: int,
-        depth: Optional[int] = None,
-        vel_sens: Optional[int] = None,
-        time_keyfollow: Optional[int] = None,
-        t1_vel_sens: Optional[int] = None,
-        t4_vel_sens: Optional[int] = None,
-        t1: Optional[int] = None,
-        t2: Optional[int] = None,
-        t3: Optional[int] = None,
-        t4: Optional[int] = None,
-        l0: Optional[int] = None,
-        l1: Optional[int] = None,
-        l2: Optional[int] = None,
-        l3: Optional[int] = None,
-        l4: Optional[int] = None,
-    ) -> None:
-        """Set Pitch Envelope parameters for a tone."""
-        if depth is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_DEPTH, max(52, min(76, depth)))
-        if vel_sens is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_VEL_SENS, max(1, min(127, vel_sens)))
-        if time_keyfollow is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_TIME_KEYFOLLOW, max(54, min(74, time_keyfollow)))
-        if t1_vel_sens is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_T1_VEL_SENS, max(1, min(127, t1_vel_sens)))
-        if t4_vel_sens is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_T4_VEL_SENS, max(1, min(127, t4_vel_sens)))
-        if t1 is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_T1, max(0, min(127, t1)))
-        if t2 is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_T2, max(0, min(127, t2)))
-        if t3 is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_T3, max(0, min(127, t3)))
-        if t4 is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_T4, max(0, min(127, t4)))
-        if l0 is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_L0, max(1, min(127, l0)))
-        if l1 is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_L1, max(1, min(127, l1)))
-        if l2 is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_L2, max(1, min(127, l2)))
-        if l3 is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_L3, max(1, min(127, l3)))
-        if l4 is not None:
-            self.set_tone_param(tone_index, TONE_PARAM_PITCH_ENV_L4, max(1, min(127, l4)))
-
     # Raw ranges of the contiguous pitch envelope block at 0x003A..0x0047
     _PITCH_ENV_RANGES = ((52, 76), (1, 127), (1, 127), (1, 127), (54, 74),
                          (0, 127), (0, 127), (0, 127), (0, 127),
@@ -957,16 +850,19 @@ class PatchProtocolMixin:
         res = self.request_data(
             add_address(base, OFFSET_PATCH_COMMON), self._rq_size(80), timeout=timeout
         )
-        if res is None or len(res) < 0x26:
+        if res is None or len(res) < 80:
             raise TimeoutError("Timed out reading Patch Common block.")
-        return bytes(res)
+        return bytes(res[:80])
 
-    def _read_tone_raws(self, t_base, timeout: float = 1.0) -> Tuple[bytes, Optional[bytes]]:
+    def _read_tone_raws(self, t_base, timeout: float = 1.0) -> Tuple[bytes, bytes]:
+        """A tone's 154-byte main block and its 26-byte LFO2/Step block."""
         main = self.request_data(t_base, self._rq_size(154), timeout=timeout)
-        if main is None or len(main) < 0x7B:
+        if main is None or len(main) < 154:
             raise TimeoutError("Timed out reading Tone chunk 1.")
         lfo = self.request_data(add_address(t_base, 0x0100), self._rq_size(26), timeout=timeout)
-        return bytes(main), (bytes(lfo) if lfo is not None else None)
+        if lfo is None or len(lfo) < 26:
+            raise TimeoutError("Timed out reading Tone chunk 2.")
+        return bytes(main[:154]), bytes(lfo[:26])
 
     def _read_mfx_raw(self, base, timeout: float = 1.0) -> bytes:
         res = self.request_data(
@@ -1005,77 +901,15 @@ class PatchProtocolMixin:
         return bytes(res)
 
     def read_patch_common(self, timeout: float = 1.0) -> PatchCommonState:
-        """Read Patch Common block from synth RAM (full 80 bytes, parity with init template)."""
+        """Read the 80-byte Patch Common block from synth RAM."""
         base = self.get_active_patch_base(timeout=timeout)
-        res = self._read_common_raw(base, timeout=timeout)
-
-        # Full image available -> decode via the canonical template decoder
-        # (same code path as PatchState.from_template, used by init_patch).
-        if len(res) >= 80:
-            return PatchState._decode_common(bytes(res[:80]))
-
-        name = res[0:12].decode("latin1", errors="replace").strip()
-        cat = res[0x0C] if len(res) > 0x0C else 0
-        lvl = res[0x0E] if len(res) > 0x0E else 100
-        pan = res[0x0F] if len(res) > 0x0F else 64
-        analog_feel = res[0x15] if len(res) > 0x15 else 0
-        mono_poly = res[0x16] if len(res) > 0x16 else 1
-        legato = bool(res[0x17]) if len(res) > 0x17 else False
-        porta_sw = bool(res[0x19]) if len(res) > 0x19 else False
-        porta_mode = res[0x1A] if len(res) > 0x1A else 0
-        porta_time = res[0x1D] if len(res) > 0x1D else 20
-        cut_off = res[0x22] if len(res) > 0x22 else 64
-        res_off = res[0x23] if len(res) > 0x23 else 64
-        atk_off = res[0x24] if len(res) > 0x24 else 64
-        rel_off = res[0x25] if len(res) > 0x25 else 64
-        out_assign = res[0x27] if len(res) > 0x27 else 13
-
-        m_ctrls = []
-        for i, off in enumerate([0x2B, 0x34, 0x3D, 0x46]):
-            if len(res) >= off + 9:
-                m_ctrls.append(
-                    MatrixCtrlState(
-                        source=res[off],
-                        dest1=res[off + 1],
-                        sens1=res[off + 2],
-                        dest2=res[off + 3],
-                        sens2=res[off + 4],
-                        dest3=res[off + 5],
-                        sens3=res[off + 6],
-                        dest4=res[off + 7],
-                        sens4=res[off + 8],
-                    )
-                )
-            else:
-                m_ctrls.append(MatrixCtrlState())
-
-        return PatchCommonState(
-            name=name,
-            category=cat,
-            level=lvl,
-            pan=pan,
-            cutoff_offset=cut_off,
-            resonance_offset=res_off,
-            attack_offset=atk_off,
-            release_offset=rel_off,
-            portamento_switch=porta_sw,
-            portamento_mode=porta_mode,
-            portamento_time=porta_time,
-            legato_switch=legato,
-            mono_poly=mono_poly,
-            analog_feel=analog_feel,
-            patch_output_assign=out_assign,
-            matrix_ctrls=m_ctrls,
-        )
+        return PatchState._decode_common(self._read_common_raw(base, timeout=timeout))
 
     def read_tone(self, tone_index: int, timeout: float = 1.0) -> ToneState:
         """Read all parameters for a specific tone (1..4) from synth RAM.
 
-        Reads the full 154-byte main block (0x00-0x99, parity with the init
-        template) plus the 26-byte LFO2/Step block at 0x100, and decodes via
-        the canonical PatchState._decode_tone used by init_patch. Falls back
-        to the legacy 123-byte + 4-byte split when the device returns a
-        short reply.
+        Reads the 154-byte main block (0x00-0x99) plus the 26-byte LFO2/Step
+        block at 0x100 and decodes them like the init template.
         """
         if tone_index not in (1, 2, 3, 4):
             raise ValueError(f"Tone index must be 1..4, got {tone_index}")
@@ -1086,216 +920,8 @@ class PatchProtocolMixin:
             3: OFFSET_PATCH_TONE_3,
             4: OFFSET_PATCH_TONE_4,
         }
-        t_base = add_address(base, offsets[tone_index])
-
-        # Chunk 1: full 154 bytes (0x00-0x99), matching init_template.json.
-        res1, res2b = self._read_tone_raws(t_base, timeout=timeout)
-
-        # Fast path: full image available -> canonical decoder (parity with init).
-        if len(res1) >= 154 and res2b is not None and len(res2b) >= 26:
-            try:
-                return PatchState._decode_tone(
-                    bytes(res1[:154]), bytes(res2b[:26]), tone_index
-                )
-            except Exception as e:
-                logger.warning(f"Tone {tone_index} canonical decode failed, using legacy: {e}")
-
-        level = res1[0x00]
-        coarse = res1[0x01]
-        fine = res1[0x02]
-        pan = res1[0x04]
-        output_level = res1[0x0C] if len(res1) > 0x0C else 127
-        chorus_send = res1[0x0D] if len(res1) > 0x0D else 0
-        reverb_send = res1[0x0E] if len(res1) > 0x0E else 0
-        chorus_send_direct = res1[0x0F] if len(res1) > 0x0F else 0
-        reverb_send_direct = res1[0x10] if len(res1) > 0x10 else 0
-        output_assign = res1[0x11] if len(res1) > 0x11 else 0
-        matrix_switches = [
-            list(res1[0x17:0x1B]),
-            list(res1[0x1B:0x1F]),
-            list(res1[0x1F:0x23]),
-            list(res1[0x23:0x27]),
-        ]
-
-        # Wave
-        group_id = unpack_4nibbles(res1[0x28:0x2C])
-        bank = "INTA" if group_id == 1 else "INTB" if group_id == 2 else f"GROUP_{group_id}"
-        wave_l = unpack_4nibbles(res1[0x2C:0x30])
-        wave_r = unpack_4nibbles(res1[0x30:0x34])
-        wave_gain = res1[0x34]
-        fxm_sw = bool(res1[0x35])
-        fxm_color = res1[0x36]
-        fxm_depth = res1[0x37]
-
-        # Pitch Env
-        p_depth = res1[0x3A]
-        p_vel_sens = res1[0x3B]
-        p_t1_vel = res1[0x3C]
-        p_t4_vel = res1[0x3D]
-        p_time_kf = res1[0x3E]
-        p_t1 = res1[0x3F]
-        p_t2 = res1[0x40]
-        p_t3 = res1[0x41]
-        p_t4 = res1[0x42]
-        p_l0 = res1[0x43]
-        p_l1 = res1[0x44]
-        p_l2 = res1[0x45]
-        p_l3 = res1[0x46]
-        p_l4 = res1[0x47]
-
-        # TVF
-        tvf_type = res1[0x48]
-        tvf_cutoff = res1[0x49]
-        tvf_kf = res1[0x4A]
-        tvf_reso = res1[0x4D]
-        tvf_env_depth = res1[0x4F]
-        tvf_env_vel = res1[0x51]
-        tvf_env_t1_vel = res1[0x52]
-        tvf_env_t4_vel = res1[0x53]
-        tvf_env_time_kf = res1[0x54]
-        tvf_t1 = res1[0x55]
-        tvf_t2 = res1[0x56]
-        tvf_t3 = res1[0x57]
-        tvf_t4 = res1[0x58]
-        tvf_l0 = res1[0x59]
-        tvf_l1 = res1[0x5A]
-        tvf_l2 = res1[0x5B]
-        tvf_l3 = res1[0x5C]
-        tvf_l4 = res1[0x5D]
-
-        # TVA
-        tva_vel = res1[0x62]
-        tva_env_t1_vel = res1[0x63]
-        tva_env_t4_vel = res1[0x64]
-        tva_env_time_kf = res1[0x65]
-        tva_t1 = res1[0x66]
-        tva_t2 = res1[0x67]
-        tva_t3 = res1[0x68]
-        tva_t4 = res1[0x69]
-        tva_l1 = res1[0x6A]
-        tva_l2 = res1[0x6B]
-        tva_l3 = res1[0x6C]
-
-        # LFO 1
-        lfo1_wave = res1[0x6D]
-        lfo1_rate = unpack_2nibbles(res1[0x6E:0x70])
-        lfo1_delay = res1[0x72]
-        lfo1_fade_m = res1[0x74]
-        lfo1_fade_t = res1[0x75]
-        lfo1_p_dep = res1[0x77]
-        lfo1_f_dep = res1[0x78]
-        lfo1_a_dep = res1[0x79]
-        lfo1_pan_dep = res1[0x7A]
-
-        # LFO 2: prefer bytes already in the full 154-byte block; otherwise
-        # fall back to the legacy dedicated 4-byte read (old mocks / short replies).
-        if len(res1) >= 0x7E:
-            lfo2_wave = res1[0x7B]
-            try:
-                lfo2_rate = unpack_2nibbles(res1[0x7C:0x7E])
-            except ValueError:
-                lfo2_rate = 45
-        else:
-            lfo2_addr_a = add_address(t_base, 0x007B)
-            res2a = self.request_data(lfo2_addr_a, (0x00, 0x00, 0x00, 0x04), timeout=timeout)
-            lfo2_wave = res2a[0] if res2a and len(res2a) > 0 else 0
-            lfo2_rate = unpack_2nibbles(res2a[1:3]) if res2a and len(res2a) >= 3 else 45
-
-        lfo2_delay = res2b[0] if res2b and len(res2b) > 0 else 0
-        lfo2_fade_m = res2b[2] if res2b and len(res2b) > 2 else 0
-        lfo2_fade_t = res2b[3] if res2b and len(res2b) > 3 else 0
-        lfo2_p_dep = res2b[5] if res2b and len(res2b) > 5 else 64
-        lfo2_f_dep = res2b[6] if res2b and len(res2b) > 6 else 64
-        lfo2_a_dep = res2b[7] if res2b and len(res2b) > 7 else 64
-        lfo2_pan_dep = res2b[8] if res2b and len(res2b) > 8 else 64
-        step_lfo_type = res2b[9] if res2b and len(res2b) > 9 else 0
-        step_lfo_steps = [b - 64 for b in res2b[10:26]] if res2b and len(res2b) >= 26 else [0] * 16
-
-        return ToneState(
-            tone_index=tone_index,
-            level=level,
-            pan=pan,
-            output_level=output_level,
-            chorus_send=chorus_send,
-            reverb_send=reverb_send,
-            chorus_send_direct=chorus_send_direct,
-            reverb_send_direct=reverb_send_direct,
-            output_assign=output_assign,
-            tva_velo_sens=tva_vel,
-            tva_env_t1_vel_sens=tva_env_t1_vel,
-            tva_env_t4_vel_sens=tva_env_t4_vel,
-            tva_env_time_keyfollow=tva_env_time_kf,
-            tva_t1=tva_t1,
-            tva_t2=tva_t2,
-            tva_t3=tva_t3,
-            tva_t4=tva_t4,
-            tva_l1=tva_l1,
-            tva_l2=tva_l2,
-            tva_l3=tva_l3,
-            tvf_filter_type=tvf_type,
-            tvf_cutoff=tvf_cutoff,
-            tvf_resonance=tvf_reso,
-            tvf_cutoff_keyfollow=tvf_kf,
-            tvf_env_depth=tvf_env_depth,
-            tvf_env_velo_sens=tvf_env_vel,
-            tvf_env_t1_vel_sens=tvf_env_t1_vel,
-            tvf_env_t4_vel_sens=tvf_env_t4_vel,
-            tvf_env_time_keyfollow=tvf_env_time_kf,
-            tvf_t1=tvf_t1,
-            tvf_t2=tvf_t2,
-            tvf_t3=tvf_t3,
-            tvf_t4=tvf_t4,
-            tvf_l0=tvf_l0,
-            tvf_l1=tvf_l1,
-            tvf_l2=tvf_l2,
-            tvf_l3=tvf_l3,
-            tvf_l4=tvf_l4,
-            coarse_tune=coarse,
-            fine_tune=fine,
-            wave_bank_l=bank,
-            wave_num_l=wave_l,
-            wave_bank_r=bank,
-            wave_num_r=wave_r,
-            wave_gain=wave_gain,
-            wave_fxm_switch=fxm_sw,
-            wave_fxm_color=fxm_color,
-            wave_fxm_depth=fxm_depth,
-            pitch_env_depth=p_depth,
-            pitch_env_vel_sens=p_vel_sens,
-            pitch_env_time_keyfollow=p_time_kf,
-            pitch_env_t1_vel_sens=p_t1_vel,
-            pitch_env_t4_vel_sens=p_t4_vel,
-            pitch_env_t1=p_t1,
-            pitch_env_t2=p_t2,
-            pitch_env_t3=p_t3,
-            pitch_env_t4=p_t4,
-            pitch_env_l0=p_l0,
-            pitch_env_l1=p_l1,
-            pitch_env_l2=p_l2,
-            pitch_env_l3=p_l3,
-            pitch_env_l4=p_l4,
-            lfo1_waveform=lfo1_wave,
-            lfo1_rate=lfo1_rate,
-            lfo1_pitch_depth=lfo1_p_dep,
-            lfo1_tvf_depth=lfo1_f_dep,
-            lfo1_tva_depth=lfo1_a_dep,
-            lfo1_pan_depth=lfo1_pan_dep,
-            lfo1_delay_time=lfo1_delay,
-            lfo1_fade_mode=lfo1_fade_m,
-            lfo1_fade_time=lfo1_fade_t,
-            lfo2_waveform=lfo2_wave,
-            lfo2_rate=lfo2_rate,
-            lfo2_pitch_depth=lfo2_p_dep,
-            lfo2_tvf_depth=lfo2_f_dep,
-            lfo2_tva_depth=lfo2_a_dep,
-            lfo2_pan_depth=lfo2_pan_dep,
-            lfo2_delay_time=lfo2_delay,
-            lfo2_fade_mode=lfo2_fade_m,
-            lfo2_fade_time=lfo2_fade_t,
-            step_lfo_type=step_lfo_type,
-            step_lfo_steps=step_lfo_steps,
-            matrix_switches=matrix_switches,
-        )
+        main, lfo = self._read_tone_raws(add_address(base, offsets[tone_index]), timeout=timeout)
+        return PatchState._decode_tone(main, lfo, tone_index)
 
     def read_all_tones(self, timeout: float = 1.0) -> list[ToneState]:
         """Read parameter states for all 4 tones."""
@@ -1380,24 +1006,16 @@ class PatchProtocolMixin:
         raw_regions: dict[str, list[bytes]] = {}
 
         common_raw = self._read_common_raw(base, timeout=timeout)
-        raw_regions["common"] = [bytes(common_raw[:80])]
-        common = PatchState._decode_common(bytes(common_raw[:80])) if len(common_raw) >= 80 else self.read_patch_common(timeout=timeout)
+        raw_regions["common"] = [common_raw]
+        common = PatchState._decode_common(common_raw)
 
         tone_offsets = (OFFSET_PATCH_TONE_1, OFFSET_PATCH_TONE_2, OFFSET_PATCH_TONE_3, OFFSET_PATCH_TONE_4)
         tones: list[ToneState] = []
         for idx, off in enumerate(tone_offsets, start=1):
             t_base = add_address(base, off)
             main_raw, lfo_raw = self._read_tone_raws(t_base, timeout=timeout)
-            raw_regions[f"tone_{idx}"] = [bytes(main_raw)] + (
-                [bytes(lfo_raw)] if lfo_raw is not None else []
-            )
-            if len(main_raw) >= 154 and lfo_raw is not None and len(lfo_raw) >= 26:
-                try:
-                    tones.append(PatchState._decode_tone(bytes(main_raw[:154]), bytes(lfo_raw[:26]), idx))
-                    continue
-                except Exception as e:
-                    logger.warning(f"Tone {idx} canonical decode failed, using legacy: {e}")
-            tones.append(self.read_tone(idx, timeout=timeout))
+            raw_regions[f"tone_{idx}"] = [main_raw, lfo_raw]
+            tones.append(PatchState._decode_tone(main_raw, lfo_raw, idx))
 
         try:
             tmt_raw = self._read_tmt_raw(base, timeout=timeout)
@@ -1457,7 +1075,6 @@ class PatchProtocolMixin:
             if len(mfx_params) < 32
             else list(mfx_params[:32]),
             routing_preset="",
-            manual_routing_unlocked=False,
             chorus_type=c_type,
             chorus_level=c_lvl,
             chorus_to_reverb=c_out,
@@ -1481,13 +1098,6 @@ class PatchProtocolMixin:
             tones=tones,
             effects=effects,
             raw_regions={k: [bytes(c) for c in v] for k, v in raw_regions.items()},
-        )
-        patch_state.step_lfo = StepLfoState(
-            steps=[0] * 16,
-            curve_type=0,
-            sync_rate_idx=2,
-            dest_idx=1,
-            depth=0,
         )
         patch_state.custom_detune_cache = [t.fine_tune for t in tones]
         return patch_state

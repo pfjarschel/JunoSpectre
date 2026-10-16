@@ -133,7 +133,6 @@ def patch_state_from_dict(d: Dict[str, Any]) -> PatchState:
         PerfFxState,
         PerfMfxSlotState,
         PerfPartState,
-        StepLfoState,
         ToneState,
         default_macro_slots,
     )
@@ -174,7 +173,6 @@ def patch_state_from_dict(d: Dict[str, Any]) -> PatchState:
                 tones.append(ToneState(tone_index=len(tones) + 1))
             out.tones = tones
         out.effects = _safe_construct(EffectsState, d.get("effects"), base.effects)
-        out.step_lfo = _safe_construct(StepLfoState, d.get("step_lfo"), base.step_lfo)
         raw_parts = d.get("perf_parts")
         if isinstance(raw_parts, list) and raw_parts:
             parts = [_safe_construct(PerfPartState, p, PerfPartState()) for p in raw_parts[:16]]
@@ -386,7 +384,6 @@ def describe_for_index(loaded: Dict[str, Any]) -> Tuple[str, str, list[str], boo
 #   "sequencer": {<SequencerSong dict>} | None,
 #   "bpm": 120.0, "arp": {...} (optional),
 # }
-# Older entries name the link "perf_path"; entry_song_path() reads both.
 # ---------------------------------------------------------------------------
 
 def _canonical_json(obj: Any) -> str:
@@ -407,7 +404,7 @@ def entry_song_path(entry: Dict[str, Any]) -> str:
     """The song file a setlist entry links ('' when snapshot only)."""
     if not isinstance(entry, dict):
         return ""
-    return str(entry.get("song_path") or entry.get("perf_path") or "")
+    return str(entry.get("song_path") or "")
 
 
 def _set_entry_snapshot(entry: Dict[str, Any], patch_dict: Optional[Dict[str, Any]],

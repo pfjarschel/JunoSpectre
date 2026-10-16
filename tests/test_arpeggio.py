@@ -151,7 +151,7 @@ def test_patch_file_carries_and_restores_the_arp(ui):
 
 def test_arp_knobs_and_actions(ui):
     _, bridge, _ = ui
-    bridge.setActiveView("ARP")
+    bridge.setActiveView("ARPEGGIO")
     assert bridge.activeView == "ARPEGGIO"
     bridge._ctx_refresh()
     titles = [k["title"] for k in bridge.contextKnobs]

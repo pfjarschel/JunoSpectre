@@ -96,37 +96,6 @@ class ViewBridgeMixin(BridgeBaseMixin):
     def setActiveView(self, view: str) -> None:
         """Switch active workstation view tab."""
         v = view.upper().strip()
-        if v in ("PATCH EDIT", "JUNO-DS", "JUNO_PCM"):
-            v = "JUNO PCM"
-        elif v in ("4-OSC VA", "4OSC VA", "VA ENGINE"):
-            v = "VA"
-        elif v in ("MACRO DECK", "MACRO"):
-            v = "MACROS"
-        elif v in ("MFX STUDIO", "EFFECTS", "EFFECTS STUDIO"):
-            v = "MFX"
-        elif v in ("MASTER EFFECTS", "MASTER_FX"):
-            v = "MASTER FX"
-        elif v in ("STEP-LFO", "STEPLFO"):
-            v = "STEP LFO"
-        elif v in ("PITCH-ENV", "PITCHENV", "PITCH ENV", "MSEG ENVELOPE", "ENVELOPE EDITOR", "ENV EDITOR"):
-            v = "MSEG ENVELOPES"
-        elif v in ("MOD-MATRIX", "MODMATRIX"):
-            v = "MOD MATRIX"
-        elif v in ("PERF-MIXER", "PERFMIXER", "PERF MIXER"):
-            v = "PERFORMANCE"
-        elif v in ("MIDI-LEARN", "MIDILEARN"):
-            v = "MIDI LEARN"
-        elif v in ("HARDWARE CONFIG", "HARDWARE_CONFIG"):
-            v = "HARDWARE"
-        elif v in ("LIVE MODE", "LIVE-MODE", "SESSION", "SESSION MATRIX"):
-            v = "LIVE"
-        elif v in ("SET LIST", "SET-LIST", "SET_LIST", "PLAYLIST"):
-            v = "SETLIST"
-        elif v in ("STEP EDITOR", "STEP-EDITOR", "STEP_EDITOR", "SEQ", "STEP SEQUENCER"):
-            v = "SEQUENCER"
-        elif v in ("ARP", "ARPEGGIATOR"):
-            v = "ARPEGGIO"
-
         if self._active_view != v:
             if v == "LIBRARIAN" and self._active_view != "LIBRARIAN":
                 self._view_before_librarian = self._active_view

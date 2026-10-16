@@ -41,7 +41,7 @@ def test_encode_produces_valid_dt1_sequence():
 
 def test_encode_requires_raw_image():
     client = _real_client()
-    state = PatchState.create_init_patch()
+    state = PatchState.from_template_file()
     state.raw_regions = {}
     with pytest.raises(ValueError):
         client.encode_patch_sysex(state)

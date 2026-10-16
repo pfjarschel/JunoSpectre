@@ -211,7 +211,7 @@ def test_sequencer_operational_fixes(bridge):
     bridge.recorder.subscribe_ui(lambda ev, data: events.append((ev, data)))
 
     # Audition only edits the cursor step while the step editor is on screen
-    bridge.setActiveView("PATCH EDIT")
+    bridge.setActiveView("JUNO PCM")
     bridge.recorder.cursor_step = 4
     bridge.recorder.handle_midi_message(mido.Message("note_on", note=65, velocity=90))
     assert bridge.seqActiveClipSteps[4]["isActive"] is False
@@ -313,7 +313,7 @@ def test_loading_a_performance_applies_its_sequence_and_tempo(bridge, tmp_path):
     song.bpm = 97.0
     song.tracks[1].selected_clip_idx = 4
     path = tmp_path / "song.spectre"
-    save_spectre(path, PatchState.create_init_patch(), meta={"name": "S"},
+    save_spectre(path, PatchState.from_template_file(), meta={"name": "S"},
                  spectre={"sequencer": song.to_dict()}, kind="performance")
 
     assert bridge.loadSpectreFile(str(path)) is True

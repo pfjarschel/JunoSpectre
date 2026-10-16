@@ -15,7 +15,7 @@ from src.spectre.core.spectre_format import (
 
 
 def test_hw_roundtrip_preserves_params_and_raw_regions(tmp_path):
-    ps = PatchState.create_init_patch()
+    ps = PatchState.from_template_file()
     ps.common.name = "ROUNDTRIP"
     ps.tones[0].tvf_cutoff = 100
     ps.tones[2].muted = True
@@ -48,7 +48,7 @@ def test_hw_roundtrip_preserves_params_and_raw_regions(tmp_path):
 
 
 def test_unknown_fields_preserved_forward_compat(tmp_path):
-    ps = PatchState.create_init_patch()
+    ps = PatchState.from_template_file()
     p = tmp_path / "f.spectre"
     save_spectre(p, ps, spectre={"engine_mode": "va"})
     raw = json.loads(p.read_text())
@@ -69,7 +69,7 @@ def test_unknown_fields_preserved_forward_compat(tmp_path):
 
 
 def test_bad_version_and_kind_rejected(tmp_path):
-    ps = PatchState.create_init_patch()
+    ps = PatchState.from_template_file()
     p = tmp_path / "b.spectre"
     save_spectre(p, ps)
     raw = json.loads(p.read_text())

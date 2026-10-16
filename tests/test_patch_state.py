@@ -9,7 +9,7 @@ from src.spectre.core.patch_state import (
 
 
 def test_init_patch_creation():
-    patch = PatchState.create_init_patch()
+    patch = PatchState.from_template_file()
     assert patch.sound_mode == "PATCH"
     assert patch.common.name == "JUNO SPECTRE"
     assert patch.common.level == 127
@@ -162,7 +162,7 @@ def test_env_modifier_defaults_and_conversions():
     assert signed.tvf_env_time_kf_bipolar == 50
     assert signed.tva_env_t4_vel_sens_bipolar == -10
 
-    init = PatchState.create_init_patch()
+    init = PatchState.from_template_file()
     for t in init.tones:
         assert t.tvf_env_t1_vel_sens == 64
         assert t.tva_env_time_keyfollow == 64
@@ -185,7 +185,6 @@ def test_golden_template_asset_decodes():
 
     # Golden image preserves the template patch byte-for-byte (no preset selected)
     assert patch.effects.routing_preset == ""
-    assert patch.effects.manual_routing_unlocked is False
     assert patch.effects.mfx_bypassed is True
     assert patch.effects.mfx_dry_send == 127
     assert patch.effects.mfx_chorus_send == 0

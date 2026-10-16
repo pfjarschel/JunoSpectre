@@ -13,9 +13,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .sysex import TMT_TONE_RANGE_FIELDS, unpack_2nibbles, unpack_4nibbles
 
-# Canonical initialization template (single source of truth shared by
-# protocol.init_patch, create_init_patch, PatchState.from_template, and bridge.initPatch).
-INIT_PATCH_NAME = "JUNO SPECTRE"
+# Canonical initialization template (shared by protocol.init_patch,
+# PatchState.from_template and bridge.initPatch).
 INIT_TONE_WAVES: List[Tuple[str, int]] = [
     ("INTA", 579),  # Juno Saw HD
     ("INTA", 600),  # Juno Sqr HD
@@ -489,7 +488,6 @@ class EffectsState:
 
     # Clean Routing Topologies
     routing_preset: str = ""  # "" (none / raw patch), SERIAL_CHAIN, STUDIO_AUX, VINTAGE_SYNTH, AMBIENT_WASH, CUSTOM
-    manual_routing_unlocked: bool = False
 
     # Master Chorus
     chorus_type: int = 1         # 0=OFF, 1=Chorus 1, 2=Delay, 3=GM2
@@ -509,16 +507,6 @@ class EffectsState:
     reverb_diffusion: int = 60   # 0..127
     reverb_tone: int = 64        # 0..127
 
-
-
-@dataclass
-class StepLfoState:
-    """State for 16-Step Pattern Modulator."""
-    steps: list[int] = field(default_factory=lambda: [0] * 16)
-    curve_type: int = 0          # 0: STEP (HOLD), 1: GLIDE (LINEAR)
-    sync_rate_idx: int = 2       # 2 = 1/16
-    dest_idx: int = 1            # 0: PITCH, 1: TVF CUTOFF, 2: TVA LEVEL, 3: PAN
-    depth: int = 48              # 0..127
 
 
 @dataclass
@@ -694,7 +682,6 @@ class PatchState:
         for i, (bank, wnum) in enumerate(INIT_TONE_WAVES, start=1)
     ])
     effects: EffectsState = field(default_factory=EffectsState)
-    step_lfo: StepLfoState = field(default_factory=StepLfoState)
     perf_parts: list[PerfPartState] = field(default_factory=lambda: [
         PerfPartState(part_index=i, name=f"Part {i}",
                       volume=110 if i == 1 else (85 if i == 2 else 0),
@@ -732,146 +719,6 @@ class PatchState:
         """Get ToneState by 1-based tone number (1..4)."""
         idx = max(1, min(4, tone_number)) - 1
         return self.tones[idx]
-
-    @classmethod
-    def create_init_patch(cls) -> "PatchState":
-        """Offline fallback template matching the captured hardware image.
-
-        When the init_template.json asset exists, prefer PatchState.from_template_file()
-        so software state and hardware come from the exact same golden image.
-        """
-        state = cls()
-        state.sound_mode = "PATCH"
-        state.common = PatchCommonState(
-            name=INIT_PATCH_NAME,
-            level=127,
-            pan=64,
-            cutoff_offset=64,
-            resonance_offset=64,
-            attack_offset=64,
-            release_offset=64,
-            portamento_switch=False,
-            portamento_time=20,
-            portamento_mode=0,
-            legato_switch=False,
-            mono_poly=1,
-            analog_feel=0,
-            patch_output_assign=13,
-        )
-
-        state.tones = [
-            ToneState(
-                tone_index=idx,
-                level=127,
-                pan=64,
-                coarse_tune=64,
-                fine_tune=64,
-                wave_bank_l=bank,
-                wave_num_l=wnum,
-                wave_gain=1, # 0 dB
-                wave_fxm_switch=False,
-                wave_fxm_depth=0,
-                # Tone routing: serial chain (Tone -> MFX)
-                output_assign=0,
-                output_level=127,
-                chorus_send=0,
-                reverb_send=0,
-                # TVF: LPF wide open, captured keyboard-init envelope shape
-                tvf_filter_type=1,
-                tvf_cutoff=127,
-                tvf_resonance=0,
-                tvf_cutoff_keyfollow=64,
-                tvf_env_depth=64,
-                tvf_env_velo_sens=64,
-                tvf_env_t1_vel_sens=64,
-                tvf_env_t4_vel_sens=64,
-                tvf_env_time_keyfollow=64,
-                tvf_t1=0, tvf_t2=10, tvf_t3=10, tvf_t4=64,
-                tvf_l0=0, tvf_l1=127, tvf_l2=127, tvf_l3=127, tvf_l4=0,
-                # TVA: captured keyboard-init envelope shape
-                tva_velo_sens=96,
-                tva_env_t1_vel_sens=64,
-                tva_env_t4_vel_sens=64,
-                tva_env_time_keyfollow=64,
-                tva_t1=0, tva_t2=10, tva_t3=10, tva_t4=10,
-                tva_l1=127, tva_l2=127, tva_l3=127,
-                # Pitch Env: captured keyboard-init shape
-                pitch_env_depth=64,
-                pitch_env_vel_sens=64,
-                pitch_env_t1_vel_sens=64,
-                pitch_env_t4_vel_sens=64,
-                pitch_env_time_keyfollow=64,
-                pitch_env_t1=40,
-                pitch_env_t2=80,
-                pitch_env_t3=40,
-                pitch_env_t4=0,
-                pitch_env_l0=64,
-                pitch_env_l1=34,
-                pitch_env_l2=94,
-                pitch_env_l3=64,
-                pitch_env_l4=64,
-                # LFO 1 & 2 neutral depths, captured defaults
-                lfo1_waveform=1, # TRI
-                lfo1_rate=92,
-                lfo1_pitch_depth=64,
-                lfo1_tvf_depth=64,
-                lfo1_tva_depth=64,
-                lfo1_pan_depth=64,
-                lfo1_delay_time=0,
-                lfo1_fade_time=0,
-                lfo2_waveform=1, # TRI
-                lfo2_rate=92,
-                lfo2_pitch_depth=64,
-                lfo2_tvf_depth=64,
-                lfo2_tva_depth=64,
-                lfo2_pan_depth=64,
-                lfo2_delay_time=0,
-                lfo2_fade_time=0,
-                muted=False,
-            )
-            for idx, (bank, wnum) in enumerate(INIT_TONE_WAVES, start=1)
-        ]
-
-        state.effects = EffectsState(
-            mfx_type=0, # Bypassed
-            mfx_dry_send=127, # Tones feed the MFX block and pass through to Main (zero residue)
-            mfx_chorus_send=0,
-            mfx_reverb_send=0,
-            mfx_bypassed=True,
-            mfx_last_active_type=15,
-            routing_preset="",
-            manual_routing_unlocked=False,
-            chorus_type=1, # Armed, but fed zero sends from the tones -> inaudible (template-true)
-            chorus_level=127,
-            chorus_to_reverb=0,
-            chorus_rate=10,
-            chorus_depth=20,
-            chorus_predelay=20,
-            chorus_feedback=0,
-            reverb_type=3,
-            reverb_level=127,
-            reverb_predelay=10,
-            reverb_time=64,
-            reverb_damp=19,
-            reverb_diffusion=127,
-            reverb_tone=19,
-        )
-
-        state.step_lfo = StepLfoState(
-            steps=[0] * 16,
-            curve_type=0,
-            sync_rate_idx=2,
-            dest_idx=1,
-            depth=0,
-        )
-
-        state.auto_detune = False
-        state.auto_detune_cents = 15
-        state.custom_detune_cache = [64, 64, 64, 64]
-        state.va_pw = [50, 50, 50, 50]
-        state.va_pwm = [0, 0, 0, 0]
-
-        return state
 
     # ------------------------------------------------------------------
     # Golden init template: decode the captured hardware image (init_template.json)
@@ -1031,7 +878,6 @@ class PatchState:
         ]
         # The golden image is a raw patch: no routing preset was selected on it.
         eff.routing_preset = ""
-        eff.manual_routing_unlocked = False
         eff.chorus_type = cho[0]
         eff.chorus_level = cho[1]
         eff.chorus_to_reverb = cho[3]
@@ -1069,13 +915,6 @@ class PatchState:
 
         state = cls(common=common, tones=tones, effects=effects)
         state.sound_mode = "PATCH"
-        state.step_lfo = StepLfoState(
-            steps=[0] * 16,
-            curve_type=0,
-            sync_rate_idx=2,
-            dest_idx=1,
-            depth=0,
-        )
         state.custom_detune_cache = [t.fine_tune for t in tones]
         try:
             state.raw_regions = {

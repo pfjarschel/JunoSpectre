@@ -139,7 +139,6 @@ class PatchRepository:
         self._factory: sqlite3.Connection | None = None
         self._factory_path: Path | None = None
         self._attach_factory(factory_db_path)
-        self._migrate_legacy_factory_rows()
 
     # ------------------------------------------------------------------ schema
     def ensure_schema(self) -> None:
@@ -165,6 +164,7 @@ class PatchRepository:
             CREATE INDEX IF NOT EXISTS idx_patches_name ON patches(name);
             CREATE INDEX IF NOT EXISTS idx_patches_category ON patches(category);
             CREATE INDEX IF NOT EXISTS idx_patches_fav ON patches(favorite);
+            CREATE INDEX IF NOT EXISTS idx_patches_kind ON patches(kind);
             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
             -- User customizations of shipped factory rows (the factory DB
             -- itself is read-only): keyed by factory path.
@@ -176,20 +176,6 @@ class PatchRepository:
             );
             """
         )
-        # Migration for DBs created before the kind column existed.
-        # NOTE: the kind index is created after the ALTER, since CREATE INDEX
-        # validates the column immediately and legacy tables lack it.
-        try:
-            cols = {r[1] for r in self._conn.execute("PRAGMA table_info(patches)").fetchall()}
-            if "kind" not in cols:
-                self._conn.execute("ALTER TABLE patches ADD COLUMN kind TEXT NOT NULL DEFAULT 'patch'")
-            # Backfill legacy rows whose path lacks a kind infix.
-            self._conn.execute(
-                "UPDATE patches SET kind='patch' WHERE kind IS NULL OR kind=''")
-            self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_patches_kind ON patches(kind)")
-        except Exception as e:
-            logger.warning(f"Librarian kind migration skipped: {e}")
         self._conn.execute(
             "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
             (str(SCHEMA_VERSION),),
@@ -227,88 +213,6 @@ class PatchRepository:
         except Exception as e:
             logger.warning(f"Could not open factory catalog {cand}: {e}")
             self._factory = None
-
-    def _factory_variants(self) -> list[str]:
-        if self._factory is None:
-            return []
-        try:
-            rows = self._factory.execute(
-                "SELECT DISTINCT model_variant FROM patches ORDER BY 1").fetchall()
-            return [r[0] for r in rows if r[0]]
-        except Exception:
-            return []
-
-    @staticmethod
-    def _parse_legacy_factory_path(path: str) -> tuple[str, int, int, int] | None:
-        """Legacy user-DB factory keys -> (kind, msb, lsb, pc)."""
-        parts = (path or "").split(":")
-        try:
-            if len(parts) == 5 and parts[0] == "factory":
-                _, kind, msb, lsb, pc = parts
-                return kind, int(msb), int(lsb), int(pc)
-            if len(parts) == 4 and parts[0] == "factory":
-                _, msb, lsb, pc = parts
-                return "patch", int(msb), int(lsb), int(pc)
-        except (ValueError, TypeError):
-            pass
-        return None
-
-    def _migrate_legacy_factory_rows(self) -> None:
-        """Move pre-split factory rows out of the user DB.
-
-        Only runs when the shipped factory DB actually contains our variant
-        (else we'd delete sounds with nothing to replace them). User
-        favorites/ratings/tags are preserved into the factory_meta overlay
-        under the new variant-qualified path.
-        """
-        from .factory import factory_key
-
-        try:
-            legacy = self._conn.execute(
-                "SELECT * FROM patches WHERE source='factory'").fetchall()
-        except Exception:
-            return
-        if not legacy:
-            return
-        if self._factory is None or self.model_variant not in self._factory_variants():
-            logger.warning(
-                f"Keeping {len(legacy)} legacy factory rows: variant "
-                f"'{self.model_variant}' not in shipped catalog.")
-            return
-        moved = kept = 0
-        for r in legacy:
-            parsed = self._parse_legacy_factory_path(r["path"])
-            if parsed is None:
-                continue
-            kind, msb, lsb, pc = parsed
-            new_path = factory_key(self.model_variant, kind, msb, lsb, pc)
-            fav = int(r["favorite"] or 0)
-            rating = int(r["rating"] or 0)
-            tags = r["tags"] if r["tags"] not in (None, "[]", "") else "[]"
-            # Overlay may already hold customizations under the legacy key
-            # (set_favorite/set_tags on pre-split rows): remap them.
-            old_ov = self._conn.execute(
-                "SELECT * FROM factory_meta WHERE path=?", (r["path"],)).fetchone()
-            if old_ov is not None:
-                fav = fav or int(old_ov["favorite"] or 0)
-                rating = max(rating, int(old_ov["rating"] or 0))
-                if old_ov["tags"] not in (None, "[]", ""):
-                    tags = old_ov["tags"]
-                self._conn.execute("DELETE FROM factory_meta WHERE path=?", (r["path"],))
-            if fav or rating or (tags not in ("[]", "")):
-                self._conn.execute(
-                    "INSERT INTO factory_meta(path, favorite, rating, tags)"
-                    " VALUES(?,?,?,?)"
-                    " ON CONFLICT(path) DO UPDATE SET favorite=excluded.favorite,"
-                    " rating=excluded.rating, tags=excluded.tags",
-                    (new_path, fav, rating, _tags_to_str(_tags_from_str(tags))),
-                )
-                kept += 1
-            moved += 1
-        self._conn.execute("DELETE FROM patches WHERE source='factory'")
-        self._conn.commit()
-        logger.info(f"Factory split migration: {moved} legacy rows removed, "
-                    f"{kept} customizations kept in overlay.")
 
     def _overlay_map(self, paths: list[str] | None = None) -> dict[str, dict]:
         try:

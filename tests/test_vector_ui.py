@@ -103,16 +103,6 @@ def test_workstation_views_switching():
         elif v == "WAVETABLE":
             assert bridge.vector.mode.value == "wavetable_1d"
 
-    # Test legacy aliases normalize cleanly
-    bridge.setActiveView("PATCH EDIT")
-    assert bridge.activeView == "JUNO PCM"
-    bridge.setActiveView("EFFECTS")
-    assert bridge.activeView == "MFX"
-    bridge.setActiveView("4-OSC VA")
-    assert bridge.activeView == "VA"
-    bridge.setActiveView("PERF MIXER")
-    assert bridge.activeView == "PERFORMANCE"
-
 
 def test_sound_sculptor_and_mod_properties():
     app, qml_engine, bridge = create_application(platform="offscreen")
@@ -237,17 +227,15 @@ def test_bridge_sync_patch_from_synth():
     """Verify syncPatchFromSynth updates patch name and tone waveforms from JunoClient."""
     from unittest.mock import MagicMock
 
-    from src.spectre.core.protocol import JunoClient, SoundMode
+    from src.spectre.core.patch_state import PatchState
+    from src.spectre.core.protocol import JunoClient
 
+    state = PatchState.from_template_file()
+    state.common.name = "Test Patch"
+    for tone, wnum in zip(state.tones, (579, 1, 242, 1816)):
+        tone.wave_bank_l, tone.wave_num_l = "INTA", wnum
     mock_client = MagicMock(spec=JunoClient)
-    mock_client.get_patch_name.return_value = "Test Patch"
-    mock_client.get_sound_mode.return_value = SoundMode.PATCH
-    mock_client.get_all_tone_waves.return_value = [
-        ("INTA", 579),
-        ("INTA", 1),
-        ("INTA", 242),
-        ("INTA", 1816),
-    ]
+    mock_client.read_full_patch.return_value = state
 
     app, qml_engine, bridge = create_application(juno=mock_client, platform="offscreen")
 
@@ -267,12 +255,13 @@ def test_bridge_sync_patch_from_synth_async():
     import time
     from unittest.mock import MagicMock
 
-    from src.spectre.core.protocol import JunoClient, SoundMode
+    from src.spectre.core.patch_state import PatchState
+    from src.spectre.core.protocol import JunoClient
 
+    state = PatchState.from_template_file()
+    state.common.name = "Async Patch"
     mock_client = MagicMock(spec=JunoClient)
-    mock_client.get_patch_name.return_value = "Async Patch"
-    mock_client.get_sound_mode.return_value = SoundMode.PATCH
-    mock_client.get_all_tone_waves.return_value = [("INTA", 579)] * 4
+    mock_client.read_full_patch.return_value = state
 
     app, qml_engine, bridge = create_application(juno=mock_client, platform="offscreen")
 

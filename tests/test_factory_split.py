@@ -89,25 +89,6 @@ def test_overlay_favorite_and_tags(tmp_path, factory_db):
         repo.close()
 
 
-def test_legacy_migration(tmp_path, factory_db):
-    repo = _repo(tmp_path, None)  # no factory yet: legacy rows stay put
-    repo.upsert_entry("factory", "patch", 87, 64, 0, "Grand Pno DS", "PNO")
-    repo.upsert_entry("factory", "patch", 87, 68, 0, "J-Pop Brass", "SBR")
-    repo.set_favorite("factory:patch:87:64:0", True)
-    repo.close()
-    # Reopen against the shipped catalog: legacy rows migrate to overlay.
-    repo2 = _repo(tmp_path, factory_db)
-    try:
-        assert repo2.count("factory") == 3  # from shipped db, not legacy
-        assert repo2._conn.execute(
-            "SELECT COUNT(*) AS n FROM patches WHERE source='factory'").fetchone()["n"] == 0
-        row = repo2.get("factory:xps30:patch:87:64:0")
-        assert row is not None and row["favorite"] is True  # kept
-        assert repo2.get("factory:xps30:patch:87:68:0")["favorite"] is False
-    finally:
-        repo2.close()
-
-
 def test_legacy_kept_without_matching_variant(tmp_path, factory_db):
     repo = _repo(tmp_path, None)
     repo.upsert_entry("factory", "patch", 87, 64, 0, "Grand Pno DS", "PNO")

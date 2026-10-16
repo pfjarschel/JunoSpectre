@@ -13,7 +13,6 @@ from .patch_state import (
     EffectsState,
     PatchCommonState,
     PatchState,
-    StepLfoState,
     ToneState,
 )
 from .protocol_base import (
@@ -25,9 +24,6 @@ from .protocol_base import (
 from .sysex import (
     ADDR_SETUP_CHORUS_SWITCH,
     ADDR_SETUP_REVERB_SWITCH,
-    CHORUS_PARAM_LEVEL,
-    CHORUS_PARAM_OUTPUT_SELECT,
-    CHORUS_PARAM_TYPE,
     OFFSET_PATCH_COMMON,
     OFFSET_PATCH_COMMON_CHORUS,
     OFFSET_PATCH_COMMON_MFX,
@@ -38,12 +34,8 @@ from .sysex import (
     OFFSET_PATCH_TONE_3,
     OFFSET_PATCH_TONE_4,
     PATCH_PARAM_NAME,
-    REVERB_PARAM_LEVEL,
-    REVERB_PARAM_TYPE,
-    TONE_PARAM_WAVE_GROUP_TYPE,
     RolandSysEx,
     add_address,
-    pack_4nibbles,
     unpack_4nibbles,
 )
 
@@ -121,7 +113,6 @@ class FlashProtocolMixin:
             if len(mfx_params) < 32
             else list(mfx_params[:32]),
             routing_preset="",
-            manual_routing_unlocked=False,
             chorus_type=c_type,
             chorus_level=c_lvl,
             chorus_to_reverb=c_out,
@@ -144,13 +135,6 @@ class FlashProtocolMixin:
             effects=effects,
             raw_regions={k: [bytes(c) for c in v] for k, v in raw_regions.items()},
         )
-        patch_state.step_lfo = StepLfoState(
-            steps=[0] * 16,
-            curve_type=0,
-            sync_rate_idx=2,
-            dest_idx=1,
-            depth=0,
-        )
         patch_state.custom_detune_cache = [t.fine_tune for t in tones]
         return patch_state
 
@@ -158,14 +142,12 @@ class FlashProtocolMixin:
                             timeout: float = 1.0) -> dict[str, list[bytes]]:
         """Gather the canonical raw image at any patch base (temp or flash)."""
         raw_regions: dict[str, list[bytes]] = {}
-        raw_regions["common"] = [bytes(self._read_common_raw(base, timeout=timeout)[:80])]
+        raw_regions["common"] = [self._read_common_raw(base, timeout=timeout)]
         tone_offsets = (OFFSET_PATCH_TONE_1, OFFSET_PATCH_TONE_2,
                         OFFSET_PATCH_TONE_3, OFFSET_PATCH_TONE_4)
         for idx, off in enumerate(tone_offsets, start=1):
             main_raw, lfo_raw = self._read_tone_raws(add_address(base, off), timeout=timeout)
-            raw_regions[f"tone_{idx}"] = [bytes(main_raw)] + (
-                [bytes(lfo_raw)] if lfo_raw is not None else []
-            )
+            raw_regions[f"tone_{idx}"] = [main_raw, lfo_raw]
         raw_regions["tmt"] = [bytes(self._read_tmt_raw(base, timeout=timeout))]
         raw_regions["mfx"] = [bytes(self._read_mfx_raw(base, timeout=timeout))]
         raw_regions["chorus"] = [bytes(self._read_chorus_raw(base, timeout=timeout))]
@@ -540,99 +522,6 @@ class FlashProtocolMixin:
             write_gap=write_gap,
         )
 
-    def verify_init_fallback_subset(
-        self,
-        state: PatchState,
-        base: Optional[Tuple[int, int, int, int]] = None,
-        timeout: float = 1.0,
-        repair: bool = True,
-        max_repair_rounds: int = INIT_MAX_VERIFY_REPAIRS,
-        write_gap: float = INIT_WRITE_GAP_S,
-    ) -> InitVerification:
-        """Verify the fallback path's highest-risk writes: name, waves, and FX headers."""
-        resolved_base = base if base is not None else self.get_active_patch_base(
-            timeout=timeout, force_refresh=True
-        )
-        expected: List[Tuple[str, Tuple[int, int, int, int], bytes]] = []
-        raw_name = state.common.name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
-        expected.append(
-            ("patch_name", add_address(resolved_base, PATCH_PARAM_NAME), bytes(raw_name))
-        )
-
-        tone_offsets = {
-            1: OFFSET_PATCH_TONE_1,
-            2: OFFSET_PATCH_TONE_2,
-            3: OFFSET_PATCH_TONE_3,
-            4: OFFSET_PATCH_TONE_4,
-        }
-        for tone in state.tones:
-            bank_id = 1 if tone.wave_bank_l.upper() == "INTA" else 2
-            wave_bytes = bytes(
-                [0, *pack_4nibbles(bank_id), *pack_4nibbles(max(0, min(16384, tone.wave_num_l)))]
-            )
-            wave_addr = add_address(
-                add_address(resolved_base, tone_offsets[tone.tone_index]),
-                TONE_PARAM_WAVE_GROUP_TYPE,
-            )
-            expected.append((f"tone{tone.tone_index}_wave", wave_addr, wave_bytes))
-
-        effects = state.effects
-        mfx_base = add_address(resolved_base, OFFSET_PATCH_COMMON_MFX)
-        expected.append(
-            (
-                "mfx_header",
-                mfx_base,
-                bytes(
-                    [
-                        max(0, min(80, int(effects.mfx_type))),
-                        max(0, min(127, int(effects.mfx_dry_send))),
-                        max(0, min(127, int(effects.mfx_chorus_send))),
-                        max(0, min(127, int(effects.mfx_reverb_send))),
-                    ]
-                ),
-            )
-        )
-        cho_base = add_address(resolved_base, OFFSET_PATCH_COMMON_CHORUS)
-        expected.extend(
-            [
-                ("chorus_type", add_address(cho_base, CHORUS_PARAM_TYPE), bytes([max(0, min(3, int(effects.chorus_type)))])),
-                ("chorus_level", add_address(cho_base, CHORUS_PARAM_LEVEL), bytes([max(0, min(127, int(effects.chorus_level)))])),
-                (
-                    "chorus_output",
-                    add_address(cho_base, CHORUS_PARAM_OUTPUT_SELECT),
-                    bytes([max(0, min(2, int(effects.chorus_to_reverb)))]),
-                ),
-            ]
-        )
-        rev_base = add_address(resolved_base, OFFSET_PATCH_COMMON_REVERB)
-        expected.extend(
-            [
-                ("reverb_type", add_address(rev_base, REVERB_PARAM_TYPE), bytes([max(0, min(5, int(effects.reverb_type)))])),
-                ("reverb_level", add_address(rev_base, REVERB_PARAM_LEVEL), bytes([max(0, min(127, int(effects.reverb_level)))])),
-            ]
-        )
-        expected.extend(
-            [
-                (
-                    "setup_chorus_switch",
-                    tuple(ADDR_SETUP_CHORUS_SWITCH),
-                    bytes([0 if int(effects.chorus_type) == 0 else 1]),
-                ),
-                (
-                    "setup_reverb_switch",
-                    tuple(ADDR_SETUP_REVERB_SWITCH),
-                    bytes([0 if int(effects.reverb_type) == 0 else 1]),
-                ),
-            ]
-        )
-        return self.verify_writes(
-            expected,
-            timeout=timeout,
-            repair=repair,
-            max_repair_rounds=max_repair_rounds,
-            write_gap=write_gap,
-        )
-
     def write_init_template(
         self,
         payload: dict,
@@ -685,33 +574,22 @@ class FlashProtocolMixin:
     ) -> bool:
         """Initialize the active temporary patch buffer to the golden JUNO SPECTRE template.
 
-        Preferred path: single contiguous image restore per region (zero residue,
-        including parameters the app does not model). Falls back to the per-parameter
-        reset sequence when the template asset is unavailable.
+        One contiguous image restore per region (zero residue, including
+        parameters the app does not model), then a verify/repair pass.
         """
         self.invalidate_cache()
         payload = self.load_init_template()
         if payload is None:
-            logger.info("init_template.json not found; using per-parameter fallback reset.")
-            return self.init_patch_fallback(
-                write_gap=write_gap,
-                verify_subset=verify,
-                timeout=timeout,
-                max_repair_rounds=max_repair_rounds,
-            )
+            logger.error("init_template.json is missing or invalid; cannot initialize the patch.")
+            return False
 
         try:
             with self.paced_init_writes(write_gap):
                 base = self.get_active_patch_base(timeout=timeout, force_refresh=True)
                 failures = self.write_init_template(payload, timeout=timeout, base=base, write_gap=write_gap)
         except Exception as e:
-            logger.error(f"Init template restore failed: {e}; falling back to per-parameter reset.")
-            return self.init_patch_fallback(
-                write_gap=write_gap,
-                verify_subset=False,
-                timeout=timeout,
-                max_repair_rounds=max_repair_rounds,
-            )
+            logger.error(f"Init template restore failed: {e}")
+            return False
         if failures:
             logger.warning(f"Golden template restore reported {failures} failed message(s); verifying before giving up.")
         if not verify:
@@ -744,224 +622,4 @@ class FlashProtocolMixin:
             logger.info("Patch initialized from golden template image.")
         return True
 
-    def init_patch_fallback(
-        self,
-        *,
-        write_gap: float = INIT_WRITE_GAP_S,
-        verify_subset: bool = True,
-        timeout: float = 1.0,
-        max_repair_rounds: int = INIT_MAX_VERIFY_REPAIRS,
-    ) -> bool:
-        """Per-parameter reset sequence, driven entirely by create_init_patch() state.
-
-        Used only when the golden template asset is unavailable. Kept consistent with
-        the template so both paths converge on the same patch.
-        """
-        self.invalidate_cache()
-        st = PatchState.create_init_patch()
-        failures: list[str] = []
-
-        def _try(label: str, fn, *args, **kwargs) -> None:
-            try:
-                with self.paced_init_writes(write_gap):
-                    fn(*args, **kwargs)
-            except Exception as e:
-                failures.append(label)
-                logger.warning(f"Init fallback '{label}' failed: {e}")
-            if write_gap > 0:
-                time.sleep(write_gap)
-
-        _try("patch name", self.set_patch_name, st.common.name)
-        _try("level", self.set_patch_param, "level", st.common.level)
-        _try("pan", self.set_patch_param, "pan", st.common.pan)
-        _try("cutoff_offset", self.set_patch_param, "cutoff_offset", st.common.cutoff_offset)
-        _try("resonance_offset", self.set_patch_param, "resonance_offset", st.common.resonance_offset)
-        _try("attack_offset", self.set_patch_param, "attack_offset", st.common.attack_offset)
-        _try("release_offset", self.set_patch_param, "release_offset", st.common.release_offset)
-        _try("portamento", self.set_portamento, st.common.portamento_switch, st.common.portamento_time)
-        _try("legato", self.set_legato, st.common.legato_switch)
-        _try("analog_feel", self.set_patch_analog_feel, st.common.analog_feel)
-        _try("output_assign", self.set_patch_output_assign, st.common.patch_output_assign)
-
-        for i, m in enumerate(st.common.matrix_ctrls, start=1):
-            _try(
-                f"matrix_{i}",
-                self.set_matrix_control,
-                i,
-                source=m.source,
-                dest1=m.dest1, sens1=m.sens1,
-                dest2=m.dest2, sens2=m.sens2,
-                dest3=m.dest3, sens3=m.sens3,
-                dest4=m.dest4, sens4=m.sens4,
-            )
-
-        eff = st.effects
-        _try(
-            "mfx",
-            self.set_mfx,
-            mfx_type=eff.mfx_type,
-            dry_send=eff.mfx_dry_send,
-            chorus_send=eff.mfx_chorus_send,
-            reverb_send=eff.mfx_reverb_send,
-        )
-        if eff.mfx_type != 0:
-            _try("mfx_params", self.set_mfx_params_bulk, eff.mfx_params[:14])
-        _try("chorus", self.set_chorus, eff.chorus_type, level=eff.chorus_level, output_select=eff.chorus_to_reverb)
-        for param, val in (
-            ("preDelay", eff.chorus_predelay),
-            ("rate", eff.chorus_rate),
-            ("depth", eff.chorus_depth),
-            ("feedback", eff.chorus_feedback),
-        ):
-            _try(f"chorus_{param}", self.set_chorus_param, param, val)
-        _try("reverb", self.set_reverb, eff.reverb_type, level=eff.reverb_level)
-        for param, val in (
-            ("preDelay", eff.reverb_predelay),
-            ("time", eff.reverb_time),
-            ("damp", eff.reverb_damp),
-            ("diffusion", eff.reverb_diffusion),
-            ("tone", eff.reverb_tone),
-        ):
-            _try(f"reverb_{param}", self.set_reverb_param, param, val)
-
-        for t in st.tones:
-            idx = t.tone_index
-            _try(f"tone{idx}_enable", self.ensure_tone_enabled, idx)
-            _try(
-                f"tone{idx}_wave",
-                self.set_tone_wave,
-                idx,
-                bank=t.wave_bank_l,
-                wave_num=t.wave_num_l,
-                gain=t.wave_gain,
-                fxm_switch=1 if t.wave_fxm_switch else 0,
-                fxm_depth=t.wave_fxm_depth,
-            )
-            _try(
-                f"tone{idx}_output",
-                self.set_tone_output,
-                idx,
-                output_assign=t.output_assign,
-                output_level=t.output_level,
-                chorus_send=t.chorus_send,
-                reverb_send=t.reverb_send,
-                chorus_send_direct=t.chorus_send_direct,
-                reverb_send_direct=t.reverb_send_direct,
-            )
-            _try(
-                f"tone{idx}_tvf",
-                self.set_tone_tvf,
-                idx,
-                cutoff=t.tvf_cutoff,
-                resonance=t.tvf_resonance,
-                env_depth=t.tvf_env_depth,
-                filter_type=t.tvf_filter_type,
-                attack=t.tvf_t1,
-                decay=t.tvf_t2,
-                sustain=t.tvf_l3,
-                release=t.tvf_t4,
-                key_follow=t.tvf_cutoff_keyfollow,
-                env_vel_sens=t.tvf_env_velo_sens,
-                env_t1_vel_sens=t.tvf_env_t1_vel_sens,
-                env_t4_vel_sens=t.tvf_env_t4_vel_sens,
-                env_time_keyfollow=t.tvf_env_time_keyfollow,
-            )
-            _try(
-                f"tone{idx}_tva",
-                self.set_tone_tva,
-                idx,
-                level=t.level,
-                pan=t.pan,
-                attack=t.tva_t1,
-                decay=t.tva_t2,
-                sustain=t.tva_l3,
-                release=t.tva_t4,
-                env_vel_sens=t.tva_velo_sens,
-                env_t1_vel_sens=t.tva_env_t1_vel_sens,
-                env_t4_vel_sens=t.tva_env_t4_vel_sens,
-                env_time_keyfollow=t.tva_env_time_keyfollow,
-            )
-            _try(
-                f"tone{idx}_pitch",
-                self.set_tone_pitch,
-                idx,
-                coarse=t.coarse_tune,
-                fine=t.fine_tune,
-                env_depth=t.pitch_env_depth,
-            )
-            _try(
-                f"tone{idx}_pitch_env",
-                self.set_tone_pitch_env,
-                idx,
-                depth=t.pitch_env_depth,
-                vel_sens=t.pitch_env_vel_sens,
-                time_keyfollow=t.pitch_env_time_keyfollow,
-                t1_vel_sens=t.pitch_env_t1_vel_sens,
-                t4_vel_sens=t.pitch_env_t4_vel_sens,
-                t1=t.pitch_env_t1, t2=t.pitch_env_t2, t3=t.pitch_env_t3, t4=t.pitch_env_t4,
-                l0=t.pitch_env_l0, l1=t.pitch_env_l1, l2=t.pitch_env_l2,
-                l3=t.pitch_env_l3, l4=t.pitch_env_l4,
-            )
-            _try(
-                f"tone{idx}_lfo1",
-                self.set_tone_lfo,
-                idx,
-                lfo_index=1,
-                waveform=t.lfo1_waveform,
-                rate=t.lfo1_rate,
-                pitch_depth=t.lfo1_pitch_depth,
-                tvf_depth=t.lfo1_tvf_depth,
-                tva_depth=t.lfo1_tva_depth,
-                pan_depth=t.lfo1_pan_depth,
-                delay_time=t.lfo1_delay_time,
-                fade_mode=t.lfo1_fade_mode,
-                fade_time=t.lfo1_fade_time,
-            )
-            _try(
-                f"tone{idx}_lfo2",
-                self.set_tone_lfo,
-                idx,
-                lfo_index=2,
-                waveform=t.lfo2_waveform,
-                rate=t.lfo2_rate,
-                pitch_depth=t.lfo2_pitch_depth,
-                tvf_depth=t.lfo2_tvf_depth,
-                tva_depth=t.lfo2_tva_depth,
-                pan_depth=t.lfo2_pan_depth,
-                delay_time=t.lfo2_delay_time,
-                fade_mode=t.lfo2_fade_mode,
-                fade_time=t.lfo2_fade_time,
-            )
-            _try(
-                f"tone{idx}_step_lfo",
-                self.set_tone_step_lfo_all,
-                idx,
-                step_type=t.step_lfo_type,
-                steps=t.step_lfo_steps,
-            )
-
-        if failures:
-            logger.warning(f"Init fallback completed with {len(failures)} failed parameter group(s).")
-            return False
-        if not verify_subset:
-            return True
-        try:
-            verification = self.verify_init_fallback_subset(
-                st,
-                timeout=timeout,
-                repair=True,
-                max_repair_rounds=max_repair_rounds,
-                write_gap=write_gap,
-            )
-        except Exception as e:
-            logger.error(f"Init fallback verification failed: {e}")
-            return False
-        if not verification.ok:
-            labels = ", ".join(m.label for m in verification.failed)
-            logger.warning(f"Init fallback incomplete after repair: {labels}")
-            return False
-        if verification.repaired:
-            labels = ", ".join(m.label for m in verification.repaired)
-            logger.info(f"Init fallback completed after repairing: {labels}.")
-        return True
 

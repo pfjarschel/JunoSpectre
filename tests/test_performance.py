@@ -164,9 +164,6 @@ def test_playlist_entry_status_lifecycle(tmp_path: Path):
     entry = make_playlist_entry("Opener", patch_state_to_dict(loaded["patch_state"]),
                                 song_path=str(perf_file))
     assert playlist_entry_status(entry) == "ok"
-    # Entries from older setlist files name the link perf_path
-    legacy = dict(entry, perf_path=entry["song_path"], song_path="")
-    assert playlist_entry_status(legacy) == "ok"
     # Touch the linked file -> stale badge until refreshed
     state2 = PatchState()
     state2.perf_name = "GIG V2"
@@ -235,7 +232,7 @@ def test_engine_view_mapping():
     m = SpectreBridge._engine_view_for
     assert m({"engine_mode": "VECTOR"}) == "VECTOR"
     assert m({"engine_mode": "vector"}) == "VECTOR"
-    assert m({"engine_mode": "4-OSC VA"}) == "VA"
+    assert m({"engine_mode": "VA"}) == "VA"
     assert m({"engine_mode": "MFX"}) == "JUNO PCM"
     assert m({}) == "JUNO PCM"
     assert m(None) == "JUNO PCM"

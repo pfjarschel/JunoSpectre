@@ -1368,7 +1368,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         from ...vector.motion import RecorderState
 
         logger.info("Initializing performance in RAM to INIT PERF...")
-        state = PatchState.from_template_file() or PatchState.create_init_patch()
+        state = PatchState.from_template_file() or PatchState()
         state.sound_mode = "PERFORM"
         state.perf_name = INIT_PERF_NAME
         state.active_perf_part = 1
@@ -1716,16 +1716,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             v = str((extras or {}).get("engine_mode") or "JUNO PCM").upper().strip()
         except Exception:
             return "JUNO PCM"
-        aliases = {
-            "PATCH EDIT": "JUNO PCM", "JUNO-DS": "JUNO PCM", "JUNO_PCM": "JUNO PCM",
-            "4-OSC VA": "VA", "4OSC VA": "VA", "VA ENGINE": "VA",
-            "LIVE MODE": "LIVE", "SESSION": "LIVE",
-            "STEP EDITOR": "SEQUENCER", "SEQ": "SEQUENCER",
-            "SET LIST": "SETLIST", "PLAYLIST": "SETLIST",
-            "PERF MIXER": "PERFORMANCE",
-            "MACRO DECK": "MACROS",
-        }
-        v = aliases.get(v, v)
         return v if v in PerformanceBridgeMixin._ENGINE_VIEWS else "JUNO PCM"
 
     def _set_current_file_ref(self, path: str, kind: str) -> None:

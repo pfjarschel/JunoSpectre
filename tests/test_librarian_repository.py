@@ -14,11 +14,11 @@ def _make_repo(tmp_path):
 
 def test_rescan_search_and_rebuild(tmp_path):
     repo = _make_repo(tmp_path)
-    ps = PatchState.create_init_patch()
+    ps = PatchState.from_template_file()
     ps.common.name = "MY LEAD"
     save_spectre(repo.user_dir / "lead.spectre", ps,
                  meta={"name": "MY LEAD", "category": "SYNTH LEAD", "tags": ["fat"], "favorite": True})
-    ps2 = PatchState.create_init_patch()
+    ps2 = PatchState.from_template_file()
     ps2.common.name = "MY PAD"
     save_spectre(repo.user_dir / "pad.spectre", ps2, meta={"name": "MY PAD", "category": "SYNTH PAD"})
 
@@ -44,7 +44,7 @@ def test_rescan_search_and_rebuild(tmp_path):
 
 def test_favorite_travels_with_file(tmp_path):
     repo = _make_repo(tmp_path)
-    ps = PatchState.create_init_patch()
+    ps = PatchState.from_template_file()
     ps.common.name = "STAR"
     p = save_spectre(repo.user_dir / "star.spectre", ps, meta={"name": "STAR"})
     repo.rescan_files()
@@ -116,31 +116,12 @@ def test_data_root_env_override(tmp_path, monkeypatch):
     assert default_db_path() == Path.home() / ".local" / "share" / "JunoSpectre" / "librarian.db"
 
 
-def test_legacy_db_migrates_kind(tmp_path):
-    import sqlite3
-    db = tmp_path / "legacy.db"
-    conn = sqlite3.connect(str(db))
-    conn.execute(
-        "CREATE TABLE patches (path TEXT PRIMARY KEY, source TEXT, name TEXT,"
-        " category TEXT, tags TEXT DEFAULT '[]', favorite INTEGER DEFAULT 0,"
-        " rating INTEGER DEFAULT 0, mtime INTEGER DEFAULT 0, hash TEXT DEFAULT '',"
-        " msb INTEGER, lsb INTEGER, pc INTEGER, format_version INTEGER DEFAULT 1)")
-    conn.execute("INSERT INTO patches(path, source, name) VALUES('factory:87:64:0','factory','Old')")
-    conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
-    conn.commit()
-    conn.close()
-    repo = PatchRepository(user_dir=tmp_path / "p", db_path=db, factory_db_path=False)
-    row = repo.get("factory:87:64:0")
-    assert row is not None and row["kind"] == "patch"
-    repo.close()
-
-
 def test_auto_backups_hidden_from_index(tmp_path):
     from src.spectre.core.patch_state import PatchState
     from src.spectre.core.spectre_format import save_spectre
 
     repo = _make_repo(tmp_path)
-    ps = PatchState.create_init_patch()
+    ps = PatchState.from_template_file()
     save_spectre(repo.user_dir / "real.spectre", ps, meta={"name": "REAL"})
     save_spectre(repo.user_dir / "BACKUP_87-0-11_x.spectre", ps, meta={"name": "BACKUP"})
     save_spectre(repo.user_dir / "BEFORE-REINIT_y.spectre", ps, meta={"name": "BEFORE"})

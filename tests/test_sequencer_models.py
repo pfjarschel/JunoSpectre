@@ -138,7 +138,7 @@ def test_sequencer_song_roundtrip():
 
 
 def test_performance_carries_sequence_roundtrip(tmp_path):
-    ps = PatchState.create_init_patch()
+    ps = PatchState.from_template_file()
     ps.common.name = "MY SONG"
     song = default_sequencer_song()
     song.bpm = 128.0
@@ -160,16 +160,16 @@ def test_performance_carries_sequence_roundtrip(tmp_path):
 
 def test_performance_without_sequence_and_song_kind_gone(tmp_path):
     f = tmp_path / "perf.spectre"
-    save_spectre(f, PatchState.create_init_patch(), kind="performance")
+    save_spectre(f, PatchState.from_template_file(), kind="performance")
     assert load_performance(f)["sequencer_song"] is None
     with pytest.raises(ValueError):
-        save_spectre(tmp_path / "s.spectre", PatchState.create_init_patch(), kind="song")
+        save_spectre(tmp_path / "s.spectre", PatchState.from_template_file(), kind="song")
 
 
 def test_playlist_save_and_load_roundtrip(tmp_path):
     entries = [
-        {"name": "Song 1", "perf_path": "/path/1.spectre", "bpm": 120},
-        {"name": "Song 2", "perf_path": "/path/2.spectre", "bpm": 128},
+        {"name": "Song 1", "song_path": "/path/1.spectre", "bpm": 120},
+        {"name": "Song 2", "song_path": "/path/2.spectre", "bpm": 128},
     ]
     pl_file = tmp_path / "gig.spectre"
     save_playlist(pl_file, entries=entries, index=1, name="Friday Gig")
