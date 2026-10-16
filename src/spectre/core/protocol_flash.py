@@ -36,10 +36,18 @@ from .sysex import (
     PATCH_PARAM_NAME,
     RolandSysEx,
     add_address,
+    encode_name,
     unpack_4nibbles,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _named_common(state: PatchState) -> bytes:
+    """The common region with the state's name in it (the name travels in the image)."""
+    common = bytearray(state.raw_regions["common"][0][:80])
+    common[0:12] = encode_name(state.common.name)
+    return bytes(common)
 
 
 class FlashProtocolMixin:
@@ -208,9 +216,7 @@ class FlashProtocolMixin:
         if not state.raw_regions:
             raise ValueError("No raw image: sync/read the patch first.")
         failures = 0
-        common = bytearray(state.raw_regions["common"][0][:80])
-        raw_name = state.common.name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
-        common[0:12] = raw_name  # name travels in the image, not beside it
+        common = _named_common(state)
         with self.paced_init_writes(write_gap):
             try:
                 self.send_data(add_address(base, self.USER_REGION_OFFSETS["common"]), bytes(common))
@@ -241,9 +247,7 @@ class FlashProtocolMixin:
     def patch_image_mismatches(state: PatchState, actual: dict) -> list[str]:
         """Compare a PatchState image with raw regions read back. [] = same sound."""
         mismatches: list[str] = []
-        common = bytearray(state.raw_regions["common"][0][:80])
-        raw_name = state.common.name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
-        common[0:12] = raw_name
+        common = _named_common(state)
         if bytes(actual.get("common", [b""])[0][:80]) != bytes(common):
             mismatches.append("common")
         for key in ("mfx", "chorus", "reverb", "tmt"):
@@ -309,7 +313,7 @@ class FlashProtocolMixin:
                          timeout: float = 1.5, retries: int = 3) -> bool:
         """Rename a user flash slot (name-only DT1 + verified read-back)."""
         base = self.user_slot_base(msb, lsb, pc)
-        raw_name = name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
+        raw_name = encode_name(name)
         self.send_data(add_address(base, PATCH_PARAM_NAME), list(raw_name))
         time.sleep(self.FLASH_SETTLE_S)
         want = bytes(raw_name)
@@ -340,9 +344,7 @@ class FlashProtocolMixin:
         if not state.raw_regions:
             raise ValueError("No raw image: sync/read the patch first.")
         resolved = base if base is not None else self.get_active_patch_base(timeout=timeout)
-        common = bytearray(state.raw_regions["common"][0][:80])
-        raw_name = state.common.name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
-        common[0:12] = raw_name
+        common = _named_common(state)
         blob = bytearray()
         blob += bytes([0xF0] + self.sysex.build_dt1(
             add_address(resolved, self.USER_REGION_OFFSETS["common"]), bytes(common)) + [0xF7])

@@ -27,8 +27,10 @@ from ...control import lcxl3
 from ...control.mapping import BEHAVIORS, TAKEOVERS, Binding, Resolver, pick_bindings
 from ...core.arpeggio import FIELD_LABELS as ARP_FIELD_LABELS
 from ...core.macro_targets import filter_macro_targets
+from ...core.mfx_catalog import get_mfx_algo
 from ...core.midi import port_key
 from ...core.patch_state import PatchState
+from ...librarian.repository import data_root
 from ...sequencer.models import NUM_TRACKS, TRACK_BANK_SIZE
 from .base import BridgeBaseMixin
 from .hardware import save_hardware_settings
@@ -59,7 +61,6 @@ BUNDLED_PRESET_DIR = Path(__file__).resolve().parents[2] / "assets" / "controlle
 
 
 def user_preset_dir() -> Path:
-    from ...librarian.repository import data_root
 
     return data_root() / "controller_presets"
 
@@ -150,7 +151,7 @@ CONTEXT_KNOBS: dict[str, list[str]] = {
                  + [f"tone.{i}.tva_level" for i in range(1, 5)],
     "VA": [f"tone.{i}.tva_level" for i in range(1, 5)] + [f"tone.{i}.pitch_fine" for i in range(1, 5)],
     "MOD MATRIX": [f"common.matrix{c}_sens{d}" for d in (1, 2) for c in range(1, 5)],
-    "STEP LFO": [_TONE_SEL + f"lfo{l}_{p}" for l in (1, 2) for p in ("rate", "pitch_depth", "tvf_depth", "tva_depth")],
+    "STEP LFO": [_TONE_SEL + f"lfo{n}_{p}" for n in (1, 2) for p in ("rate", "pitch_depth", "tvf_depth", "tva_depth")],
     "MSEG ENVELOPES": [_TONE_SEL + p for p in ("pitch_env_depth", "pitch_env_attack", "pitch_env_decay",
                                                "pitch_env_release", "tvf_env_depth", "tvf_cutoff",
                                                "tvf_resonance", "tva_level")],
@@ -749,8 +750,6 @@ class ControllersBridgeMixin(BridgeBaseMixin):
     def _ctl_mfx_param(self, target: str) -> dict | None:
         """Definition of MFX parameter N ("mfx.p.N") of the MFX being edited."""
         try:
-            from ...core.mfx_catalog import get_mfx_algo
-
             algo = get_mfx_algo(int(self.mfxAlgoId)) or {}
             idx = int(target[6:]) - 1
             return next((p for p in algo.get("params", []) if p.get("idx") == idx), None)

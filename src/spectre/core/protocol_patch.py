@@ -128,6 +128,7 @@ from .sysex import (
     TONE_PARAM_WAVE_NUM_L,
     TONE_PARAM_WAVE_NUM_R,
     add_address,
+    encode_name,
     pack_2nibbles,
     pack_4nibbles,
     unpack_4nibbles,
@@ -163,7 +164,7 @@ class PatchProtocolMixin:
         """Write active patch name (up to 12 ASCII characters) to the temporary buffer."""
         base = self.get_active_patch_base()
         name_addr = add_address(base, PATCH_PARAM_NAME)
-        raw_name = name.encode("ascii", errors="replace")[:12].ljust(12, b" ")
+        raw_name = encode_name(name)
         self.send_data(name_addr, list(raw_name))
 
     def get_tone_levels(self, timeout: float = 1.0) -> Tuple[int, int, int, int]:

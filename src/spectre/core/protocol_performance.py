@@ -75,6 +75,7 @@ from .sysex import (
     REVERB_PARAM_TONE,
     REVERB_PARAM_TYPE,
     add_address,
+    encode_name,
     pack_4nibbles,
     perf_common_fx_base,
     perf_part_base,
@@ -710,9 +711,7 @@ class PerformanceProtocolMixin:
         base = self.user_perf_base(number)
         image = self.read_performance_image(timeout=timeout)
         common = bytearray(image[0][1])
-        common[0:PERF_COMMON_NAME_SIZE] = (
-            str(name).encode("ascii", errors="replace")[:PERF_COMMON_NAME_SIZE]
-            .ljust(PERF_COMMON_NAME_SIZE, b" "))
+        common[0:PERF_COMMON_NAME_SIZE] = encode_name(name)
         image[0] = (image[0][0], bytes(common))
         failures = 0
         with self.paced_init_writes(write_gap):

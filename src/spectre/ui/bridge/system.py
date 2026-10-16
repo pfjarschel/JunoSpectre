@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+import datetime
 import logging
 import os
+import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 
 from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
+from PyQt6.QtGui import QGuiApplication
 
 from ...core.backlight import BacklightController
-from ...core.telemetry import SystemTelemetry
+from ...core.telemetry import SystemTelemetry, read_telemetry
 from ...core.updater import GitUpdater, UpdaterError
-from ...core.wifi import WifiManager, WifiStatus
+from ...core.wifi import WifiError, WifiManager, WifiStatus
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -56,7 +59,6 @@ class SystemBridgeMixin(BridgeBaseMixin):
     brightnessChanged = pyqtSignal(int)
     powerActionChanged = pyqtSignal(str)
     telemetryChanged = pyqtSignal()
-
 
     def _init_system(self) -> None:
         """Display, updater, Wi-Fi and telemetry (all degrade quietly on a dev PC)."""
@@ -101,8 +103,6 @@ class SystemBridgeMixin(BridgeBaseMixin):
         if self._active_view != "SYSTEM":
             return
         try:
-            from ...core.telemetry import read_telemetry
-
             snap, self._telemetry_prev_cpu = read_telemetry(self._telemetry_prev_cpu)
             self._telemetry = snap
             self.telemetryChanged.emit()
@@ -414,7 +414,6 @@ class SystemBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(bool)
     def scanWifi(self, rescan: bool = True) -> None:
         """Scan nearby networks into wifiNetworks (strongest first)."""
-        import datetime
 
         do_rescan = bool(rescan)
 
@@ -442,11 +441,10 @@ class SystemBridgeMixin(BridgeBaseMixin):
                 logger.debug(f"Wi-Fi scan status fold-in failed: {e}")
 
         def work():
-            from ...core.wifi import WifiError as _WE
 
             try:
                 return self._wifi.scan(rescan=do_rescan)
-            except _WE:
+            except WifiError:
                 if do_rescan:
                     # A forced rescan can fail on busy drivers; fall back to
                     # the cached scan so the list is still useful.
@@ -580,7 +578,6 @@ class SystemBridgeMixin(BridgeBaseMixin):
     @pyqtSlot()
     def quitApp(self) -> None:
         """Quit to desktop: silence synth, close MIDI, then exit Qt loop."""
-        from PyQt6.QtGui import QGuiApplication
 
         logger.info("Quitting application...")
         self.powerActionChanged.emit("quitting")
@@ -634,8 +631,6 @@ class SystemBridgeMixin(BridgeBaseMixin):
 
         `dry_run=True` performs cleanup-free validation only (for tests).
         """
-        import subprocess
-        import sys
 
         if action not in ("reboot", "poweroff"):
             raise ValueError(f"Unknown power action: {action}")
@@ -647,7 +642,6 @@ class SystemBridgeMixin(BridgeBaseMixin):
                 f"(running on {sys.platform})."
             )
             return "unsupported-platform"
-        from PyQt6.QtGui import QGuiApplication
 
         logger.info(f"Host {action} requested...")
         self.powerActionChanged.emit(action + "ing")

@@ -42,10 +42,6 @@ ColumnLayout {
         else Bridge.setPartZone(p.index, Math.min(p.keyLow, n), Math.max(p.keyLow, n))
     }
 
-    function noteName(n) {
-        var names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-        return names[n % 12] + (Math.floor(n / 12) - 1)
-    }
 
     // Part selector chips
     Flickable {
@@ -130,7 +126,7 @@ ColumnLayout {
         SpButton {
             implicitWidth: ScaleMetrics.dp(64)
             implicitHeight: ScaleMetrics.dp(40)
-            text: "LOW\n" + root.noteName((root.partAt(root.activePart) || { keyLow: 0 }).keyLow)
+            text: "LOW\n" + Notes.name((root.partAt(root.activePart) || { keyLow: 0 }).keyLow)
             variant: "outline"
             checked: root.handleLow
             onClicked: root.handleLow = true
@@ -138,7 +134,7 @@ ColumnLayout {
         SpButton {
             implicitWidth: ScaleMetrics.dp(64)
             implicitHeight: ScaleMetrics.dp(40)
-            text: "HIGH\n" + root.noteName((root.partAt(root.activePart) || { keyHigh: 127 }).keyHigh)
+            text: "HIGH\n" + Notes.name((root.partAt(root.activePart) || { keyHigh: 127 }).keyHigh)
             variant: "outline"
             checked: !root.handleLow
             onClicked: root.handleLow = false

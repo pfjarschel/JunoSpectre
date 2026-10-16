@@ -386,50 +386,50 @@ Rectangle {
             }
 
             // Sliders: Coarse, Fine, Level, PW, PWM
-            TouchFader {
+            SpSlider {
                 Layout.fillWidth: true
                 Layout.preferredHeight: ScaleMetrics.dp(24)
                 label: "COARSE"
                 ctlKey: "tone." + osc.oscIndex + ".pitch_coarse"
-                valText: (osc.coarseVal > 0 ? "+" + osc.coarseVal : osc.coarseVal.toString()) + " st"
-                normVal: (osc.coarseVal + 24) / 48.0
-                isBipolar: true
-                barColor: osc.accent
+                valueText: (osc.coarseVal > 0 ? "+" + osc.coarseVal : osc.coarseVal.toString()) + " st"
+                norm: (osc.coarseVal + 24) / 48.0
+                bipolar: true
+                accent: osc.accent
                 onMoved: (n) => osc.coarseChanged(Math.round(n * 48 - 24))
             }
 
-            TouchFader {
+            SpSlider {
                 Layout.fillWidth: true
                 Layout.preferredHeight: ScaleMetrics.dp(24)
                 label: osc.autoDetuneActive ? "FINE (AUTO)" : "FINE"
                 ctlKey: "tone." + osc.oscIndex + ".pitch_fine"
-                valText: (osc.fineVal > 0 ? "+" + osc.fineVal : osc.fineVal.toString()) + " c"
-                normVal: (osc.fineVal + 50) / 100.0
-                isBipolar: true
-                barColor: osc.accent
+                valueText: (osc.fineVal > 0 ? "+" + osc.fineVal : osc.fineVal.toString()) + " c"
+                norm: (osc.fineVal + 50) / 100.0
+                bipolar: true
+                accent: osc.accent
                 enabled: !osc.autoDetuneActive
                 opacity: osc.autoDetuneActive ? 0.45 : 1.0
                 onMoved: (n) => osc.fineChanged(Math.round(n * 100 - 50))
             }
 
-            TouchFader {
+            SpSlider {
                 Layout.fillWidth: true
                 Layout.preferredHeight: ScaleMetrics.dp(24)
                 label: "LEVEL"
                 ctlKey: "tone." + osc.oscIndex + ".tva_level"
-                valText: osc.lvlVal.toString()
-                normVal: osc.lvlVal / 127.0
-                barColor: osc.accent
+                valueText: osc.lvlVal.toString()
+                norm: osc.lvlVal / 127.0
+                accent: osc.accent
                 onMoved: (n) => osc.lvlChanged(Math.round(n * 127))
             }
 
-            TouchFader {
+            SpSlider {
                 Layout.fillWidth: true
                 Layout.preferredHeight: ScaleMetrics.dp(24)
                 label: "PULSE WIDTH"
-                valText: osc.getPwText()
-                normVal: osc.pwVal / 50.0
-                barColor: osc.accent
+                valueText: osc.getPwText()
+                norm: osc.pwVal / 50.0
+                accent: osc.accent
                 enabled: osc.waveIdx === 1 && osc.pwmVal < 20
                 opacity: (osc.waveIdx === 1 && osc.pwmVal < 20) ? 1.0 : 0.25
                 onMoved: (n) => {
@@ -438,13 +438,13 @@ Rectangle {
                 }
             }
 
-            TouchFader {
+            SpSlider {
                 Layout.fillWidth: true
                 Layout.preferredHeight: ScaleMetrics.dp(24)
                 label: "PWM"
-                valText: osc.getPwmText()
-                normVal: osc.pwmVal / 100.0
-                barColor: osc.accent
+                valueText: osc.getPwmText()
+                norm: osc.pwmVal / 100.0
+                accent: osc.accent
                 enabled: osc.waveIdx === 1
                 opacity: osc.waveIdx === 1 ? 1.0 : 0.25
                 onMoved: (n) => {

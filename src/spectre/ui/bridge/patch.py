@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Optional
 
 from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
@@ -32,6 +33,7 @@ from ...core.routing import (
     mfx_chain,
     tone_send_attrs,
 )
+from ...core.sysex import ADDR_SETUP
 from ...core.waves import WaveCatalogManager
 from .base import BridgeBaseMixin
 
@@ -118,13 +120,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
         self._wave_catalog = WaveCatalogManager.get_instance()
         self._selected_tone: int = 1
         self._linked_mode: bool = False
-        # Active tone waveforms (Bank, WaveNum)
-        self._tone_waves: list[tuple[str, int]] = [
-            (t.wave_bank_l, t.wave_num_l) for t in self.patch_state.tones
-        ]
-        self._cached_tone_wave_data: list[dict] = [
-            self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
-        ]
+        self._refresh_tone_waves()
         self._patch_name: str = self.patch_state.common.name
         self._sound_mode: str = self.patch_state.sound_mode
         # Routing schematic: anything that changes the signal path redraws it
@@ -133,6 +129,12 @@ class PatchBridgeMixin(BridgeBaseMixin):
                     self.reverbParamsChanged, self.patchInfoChanged,
                     self.toneMutesChanged, self.toneLevelsChanged):
             sig.connect(self._emit_routing_graph)
+
+    def _refresh_tone_waves(self) -> None:
+        """Re-look up the 4 tones' wave info (call after a tone wave changes)."""
+        self._cached_tone_wave_data: list[dict] = [
+            self._wave_catalog.get_wave(t.wave_bank_l, t.wave_num_l) for t in self.patch_state.tones
+        ]
 
     @pyqtProperty(bool, notify=syncBusyChanged)
     def syncBusy(self) -> bool:
@@ -514,6 +516,10 @@ class PatchBridgeMixin(BridgeBaseMixin):
     @pyqtProperty(int, notify=reverbParamsChanged)
     def reverbTone(self) -> int:
         return self._rev_view()[6]
+
+    @pyqtProperty("QVariantList", constant=True)
+    def lfoWaveNames(self) -> list:
+        return list(LFO_WAVE_NAMES)
 
     @pyqtProperty("QVariantList", constant=True)
     def mfxCatalog(self) -> list:
@@ -2903,9 +2909,6 @@ class PatchBridgeMixin(BridgeBaseMixin):
                 self._patch_name = state.common.name
                 self._sound_mode = state.sound_mode
 
-                for idx in range(4):
-                    t = state.tones[idx]
-                    self._tone_waves[idx] = (t.wave_bank_l, t.wave_num_l)
                 self.vector.tone_levels = (
                     state.tones[0].level,
                     state.tones[1].level,
@@ -2914,10 +2917,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                 )
                 self.patch_state.custom_detune_cache = [t.fine_tune for t in state.tones]
                 self.patchInfoChanged.emit(str(self._patch_name), str(self._sound_mode))
-
-                self._cached_tone_wave_data = [
-                    self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
-                ]
+                self._refresh_tone_waves()
 
                 # Emit all signals to refresh every UI page
                 self._emit_all_state_signals()
@@ -2962,14 +2962,10 @@ class PatchBridgeMixin(BridgeBaseMixin):
             self._apply_performance_selected(int(msb), int(lsb), int(pc))
             return True
         try:
-            import time as _time
-
-            from ...core.sysex import ADDR_SETUP as _SETUP
-
-            juno.send_data(_SETUP, [1])  # PERFORM
-            _time.sleep(0.4)
+            juno.send_data(ADDR_SETUP, [1])  # PERFORM
+            time.sleep(0.4)
             juno.select_program(15, msb, lsb, pc)
-            _time.sleep(0.8)
+            time.sleep(0.8)
             return self._adopt_synth_performance(int(msb), int(lsb), int(pc), str(name or ""))
         except Exception as e:
             logger.warning(f"selectLibraryPerformance failed: {e}")
@@ -3059,9 +3055,8 @@ class PatchBridgeMixin(BridgeBaseMixin):
         try:
             juno.select_program(0, msb, lsb, pc)
             # Give the synth a moment to switch, then follow its display name.
-            import time as _time
 
-            _time.sleep(0.35)
+            time.sleep(0.35)
             return self._adopt_synth_patch(int(msb), int(lsb), int(pc), str(name or ""))
         except Exception as e:
             logger.warning(f"selectLibraryPatch failed: {e}")

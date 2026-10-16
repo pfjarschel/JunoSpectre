@@ -139,21 +139,21 @@ Rectangle {
         }
 
         // Tone levels: the first tone's TVA becomes the effect amount
-        TouchFader {
+        SpSlider {
             Layout.fillWidth: true
             label: "TONE " + root.toneA + " LEVEL · " + root.info.role
-            valText: root.levelA.toString()
-            normVal: root.levelA / 127.0
-            barColor: root.colorA
+            valueText: root.levelA.toString()
+            norm: root.levelA / 127.0
+            accent: root.colorA
             enabled: !root.mutedA
             onMoved: (norm) => Bridge.setToneLevel(root.toneA, Math.round(norm * 127))
         }
-        TouchFader {
+        SpSlider {
             Layout.fillWidth: true
             label: "TONE " + root.toneB + " LEVEL · " + (root.merged ? "PAIR OUTPUT" : "VOLUME")
-            valText: root.levelB.toString()
-            normVal: root.levelB / 127.0
-            barColor: root.colorB
+            valueText: root.levelB.toString()
+            norm: root.levelB / 127.0
+            accent: root.colorB
             enabled: !root.mutedB
             onMoved: (norm) => Bridge.setToneLevel(root.toneB, Math.round(norm * 127))
         }

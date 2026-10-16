@@ -18,7 +18,10 @@ import time
 from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...core.panel_follow import FollowPlan, PanelFollower
+from ...core.protocol import SoundMode
+from ...core.sysex import ADDR_TEMP_PATCH_PART_1
 from .base import BridgeBaseMixin
+from .hardware import save_hardware_settings
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +59,6 @@ class FollowBridgeMixin(BridgeBaseMixin):
 
     @pyqtSlot(bool)
     def setFollowPanel(self, on: bool) -> None:
-        from .hardware import save_hardware_settings
 
         self._hw_settings["follow_panel"] = bool(on)
         save_hardware_settings(self._hw_settings)
@@ -145,7 +147,6 @@ class FollowBridgeMixin(BridgeBaseMixin):
         """The panel switched sound mode: the app follows (no push either way)."""
         juno = self.juno
         try:
-            from ...core.protocol import SoundMode
             juno.note_sound_mode(SoundMode[mode])
         except Exception:
             pass
@@ -180,7 +181,6 @@ class FollowBridgeMixin(BridgeBaseMixin):
             if want["part"]:
                 out["part"] = (want["part"], self._read_part_image(want["part"]))
             if want["patch"]:
-                from ...core.sysex import ADDR_TEMP_PATCH_PART_1
                 out["patch"] = juno.read_patch_at(ADDR_TEMP_PATCH_PART_1, "Patch")
         except Exception as e:
             logger.debug(f"panel follow read failed: {e}")

@@ -339,6 +339,14 @@ ADDR_SETUP_CHORUS_SWITCH = (0x01, 0x00, 0x00, 0x0D)
 ADDR_SETUP_REVERB_SWITCH = (0x01, 0x00, 0x00, 0x0E)
 
 
+NAME_SIZE = 12  # patch and performance names
+
+
+def encode_name(name: str) -> bytes:
+    """A patch/performance name as the synth stores it: 12 ASCII bytes, space-padded."""
+    return str(name).encode("ascii", errors="replace")[:NAME_SIZE].ljust(NAME_SIZE, b" ")
+
+
 def pack_4nibbles(val: int) -> list[int]:
     """Convert an integer (0..16384) to 4 Roland 4-bit nibbles."""
     return [

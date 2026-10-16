@@ -27,10 +27,6 @@ Item {
         return pc === 0 || pc === 2 || pc === 4 || pc === 5 || pc === 7 || pc === 9 || pc === 11
     }
 
-    function noteName(n) {
-        var names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-        return names[n % 12] + (Math.floor(n / 12) - 1)
-    }
 
     function buildGeometry() {
         var whites = []
@@ -122,7 +118,7 @@ Item {
                         anchors.bottom: parent.bottom
                         anchors.bottomMargin: ScaleMetrics.dp(4)
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: root.noteName(modelData.n)
+                        text: Notes.name(modelData.n)
                         font.bold: true
                         font.pixelSize: ScaleMetrics.sp(8)
                         color: (modelData.n >= root.rangeLow && modelData.n <= root.rangeHigh) ? Theme.textPrimary : Theme.textDim

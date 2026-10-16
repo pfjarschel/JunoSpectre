@@ -16,6 +16,8 @@ from pathlib import Path
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...core.midi import MidiDeviceManager, port_key
+from ...core.protocol import JunoClient
+from ...librarian.repository import data_root
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -24,7 +26,6 @@ SCAN_INTERVAL_S = 2.0
 
 
 def hardware_settings_path() -> Path:
-    from ...librarian.repository import data_root
 
     return data_root() / "hardware.json"
 
@@ -199,7 +200,6 @@ class HardwareBridgeMixin(BridgeBaseMixin):
         existing = self.juno
 
         def run(progress):
-            from ...core.protocol import JunoClient
 
             if existing is None:
                 mgr.close_juno()

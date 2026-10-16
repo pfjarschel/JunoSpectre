@@ -452,15 +452,14 @@ Rectangle {
 
                     Repeater {
                         model: root.modList()
-                        delegate: EnvParam {
+                        delegate: SpSlider {
                             Layout.fillWidth: true
+                            implicitHeight: ScaleMetrics.dp(30)
                             label: modelData.label
-                            labelColor: root.accent
-                            val: root.modsValue(modelData.key)
                             norm: (root.modsValue(modelData.key) - modelData.min) / (modelData.max - modelData.min)
-                            isBipolar: true
-                            barColor: root.accent
-                            customText: {
+                            bipolar: true
+                            accent: root.accent
+                            valueText: {
                                 var v = root.modsValue(modelData.key);
                                 return (v > 0 ? "+" + v : v) + modelData.suffix;
                             }
@@ -497,13 +496,13 @@ Rectangle {
                         spacing: 4
                         Repeater {
                             model: 4
-                            delegate: EnvParam {
+                            delegate: SpSlider {
                                 Layout.fillWidth: true
+                                implicitHeight: ScaleMetrics.dp(30)
                                 label: "T" + (index + 1)
-                                labelColor: root.accent
-                                val: root.seg.times[index]
+                                valueText: root.seg.times[index].toString()
                                 norm: root.seg.times[index] / 127.0
-                                barColor: root.accent
+                                accent: root.accent
                                 onMoved: (n) => Bridge.setEnvSegment(root.env, "t" + (index + 1), Math.round(n * 127))
                             }
                         }
@@ -534,16 +533,16 @@ Rectangle {
                         spacing: 4
                         Repeater {
                             model: root.seg.bipolar || root.env === "TVF" ? ["l0", "l1", "l2", "l3", "l4"] : ["l1", "l2", "l3"]
-                            delegate: EnvParam {
+                            delegate: SpSlider {
                                 Layout.fillWidth: true
+                                implicitHeight: ScaleMetrics.dp(30)
                                 readonly property int lvlIdx: Number(modelData.substring(1))
                                 readonly property int lvlVal: root.seg.levels[lvlIdx - (root.env === "TVA" ? 1 : 0)]
                                 label: modelData.toUpperCase()
-                                labelColor: root.accent
-                                val: lvlVal
+                                valueText: bipolar && lvlVal > 0 ? "+" + lvlVal : lvlVal.toString()
                                 norm: root.seg.bipolar ? (lvlVal + 63) / 126.0 : lvlVal / 127.0
-                                isBipolar: root.seg.bipolar
-                                barColor: root.accent
+                                bipolar: root.seg.bipolar
+                                accent: root.accent
                                 onMoved: (n) => Bridge.setEnvSegment(
                                     root.env, modelData,
                                     root.seg.bipolar ? Math.round(n * 126 - 63) : Math.round(n * 127))

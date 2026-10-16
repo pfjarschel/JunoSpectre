@@ -179,49 +179,49 @@ Rectangle {
                     }
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tvf_cutoff"
                     Layout.fillWidth: true
                     label: "CUTOFF"
-                    valText: Bridge.masterCutoff.toString()
-                    normVal: (Bridge.masterCutoff - 1) / 126.0
+                    valueText: Bridge.masterCutoff.toString()
+                    norm: (Bridge.masterCutoff - 1) / 126.0
                     onMoved: (norm) => Bridge.sculptCutoff(Math.round(1 + norm * 126))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tvf_resonance"
                     Layout.fillWidth: true
                     label: "RESONANCE"
-                    valText: Bridge.masterReso.toString()
-                    normVal: (Bridge.masterReso - 1) / 126.0
+                    valueText: Bridge.masterReso.toString()
+                    norm: (Bridge.masterReso - 1) / 126.0
                     onMoved: (norm) => Bridge.sculptReso(Math.round(1 + norm * 126))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tvf_keyfollow"
                     Layout.fillWidth: true
                     label: "KEY FOLLOW"
-                    valText: (Bridge.tvfKeyFollow >= 0 ? "+" : "") + Bridge.tvfKeyFollow + "%"
-                    normVal: (Bridge.tvfKeyFollow + 100) / 200.0
-                    isBipolar: true
+                    valueText: (Bridge.tvfKeyFollow >= 0 ? "+" : "") + Bridge.tvfKeyFollow + "%"
+                    norm: (Bridge.tvfKeyFollow + 100) / 200.0
+                    bipolar: true
                     onMoved: (norm) => Bridge.sculptTvfKeyFollow(Math.round(norm * 200 - 100))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tvf_env_depth"
                     Layout.fillWidth: true
                     label: "ENV DEPTH"
-                    valText: (Bridge.tvfEnvDepth >= 0 ? "+" : "") + Bridge.tvfEnvDepth
-                    normVal: (Bridge.tvfEnvDepth + 63) / 126.0
-                    isBipolar: true
+                    valueText: (Bridge.tvfEnvDepth >= 0 ? "+" : "") + Bridge.tvfEnvDepth
+                    norm: (Bridge.tvfEnvDepth + 63) / 126.0
+                    bipolar: true
                     onMoved: (norm) => Bridge.sculptTvfEnvDepth(Math.round(norm * 126 - 63))
                 }
 
-                TouchFader {
+                SpSlider {
                     Layout.fillWidth: true
                     label: "VELO SENS"
-                    valText: Bridge.tvfVeloSens.toString()
-                    normVal: Bridge.tvfVeloSens / 127.0
+                    valueText: Bridge.tvfVeloSens.toString()
+                    norm: Bridge.tvfVeloSens / 127.0
                     onMoved: (norm) => Bridge.sculptTvfVeloSens(Math.round(norm * 127))
                 }
 
@@ -251,39 +251,39 @@ Rectangle {
                     }
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tvf_attack"
                     Layout.fillWidth: true
                     label: "ATTACK (A)"
-                    valText: Bridge.tvfAttack.toString()
-                    normVal: Bridge.tvfAttack / 127.0
+                    valueText: Bridge.tvfAttack.toString()
+                    norm: Bridge.tvfAttack / 127.0
                     onMoved: (norm) => Bridge.sculptTvfAttack(Math.round(norm * 127))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tvf_decay"
                     Layout.fillWidth: true
                     label: "DECAY (D)"
-                    valText: Bridge.tvfDecay.toString()
-                    normVal: Bridge.tvfDecay / 127.0
+                    valueText: Bridge.tvfDecay.toString()
+                    norm: Bridge.tvfDecay / 127.0
                     onMoved: (norm) => Bridge.sculptTvfDecay(Math.round(norm * 127))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tvf_sustain"
                     Layout.fillWidth: true
                     label: "SUSTAIN (S)"
-                    valText: Bridge.tvfSustain.toString()
-                    normVal: Bridge.tvfSustain / 127.0
+                    valueText: Bridge.tvfSustain.toString()
+                    norm: Bridge.tvfSustain / 127.0
                     onMoved: (norm) => Bridge.sculptTvfSustain(Math.round(norm * 127))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tvf_release"
                     Layout.fillWidth: true
                     label: "RELEASE (R)"
-                    valText: Bridge.tvfRelease.toString()
-                    normVal: Bridge.tvfRelease / 127.0
+                    valueText: Bridge.tvfRelease.toString()
+                    norm: Bridge.tvfRelease / 127.0
                     onMoved: (norm) => Bridge.sculptTvfRelease(Math.round(norm * 127))
                 }
 
@@ -310,30 +310,30 @@ Rectangle {
                     Item { Layout.fillWidth: true }
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "common.level"
                     Layout.fillWidth: true
                     label: "LEVEL"
-                    valText: Bridge.masterLevel.toString()
-                    normVal: Bridge.masterLevel / 127.0
+                    valueText: Bridge.masterLevel.toString()
+                    norm: Bridge.masterLevel / 127.0
                     onMoved: (norm) => Bridge.setMasterLevel(Math.round(norm * 127))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tva_pan"
                     Layout.fillWidth: true
                     label: "PAN"
-                    valText: Bridge.tvaPan === 0 ? "CENTER" : (Bridge.tvaPan < 0 ? ("L" + Math.abs(Bridge.tvaPan)) : ("R" + Bridge.tvaPan))
-                    normVal: (Bridge.tvaPan + 64) / 127.0
-                    isBipolar: true
+                    valueText: Bridge.tvaPan === 0 ? "CENTER" : (Bridge.tvaPan < 0 ? ("L" + Math.abs(Bridge.tvaPan)) : ("R" + Bridge.tvaPan))
+                    norm: (Bridge.tvaPan + 64) / 127.0
+                    bipolar: true
                     onMoved: (norm) => Bridge.sculptTvaPan(Math.round(norm * 127 - 64))
                 }
 
-                TouchFader {
+                SpSlider {
                     Layout.fillWidth: true
                     label: "VELO SENS"
-                    valText: Bridge.tvaVeloSens.toString()
-                    normVal: Bridge.tvaVeloSens / 127.0
+                    valueText: Bridge.tvaVeloSens.toString()
+                    norm: Bridge.tvaVeloSens / 127.0
                     onMoved: (norm) => Bridge.sculptTvaVeloSens(Math.round(norm * 127))
                 }
 
@@ -363,39 +363,39 @@ Rectangle {
                     }
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tva_attack"
                     Layout.fillWidth: true
                     label: "ATTACK (A)"
-                    valText: Bridge.masterAttack.toString()
-                    normVal: (Bridge.masterAttack - 1) / 126.0
+                    valueText: Bridge.masterAttack.toString()
+                    norm: (Bridge.masterAttack - 1) / 126.0
                     onMoved: (norm) => Bridge.sculptTvaAttack(Math.round(1 + norm * 126))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tva_decay"
                     Layout.fillWidth: true
                     label: "DECAY (D)"
-                    valText: Bridge.tvaDecay.toString()
-                    normVal: Bridge.tvaDecay / 127.0
+                    valueText: Bridge.tvaDecay.toString()
+                    norm: Bridge.tvaDecay / 127.0
                     onMoved: (norm) => Bridge.sculptTvaDecay(Math.round(norm * 127))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tva_sustain"
                     Layout.fillWidth: true
                     label: "SUSTAIN (S)"
-                    valText: Bridge.tvaSustain.toString()
-                    normVal: Bridge.tvaSustain / 127.0
+                    valueText: Bridge.tvaSustain.toString()
+                    norm: Bridge.tvaSustain / 127.0
                     onMoved: (norm) => Bridge.sculptTvaSustain(Math.round(norm * 127))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.tva_release"
                     Layout.fillWidth: true
                     label: "RELEASE (R)"
-                    valText: Bridge.masterRelease.toString()
-                    normVal: (Bridge.masterRelease - 1) / 126.0
+                    valueText: Bridge.masterRelease.toString()
+                    norm: (Bridge.masterRelease - 1) / 126.0
                     onMoved: (norm) => Bridge.sculptTvaRelease(Math.round(1 + norm * 126))
                 }
 
@@ -461,60 +461,60 @@ Rectangle {
                     }
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.lfo" + root.activeLfoTab + "_rate"
                     Layout.fillWidth: true
                     label: "RATE"
-                    valText: root.lfoData.rate.toString()
-                    normVal: root.lfoData.rate / 127.0
+                    valueText: root.lfoData.rate.toString()
+                    norm: root.lfoData.rate / 127.0
                     onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "rate", Math.round(norm * 127))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.lfo" + root.activeLfoTab + "_pitch_depth"
                     Layout.fillWidth: true
                     label: "PITCH DEPTH"
-                    valText: (root.lfoData.pitchDepth >= 0 ? "+" : "") + root.lfoData.pitchDepth
-                    normVal: (root.lfoData.pitchDepth + 63) / 126.0
-                    isBipolar: true
+                    valueText: (root.lfoData.pitchDepth >= 0 ? "+" : "") + root.lfoData.pitchDepth
+                    norm: (root.lfoData.pitchDepth + 63) / 126.0
+                    bipolar: true
                     onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "pitch_depth", Math.round(norm * 126 - 63))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.lfo" + root.activeLfoTab + "_tvf_depth"
                     Layout.fillWidth: true
                     label: "FILTER DEPTH"
-                    valText: (root.lfoData.tvfDepth >= 0 ? "+" : "") + root.lfoData.tvfDepth
-                    normVal: (root.lfoData.tvfDepth + 63) / 126.0
-                    isBipolar: true
+                    valueText: (root.lfoData.tvfDepth >= 0 ? "+" : "") + root.lfoData.tvfDepth
+                    norm: (root.lfoData.tvfDepth + 63) / 126.0
+                    bipolar: true
                     onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "tvf_depth", Math.round(norm * 126 - 63))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.lfo" + root.activeLfoTab + "_tva_depth"
                     Layout.fillWidth: true
                     label: "AMP DEPTH"
-                    valText: (root.lfoData.tvaDepth >= 0 ? "+" : "") + root.lfoData.tvaDepth
-                    normVal: (root.lfoData.tvaDepth + 63) / 126.0
-                    isBipolar: true
+                    valueText: (root.lfoData.tvaDepth >= 0 ? "+" : "") + root.lfoData.tvaDepth
+                    norm: (root.lfoData.tvaDepth + 63) / 126.0
+                    bipolar: true
                     onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "tva_depth", Math.round(norm * 126 - 63))
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.lfo" + root.activeLfoTab + "_pan_depth"
                     Layout.fillWidth: true
                     label: "PAN DEPTH"
-                    valText: (root.lfoData.panDepth >= 0 ? "+" : "") + root.lfoData.panDepth
-                    normVal: (root.lfoData.panDepth + 63) / 126.0
-                    isBipolar: true
+                    valueText: (root.lfoData.panDepth >= 0 ? "+" : "") + root.lfoData.panDepth
+                    norm: (root.lfoData.panDepth + 63) / 126.0
+                    bipolar: true
                     onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "pan_depth", Math.round(norm * 126 - 63))
                 }
 
-                TouchFader {
+                SpSlider {
                     Layout.fillWidth: true
                     label: "DELAY TIME"
-                    valText: root.lfoData.delayTime.toString()
-                    normVal: root.lfoData.delayTime / 127.0
+                    valueText: root.lfoData.delayTime.toString()
+                    norm: root.lfoData.delayTime / 127.0
                     onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "delay_time", Math.round(norm * 127))
                 }
 
@@ -535,11 +535,11 @@ Rectangle {
                     }
                 }
 
-                TouchFader {
+                SpSlider {
                     Layout.fillWidth: true
                     label: "FADE TIME"
-                    valText: root.lfoData.fadeTime.toString()
-                    normVal: root.lfoData.fadeTime / 127.0
+                    valueText: root.lfoData.fadeTime.toString()
+                    norm: root.lfoData.fadeTime / 127.0
                     onMoved: (norm) => Bridge.sculptLfoParam(root.activeLfoTab, "fade_time", Math.round(norm * 127))
                 }
 
@@ -573,24 +573,24 @@ Rectangle {
                     color: Theme.textDim
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.pitch_coarse"
                     Layout.fillWidth: true
                     label: "COARSE TUNE"
-                    valText: (Bridge.pitchCoarse >= 0 ? "+" : "") + Bridge.pitchCoarse + " st"
-                    normVal: (Bridge.pitchCoarse + 24) / 48.0
-                    isBipolar: true
+                    valueText: (Bridge.pitchCoarse >= 0 ? "+" : "") + Bridge.pitchCoarse + " st"
+                    norm: (Bridge.pitchCoarse + 24) / 48.0
+                    bipolar: true
                     onMoved: (norm) => Bridge.sculptPitchCoarse(Math.round(norm * 48 - 24))
                 }
 
                 // Master fine tune: moves all tones together, their detune kept
-                TouchFader {
+                SpSlider {
                     ctlKey: "detune.master"
                     Layout.fillWidth: true
                     label: "FINE TUNE"
-                    valText: (Bridge.masterFine >= 0 ? "+" : "") + Bridge.masterFine + " c"
-                    normVal: (Bridge.masterFine + 50) / 100.0
-                    isBipolar: true
+                    valueText: (Bridge.masterFine >= 0 ? "+" : "") + Bridge.masterFine + " c"
+                    norm: (Bridge.masterFine + 50) / 100.0
+                    bipolar: true
                     onMoved: (norm) => Bridge.sculptPitchFine(Math.round(norm * 100 - 50))
                 }
 
@@ -621,13 +621,13 @@ Rectangle {
                     }
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "tone.pitch_env_depth"
                     Layout.fillWidth: true
                     label: "ENV DEPTH"
-                    valText: (Bridge.pitchEnvDepth >= 0 ? "+" : "") + Bridge.pitchEnvDepth + " st"
-                    normVal: (Bridge.pitchEnvDepth + 12) / 24.0
-                    isBipolar: true
+                    valueText: (Bridge.pitchEnvDepth >= 0 ? "+" : "") + Bridge.pitchEnvDepth + " st"
+                    norm: (Bridge.pitchEnvDepth + 12) / 24.0
+                    bipolar: true
                     onMoved: (norm) => Bridge.setPitchEnvParam("depth", Math.round(norm * 24 - 12))
                 }
 
@@ -708,12 +708,12 @@ Rectangle {
                     }
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "common.portamento_time"
                     Layout.fillWidth: true
                     label: "PORTAMENTO TIME"
-                    valText: Bridge.portamentoTime.toString()
-                    normVal: Bridge.portamentoTime / 127.0
+                    valueText: Bridge.portamentoTime.toString()
+                    norm: Bridge.portamentoTime / 127.0
                     onMoved: (norm) => Bridge.setPortamentoTime(Math.round(norm * 127))
                 }
 
@@ -730,13 +730,13 @@ Rectangle {
                     color: Theme.textDim
                 }
 
-                TouchFader {
+                SpSlider {
                     ctlKey: "common.analog_feel"
                     Layout.fillWidth: true
                     label: "1/f MOD DEPTH"
-                    valText: Bridge.analogFeel.toString()
-                    normVal: Bridge.analogFeel / 127.0
-                    barColor: Theme.pageAccent
+                    valueText: Bridge.analogFeel.toString()
+                    norm: Bridge.analogFeel / 127.0
+                    accent: Theme.pageAccent
                     onMoved: (norm) => Bridge.setAnalogFeel(Math.round(norm * 127))
                 }
 

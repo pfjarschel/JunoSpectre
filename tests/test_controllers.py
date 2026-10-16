@@ -848,7 +848,7 @@ def test_va_page_tone_targets_ignore_the_pcm_link(ui):
                  for w in app.topLevelWindows() for o in items(w.contentItem())
                  if o.metaObject().className().startswith("TouchHighlight") and o.property("visible"))
     # Oscillator 2's FINE and the context strip's T2 fine card, not all four oscillators
-    assert lit == [("tone.2.pitch_fine", "EncoderCard"), ("tone.2.pitch_fine", "TouchFader")]
+    assert lit == [("tone.2.pitch_fine", "EncoderCard"), ("tone.2.pitch_fine", "SpSlider")]
 
     # With Auto Detune on, the same knob sets its amount
     bridge.setAutoDetune(True)

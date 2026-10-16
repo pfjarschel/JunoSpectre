@@ -9,14 +9,28 @@ from pathlib import Path
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
 from ...core.mfx_catalog import get_mfx_algo
+from ...core.patch_state import PatchState, PerfFxState, PerfPartState
+from ...core.protocol import JunoClient, SoundMode
 from ...core.routing import is_direct, mfx_structure_layout
+from ...core.spectre_format import (
+    file_patch_hash,
+    load_spectre,
+    patch_state_from_dict,
+    patch_state_to_dict,
+    save_spectre,
+    snapshot_hash_of,
+)
 from ...core.sysex import (
+    ADDR_TEMP_PATCH_PART_1,
     OFFSET_PATCH_COMMON_MFX,
     PERF_MFX_BLOCK_SIZE,
     add_address,
     perf_common_fx_base,
     temp_perf_patch_base,
 )
+from ...librarian.repository import PatchRepository
+from ...sequencer.models import SequencerSong, default_sequencer_song
+from ...vector.motion import RecorderState
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -235,7 +249,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
     def refreshPartFileStatus(self) -> None:
         """Recompute file-link health for all 16 parts (call on load/save/pick)."""
-        from ...core.spectre_format import file_patch_hash, snapshot_hash_of
         statuses = []
         for i, part in enumerate(self.patch_state.perf_parts[:16]):
             link = str(getattr(part, "patch_file", "") or "")
@@ -300,7 +313,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         Untouched slot parts need no image (the Bank/PC reference is the sound).
         Offline or on read failure an edited part keeps the image already held.
         """
-        from ...core.spectre_format import load_spectre, patch_state_to_dict
         held = self._part_snapshots or {}
         snaps = {}
         for p in self.patch_state.perf_parts:
@@ -330,7 +342,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
 
         Edits ride the snapshot; an untouched file part follows its (newer) file.
         """
-        from ...core.spectre_format import load_spectre, patch_state_from_dict
         link = str(getattr(part, "patch_file", "") or "")
         snap = (part_snapshots or {}).get(str(part.part_index))
         if link and not part.modified and Path(link).is_file():
@@ -355,7 +366,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             return "", "file missing, stays in the song"
         if getattr(part, "memory_only", False):
             return "", "memory only, stays in the song"
-        from ...core.protocol import JunoClient
         try:
             JunoClient.user_slot_base(part.patch_msb, part.patch_lsb, part.patch_pc)
         except ValueError:
@@ -382,12 +392,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         Written parts become clean; parts with no writable source stay edited
         (their sound lives in the song's snapshot).
         """
-        from ...core.spectre_format import (
-            load_spectre,
-            patch_state_from_dict,
-            patch_state_to_dict,
-            save_spectre,
-        )
         errors = []
         for p in self.patch_state.perf_parts:
             if not p.modified:
@@ -478,7 +482,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         sound, edits are dropped); a missing file falls back to the snapshot."""
         if not 1 <= int(part_index) <= 16:
             return False
-        from ...core.spectre_format import load_spectre, patch_state_from_dict, patch_state_to_dict
         part = self.patch_state.perf_parts[int(part_index) - 1]
         link = str(getattr(part, "patch_file", "") or "")
         snap = (self._part_snapshots or {}).get(str(part.part_index))
@@ -649,10 +652,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             self.patch_state.common = state.common
             if getattr(state, "common", None) and getattr(state.common, "name", ""):
                 self._patch_name = state.common.name
-            for idx in range(min(4, len(state.tones))):
-                t = state.tones[idx]
-                if idx < len(self._tone_waves):
-                    self._tone_waves[idx] = (t.wave_bank_l, t.wave_num_l)
             if len(state.tones) >= 4:
                 self.vector.tone_levels = (
                     state.tones[0].level,
@@ -661,10 +660,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                     state.tones[3].level,
                 )
                 self.patch_state.custom_detune_cache = [t.fine_tune for t in state.tones]
-            if hasattr(self, "_wave_catalog") and hasattr(self, "_tone_waves"):
-                self._cached_tone_wave_data = [
-                    self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
-                ]
+            self._refresh_tone_waves()
         except Exception as e:
             logger.debug(f"_apply_patch_state_to_editors error: {e}")
 
@@ -707,13 +703,11 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         cached_state = None
         if link and Path(link).is_file():
             try:
-                from ...core.spectre_format import load_spectre
                 cached_state = load_spectre(link).get("patch_state")
             except Exception as e:
                 logger.debug(f"_refresh_editors_for_part: cached link unreadable: {e}")
         if cached_state is None and isinstance(snap, dict):
             try:
-                from ...core.spectre_format import patch_state_from_dict
                 cached_state = patch_state_from_dict(snap)
             except Exception as e:
                 logger.debug(f"_refresh_editors_for_part: cached snap unreadable: {e}")
@@ -983,18 +977,15 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                         self._part_snapshots = self._capture_part_snapshots()
                     except Exception as e:
                         logger.debug(f"setSoundMode: part snapshot failed: {e}")
-                from ...core.patch_state import PatchState
                 edited_image = self._read_part_image(self.activePerfPart)
                 if not isinstance(edited_image, PatchState):
                     edited_image = None
             try:
-                from ...core.protocol import SoundMode
                 juno.set_sound_mode(SoundMode[m])
             except Exception as e:
                 logger.debug(f"setSoundMode: synth write failed: {e}")
             if edited_image is not None:
                 try:
-                    from ...core.sysex import ADDR_TEMP_PATCH_PART_1
                     juno.write_patch_regions(edited_image, ADDR_TEMP_PATCH_PART_1)
                 except Exception as e:
                     logger.debug(f"setSoundMode: patch push failed: {e}")
@@ -1034,8 +1025,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         if self.patch_state is not state_obj or self.patch_state.common is not common_obj:
             return
         try:
-            from ...core.spectre_format import patch_state_to_dict
-            from ...core.sysex import ADDR_TEMP_PATCH_PART_1
             current = juno.read_patch_at(ADDR_TEMP_PATCH_PART_1, "Patch")
             if not juno.patch_image_mismatches(image, current.raw_regions):
                 return
@@ -1309,7 +1298,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
                     repo = getattr(self, "_librarian_repo", None)
                     if repo is None:
                         try:
-                            from ...librarian.repository import PatchRepository
                             repo = PatchRepository()
                         except Exception:
                             repo = None
@@ -1381,10 +1369,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         and Kbd switch go back to defaults, as do the shared MFX, chorus and
         reverb. The sequencer song is cleared (tracks, clips, tempo).
         """
-        from ...core.patch_state import PatchState, PerfFxState, PerfPartState
-        from ...core.spectre_format import patch_state_to_dict
-        from ...sequencer.models import default_sequencer_song
-        from ...vector.motion import RecorderState
 
         logger.info("Initializing performance in RAM to INIT PERF...")
         state = PatchState.from_template_file() or PatchState()
@@ -1513,7 +1497,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             elif is_file:
                 # Pi-only file: queue its image into the part buffer (background,
                 # with progress) and remember the link + a snapshot fallback.
-                from ...core.spectre_format import load_spectre, patch_state_to_dict
                 loaded = load_spectre(file_path)
                 ref = loaded.get("synth_ref") or {}
                 if ref.get("source") in ("factory", "synth-user"):
@@ -1655,7 +1638,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         nothing is recomputed.
         """
         self._forget_loaded()          # a new performance: new loaded values
-        from ...core.spectre_format import patch_state_from_dict
 
         try:
             state = patch_state_from_dict(patch_dict)
@@ -1674,7 +1656,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         if juno is not None:
             try:
-                from ...core.protocol import SoundMode
                 juno.set_sound_mode(SoundMode.PERFORM)
             except Exception as e:
                 logger.debug(f"song load: mode switch failed: {e}")
@@ -1749,7 +1730,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         if not hasattr(self, "sequencer"):
             return
         try:
-            from ...sequencer.models import SequencerSong
             song = SequencerSong.from_dict(seq_raw)
         except Exception as e:
             logger.warning(f"song load: bad sequence: {e}")
@@ -1775,7 +1755,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         """
         self._forget_loaded()          # a new sound: new loaded values
         try:
-            from ...core.spectre_format import load_spectre, patch_state_to_dict
             loaded = load_spectre(path)
         except Exception as e:
             logger.warning(f"loadSpectreFile failed for {path}: {e}")
@@ -1803,7 +1782,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         if juno is not None:
             try:
-                from ...core.protocol import SoundMode
                 juno.set_sound_mode(SoundMode.PATCH)
                 juno.set_active_perf_part(1)
                 blob = juno.encode_patch_sysex(self.patch_state)
@@ -1811,13 +1789,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             except Exception as e:
                 logger.debug(f"loadSpectreFile: synth push failed: {e}")
         self._apply_arp_extras(loaded.get("spectre"))
-        try:
-            self._tone_waves = [(t.wave_bank_l, t.wave_num_l) for t in self.patch_state.tones]
-            self._cached_tone_wave_data = [
-                self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
-            ]
-        except Exception:
-            pass
+        self._refresh_tone_waves()
         self._set_current_file_ref(path, kind)
         self._emit_all_state_signals()
         self._pending_view = self._engine_view_for(loaded.get("spectre"))

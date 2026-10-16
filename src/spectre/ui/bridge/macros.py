@@ -14,8 +14,9 @@ from ...core.macro_targets import (
     macro_delta,
     resolve_sounding,
 )
-from ...core.patch_state import PatchState, ToneState, auto_macro_name
+from ...core.patch_state import MacroLink, PatchState, ToneState, auto_macro_name
 from ...core.routing import tone_send_attrs, tone_sends
+from ...core.spectre_format import patch_state_from_dict
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -391,7 +392,6 @@ class MacroBridgeMixin(BridgeBaseMixin):
             snap = (getattr(self, "_part_snapshots", None) or {}).get(str(part))
             if isinstance(snap, dict):
                 try:
-                    from ...core.spectre_format import patch_state_from_dict
                     st = patch_state_from_dict(snap)
                 except Exception:
                     st = None
@@ -890,7 +890,6 @@ class MacroBridgeMixin(BridgeBaseMixin):
         slot = self.patch_state.macros[index - 1]
         if any(li.target_key == key for li in slot.links):
             return
-        from ...core.patch_state import MacroLink
 
         slot.links.append(MacroLink(key, 1, 0.5))
         with self._macroWrites():

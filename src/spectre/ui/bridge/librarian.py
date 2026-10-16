@@ -9,8 +9,15 @@ from typing import Optional
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
-from ...core.categories import code_from_index
+from ...core.categories import code_from_index, decode_common_block
 from ...core.patch_state import PatchState
+from ...core.spectre_format import (
+    load_spectre,
+    patch_state_from_dict,
+    patch_state_to_dict,
+    save_spectre,
+)
+from ...core.sysex import OFFSET_PATCH_COMMON, add_address
 from ...vector.motion import RecorderState
 from .base import BridgeBaseMixin
 
@@ -91,13 +98,10 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
     def setToneWave(self, tone_number: int, bank: str, wave_num: int) -> None:
         """Assign waveform to tone (1..4) and send SysEx to Roland hardware."""
         if 1 <= tone_number <= 4:
-            self._tone_waves[tone_number - 1] = (bank.upper(), wave_num)
             t = self.patch_state.tones[tone_number - 1]
             t.wave_bank_l = bank.upper()
             t.wave_num_l = wave_num
-            self._cached_tone_wave_data = [
-                self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
-            ]
+            self._refresh_tone_waves()
             if self.juno:
                 try:
                     self.juno.set_tone_wave(tone_number, bank=bank.upper(), wave_num=wave_num)
@@ -134,7 +138,6 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
 
     def _fresh_live_state(self, name: str):
         """Capture the sounding temp buffer with app-side extras overlaid."""
-        from ...core.patch_state import PatchState  # noqa: F401 (type use below)
 
         juno = self.juno
         if juno is None or not hasattr(juno, "read_full_patch"):
@@ -222,7 +225,6 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         Returns refreshed count, -1 when no synth/repo. Aborts after 5
         consecutive read failures (cable pulled mid-pass).
         """
-        from ...core.categories import decode_common_block
 
         repo = self._librarian()
         juno = self.juno
@@ -269,9 +271,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
             return ""
         try:
             base = juno.get_active_patch_base(timeout=1.0)
-            from ...core.sysex import OFFSET_PATCH_COMMON as _OFF
-            from ...core.sysex import add_address as _add
-            raw = juno.request_data(_add(base, _OFF), (0x00, 0x00, 0x00, 0x50), timeout=1.0)
+            raw = juno.request_data(add_address(base, OFFSET_PATCH_COMMON), (0x00, 0x00, 0x00, 0x50), timeout=1.0)
             if raw and len(raw) >= 80:
                 return code_from_index(raw[0x0C])
         except Exception as e:
@@ -307,7 +307,6 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
                         part.patch_name or part.name or name or self._patch_name)
                 except Exception:
                     # Offline: snapshot the in-memory workstation state.
-                    from ...core.spectre_format import patch_state_from_dict, patch_state_to_dict
                     state = patch_state_from_dict(patch_state_to_dict(self.patch_state))
                 state.perf_parts = list(self.patch_state.perf_parts)
                 state.perf_name = str(
@@ -566,8 +565,6 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         if repo is None:
             return False
         try:
-            from ...core.spectre_format import load_spectre, save_spectre
-
             loaded = load_spectre(path)
             loaded["meta"]["name"] = str(name)
             save_spectre(path, loaded["patch_state"], meta=loaded["meta"],
@@ -690,12 +687,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
 
     def _reset_vector_to_patch_state(self) -> None:
         """Sync tone wave caches from patch_state, centre the vector, reset tone levels."""
-        self._tone_waves = [
-            (t.wave_bank_l, t.wave_num_l) for t in self.patch_state.tones
-        ]
-        self._cached_tone_wave_data = [
-            self._wave_catalog.get_wave(b, n) for b, n in self._tone_waves
-        ]
+        self._refresh_tone_waves()
         self.vector.set_coordinates(0.5, 0.5)
         self.vector.tone_levels = tuple(t.level for t in self.patch_state.tones)
 

@@ -100,9 +100,7 @@ Rectangle {
                 default: return "D" + pitch;
             }
         }
-        const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-        const octave = Math.floor(pitch / 12) - 1;
-        return noteNames[pitch % 12] + octave;
+        return Notes.name(pitch);
     }
 
     ColumnLayout {

@@ -17,7 +17,6 @@ Rectangle {
     property string tab: "STRUCTURE"
     readonly property var tmt: Bridge.tmt
     readonly property var toneColors: [Theme.tone1, Theme.tone2, Theme.tone3, Theme.tone4]
-    readonly property var noteNames: ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
     // Velocity ranges only pick tones with VELOCITY CONTROL ON, or as Matrix
     // Control value ranges with the TMT CONTROL switch on
     readonly property bool veloRangesLive: tmt.veloControl === 1 || tmt.ctrlSwitch
@@ -28,9 +27,6 @@ Rectangle {
     }
     function close() {
         visible = false;
-    }
-    function noteName(n) {
-        return noteNames[n % 12] + (Math.floor(n / 12) - 1);
     }
     function muted(i) {
         return [Bridge.tone1Muted, Bridge.tone2Muted, Bridge.tone3Muted, Bridge.tone4Muted][i];
@@ -323,8 +319,8 @@ Rectangle {
                         Layout.preferredWidth: section.laneRight - ScaleMetrics.dp(6)
                         text: {
                             const t = laneRow.t;
-                            const lo = section.isKey ? root.noteName(t.keyLower) : t.veloLower;
-                            const hi = section.isKey ? root.noteName(t.keyUpper) : t.veloUpper;
+                            const lo = section.isKey ? Notes.name(t.keyLower) : t.veloLower;
+                            const hi = section.isKey ? Notes.name(t.keyUpper) : t.veloUpper;
                             const fl = section.isKey ? t.keyFadeLower : t.veloFadeLower;
                             const fu = section.isKey ? t.keyFadeUpper : t.veloFadeUpper;
                             return lo + " – " + hi + "\nfade " + fl + " / " + fu;
@@ -346,7 +342,7 @@ Rectangle {
                         required property int modelData
                         readonly property real laneW: section.width - ScaleMetrics.dp(12) - section.laneLeft - section.laneRight
                         x: section.laneLeft + laneW * (modelData - (section.isKey ? 0 : 1)) / (section.isKey ? 128 : 127) - width / 2
-                        text: section.isKey ? root.noteName(modelData) : modelData.toString()
+                        text: section.isKey ? Notes.name(modelData) : modelData.toString()
                         font.pixelSize: ScaleMetrics.sp(7)
                         font.family: Theme.fontMono
                         color: Theme.textDim

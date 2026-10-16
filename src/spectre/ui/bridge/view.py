@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 
 from PyQt6.QtCore import pyqtProperty, pyqtSignal, pyqtSlot
 
+from ...core.protocol import SoundMode
+from ...core.spectre_format import patch_state_from_dict, patch_state_to_dict
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -124,9 +127,6 @@ class ViewBridgeMixin(BridgeBaseMixin):
     def _capture_librarian_entry(self) -> None:
         """Snapshot the sounding state so Cancel can revert auditions."""
         try:
-            import copy
-
-            from ...core.spectre_format import patch_state_to_dict
             self._librarian_entry_snapshot = {
                 "state": patch_state_to_dict(self.patch_state),
                 "patch_name": str(self._patch_name or ""),
@@ -189,7 +189,6 @@ class ViewBridgeMixin(BridgeBaseMixin):
         snap = self._librarian_entry_snapshot
         if not isinstance(snap, dict) or not isinstance(snap.get("state"), dict):
             return
-        from ...core.spectre_format import patch_state_from_dict
         state = patch_state_from_dict(snap["state"])
         self.patch_state = state
         self._patch_name = str(snap.get("patch_name") or state.common.name or "")
@@ -215,7 +214,6 @@ class ViewBridgeMixin(BridgeBaseMixin):
                     self._restore_performance_sound(state, self._part_snapshots)
                 elif getattr(state, "raw_regions", None):
                     try:
-                        from ...core.protocol import SoundMode
                         juno.set_sound_mode(SoundMode.PATCH)
                         blob = juno.encode_patch_sysex(state)
                         juno.apply_sysex_blob(blob)
@@ -233,7 +231,6 @@ class ViewBridgeMixin(BridgeBaseMixin):
         if juno is None:
             return False
         try:
-            from ...core.protocol import SoundMode
             if not juno.output_open:
                 return False
             kind = str(ref.get("kind") or "patch")
@@ -256,7 +253,6 @@ class ViewBridgeMixin(BridgeBaseMixin):
         if juno is None:
             return
         try:
-            from ...core.protocol import SoundMode
             juno.set_sound_mode(SoundMode.PERFORM)
         except Exception as e:
             logger.debug(f"cancel restore: mode switch failed: {e}")
