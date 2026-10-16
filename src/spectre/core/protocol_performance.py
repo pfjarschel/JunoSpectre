@@ -10,25 +10,18 @@ if TYPE_CHECKING:
     from .patch_state import PatchState
 
 from .arpeggio import ADDR_SETUP_ARP, ARP_SETUP_SIZE, SETUP_OFFSETS, ArpSettings
-from .patch_state import PerfFxState, PerfPartState
+from .patch_state import (
+    PerfFxState,
+    PerfPartState,
+    decode_chorus_block,
+    decode_mfx_block,
+    decode_reverb_block,
+)
 from .sysex import (
     ADDR_PERF_CHORUS,
     ADDR_PERF_REVERB,
-    ADDR_SETUP_CHORUS_SWITCH,
-    ADDR_SETUP_REVERB_SWITCH,
     ADDR_TEMP_PERFORMANCE,
-    CHORUS_PARAM_DEPTH,
-    CHORUS_PARAM_FEEDBACK,
-    CHORUS_PARAM_LEVEL,
-    CHORUS_PARAM_OUTPUT_SELECT,
-    CHORUS_PARAM_PREDELAY,
-    CHORUS_PARAM_RATE,
-    CHORUS_PARAM_TYPE,
-    MFX_PARAM_CHORUS_SEND,
-    MFX_PARAM_DATA_START,
-    MFX_PARAM_DRY_SEND,
-    MFX_PARAM_REVERB_SEND,
-    MFX_PARAM_TYPE,
+    CHORUS_DETAIL_OFFSETS,
     OFFSET_PATCH_COMMON_CHORUS,
     OFFSET_PATCH_COMMON_MFX,
     OFFSET_PATCH_COMMON_REVERB,
@@ -67,16 +60,9 @@ from .sysex import (
     PERF_ZONE_KEY_LOW,
     PERF_ZONE_OCTAVE_SHIFT,
     PERF_ZONE_SWITCH,
-    REVERB_PARAM_DIFFUSION,
-    REVERB_PARAM_HF_DAMP,
-    REVERB_PARAM_LEVEL,
-    REVERB_PARAM_PREDELAY,
-    REVERB_PARAM_TIME,
-    REVERB_PARAM_TONE,
-    REVERB_PARAM_TYPE,
+    REVERB_DETAIL_OFFSETS,
     add_address,
     encode_name,
-    pack_4nibbles,
     perf_common_fx_base,
     perf_part_base,
     perf_zone_base,
@@ -221,65 +207,36 @@ class PerformanceProtocolMixin:
                      chorus_send: int | None = None,
                      reverb_send: int | None = None) -> None:
         """Write Performance Common MFX slot type + sends (10 00 02/08/0A)."""
-        s = self._check_perf_mfx_slot(slot)
-        base = perf_common_fx_base(s)
-        if mfx_type is not None:
-            self.send_data(add_address(base, MFX_PARAM_TYPE), [max(0, min(80, int(mfx_type)))])
-        if dry_send is not None:
-            self.send_data(add_address(base, MFX_PARAM_DRY_SEND), [max(0, min(127, int(dry_send)))])
-        if chorus_send is not None:
-            self.send_data(add_address(base, MFX_PARAM_CHORUS_SEND), [max(0, min(127, int(chorus_send)))])
-        if reverb_send is not None:
-            self.send_data(add_address(base, MFX_PARAM_REVERB_SEND), [max(0, min(127, int(reverb_send)))])
+        self.write_mfx([perf_common_fx_base(self._check_perf_mfx_slot(slot))],
+                       mfx_type, dry_send, chorus_send, reverb_send)
 
     def set_perf_mfx_param(self, slot: int, param_index: int, value: int) -> None:
-        """Write one 4-nibble MFX parameter into a Performance Common MFX slot."""
-        s = self._check_perf_mfx_slot(slot)
-        if not 0 <= int(param_index) <= 31:
-            raise ValueError(f"MFX parameter index must be 0..31, got {param_index}")
-        base = perf_common_fx_base(s)
-        addr = add_address(base, MFX_PARAM_DATA_START + int(param_index) * 4)
-        self.send_data(addr, pack_4nibbles(int(value) + 32768))
+        """Write one MFX parameter of a Performance Common MFX slot."""
+        self.set_perf_mfx_params_bulk(slot, [value], param_index)
 
     def set_perf_mfx_params_bulk(self, slot: int, values, start_index: int = 0) -> None:
         """Write contiguous MFX parameters of a Performance Common slot in one DT1."""
-        s = self._check_perf_mfx_slot(slot)
-        values = list(values)
-        if not values:
-            return
-        if not (0 <= int(start_index) and int(start_index) + len(values) <= 32):
-            raise ValueError(f"MFX parameters {start_index}..{start_index + len(values) - 1} out of 0..31")
-        nibbles = []
-        for v in values:
-            nibbles.extend(pack_4nibbles(int(v) + 32768))
-        addr = add_address(perf_common_fx_base(s), MFX_PARAM_DATA_START + int(start_index) * 4)
-        self.send_data(addr, nibbles)
+        self.write_mfx_params([perf_common_fx_base(self._check_perf_mfx_slot(slot))],
+                              values, start_index)
 
     def set_perf_chorus(self, chorus_type: int | None = None,
                         level: int | None = None,
                         output_select: int | None = None) -> None:
         """Write Performance Common chorus (10 00 04 00)."""
-        if chorus_type is not None:
-            self.send_data(add_address(ADDR_PERF_CHORUS, CHORUS_PARAM_TYPE),
-                           [max(0, min(3, int(chorus_type)))])
-            self.send_data(ADDR_SETUP_CHORUS_SWITCH, [0 if int(chorus_type) == 0 else 1])
-        if level is not None:
-            self.send_data(add_address(ADDR_PERF_CHORUS, CHORUS_PARAM_LEVEL),
-                           [max(0, min(127, int(level)))])
-        if output_select is not None:
-            self.send_data(add_address(ADDR_PERF_CHORUS, CHORUS_PARAM_OUTPUT_SELECT),
-                           [max(0, min(2, int(output_select)))])
+        self.write_chorus([ADDR_PERF_CHORUS], chorus_type, level, output_select, master_switch=True)
 
     def set_perf_reverb(self, reverb_type: int | None = None,
                         level: int | None = None) -> None:
         """Write Performance Common reverb (10 00 06 00)."""
-        if reverb_type is not None:
-            self.send_data(add_address(ADDR_PERF_REVERB, REVERB_PARAM_TYPE),
-                           [max(0, min(5, int(reverb_type)))])
-            self.send_data(ADDR_SETUP_REVERB_SWITCH, [0 if int(reverb_type) == 0 else 1])
-        if level is not None:
-            self.send_data(add_address(ADDR_PERF_REVERB, REVERB_PARAM_LEVEL),
-                           [max(0, min(127, int(level)))])
+        self.write_reverb([ADDR_PERF_REVERB], reverb_type, level, master_switch=True)
+
+    def set_perf_chorus_param(self, param: str, val: int) -> None:
+        """Write one Performance Common chorus detail parameter (10 00 04 xx)."""
+        self.write_fx_detail([ADDR_PERF_CHORUS], CHORUS_DETAIL_OFFSETS, param, val)
+
+    def set_perf_reverb_param(self, param: str, val: int) -> None:
+        """Write one Performance Common reverb detail parameter (10 00 06 xx)."""
+        self.write_fx_detail([ADDR_PERF_REVERB], REVERB_DETAIL_OFFSETS, param, val)
 
     def get_perf_mfx_block(self, slot: int, timeout: float = 1.0) -> bytes:
         """Read one raw Performance Common MFX block (145 bytes)."""
@@ -320,13 +277,13 @@ class PerformanceProtocolMixin:
             try:
                 blk = self.get_perf_mfx_block(slot, timeout=timeout)
                 (holder.mfx_type, holder.dry_send, holder.chorus_send,
-                 holder.reverb_send, holder.params) = self._decode_mfx_block(blk)
+                 holder.reverb_send, holder.params) = decode_mfx_block(blk)
             except Exception as e:
                 logger.debug(f"get_perf_fx: mfx block read failed for slot {slot}: {e}")
                 continue
         try:
             cb = self.get_perf_chorus_block(timeout=timeout)
-            c_type, c_lvl, c_out, c_pre, c_rate, c_depth, c_fb = self._decode_chorus_block(bytes(cb))
+            c_type, c_lvl, c_out, c_pre, c_rate, c_depth, c_fb = decode_chorus_block(bytes(cb))
             fx.chorus_type = c_type
             fx.chorus_level = c_lvl
             fx.chorus_to_reverb = max(0, min(2, c_out))
@@ -338,7 +295,7 @@ class PerformanceProtocolMixin:
             logger.debug(f"get_perf_fx: chorus block read failed: {e}")
         try:
             rb = self.get_perf_reverb_block(timeout=timeout)
-            r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = self._decode_reverb_block(bytes(rb))
+            r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = decode_reverb_block(bytes(rb))
             fx.reverb_type = r_type
             fx.reverb_level = r_lvl
             fx.reverb_predelay = max(0, min(127, r_pre))
@@ -367,100 +324,34 @@ class PerformanceProtocolMixin:
                            chorus_send: int | None = None,
                            reverb_send: int | None = None) -> None:
         """Write a part-patch MFX type + sends (no perf-common mirror)."""
-        base = self._part_patch_fx_base(part_index, "mfx")
-        if mfx_type is not None:
-            self.send_data(add_address(base, MFX_PARAM_TYPE), [max(0, min(80, int(mfx_type)))])
-        if dry_send is not None:
-            self.send_data(add_address(base, MFX_PARAM_DRY_SEND), [max(0, min(127, int(dry_send)))])
-        if chorus_send is not None:
-            self.send_data(add_address(base, MFX_PARAM_CHORUS_SEND), [max(0, min(127, int(chorus_send)))])
-        if reverb_send is not None:
-            self.send_data(add_address(base, MFX_PARAM_REVERB_SEND), [max(0, min(127, int(reverb_send)))])
+        self.write_mfx([self._part_patch_fx_base(part_index, "mfx")],
+                       mfx_type, dry_send, chorus_send, reverb_send)
 
     def set_part_patch_mfx_param(self, part_index: int, param_index: int, value: int) -> None:
-        """Write one 4-nibble MFX parameter into a part-patch MFX block."""
-        if not 0 <= int(param_index) <= 31:
-            raise ValueError(f"MFX parameter index must be 0..31, got {param_index}")
-        base = self._part_patch_fx_base(part_index, "mfx")
-        addr = add_address(base, MFX_PARAM_DATA_START + int(param_index) * 4)
-        self.send_data(addr, pack_4nibbles(int(value) + 32768))
+        """Write one MFX parameter of a part-patch MFX block."""
+        self.write_mfx_params([self._part_patch_fx_base(part_index, "mfx")], [value], param_index)
 
     def set_part_patch_chorus(self, part_index: int, chorus_type: int | None = None,
                               level: int | None = None,
                               output_select: int | None = None) -> None:
         """Write a part-patch chorus (no perf-common mirror)."""
-        base = self._part_patch_fx_base(part_index, "chorus")
-        if chorus_type is not None:
-            self.send_data(add_address(base, CHORUS_PARAM_TYPE), [max(0, min(3, int(chorus_type)))])
-        if level is not None:
-            self.send_data(add_address(base, CHORUS_PARAM_LEVEL), [max(0, min(127, int(level)))])
-        if output_select is not None:
-            self.send_data(add_address(base, CHORUS_PARAM_OUTPUT_SELECT), [max(0, min(2, int(output_select)))])
+        self.write_chorus([self._part_patch_fx_base(part_index, "chorus")],
+                          chorus_type, level, output_select)
 
     def set_part_patch_chorus_param(self, part_index: int, param: str, val: int) -> None:
         """Write one part-patch chorus detail parameter (rate/depth/preDelay/feedback)."""
-        offset_map = {
-            "preDelay": CHORUS_PARAM_PREDELAY, "predelay": CHORUS_PARAM_PREDELAY,
-            "rate": CHORUS_PARAM_RATE, "depth": CHORUS_PARAM_DEPTH,
-            "feedback": CHORUS_PARAM_FEEDBACK,
-        }
-        if param not in offset_map:
-            logger.warning(f"Unknown chorus parameter: {param}")
-            return
-        base = self._part_patch_fx_base(part_index, "chorus")
-        self.send_data(add_address(base, offset_map[param]),
-                       pack_4nibbles(max(0, min(127, int(val))) + 32768))
+        self.write_fx_detail([self._part_patch_fx_base(part_index, "chorus")],
+                             CHORUS_DETAIL_OFFSETS, param, val)
 
     def set_part_patch_reverb(self, part_index: int, reverb_type: int | None = None,
                               level: int | None = None) -> None:
         """Write a part-patch reverb (no perf-common mirror)."""
-        base = self._part_patch_fx_base(part_index, "reverb")
-        if reverb_type is not None:
-            self.send_data(add_address(base, REVERB_PARAM_TYPE), [max(0, min(5, int(reverb_type)))])
-        if level is not None:
-            self.send_data(add_address(base, REVERB_PARAM_LEVEL), [max(0, min(127, int(level)))])
+        self.write_reverb([self._part_patch_fx_base(part_index, "reverb")], reverb_type, level)
 
     def set_part_patch_reverb_param(self, part_index: int, param: str, val: int) -> None:
         """Write one part-patch reverb detail parameter."""
-        offset_map = {
-            "preDelay": REVERB_PARAM_PREDELAY, "predelay": REVERB_PARAM_PREDELAY,
-            "time": REVERB_PARAM_TIME, "damp": REVERB_PARAM_HF_DAMP,
-            "hfDamp": REVERB_PARAM_HF_DAMP, "diffusion": REVERB_PARAM_DIFFUSION,
-            "tone": REVERB_PARAM_TONE, "lowCut": REVERB_PARAM_TONE,
-        }
-        if param not in offset_map:
-            logger.warning(f"Unknown reverb parameter: {param}")
-            return
-        base = self._part_patch_fx_base(part_index, "reverb")
-        self.send_data(add_address(base, offset_map[param]),
-                       pack_4nibbles(max(0, min(127, int(val))) + 32768))
-
-    def set_perf_chorus_param(self, param: str, val: int) -> None:
-        """Write one Performance Common chorus detail parameter (10 00 04 xx)."""
-        offset_map = {
-            "preDelay": CHORUS_PARAM_PREDELAY, "predelay": CHORUS_PARAM_PREDELAY,
-            "rate": CHORUS_PARAM_RATE, "depth": CHORUS_PARAM_DEPTH,
-            "feedback": CHORUS_PARAM_FEEDBACK,
-        }
-        if param not in offset_map:
-            logger.warning(f"Unknown chorus parameter: {param}")
-            return
-        addr = add_address(ADDR_PERF_CHORUS, offset_map[param])
-        self.send_data(addr, pack_4nibbles(max(0, min(127, int(val))) + 32768))
-
-    def set_perf_reverb_param(self, param: str, val: int) -> None:
-        """Write one Performance Common reverb detail parameter (10 00 06 xx)."""
-        offset_map = {
-            "preDelay": REVERB_PARAM_PREDELAY, "predelay": REVERB_PARAM_PREDELAY,
-            "time": REVERB_PARAM_TIME, "damp": REVERB_PARAM_HF_DAMP,
-            "hfDamp": REVERB_PARAM_HF_DAMP, "diffusion": REVERB_PARAM_DIFFUSION,
-            "tone": REVERB_PARAM_TONE, "lowCut": REVERB_PARAM_TONE,
-        }
-        if param not in offset_map:
-            logger.warning(f"Unknown reverb parameter: {param}")
-            return
-        addr = add_address(ADDR_PERF_REVERB, offset_map[param])
-        self.send_data(addr, pack_4nibbles(max(0, min(127, int(val))) + 32768))
+        self.write_fx_detail([self._part_patch_fx_base(part_index, "reverb")],
+                             REVERB_DETAIL_OFFSETS, param, val)
 
     def read_part_fx(self, part_index: int, timeout: float = 1.0) -> dict:
         """Read one part-patch MFX + chorus + reverb into decoded dicts.
@@ -481,9 +372,9 @@ class PerformanceProtocolMixin:
                                     PERF_REVERB_BLOCK_SIZE, timeout=timeout)
         if rev_raw is None or len(rev_raw) < 2:
             raise TimeoutError(f"Timed out reading part {part} patch reverb.")
-        m_type, m_dry, m_cho, m_rev, m_params = self._decode_mfx_block(bytes(mfx_raw))
-        c_type, c_lvl, c_out, c_pre, c_rate, c_depth, c_fb = self._decode_chorus_block(bytes(cho_raw))
-        r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = self._decode_reverb_block(bytes(rev_raw))
+        m_type, m_dry, m_cho, m_rev, m_params = decode_mfx_block(bytes(mfx_raw))
+        c_type, c_lvl, c_out, c_pre, c_rate, c_depth, c_fb = decode_chorus_block(bytes(cho_raw))
+        r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = decode_reverb_block(bytes(rev_raw))
         return {
             "mfx": {"type": m_type, "dry": m_dry, "chorus": m_cho, "reverb": m_rev, "params": m_params},
             "chorus": {"type": c_type, "level": c_lvl, "toReverb": c_out,
@@ -646,7 +537,7 @@ class PerformanceProtocolMixin:
     def read_perf_part_patch(self, part_index: int, timeout: float = 1.5) -> PatchState:
         """Read a part's sounding image from its temp buffer (no part switch)."""
         part = self._check_part(part_index)
-        return self.read_patch_at(temp_perf_patch_base(part), f"Part {part}", timeout=timeout)
+        return self.read_patch_at(temp_perf_patch_base(part), timeout=timeout)
 
     # ------------------------------------------------------------------
     # User performances (MSB 85 LSB 0, 001..128) at 20 nn 00 00: same block

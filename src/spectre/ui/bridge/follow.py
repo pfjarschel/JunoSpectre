@@ -181,7 +181,7 @@ class FollowBridgeMixin(BridgeBaseMixin):
             if want["part"]:
                 out["part"] = (want["part"], self._read_part_image(want["part"]))
             if want["patch"]:
-                out["patch"] = juno.read_patch_at(ADDR_TEMP_PATCH_PART_1, "Patch")
+                out["patch"] = juno.read_patch_at(ADDR_TEMP_PATCH_PART_1)
         except Exception as e:
             logger.debug(f"panel follow read failed: {e}")
         try:

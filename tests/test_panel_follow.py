@@ -162,7 +162,7 @@ def test_panel_patch_pick_in_patch_mode(bridge):
 def test_panel_mode_switch_is_followed_not_pushed(bridge):
     b, client, mgr = bridge
     image = PatchState()
-    client.read_patch_at = lambda base, label, timeout=1.5: image
+    client.read_patch_at = lambda base, timeout=1.5: image
     _send(b, [_dt1((0x01, 0, 0, 0), [0])])
     assert b._sound_mode == "PATCH" and client._cached_sound_mode == SoundMode.PATCH
     assert not mgr.send_juno_sysex.called or all(

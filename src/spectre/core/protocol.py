@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .protocol_base import BaseProtocolMixin, SoundMode
 from .protocol_flash import FlashProtocolMixin
+from .protocol_fx import FxBlockWriterMixin
 from .protocol_patch import PatchProtocolMixin
 from .protocol_performance import PerformanceProtocolMixin
 
@@ -18,11 +19,12 @@ class JunoClient(
     PerformanceProtocolMixin,
     PatchProtocolMixin,
     FlashProtocolMixin,
+    FxBlockWriterMixin,
 ):
     """Client for bidirectional communication with Roland JUNO-DS / XPS-30.
 
     Inherits from domain mixins for transport, performance mode, patch editing,
-    and user flash slot management.
+    user flash slot management and the FX block writers.
     """
 
 

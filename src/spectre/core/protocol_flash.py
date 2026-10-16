@@ -10,10 +10,8 @@ from typing import List, Optional, Sequence, Tuple
 
 from .patch_state import (
     TEMPLATE_ASSET_PATH,
-    EffectsState,
-    PatchCommonState,
     PatchState,
-    ToneState,
+    effects_from_blocks,
 )
 from .protocol_base import (
     INIT_MAX_VERIFY_REPAIRS,
@@ -34,10 +32,10 @@ from .sysex import (
     OFFSET_PATCH_TONE_3,
     OFFSET_PATCH_TONE_4,
     PATCH_PARAM_NAME,
+    PATCH_TONE_OFFSETS,
     RolandSysEx,
     add_address,
     encode_name,
-    unpack_4nibbles,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,68 +90,12 @@ class FlashProtocolMixin:
             raise ValueError(f"PC must be 0..127, got {pc}")
         return (0x30 if int(lsb) == 0 else 0x31, int(pc), 0x00, 0x00)
 
-    @staticmethod
-    def _assemble_patch_state(
-        raw_regions: dict[str, list[bytes]],
-        common: "PatchCommonState",
-        tones: list["ToneState"],
-        mfx: Tuple[int, int, int, int, list[int]],
-        chorus: Tuple[int, int, int, int, int, int, int],
-        reverb: Tuple[int, int, int, int, int, int, int],
-        mode_name: str,
-    ) -> "PatchState":
-        """Build a PatchState from gathered region bytes + decoded pieces.
-
-        Shared by read_full_patch (temp RAM) and read_user_patch (flash) so
-        both paths provably converge on the same decode.
-        """
-        mfx_type, dry, cho, rev, mfx_params = mfx
-        c_type, c_lvl, c_out, c_pre, c_rate, c_dep, c_fb = chorus
-        r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = reverb
-        effects = EffectsState(
-            mfx_type=mfx_type,
-            mfx_dry_send=dry,
-            mfx_chorus_send=cho,
-            mfx_reverb_send=rev,
-            mfx_bypassed=(mfx_type == 0),
-            mfx_last_active_type=mfx_type if mfx_type != 0 else 15,
-            mfx_params=list(mfx_params) + [0] * (32 - len(mfx_params))
-            if len(mfx_params) < 32
-            else list(mfx_params[:32]),
-            routing_preset="",
-            chorus_type=c_type,
-            chorus_level=c_lvl,
-            chorus_to_reverb=c_out,
-            chorus_predelay=c_pre,
-            chorus_rate=c_rate,
-            chorus_depth=c_dep,
-            chorus_feedback=c_fb,
-            reverb_type=r_type,
-            reverb_level=r_lvl,
-            reverb_predelay=r_pre,
-            reverb_time=r_time,
-            reverb_damp=r_damp,
-            reverb_diffusion=r_diff,
-            reverb_tone=r_tone,
-        )
-        patch_state = PatchState(
-            sound_mode=mode_name,
-            common=common,
-            tones=tones,
-            effects=effects,
-            raw_regions={k: [bytes(c) for c in v] for k, v in raw_regions.items()},
-        )
-        patch_state.custom_detune_cache = [t.fine_tune for t in tones]
-        return patch_state
-
     def _read_patch_regions(self, base: Tuple[int, int, int, int],
                             timeout: float = 1.0) -> dict[str, list[bytes]]:
         """Gather the canonical raw image at any patch base (temp or flash)."""
         raw_regions: dict[str, list[bytes]] = {}
         raw_regions["common"] = [self._read_common_raw(base, timeout=timeout)]
-        tone_offsets = (OFFSET_PATCH_TONE_1, OFFSET_PATCH_TONE_2,
-                        OFFSET_PATCH_TONE_3, OFFSET_PATCH_TONE_4)
-        for idx, off in enumerate(tone_offsets, start=1):
+        for idx, off in PATCH_TONE_OFFSETS.items():
             main_raw, lfo_raw = self._read_tone_raws(add_address(base, off), timeout=timeout)
             raw_regions[f"tone_{idx}"] = [main_raw, lfo_raw]
         raw_regions["tmt"] = [bytes(self._read_tmt_raw(base, timeout=timeout))]
@@ -169,45 +111,24 @@ class FlashProtocolMixin:
         Strict canonical decode (no legacy fallback): raises TimeoutError or
         ValueError on short/corrupt replies.
         """
-        return self.read_patch_at(self.user_slot_base(msb, lsb, pc),
-                                  f"User slot {msb}/{lsb}/{pc}", timeout=timeout)
+        return self.read_patch_at(self.user_slot_base(msb, lsb, pc), timeout=timeout)
 
-    def read_patch_at(self, base: Tuple[int, int, int, int], label: str,
+    def read_patch_at(self, base: Tuple[int, int, int, int],
                       timeout: float = 1.5) -> PatchState:
-        """Read and strictly decode the patch image at any base (temp or flash)."""
+        """Read and decode the patch image at any base (temp or flash)."""
         raw_regions = self._read_patch_regions(base, timeout=timeout)
-        common = PatchState._decode_common(bytes(raw_regions["common"][0][:80]))
+        common = PatchState._decode_common(raw_regions["common"][0])
         tones = []
         for idx in range(1, 5):
-            main_raw, lfo_raw = raw_regions[f"tone_{idx}"][0], raw_regions[f"tone_{idx}"][1]
-            if len(main_raw) < 154 or len(lfo_raw) < 26:
-                raise ValueError(f"{label} tone {idx}: short image")
-            tones.append(PatchState._decode_tone(bytes(main_raw[:154]), bytes(lfo_raw[:26]), idx))
-        PatchState.apply_tmt(bytes(raw_regions["tmt"][0]), common, tones)
-        mfx_raw = raw_regions["mfx"][0]
-        mfx_params = [0] * 32
-        if len(mfx_raw) >= 0x11 + 4:
-            for i in range(min(32, (len(mfx_raw) - 0x11) // 4)):
-                mfx_params[i] = unpack_4nibbles(mfx_raw[0x11 + i * 4:0x11 + (i + 1) * 4]) - 32768
-        mfx = (mfx_raw[0], mfx_raw[1], mfx_raw[2], mfx_raw[3], mfx_params)
-        cho_raw = raw_regions["chorus"][0]
-        chorus = (
-            cho_raw[0], cho_raw[1], cho_raw[3],
-            max(0, unpack_4nibbles(cho_raw[0x0C:0x10]) - 32768),
-            max(0, unpack_4nibbles(cho_raw[0x14:0x18]) - 32768),
-            max(0, unpack_4nibbles(cho_raw[0x1C:0x20]) - 32768),
-            max(0, unpack_4nibbles(cho_raw[0x24:0x28]) - 32768),
-        )
-        rev_raw = raw_regions["reverb"][0]
-        reverb = (
-            rev_raw[0], rev_raw[1],
-            max(0, unpack_4nibbles(rev_raw[0x03:0x07]) - 32768),
-            max(0, unpack_4nibbles(rev_raw[0x07:0x0B]) - 32768),
-            max(0, unpack_4nibbles(rev_raw[0x0F:0x13]) - 32768),
-            max(0, unpack_4nibbles(rev_raw[0x17:0x1B]) - 32768),
-            max(0, unpack_4nibbles(rev_raw[0x1B:0x1F]) - 32768),
-        )
-        return self._assemble_patch_state(raw_regions, common, tones, mfx, chorus, reverb, "PATCH")
+            main_raw, lfo_raw = raw_regions[f"tone_{idx}"]
+            tones.append(PatchState._decode_tone(main_raw, lfo_raw, idx))
+        PatchState.apply_tmt(raw_regions["tmt"][0], common, tones)
+        effects = effects_from_blocks(raw_regions["mfx"][0], raw_regions["chorus"][0],
+                                      raw_regions["reverb"][0])
+        state = PatchState(sound_mode="PATCH", common=common, tones=tones, effects=effects,
+                           raw_regions=raw_regions)
+        state.custom_detune_cache = [t.fine_tune for t in tones]
+        return state
 
     def write_patch_regions(self, state: PatchState,
                              base: Tuple[int, int, int, int],

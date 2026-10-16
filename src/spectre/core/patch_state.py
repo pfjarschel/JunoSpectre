@@ -509,6 +509,50 @@ class EffectsState:
 
 
 
+# MFX / chorus / reverb blocks: the patch, performance common and part-patch
+# blocks share one layout, so these decode all of them.
+
+def _param4(block: bytes, offset: int) -> int:
+    """A 4-nibble parameter without its 32768 bias (0 when the block is short)."""
+    if len(block) < offset + 4:
+        return 0
+    return unpack_4nibbles(block[offset:offset + 4]) - 32768
+
+
+def decode_mfx_block(b: bytes) -> Tuple[int, int, int, int, list[int]]:
+    """(type, dry send, chorus send, reverb send, 32 params)."""
+    return b[0], b[1], b[2], b[3], [_param4(b, 0x11 + 4 * i) for i in range(32)]
+
+
+def decode_chorus_block(b: bytes) -> Tuple[int, int, int, int, int, int, int]:
+    """(type, level, output select, pre-delay, rate, depth, feedback)."""
+    return (b[0], b[1], b[3] if len(b) > 3 else 0,
+            max(0, _param4(b, 0x0C)), max(0, _param4(b, 0x14)),
+            max(0, _param4(b, 0x1C)), max(0, _param4(b, 0x24)))
+
+
+def decode_reverb_block(b: bytes) -> Tuple[int, int, int, int, int, int, int]:
+    """(type, level, pre-delay, time, HF damp, diffusion, tone)."""
+    return (b[0], b[1],
+            max(0, _param4(b, 0x03)), max(0, _param4(b, 0x07)), max(0, _param4(b, 0x0F)),
+            max(0, _param4(b, 0x17)), max(0, _param4(b, 0x1B)))
+
+
+def effects_from_blocks(mfx: bytes, cho: bytes, rev: bytes) -> "EffectsState":
+    m_type, dry, m_cho, m_rev, params = decode_mfx_block(mfx)
+    c_type, c_lvl, c_out, c_pre, c_rate, c_depth, c_fb = decode_chorus_block(cho)
+    r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = decode_reverb_block(rev)
+    return EffectsState(
+        mfx_type=m_type, mfx_dry_send=dry, mfx_chorus_send=m_cho, mfx_reverb_send=m_rev,
+        mfx_bypassed=(m_type == 0), mfx_last_active_type=m_type or 15, mfx_params=params,
+        routing_preset="",  # a raw synth image carries no routing preset
+        chorus_type=c_type, chorus_level=c_lvl, chorus_to_reverb=c_out,
+        chorus_predelay=c_pre, chorus_rate=c_rate, chorus_depth=c_depth, chorus_feedback=c_fb,
+        reverb_type=r_type, reverb_level=r_lvl, reverb_predelay=r_pre, reverb_time=r_time,
+        reverb_damp=r_damp, reverb_diffusion=r_diff, reverb_tone=r_tone,
+    )
+
+
 @dataclass
 class MacroLink:
     """One macro -> param assignment (relative offset model).
@@ -729,11 +773,6 @@ class PatchState:
         return [bytes(c["bytes"]) for c in payload_region["chunks"]]
 
     @staticmethod
-    def _param4v(block: bytes, offset: int) -> int:
-        """Decode a 4-nibble parameter value and remove the 32768 bias."""
-        return unpack_4nibbles(block[offset:offset + 4]) - 32768
-
-    @staticmethod
     def apply_tmt(tmt: bytes, common: PatchCommonState, tones: list,
                   mutes: bool = True) -> None:
         """TMT bytes -> structure/booster/velocity control, tone mutes
@@ -863,38 +902,6 @@ class PatchState:
         )
 
     @classmethod
-    def _decode_effects(cls, mfx: bytes, cho: bytes, rev: bytes) -> EffectsState:
-        eff = EffectsState()
-        eff.mfx_type = mfx[0]
-        eff.mfx_dry_send = mfx[1]
-        eff.mfx_chorus_send = mfx[2]
-        eff.mfx_reverb_send = mfx[3]
-        eff.mfx_bypassed = (mfx[0] == 0)
-        if mfx[0] != 0:
-            eff.mfx_last_active_type = mfx[0]
-        eff.mfx_params = [
-            cls._param4v(mfx, 0x11 + 4 * i) if len(mfx) >= 0x15 + 4 * i else 0
-            for i in range(32)
-        ]
-        # The golden image is a raw patch: no routing preset was selected on it.
-        eff.routing_preset = ""
-        eff.chorus_type = cho[0]
-        eff.chorus_level = cho[1]
-        eff.chorus_to_reverb = cho[3]
-        eff.chorus_predelay = cls._param4v(cho, 0x0C)
-        eff.chorus_rate = cls._param4v(cho, 0x14)
-        eff.chorus_depth = cls._param4v(cho, 0x1C)
-        eff.chorus_feedback = cls._param4v(cho, 0x24)
-        eff.reverb_type = rev[0]
-        eff.reverb_level = rev[1]
-        eff.reverb_predelay = cls._param4v(rev, 0x03)
-        eff.reverb_time = cls._param4v(rev, 0x07)
-        eff.reverb_damp = cls._param4v(rev, 0x0F)
-        eff.reverb_diffusion = cls._param4v(rev, 0x17)
-        eff.reverb_tone = cls._param4v(rev, 0x1B)
-        return eff
-
-    @classmethod
     def from_template(cls, payload: Dict[str, Any]) -> "PatchState":
         """Build the canonical PatchState by decoding the captured hardware image blob."""
         regions = payload["regions"]
@@ -905,7 +912,7 @@ class PatchState:
             chunks = cls._region_bytes(regions[f"tone_{idx}"])
             tones.append(cls._decode_tone(chunks[0], chunks[1], idx))
 
-        effects = cls._decode_effects(
+        effects = effects_from_blocks(
             cls._region_bytes(regions["mfx"])[0],
             cls._region_bytes(regions["chorus"])[0],
             cls._region_bytes(regions["reverb"])[0],

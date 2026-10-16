@@ -1486,7 +1486,7 @@ def _patch_round_trip_rig(tmp_path):
     """PERFORM bridge editing part 2, whose temp buffer holds a real image."""
     from spectre.core.sysex import ADDR_TEMP_PATCH_PART_1
     bridge, juno = _perform_bridge(tmp_path)
-    image = juno.read_patch_at(ADDR_TEMP_PATCH_PART_1, "seed")
+    image = juno.read_patch_at(ADDR_TEMP_PATCH_PART_1)
     juno.push_patch_to_perf_part(image, 2)
     bridge.patch_state.active_perf_part = 2
     for p in bridge.patch_state.perf_parts:

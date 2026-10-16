@@ -1025,7 +1025,7 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
         if self.patch_state is not state_obj or self.patch_state.common is not common_obj:
             return
         try:
-            current = juno.read_patch_at(ADDR_TEMP_PATCH_PART_1, "Patch")
+            current = juno.read_patch_at(ADDR_TEMP_PATCH_PART_1)
             if not juno.patch_image_mismatches(image, current.raw_regions):
                 return
             self._part_snapshots[str(part_index)] = patch_state_to_dict(current)

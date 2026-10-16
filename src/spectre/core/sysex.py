@@ -154,6 +154,8 @@ OFFSET_PATCH_TONE_1 = (0x00, 0x00, 0x20, 0x00)
 OFFSET_PATCH_TONE_2 = (0x00, 0x00, 0x22, 0x00)
 OFFSET_PATCH_TONE_3 = (0x00, 0x00, 0x24, 0x00)
 OFFSET_PATCH_TONE_4 = (0x00, 0x00, 0x26, 0x00)
+PATCH_TONE_OFFSETS = {1: OFFSET_PATCH_TONE_1, 2: OFFSET_PATCH_TONE_2,
+                      3: OFFSET_PATCH_TONE_3, 4: OFFSET_PATCH_TONE_4}
 
 # Tone Parameter Offsets (relative to Tone Base)
 TONE_PARAM_LEVEL = 0x0000          # 0..127
@@ -329,6 +331,17 @@ REVERB_PARAM_TIME = 0x0007        # Param 2 (4-nibble)
 REVERB_PARAM_HF_DAMP = 0x000F     # Param 4 (4-nibble)
 REVERB_PARAM_DIFFUSION = 0x0017   # Param 6 (4-nibble)
 REVERB_PARAM_TONE = 0x001B        # Param 7 (4-nibble)
+
+# Detail parameter names the UI uses -> 4-nibble offsets in the block
+CHORUS_DETAIL_OFFSETS = {
+    "preDelay": CHORUS_PARAM_PREDELAY, "predelay": CHORUS_PARAM_PREDELAY,
+    "rate": CHORUS_PARAM_RATE, "depth": CHORUS_PARAM_DEPTH, "feedback": CHORUS_PARAM_FEEDBACK,
+}
+REVERB_DETAIL_OFFSETS = {
+    "preDelay": REVERB_PARAM_PREDELAY, "predelay": REVERB_PARAM_PREDELAY,
+    "time": REVERB_PARAM_TIME, "damp": REVERB_PARAM_HF_DAMP, "hfDamp": REVERB_PARAM_HF_DAMP,
+    "diffusion": REVERB_PARAM_DIFFUSION, "tone": REVERB_PARAM_TONE, "lowCut": REVERB_PARAM_TONE,
+}
 
 # System Master Level lives at ADDR_SYSTEM_MASTER_LEVEL (documented).
 # (No Master EQ exists in the JUNO-DS MIDI implementation: removed.)

@@ -6,36 +6,24 @@ import logging
 from typing import Optional, Sequence, Tuple
 
 from .patch_state import (
-    EffectsState,
     PatchCommonState,
     PatchState,
     ToneState,
+    decode_chorus_block,
+    decode_mfx_block,
+    decode_reverb_block,
 )
 from .sysex import (
-    ADDR_SETUP_CHORUS_SWITCH,
-    ADDR_SETUP_REVERB_SWITCH,
+    ADDR_PERF_CHORUS,
+    ADDR_PERF_MFX1,
+    ADDR_PERF_REVERB,
     ADDR_TEMP_PATCH_PART_1,
-    CHORUS_PARAM_DEPTH,
-    CHORUS_PARAM_FEEDBACK,
-    CHORUS_PARAM_LEVEL,
-    CHORUS_PARAM_OUTPUT_SELECT,
-    CHORUS_PARAM_PREDELAY,
-    CHORUS_PARAM_RATE,
-    CHORUS_PARAM_TYPE,
-    MFX_PARAM_CHORUS_SEND,
-    MFX_PARAM_DATA_START,
-    MFX_PARAM_DRY_SEND,
-    MFX_PARAM_REVERB_SEND,
-    MFX_PARAM_TYPE,
+    CHORUS_DETAIL_OFFSETS,
     OFFSET_PATCH_COMMON,
     OFFSET_PATCH_COMMON_CHORUS,
     OFFSET_PATCH_COMMON_MFX,
     OFFSET_PATCH_COMMON_REVERB,
     OFFSET_PATCH_TMT,
-    OFFSET_PATCH_TONE_1,
-    OFFSET_PATCH_TONE_2,
-    OFFSET_PATCH_TONE_3,
-    OFFSET_PATCH_TONE_4,
     PATCH_PARAM_ANALOG_FEEL,
     PATCH_PARAM_ATTACK_OFFSET,
     PATCH_PARAM_CUTOFF_OFFSET,
@@ -55,13 +43,8 @@ from .sysex import (
     PATCH_PARAM_RELEASE_OFFSET,
     PATCH_PARAM_RESONANCE_OFFSET,
     PATCH_PARAM_TMT_CONTROL_SWITCH,
-    REVERB_PARAM_DIFFUSION,
-    REVERB_PARAM_HF_DAMP,
-    REVERB_PARAM_LEVEL,
-    REVERB_PARAM_PREDELAY,
-    REVERB_PARAM_TIME,
-    REVERB_PARAM_TONE,
-    REVERB_PARAM_TYPE,
+    PATCH_TONE_OFFSETS,
+    REVERB_DETAIL_OFFSETS,
     TMT_PARAM_TONE1_SWITCH,
     TMT_PARAM_TONE2_SWITCH,
     TMT_PARAM_TONE3_SWITCH,
@@ -131,7 +114,6 @@ from .sysex import (
     encode_name,
     pack_2nibbles,
     pack_4nibbles,
-    unpack_4nibbles,
 )
 
 logger = logging.getLogger(__name__)
@@ -170,14 +152,8 @@ class PatchProtocolMixin:
     def get_tone_levels(self, timeout: float = 1.0) -> Tuple[int, int, int, int]:
         """Query current TVA Level for Tones 1, 2, 3, and 4."""
         base = self.get_active_patch_base(timeout=timeout)
-        t_offsets = [
-            OFFSET_PATCH_TONE_1,
-            OFFSET_PATCH_TONE_2,
-            OFFSET_PATCH_TONE_3,
-            OFFSET_PATCH_TONE_4,
-        ]
         levels = []
-        for offset in t_offsets:
+        for offset in PATCH_TONE_OFFSETS.values():
             addr = add_address(base, offset)
             res = self.request_data(addr, (0x00, 0x00, 0x00, 0x01), timeout=timeout)
             if res is None:
@@ -193,13 +169,7 @@ class PatchProtocolMixin:
         clamped_level = max(0, min(127, int(level)))
 
         base = self.get_active_patch_base()
-        offsets = {
-            1: OFFSET_PATCH_TONE_1,
-            2: OFFSET_PATCH_TONE_2,
-            3: OFFSET_PATCH_TONE_3,
-            4: OFFSET_PATCH_TONE_4,
-        }
-        addr = add_address(base, offsets[tone_index])
+        addr = add_address(base, PATCH_TONE_OFFSETS[tone_index])
         self.send_data(addr, [clamped_level])
 
     def set_tone_levels(
@@ -233,13 +203,7 @@ class PatchProtocolMixin:
         if tone_index not in (1, 2, 3, 4):
             raise ValueError(f"Tone index must be 1..4, got {tone_index}")
         base = self.get_active_patch_base()
-        offsets = {
-            1: OFFSET_PATCH_TONE_1,
-            2: OFFSET_PATCH_TONE_2,
-            3: OFFSET_PATCH_TONE_3,
-            4: OFFSET_PATCH_TONE_4,
-        }
-        addr = add_address(add_address(base, offsets[tone_index]), offset)
+        addr = add_address(add_address(base, PATCH_TONE_OFFSETS[tone_index]), offset)
         data = [value] if isinstance(value, int) else list(value)
         self.send_data(addr, data)
 
@@ -454,13 +418,7 @@ class PatchProtocolMixin:
 
         # Also ensure tone dry send is non-zero (127) so it reaches the main output
         base = self.get_active_patch_base()
-        offsets = {
-            1: OFFSET_PATCH_TONE_1,
-            2: OFFSET_PATCH_TONE_2,
-            3: OFFSET_PATCH_TONE_3,
-            4: OFFSET_PATCH_TONE_4,
-        }
-        t_addr = add_address(base, offsets[tone_index])
+        t_addr = add_address(base, PATCH_TONE_OFFSETS[tone_index])
         self.send_data(add_address(t_addr, TONE_PARAM_DRY_SEND), [127])
         self.send_data(add_address(t_addr, TONE_PARAM_ENV_MODE), [1])  # 1 = SUSTAIN (allow infinite hold)
         self.send_data(add_address(t_addr, TONE_PARAM_TVA_BIAS_LEVEL), [64])  # 64 = 0 neutral (no keyboard attenuation)
@@ -673,160 +631,55 @@ class PatchProtocolMixin:
             )
         offset = TONE_PARAM_MATRIX_CTRL_SW_BASE + (ctrl_index - 1) * 4 + (dest_index - 1)
         base = self.get_active_patch_base()
-        offsets = {
-            1: OFFSET_PATCH_TONE_1,
-            2: OFFSET_PATCH_TONE_2,
-            3: OFFSET_PATCH_TONE_3,
-            4: OFFSET_PATCH_TONE_4,
-        }
-        t_addr = add_address(base, offsets[tone_index])
+        t_addr = add_address(base, PATCH_TONE_OFFSETS[tone_index])
         addr = add_address(t_addr, offset)
         self.send_data(addr, [max(0, min(2, int(switch_val)))])
 
-    def set_mfx(
-        self,
-        mfx_type: int,
-        dry_send: Optional[int] = None,
-        chorus_send: Optional[int] = None,
-        reverb_send: Optional[int] = None,
-    ) -> None:
-        """Set MFX type and optional sends."""
+    def _patch_fx_bases(self, block: Tuple[int, int, int, int],
+                        mirror: Tuple[int, int, int, int]) -> list:
+        """The sounding patch's FX block, plus its performance common mirror
+        in PATCH mode (the synth plays the patch FX from there)."""
         base = self.get_active_patch_base()
-        mfx_base = add_address(base, OFFSET_PATCH_COMMON_MFX)
-        mirror = self._mirrors_perf_fx(base)
-        self.send_data(add_address(mfx_base, MFX_PARAM_TYPE), [max(0, min(80, int(mfx_type)))])
-        # PATCH mode: also sync Performance Common MFX1 (10 00 02 00)
-        if mirror:
-            self.send_data((0x10, 0x00, 0x02, MFX_PARAM_TYPE), [max(0, min(80, int(mfx_type)))])
-        for offset, val in ((MFX_PARAM_DRY_SEND, dry_send), (MFX_PARAM_CHORUS_SEND, chorus_send),
-                            (MFX_PARAM_REVERB_SEND, reverb_send)):
-            if val is None:
-                continue
-            v = [max(0, min(127, int(val)))]
-            self.send_data(add_address(mfx_base, offset), v)
-            if mirror:
-                self.send_data((0x10, 0x00, 0x02, offset), v)
+        bases = [add_address(base, block)]
+        if self._mirrors_perf_fx(base):
+            bases.append(mirror)
+        return bases
+
+    def set_mfx(self, mfx_type: int, dry_send: Optional[int] = None,
+                chorus_send: Optional[int] = None, reverb_send: Optional[int] = None) -> None:
+        """Set MFX type and optional sends."""
+        self.write_mfx(self._patch_fx_bases(OFFSET_PATCH_COMMON_MFX, ADDR_PERF_MFX1),
+                       mfx_type, dry_send, chorus_send, reverb_send)
 
     def set_mfx_param(self, param_index: int, value: int) -> None:
-        """Set an individual MFX parameter (0..31) via Roland 4-nibble SysEx."""
-        if not (0 <= param_index <= 31):
-            raise ValueError(f"MFX parameter index must be 0..31, got {param_index}")
-        base = self.get_active_patch_base()
-        mfx_base = add_address(base, OFFSET_PATCH_COMMON_MFX)
-        param_addr = add_address(mfx_base, MFX_PARAM_DATA_START + param_index * 4)
-        raw_val = int(value) + 32768
-        nibbles = pack_4nibbles(raw_val)
-        self.send_data(param_addr, nibbles)
-        # PATCH mode: also mirror to Performance Common MFX1 (10 00 02 xx)
-        if self._mirrors_perf_fx(base):
-            self.send_data((0x10, 0x00, param_addr[2], param_addr[3]), nibbles)
+        """Set one MFX parameter (0..31)."""
+        self.set_mfx_params_bulk([value], param_index)
 
     def set_mfx_params_bulk(self, param_values: Sequence[int], start_index: int = 0) -> None:
-        """Set a contiguous sequence of MFX parameters in a single SysEx DT1 packet."""
-        if not param_values:
-            return
-        nibbles = []
-        for val in param_values:
-            raw_val = int(val) + 32768
-            nibbles.extend(pack_4nibbles(raw_val))
-        base = self.get_active_patch_base()
-        mfx_base = add_address(base, OFFSET_PATCH_COMMON_MFX)
-        param_addr = add_address(mfx_base, MFX_PARAM_DATA_START + start_index * 4)
-        self.send_data(param_addr, nibbles)
-        # PATCH mode: also mirror to Performance Common MFX1 (10 00 02 xx)
-        if self._mirrors_perf_fx(base):
-            self.send_data((0x10, 0x00, param_addr[2], param_addr[3]), nibbles)
+        """Set contiguous MFX parameters in one DT1."""
+        self.write_mfx_params(self._patch_fx_bases(OFFSET_PATCH_COMMON_MFX, ADDR_PERF_MFX1),
+                              param_values, start_index)
 
-    def set_chorus(
-        self,
-        chorus_type: int,
-        level: Optional[int] = None,
-        output_select: Optional[int] = None,
-    ) -> None:
-        """Set Master Chorus type, level, and output routing."""
-        c_type = max(0, min(3, int(chorus_type)))
-        base = self.get_active_patch_base()
-        cho_base = add_address(base, OFFSET_PATCH_COMMON_CHORUS)
-        mirror = self._mirrors_perf_fx(base)
-        self.send_data(add_address(cho_base, CHORUS_PARAM_TYPE), [c_type])
-        if mirror:
-            self.send_data((0x10, 0x00, 0x04, CHORUS_PARAM_TYPE), [c_type])
-            self.send_data(ADDR_SETUP_CHORUS_SWITCH, [0 if c_type == 0 else 1])
-        if level is not None:
-            lvl = max(0, min(127, int(level)))
-            self.send_data(add_address(cho_base, CHORUS_PARAM_LEVEL), [lvl])
-            if mirror:
-                self.send_data((0x10, 0x00, 0x04, CHORUS_PARAM_LEVEL), [lvl])
-        if output_select is not None:
-            out = max(0, min(2, int(output_select)))
-            self.send_data(add_address(cho_base, CHORUS_PARAM_OUTPUT_SELECT), [out])
-            if mirror:
-                self.send_data((0x10, 0x00, 0x04, CHORUS_PARAM_OUTPUT_SELECT), [out])
+    def set_chorus(self, chorus_type: int, level: Optional[int] = None,
+                   output_select: Optional[int] = None) -> None:
+        """Set chorus type, level and output routing."""
+        bases = self._patch_fx_bases(OFFSET_PATCH_COMMON_CHORUS, ADDR_PERF_CHORUS)
+        self.write_chorus(bases, chorus_type, level, output_select, master_switch=len(bases) > 1)
 
     def set_chorus_param(self, param: str, val: int) -> None:
-        """Set an individual Master Chorus 4-nibble parameter (rate, depth, preDelay, feedback)."""
-        offset_map = {
-            "preDelay": CHORUS_PARAM_PREDELAY,
-            "predelay": CHORUS_PARAM_PREDELAY,
-            "rate": CHORUS_PARAM_RATE,
-            "depth": CHORUS_PARAM_DEPTH,
-            "feedback": CHORUS_PARAM_FEEDBACK,
-        }
-        if param not in offset_map:
-            logger.warning(f"Unknown chorus parameter: {param}")
-            return
-        offset = offset_map[param]
-        clamped_val = max(0, min(127, int(val)))
-        nibbles = pack_4nibbles(clamped_val + 32768)
-        base = self.get_active_patch_base()
-        cho_base = add_address(base, OFFSET_PATCH_COMMON_CHORUS)
-        self.send_data(add_address(cho_base, offset), nibbles)
-        if self._mirrors_perf_fx(base):
-            self.send_data((0x10, 0x00, 0x04, offset), nibbles)
+        """Set one chorus detail parameter (rate, depth, preDelay, feedback)."""
+        self.write_fx_detail(self._patch_fx_bases(OFFSET_PATCH_COMMON_CHORUS, ADDR_PERF_CHORUS),
+                             CHORUS_DETAIL_OFFSETS, param, val)
 
-    def set_reverb(
-        self,
-        reverb_type: int,
-        level: Optional[int] = None,
-    ) -> None:
-        """Set Master Reverb type and level."""
-        r_type = max(0, min(5, int(reverb_type)))
-        base = self.get_active_patch_base()
-        rev_base = add_address(base, OFFSET_PATCH_COMMON_REVERB)
-        mirror = self._mirrors_perf_fx(base)
-        self.send_data(add_address(rev_base, REVERB_PARAM_TYPE), [r_type])
-        if mirror:
-            self.send_data((0x10, 0x00, 0x06, REVERB_PARAM_TYPE), [r_type])
-            self.send_data(ADDR_SETUP_REVERB_SWITCH, [0 if r_type == 0 else 1])
-        if level is not None:
-            lvl = max(0, min(127, int(level)))
-            self.send_data(add_address(rev_base, REVERB_PARAM_LEVEL), [lvl])
-            if mirror:
-                self.send_data((0x10, 0x00, 0x06, REVERB_PARAM_LEVEL), [lvl])
+    def set_reverb(self, reverb_type: int, level: Optional[int] = None) -> None:
+        """Set reverb type and level."""
+        bases = self._patch_fx_bases(OFFSET_PATCH_COMMON_REVERB, ADDR_PERF_REVERB)
+        self.write_reverb(bases, reverb_type, level, master_switch=len(bases) > 1)
 
     def set_reverb_param(self, param: str, val: int) -> None:
-        """Set an individual Master Reverb 4-nibble parameter (time, damp, preDelay, diffusion, tone)."""
-        offset_map = {
-            "preDelay": REVERB_PARAM_PREDELAY,
-            "predelay": REVERB_PARAM_PREDELAY,
-            "time": REVERB_PARAM_TIME,
-            "damp": REVERB_PARAM_HF_DAMP,
-            "hfDamp": REVERB_PARAM_HF_DAMP,
-            "diffusion": REVERB_PARAM_DIFFUSION,
-            "tone": REVERB_PARAM_TONE,
-            "lowCut": REVERB_PARAM_TONE,
-        }
-        if param not in offset_map:
-            logger.warning(f"Unknown reverb parameter: {param}")
-            return
-        offset = offset_map[param]
-        clamped_val = max(0, min(127, int(val)))
-        nibbles = pack_4nibbles(clamped_val + 32768)
-        base = self.get_active_patch_base()
-        rev_base = add_address(base, OFFSET_PATCH_COMMON_REVERB)
-        self.send_data(add_address(rev_base, offset), nibbles)
-        if self._mirrors_perf_fx(base):
-            self.send_data((0x10, 0x00, 0x06, offset), nibbles)
+        """Set one reverb detail parameter (time, damp, preDelay, diffusion, tone)."""
+        self.write_fx_detail(self._patch_fx_bases(OFFSET_PATCH_COMMON_REVERB, ADDR_PERF_REVERB),
+                             REVERB_DETAIL_OFFSETS, param, val)
 
     # Raw ranges of the contiguous pitch envelope block at 0x003A..0x0047
     _PITCH_ENV_RANGES = ((52, 76), (1, 127), (1, 127), (1, 127), (54, 74),
@@ -915,13 +768,7 @@ class PatchProtocolMixin:
         if tone_index not in (1, 2, 3, 4):
             raise ValueError(f"Tone index must be 1..4, got {tone_index}")
         base = self.get_active_patch_base(timeout=timeout)
-        offsets = {
-            1: OFFSET_PATCH_TONE_1,
-            2: OFFSET_PATCH_TONE_2,
-            3: OFFSET_PATCH_TONE_3,
-            4: OFFSET_PATCH_TONE_4,
-        }
-        main, lfo = self._read_tone_raws(add_address(base, offsets[tone_index]), timeout=timeout)
+        main, lfo = self._read_tone_raws(add_address(base, PATCH_TONE_OFFSETS[tone_index]), timeout=timeout)
         return PatchState._decode_tone(main, lfo, tone_index)
 
     def read_all_tones(self, timeout: float = 1.0) -> list[ToneState]:
@@ -931,48 +778,11 @@ class PatchProtocolMixin:
             tones.append(self.read_tone(i, timeout=timeout))
         return tones
 
-    @staticmethod
-    def _decode_mfx_block(res: bytes) -> Tuple[int, int, int, int, list[int]]:
-        """Decode an MFX block (patch or performance layout, identical)."""
-        mfx_type, dry, cho, rev = res[0], res[1], res[2], res[3]
-        params = [0] * 32
-        param_start = 0x11
-        if len(res) >= param_start + 4:
-            avail_params = min(32, (len(res) - param_start) // 4)
-            for i in range(avail_params):
-                chunk = res[param_start + i * 4 : param_start + (i + 1) * 4]
-                params[i] = unpack_4nibbles(chunk) - 32768
-        return (mfx_type, dry, cho, rev, params)
-
-    @staticmethod
-    def _decode_chorus_block(res: bytes) -> Tuple[int, int, int, int, int, int, int]:
-        """Decode a Chorus block (patch or performance layout, identical)."""
-        c_type = res[0]
-        c_lvl = res[1]
-        c_out = res[3] if len(res) > 3 else 0
-        predelay = unpack_4nibbles(res[0x0C:0x10]) - 32768 if len(res) >= 0x10 else 0
-        rate = unpack_4nibbles(res[0x14:0x18]) - 32768 if len(res) >= 0x18 else 0
-        depth = unpack_4nibbles(res[0x1C:0x20]) - 32768 if len(res) >= 0x20 else 0
-        feedback = unpack_4nibbles(res[0x24:0x28]) - 32768 if len(res) >= 0x28 else 0
-        return (c_type, c_lvl, c_out, max(0, predelay), max(0, rate), max(0, depth), max(0, feedback))
-
-    @staticmethod
-    def _decode_reverb_block(res: bytes) -> Tuple[int, int, int, int, int, int, int]:
-        """Decode a Reverb block (patch or performance layout, identical)."""
-        r_type = res[0]
-        r_lvl = res[1]
-        predelay = unpack_4nibbles(res[0x03:0x07]) - 32768 if len(res) >= 0x07 else 0
-        time_val = unpack_4nibbles(res[0x07:0x0B]) - 32768 if len(res) >= 0x0B else 0
-        damp = unpack_4nibbles(res[0x0F:0x13]) - 32768 if len(res) >= 0x13 else 0
-        diffusion = unpack_4nibbles(res[0x17:0x1B]) - 32768 if len(res) >= 0x1B else 0
-        tone = unpack_4nibbles(res[0x1B:0x1F]) - 32768 if len(res) >= 0x1F else 0
-        return (r_type, r_lvl, max(0, predelay), max(0, time_val), max(0, damp), max(0, diffusion), max(0, tone))
-
     def read_mfx(self, timeout: float = 1.0) -> Tuple[int, int, int, int, list[int]]:
         """Read MFX Type, Dry Send, Chorus Send, Reverb Send, and Parameters 1..32."""
         base = self.get_active_patch_base(timeout=timeout)
         res = self._read_mfx_raw(base, timeout=timeout)
-        return self._decode_mfx_block(bytes(res))
+        return decode_mfx_block(bytes(res))
 
     def read_chorus(self, timeout: float = 1.0) -> Tuple[int, int, int, int, int, int, int]:
         """Read Chorus Type, Level, Output Select, Pre-Delay, Rate, Depth, Feedback.
@@ -982,7 +792,7 @@ class PatchProtocolMixin:
         """
         base = self.get_active_patch_base(timeout=timeout)
         res = self._read_chorus_raw(base, timeout=timeout)
-        return self._decode_chorus_block(bytes(res))
+        return decode_chorus_block(bytes(res))
 
     def read_reverb(self, timeout: float = 1.0) -> Tuple[int, int, int, int, int, int, int]:
         """Read Reverb Type, Level, Pre-Delay, Time, HF Damp, Diffusion, Tone.
@@ -992,113 +802,13 @@ class PatchProtocolMixin:
         """
         base = self.get_active_patch_base(timeout=timeout)
         res = self._read_reverb_raw(base, timeout=timeout)
-        return self._decode_reverb_block(bytes(res))
+        return decode_reverb_block(bytes(res))
 
     def read_full_patch(self, timeout: float = 1.0) -> PatchState:
-        """Read complete patch state from Roland synth RAM.
-
-        Covers the same regions the init template restores: common (80B),
-        4 tones (154B + 26B each), MFX (145B), chorus (84B), reverb (83B)
-        and TMT mutes (41B). Decodes via the canonical PatchState helpers
-        so Sync and Init provably converge. The exact device bytes are also
-        preserved in PatchState.raw_regions (including unmodeled residue).
-        """
+        """Read the sounding patch whole: the regions the init template restores
+        (common, 4 tones, TMT, MFX, chorus, reverb), with the exact device bytes
+        kept in PatchState.raw_regions."""
         base = self.get_active_patch_base(timeout=timeout)
-        raw_regions: dict[str, list[bytes]] = {}
-
-        common_raw = self._read_common_raw(base, timeout=timeout)
-        raw_regions["common"] = [common_raw]
-        common = PatchState._decode_common(common_raw)
-
-        tone_offsets = (OFFSET_PATCH_TONE_1, OFFSET_PATCH_TONE_2, OFFSET_PATCH_TONE_3, OFFSET_PATCH_TONE_4)
-        tones: list[ToneState] = []
-        for idx, off in enumerate(tone_offsets, start=1):
-            t_base = add_address(base, off)
-            main_raw, lfo_raw = self._read_tone_raws(t_base, timeout=timeout)
-            raw_regions[f"tone_{idx}"] = [main_raw, lfo_raw]
-            tones.append(PatchState._decode_tone(main_raw, lfo_raw, idx))
-
-        try:
-            tmt_raw = self._read_tmt_raw(base, timeout=timeout)
-            raw_regions["tmt"] = [bytes(tmt_raw)]
-            PatchState.apply_tmt(bytes(tmt_raw), common, tones)
-        except Exception as e:
-            logger.warning(f"Could not read TMT mutes: {e}")
-
-        mfx_type, dry, cho, rev, mfx_params = (0, 127, 0, 0, [0] * 32)
-        try:
-            mfx_raw = self._read_mfx_raw(base, timeout=timeout)
-            raw_regions["mfx"] = [bytes(mfx_raw)]
-            mfx_type, dry, cho, rev = mfx_raw[0], mfx_raw[1], mfx_raw[2], mfx_raw[3]
-            params = [0] * 32
-            if len(mfx_raw) >= 0x11 + 4:
-                for i in range(min(32, (len(mfx_raw) - 0x11) // 4)):
-                    params[i] = unpack_4nibbles(mfx_raw[0x11 + i * 4:0x11 + (i + 1) * 4]) - 32768
-            mfx_params = params
-        except Exception as e:
-            logger.warning(f"Could not read MFX: {e}")
-
-        c_type, c_lvl, c_out, c_pre, c_rate, c_dep, c_fb = (0, 0, 0, 0, 0, 0, 0)
-        try:
-            cho_raw = self._read_chorus_raw(base, timeout=timeout)
-            raw_regions["chorus"] = [bytes(cho_raw)]
-            c_type, c_lvl, c_out = cho_raw[0], cho_raw[1], cho_raw[3] if len(cho_raw) > 3 else 0
-            c_pre = unpack_4nibbles(cho_raw[0x0C:0x10]) - 32768 if len(cho_raw) >= 0x10 else 0
-            c_rate = unpack_4nibbles(cho_raw[0x14:0x18]) - 32768 if len(cho_raw) >= 0x18 else 0
-            c_dep = unpack_4nibbles(cho_raw[0x1C:0x20]) - 32768 if len(cho_raw) >= 0x20 else 0
-            c_fb = unpack_4nibbles(cho_raw[0x24:0x28]) - 32768 if len(cho_raw) >= 0x28 else 0
-            c_pre, c_rate, c_dep, c_fb = max(0, c_pre), max(0, c_rate), max(0, c_dep), max(0, c_fb)
-        except Exception as e:
-            logger.warning(f"Could not read Chorus: {e}")
-
-        r_type, r_lvl, r_pre, r_time, r_damp, r_diff, r_tone = (0, 0, 0, 0, 0, 0, 0)
-        try:
-            rev_raw = self._read_reverb_raw(base, timeout=timeout)
-            raw_regions["reverb"] = [bytes(rev_raw)]
-            r_type, r_lvl = rev_raw[0], rev_raw[1]
-            r_pre = unpack_4nibbles(rev_raw[0x03:0x07]) - 32768 if len(rev_raw) >= 0x07 else 0
-            r_time = unpack_4nibbles(rev_raw[0x07:0x0B]) - 32768 if len(rev_raw) >= 0x0B else 0
-            r_damp = unpack_4nibbles(rev_raw[0x0F:0x13]) - 32768 if len(rev_raw) >= 0x13 else 0
-            r_diff = unpack_4nibbles(rev_raw[0x17:0x1B]) - 32768 if len(rev_raw) >= 0x1B else 0
-            r_tone = unpack_4nibbles(rev_raw[0x1B:0x1F]) - 32768 if len(rev_raw) >= 0x1F else 0
-            r_pre, r_time, r_damp, r_diff, r_tone = max(0, r_pre), max(0, r_time), max(0, r_damp), max(0, r_diff), max(0, r_tone)
-        except Exception as e:
-            logger.warning(f"Could not read Reverb: {e}")
-
-        effects = EffectsState(
-            mfx_type=mfx_type,
-            mfx_dry_send=dry,
-            mfx_chorus_send=cho,
-            mfx_reverb_send=rev,
-            mfx_bypassed=(mfx_type == 0),
-            mfx_last_active_type=mfx_type if mfx_type != 0 else 15,
-            mfx_params=list(mfx_params) + [0] * (32 - len(mfx_params))
-            if len(mfx_params) < 32
-            else list(mfx_params[:32]),
-            routing_preset="",
-            chorus_type=c_type,
-            chorus_level=c_lvl,
-            chorus_to_reverb=c_out,
-            chorus_predelay=c_pre,
-            chorus_rate=c_rate,
-            chorus_depth=c_dep,
-            chorus_feedback=c_fb,
-            reverb_type=r_type,
-            reverb_level=r_lvl,
-            reverb_predelay=r_pre,
-            reverb_time=r_time,
-            reverb_damp=r_damp,
-            reverb_diffusion=r_diff,
-            reverb_tone=r_tone,
-        )
-
-        mode = self.get_sound_mode(timeout=timeout)
-        patch_state = PatchState(
-            sound_mode=mode.name,
-            common=common,
-            tones=tones,
-            effects=effects,
-            raw_regions={k: [bytes(c) for c in v] for k, v in raw_regions.items()},
-        )
-        patch_state.custom_detune_cache = [t.fine_tune for t in tones]
-        return patch_state
+        state = self.read_patch_at(base, timeout=timeout)
+        state.sound_mode = self.get_sound_mode(timeout=timeout).name
+        return state
