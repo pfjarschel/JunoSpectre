@@ -146,8 +146,7 @@ class FollowBridgeMixin(BridgeBaseMixin):
         juno = self.juno
         try:
             from ...core.protocol import SoundMode
-            juno._cached_sound_mode = SoundMode[mode]
-            juno._cached_patch_base = None
+            juno.note_sound_mode(SoundMode[mode])
         except Exception:
             pass
         if mode == str(self._sound_mode).upper():

@@ -73,7 +73,7 @@ class HardwareBridgeMixin(BridgeBaseMixin):
             self._follow_attach(midi_mgr)
         juno = self.juno
         if juno is not None:
-            self._note_identity(getattr(juno, "_startup_identity", None), juno.last_ping_ms)
+            self._note_identity(juno.identity, juno.last_ping_ms)
         if watch and self._hw_watch_stop is None:
             self._hw_watch_stop = threading.Event()
             threading.Thread(target=self._port_watch_loop, name="midi-port-watch",

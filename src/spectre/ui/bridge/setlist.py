@@ -134,7 +134,6 @@ class SetlistBridgeMixin(BridgeBaseMixin):
         if repo is not None:
             try:
                 repo.touch_file_row(str(p))
-                repo._conn.commit()
                 self.librarianChanged.emit()
             except Exception as e:
                 logger.debug(f"saveSetlist: index refresh failed: {e}")

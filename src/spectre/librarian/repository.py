@@ -617,7 +617,6 @@ class PatchRepository:
             self._index_spectre_file(f, st_mtime)
             self._conn.commit()
 
-    _touch_file_row = touch_file_row
 
     def set_favorite(self, path: str, favorite: bool) -> bool:
         row = self.get(path)
@@ -635,7 +634,7 @@ class PatchRepository:
                     spectre=loaded["spectre"], synth_ref=loaded["synth_ref"],
                     kind=loaded["kind"], extra=loaded["extra"],
                 )
-                self._touch_file_row(path)
+                self.touch_file_row(path)
                 return True
             except Exception as e:
                 logger.warning(f"set_favorite file rewrite failed for {path}: {e}")
@@ -672,7 +671,7 @@ class PatchRepository:
                     spectre=loaded["spectre"], synth_ref=loaded["synth_ref"],
                     kind=loaded["kind"], extra=loaded["extra"],
                 )
-                self._touch_file_row(path)
+                self.touch_file_row(path)
                 return True
             except Exception as e:
                 logger.warning(f"set_tags file rewrite failed for {path}: {e}")
@@ -711,7 +710,7 @@ class PatchRepository:
         }
         out = save_spectre(target, patch_state, meta=meta, spectre=spectre,
                            synth_ref=synth_ref, kind=kind)
-        self._touch_file_row(str(out))
+        self.touch_file_row(str(out))
         return out
 
     def delete_file(self, path: str) -> bool:

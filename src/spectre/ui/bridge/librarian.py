@@ -102,8 +102,14 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
             except Exception as e:
                 logger.warning(f"Could not set patch name on synth: {e}")
 
+    def attach_library(self, repo, error: str = "") -> None:
+        """Bind the patch repository at startup (None + the reason when it failed)."""
+        self._librarian_repo = repo
+        self._library_error = str(error)
+        self.libraryErrorChanged.emit()
+
     def _librarian(self):
-        repo = getattr(self, "_librarian_repo", None)
+        repo = self._librarian_repo
         if repo is None:
             logger.warning("Librarian repository not attached.")
         return repo
@@ -153,7 +159,7 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
     @pyqtProperty(str, notify=libraryErrorChanged)
     def libraryError(self) -> str:
         """Why the librarian model failed to bind ('' when healthy)."""
-        return getattr(self, "_library_error", "")
+        return self._library_error
 
     @pyqtSlot()
     def openSavePatchModal(self) -> None:
@@ -550,7 +556,6 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
                          spectre=loaded["spectre"], synth_ref=loaded["synth_ref"],
                          kind=loaded["kind"], extra=loaded["extra"])
             repo.touch_file_row(path)
-            repo._conn.commit()
             self.librarianChanged.emit()
             return True
         except Exception as e:

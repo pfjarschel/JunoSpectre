@@ -107,48 +107,29 @@ def create_application(
 
     # Patch Librarian: file-backed user patches + SQLite index over them.
     # Non-fatal: the UI must still boot when the librarian fails (e.g. RO home).
-    # The failure reason is kept on bridge._library_error and shown in the
-    # Librarian view instead of failing silently (silent mock confused users).
-    bridge._library_error = ""
-    try:
-        from ..librarian.repository import PatchRepository
-        from .librarian_model import PatchListModel
+    # The failure reason is shown in the Librarian view (Bridge.libraryError)
+    # over an empty model.
+    from ..librarian.repository import PatchRepository
+    from .librarian_model import PatchListModel
 
-        _repo = PatchRepository()
+    try:
+        repo = PatchRepository()
         try:
-            stats = _repo.rescan_files()
-            logger.info(f"Librarian rescan: {stats}")
+            logger.info(f"Librarian rescan: {repo.rescan_files()}")
         except Exception:
             logger.exception("Librarian rescan failed")
-        _library = PatchListModel(_repo, parent=qml_engine)
+        library = PatchListModel(repo, parent=qml_engine)
         try:
-            n = _library.refresh("", "ALL", False, "", 2500)
-            logger.info(f"Librarian bound: {n} rows from {_repo.db_path}")
+            n = library.refresh("", "ALL", False, "", 2500)
+            logger.info(f"Librarian bound: {n} rows from {repo.db_path}")
         except Exception:
             logger.exception("Librarian initial refresh failed")
-        qml_engine._librarian_repo = _repo
-        qml_engine._librarian_model = _library
-        bridge._librarian_repo = _repo
-        bridge._librarian_model = _library
-        qml_engine.rootContext().setContextProperty("patchLibrary", _library)
+        bridge.attach_library(repo)
     except Exception as e:
         logger.exception("Patch librarian unavailable")
-        bridge._library_error = f"{type(e).__name__}: {e}"
-        try:
-            from .librarian_model import PatchListModel as _EmptyModel
-
-            # Bind an empty model anyway: the view binds declaratively and
-            # shows the offline banner via Bridge.libraryError instead of
-            # silently falling back to demo data.
-            _empty = _EmptyModel(None, parent=qml_engine)
-            qml_engine._librarian_model = _empty
-            qml_engine.rootContext().setContextProperty("patchLibrary", _empty)
-        except Exception:
-            logger.exception("Could not bind empty library model")
-        try:
-            bridge.libraryErrorChanged.emit()
-        except Exception:
-            pass
+        library = PatchListModel(None, parent=qml_engine)
+        bridge.attach_library(None, f"{type(e).__name__}: {e}")
+    qml_engine.rootContext().setContextProperty("patchLibrary", library)
 
     # Register as global QML singleton 'Bridge' in module 'JunoSpectre'
     qmlRegisterSingletonInstance("JunoSpectre", 1, 0, "Bridge", bridge)

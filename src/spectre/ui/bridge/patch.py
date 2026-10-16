@@ -2932,9 +2932,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                 self.patch_state.perf_name = str(name)[:12]
             self._apply_performance_selected(int(msb), int(lsb), int(pc))
             return True
-        midi = getattr(juno, "midi", None)
-        out = getattr(midi, "juno_out", None) if midi is not None else None
-        if out is None or getattr(out, "closed", False):
+        if not juno.output_open:
             if str(name or ""):
                 self._patch_name = str(name)[:12]
                 self.patch_state.perf_name = str(name)[:12]
@@ -2943,15 +2941,11 @@ class PatchBridgeMixin(BridgeBaseMixin):
         try:
             import time as _time
 
-            import mido as _mido
-
             from ...core.sysex import ADDR_SETUP as _SETUP
 
             juno.send_data(_SETUP, [1])  # PERFORM
             _time.sleep(0.4)
-            out.send(_mido.Message("control_change", channel=15, control=0, value=int(msb)))
-            out.send(_mido.Message("control_change", channel=15, control=32, value=int(lsb)))
-            out.send(_mido.Message("program_change", channel=15, program=int(pc)))
+            juno.select_program(15, msb, lsb, pc)
             _time.sleep(0.8)
             return self._adopt_synth_performance(int(msb), int(lsb), int(pc), str(name or ""))
         except Exception as e:
@@ -2965,11 +2959,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
         Library loads (after their Bank/PC) and panel performance picks.
         """
         juno = self.juno
-        try:
-            juno._cached_patch_base = None
-            juno._cached_sound_mode = None
-        except AttributeError:
-            pass
+        juno.invalidate_cache()
         heard: str = ""
         try:
             raw = juno.request_data((0x10, 0x00, 0x00, 0x00),
@@ -3036,9 +3026,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
                 self.patch_state.common.name = str(name)[:12]
             self._apply_patch_selected(int(msb), int(lsb), int(pc))
             return True
-        midi = getattr(juno, "midi", None)
-        out = getattr(midi, "juno_out", None) if midi is not None else None
-        if out is None or getattr(out, "closed", False):
+        if not juno.output_open:
             logger.info("selectLibraryPatch: MIDI out not connected (offline audition).")
             if str(name or ""):
                 self._patch_name = str(name)[:12]
@@ -3046,11 +3034,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
             self._apply_patch_selected(int(msb), int(lsb), int(pc))
             return True
         try:
-            import mido as _mido
-
-            out.send(_mido.Message("control_change", channel=0, control=0, value=int(msb)))
-            out.send(_mido.Message("control_change", channel=0, control=32, value=int(lsb)))
-            out.send(_mido.Message("program_change", channel=0, program=int(pc)))
+            juno.select_program(0, msb, lsb, pc)
             # Give the synth a moment to switch, then follow its display name.
             import time as _time
 
@@ -3067,11 +3051,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
         Library loads (after their Bank/PC) and PATCH-mode panel picks.
         """
         juno = self.juno
-        try:
-            juno._cached_patch_base = None
-            juno._cached_sound_mode = None
-        except AttributeError:
-            pass
+        juno.invalidate_cache()
         heard: str = ""
         try:
             heard = juno.get_patch_name(timeout=0.8)

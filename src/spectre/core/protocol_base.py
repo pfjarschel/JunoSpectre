@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
+import mido
+
 from .midi import MidiDeviceManager
 from .sysex import (
     ADDR_SETUP,
@@ -112,6 +114,7 @@ class BaseProtocolMixin:
         # from a read reply or an echo: address -> (time, data or None for RQ1)
         self._own_traffic: dict[tuple, tuple[float, Optional[bytes]]] = {}
         self.last_ping_ms: float = 0.0
+        self.identity: Optional[IdentityInfo] = None  # the last identity reply
 
     def invalidate_cache(self) -> None:
         """Clear cached state (call when changing synth patches or modes)."""
@@ -126,6 +129,28 @@ class BaseProtocolMixin:
             return False
         if hasattr(self.midi, "is_juno_connected"):
             return bool(self.midi.is_juno_connected)
+        return True
+
+    @property
+    def output_open(self) -> bool:
+        """True when the synth's MIDI output port is open (messages can be sent)."""
+        out = getattr(self.midi, "juno_out", None)
+        return out is not None and not getattr(out, "closed", False)
+
+    def select_program(self, channel: int, msb: int, lsb: int, pc: int) -> bool:
+        """Bank Select (CC 0/32) + Program Change on a 0-based channel.
+
+        Channel 0 picks the PATCH sound, 15 (the performance control
+        channel) the performance. False when the output is closed.
+        """
+        if not self.output_open:
+            return False
+        out = self.midi.juno_out
+        ch = max(0, min(15, int(channel)))
+        out.send(mido.Message("control_change", channel=ch, control=0, value=int(msb)))
+        out.send(mido.Message("control_change", channel=ch, control=32, value=int(lsb)))
+        out.send(mido.Message("program_change", channel=ch, program=int(pc)))
+        self.invalidate_cache()
         return True
 
     def ensure_connected(self, force_reconnect: bool = False) -> bool:
@@ -187,12 +212,13 @@ class BaseProtocolMixin:
                         d = msg.data
                         if d[0] == 0x7E and d[2] == 0x06 and d[3] == 0x02 and d[4] == 0x41:
                             self.last_ping_ms = (time.perf_counter() - start) * 1000.0
-                            return IdentityInfo(
+                            self.identity = IdentityInfo(
                                 device_id=d[1],
                                 family_code=(d[5], d[6]),
                                 family_number=(d[7], d[8]),
                                 software_revision=(d[9], d[10], d[11], d[12]),
                             )
+                            return self.identity
                 time.sleep(0.002)
         return None
 
@@ -411,5 +437,9 @@ class BaseProtocolMixin:
         else:
             mode = SoundMode(int(mode))
         self.send_data(ADDR_SETUP, [int(mode)])
+        self.note_sound_mode(mode)
+
+    def note_sound_mode(self, mode: SoundMode) -> None:
+        """The synth is in this mode now (set here or on the panel)."""
         self._cached_sound_mode = mode
         self._cached_patch_base = None

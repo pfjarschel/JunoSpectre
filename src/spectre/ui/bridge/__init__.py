@@ -117,7 +117,6 @@ class SpectreBridge(
         self._push_lock = threading.Lock()
         # Set by app.py (non-fatal when absent, e.g. unit tests).
         self._librarian_repo = None
-        self._librarian_model = None
         self._library_error: str = ""
 
         # Workstation Shell State

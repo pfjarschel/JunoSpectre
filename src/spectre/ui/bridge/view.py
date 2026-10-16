@@ -229,33 +229,19 @@ class ViewBridgeMixin(BridgeBaseMixin):
         if juno is None:
             return False
         try:
-            import mido as _mido
-
             from ...core.protocol import SoundMode
-            midi = getattr(juno, "midi", None)
-            out = getattr(midi, "juno_out", None) if midi is not None else None
-            if out is None or getattr(out, "closed", False):
+            if not juno.output_open:
                 return False
             kind = str(ref.get("kind") or "patch")
             msb, lsb, pc = int(ref.get("msb", 0)), int(ref.get("lsb", 0)), int(ref.get("pc", 0))
             if kind == "performance":
                 juno.set_sound_mode(SoundMode.PERFORM)
-                out.send(_mido.Message("control_change", channel=15, control=0, value=msb))
-                out.send(_mido.Message("control_change", channel=15, control=32, value=lsb))
-                out.send(_mido.Message("program_change", channel=15, program=pc))
-            else:
-                try:
-                    juno.set_sound_mode(SoundMode[str(sound_mode).upper()])
-                except (KeyError, ValueError):
-                    juno.set_sound_mode(SoundMode.PATCH)
-                out.send(_mido.Message("control_change", channel=0, control=0, value=msb))
-                out.send(_mido.Message("control_change", channel=0, control=32, value=lsb))
-                out.send(_mido.Message("program_change", channel=0, program=pc))
+                return juno.select_program(15, msb, lsb, pc)
             try:
-                juno.invalidate_cache()
-            except AttributeError:
-                pass
-            return True
+                juno.set_sound_mode(SoundMode[str(sound_mode).upper()])
+            except (KeyError, ValueError):
+                juno.set_sound_mode(SoundMode.PATCH)
+            return juno.select_program(0, msb, lsb, pc)
         except Exception as e:
             logger.debug(f"cancel restore: slot reselect failed: {e}")
             return False

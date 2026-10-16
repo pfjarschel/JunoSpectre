@@ -106,7 +106,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 if info:
                     logger.info(f"Roland synth verified via SysEx ping: {info}")
                     juno_client.adopt_device_id(info.device_id)
-                    juno_client._startup_identity = info
                     p_name = juno_client.get_patch_name(timeout=1.0)
                     logger.info(f"Active synth patch: '{p_name}'")
             except Exception as ping_ex:
