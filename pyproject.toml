@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "juno-spectre"
-version = "0.7.0"
+dynamic = ["version"]
 description = "Open-Source Next-Gen Brain & Tactile Workstation OS for Roland Juno-DS / XPS Synthesizers"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,7 +28,6 @@ dependencies = [
     "python-rtmidi>=1.5.8",
     "numpy>=1.24.0",
     "scipy>=1.10.0",
-    "rich>=13.0.0",
     "soundfile>=0.12",
     "sounddevice>=0.4.6",
 ]
@@ -39,6 +38,7 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
+    "rich>=13.0.0",          # scripts/spectre_probe.py
 ]
 
 [project.scripts]
@@ -58,6 +58,9 @@ rubberband = { apt = "rubberband-cli", dnf = "rubberband", pacman = "rubberband"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

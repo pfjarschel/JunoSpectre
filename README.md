@@ -36,22 +36,20 @@ The UI is organised as a launcher with four categories:
 
 - **Synth Engines:** Juno PCM (4-tone editor), 2D Vector, 1D Wavetable, 4-OSC VA
 - **Modulation & FX:** Mod Matrix, Step LFO Editor, Envelopes Editor, Routing, MFX Studio, Master FX
-- **Performance & Play:** Macro Deck, Performance Control, Sequencer
+- **Performance & Play:** Macro Deck, Arpeggiator, Performance (16-part mixer and key zones), Sequencer, Live Mode (clip and scene launcher with automation lanes and audio clips), Setlist
 - **System & Utilities:** Librarian, MIDI Learn, Hardware Config, System Control
-
-> Some of these apps are still in progress. See the [Roadmap](#-roadmap).
 
 ---
 
 ## 🧠 How it works
 
 ```text
-  Touch UI (Qt Quick / QML)        MIDI controller (Launch Control XL, ...)
+  Touch UI (Qt Quick / QML)        MIDI controller (Launch Control XL3, ...)
             │                                   │
             └───────────────┬───────────────────┘
                             ▼
-                 Central synth state store
-                            │   rate-limited dispatch (~50 Hz)
+           Python↔QML bridge + patch / performance state
+                            │   paced DT1 writes (continuous controls coalesced)
                             ▼
                   SysEx / MIDI engine (DT1 / RQ1)
                             │   bidirectional USB-MIDI
@@ -82,7 +80,7 @@ checksum = 128 − (sum(address bytes + data bytes) mod 128)
 
 ### Buffer safety
 
-Edits go only to temporary RAM buffers: the temporary Patch (`1F 00 00 00`) or a Performance Part (`19 xx 00 00`). Your stored patches stay untouched and there are no voice dropouts.
+Edits go only to temporary RAM buffers: the temporary Patch (`1F 00 00 00`) or a Performance part's patch (`11 00 00 00` for part 1 … `14 60 00 00` for part 16). Your stored patches stay untouched and there are no voice dropouts.
 
 ---
 
@@ -94,14 +92,7 @@ Edits go only to temporary RAM buffers: the temporary Patch (`1F 00 00 00`) or a
 
 **Display:** a at least 7" capacitive touchscreen at 1024×600 is recommended.
 
-**Optional controller:** any MIDI controller with knobs or faders. Profiles are included for:
-
-- Novation Launch Control XL and Launchkey
-- Akai MIDImix
-- Korg nanoKONTROL2 and nanoKONTROL Studio
-- Behringer X-Touch Mini
-- Arturia BeatStep
-- A generic default profile
+**Optional controller:** any MIDI controller with knobs, faders or buttons, mapped with MIDI Learn. A ready-made preset ships for the Novation Launch Control XL3, including its screen, LED colours and knob feedback.
 
 ---
 
@@ -154,7 +145,7 @@ fullscreen. Useful flags:
 ./scripts/start_spectre.sh --fullscreen          # force fullscreen on desktop
 ./scripts/start_spectre.sh --windowed            # force windowed on Pi
 ./scripts/start_spectre.sh --platform xcb        # override Qt platform
-./scripts/start_spectre.sh --juno-port NAME --controller-port NAME --profile novation_lc_xl
+./scripts/start_spectre.sh --juno-port NAME      # pick the synth's MIDI port
 ```
 
 You can also add this to a `systemd` service to boot straight into Spectre.
@@ -181,7 +172,7 @@ unaffected).
 | Script | Purpose |
 |--------|---------|
 | `scripts/start_spectre.sh` | Production launch wrapper with display/platform detection |
-| `scripts/spectre_app.py` | Main touch UI launcher (`juno-spectre` command) |
+| `scripts/spectre_app.py` | Main touch UI launcher (what `start_spectre.sh` runs) |
 | `scripts/spectre_probe.py` | SysEx device probe and identity verification |
 
 ### Developer & Data Tools (`tools/`)
@@ -195,6 +186,10 @@ unaffected).
 | `tools/probe_mfx_ranges.py` | Probes MFX parameter ranges and boundaries |
 | `tools/scan_mfx_patches.py` | Scans ROM presets for MFX type distribution |
 | `tools/sampler_test.py` | Audio input latency and threshold test harness |
+| `tools/audio_play_test.py` | Plays a file through the audio worker (audio clip hardware check) |
+| `tools/voice_count_test.py` | Polyphony test: does a level-0 tone still cost a voice? |
+| `tools/lcxl3_probe.py` | Launch Control XL3 DAW-mode probe: prints every message, sets LEDs and screen |
+| `tools/make_splash.py` | Builds the startup splash from the master picture |
 
 ### Tests
 
@@ -216,6 +211,8 @@ JunoSpectre/
 │   ├── core/                  # SysEx, protocol, MIDI, patch state, MFX, waves, updater
 │   ├── control/               # Controller bindings and surface drivers
 │   ├── vector/                # Vector maths, motion, engine
+│   ├── sequencer/             # Clock, step/clip engine, recording, automation lanes
+│   ├── audio/                 # Audio clips: media folder, playback worker, mixer
 │   ├── librarian/             # SQLite patch indexing, repository, tagging
 │   ├── ui/                    # Qt Quick app, modular Python↔QML bridge, QML views
 │   └── assets/                # JSON catalogs, factory DB, waveform metadata
@@ -230,7 +227,7 @@ JunoSpectre/
 - ✅ **Phase 1:** SysEx core and bidirectional communication
 - ✅ **Phase 2:** MIDI learn engine and smooth scaler
 - ✅ **Phase 3:** Waveform database and touch keyboard
-- 🚧 **v1.0:** Vector, wavetable and 4-OSC VA workstation. Done: the engines, Juno PCM editor, MFX, Master FX, Routing. Remaining: dynamic buffer router for Performance parts, Program Change auto-sync, Init Patch generator, Performance control, Macro deck, Librarian, splash screen.
+- ✅ **v1.0:** Vector, wavetable and 4-OSC VA workstation: the engines, Juno PCM editor, MFX, Master FX, Routing, Performance mixer, macros, librarian, sequencer and Live Mode with audio clips, setlists, arpeggiator, Launch Control XL3 surface, Pi appliance (boot splash, Wi-Fi, updater).
 - 🔮 **v2.0:** Multi-part performance engine, 16-partial additive synth with touch-drawn waveforms and custom harmonic sweeps
 - 🔮 **v3.0 (EX Mode):** Embedded soft synth host, 24-bit USB audio streaming into the synth, automatic Local Control switching, SoundFont/sample playback. Likely not going to happen, except maybe for the sample playing part.
 

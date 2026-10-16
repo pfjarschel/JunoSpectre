@@ -1,7 +1,7 @@
-"""High-level Vector Engine coordinating 2D/1D morphing, motion loops, and rate-limited SysEx.
+"""Vector engine: 2D/1D morphing, motion loops and the tone-level writes.
 
-Protects Roland USB-MIDI buffer from saturation via configurable rate throttling (50Hz default)
-and dirty-state change detection.
+Level writes are rate-limited (50 Hz default), skipped when unchanged and
+queued for the writer thread, so morphing never blocks the UI.
 """
 
 from __future__ import annotations

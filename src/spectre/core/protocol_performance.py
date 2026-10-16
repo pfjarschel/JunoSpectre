@@ -595,11 +595,7 @@ class PerformanceProtocolMixin:
                            [max(61, min(67, int(octave)))])
 
     def set_perf_zone_switch(self, channel: int, enabled: bool) -> None:
-        """Fast single-byte DT1 write to Performance Zone Switch (0=OFF, 1=ON).
-
-        Used for dynamic keyboard routing arbitration: silences physical keybed input
-        for sequenced backing parts while allowing external USB-MIDI to trigger sound.
-        """
+        """Single-byte DT1 write to a Performance Zone Switch (0=OFF, 1=ON)."""
         ch = self._check_channel(channel)
         base = perf_zone_base(ch)
         self.send_data(add_address(base, PERF_ZONE_SWITCH), [1 if enabled else 0])

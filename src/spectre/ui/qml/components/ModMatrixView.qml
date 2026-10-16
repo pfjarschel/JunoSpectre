@@ -73,7 +73,7 @@ Rectangle {
         { id: 33, name: "MFX CTRL 4" }
     ]
 
-    // String arrays for backwards compatibility with tests and properties
+    // Plain name lists (tests read these)
     property var sources: sourceList.map(function(item) { return item.name; })
     property var destinations: destList.map(function(item) { return item.name; })
 

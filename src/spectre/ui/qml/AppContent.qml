@@ -64,25 +64,25 @@ Item {
             // 1. SYNTH ENGINES
             // =================================================================
 
-            // View 0: Standard 4-Tone Juno PCM Sound Designer (Default Boot Screen)
+            // View 0 JUNO PCM: 4-tone PCM sound designer (boot screen)
             PatchEditView {
                 id: pcmView
                 objectName: "pcmView"
             }
 
-            // View 1: 2D Vector Touch Pad & Morph Orbit
+            // View 1 VECTOR: 2D vector touch pad & morph orbit
             VectorPad {
                 id: padView
                 objectName: "padView"
             }
 
-            // View 2: 1D Wavetable Morph Slider & Scope
+            // View 2 WAVETABLE: 1D wavetable morph slider & scope
             WavetableSlider {
                 id: wtView
                 objectName: "wtView"
             }
 
-            // View 3: 4-OSC Virtual Analog Console
+            // View 3 VA: 4-osc virtual analog console
             VaView {
                 id: vaView
                 objectName: "vaView"
@@ -92,37 +92,37 @@ Item {
             // 2. MODULATION & FX
             // =================================================================
 
-            // View 4: Modulation Matrix (4 Matrix Controllers)
+            // View 4 MOD MATRIX: 4 matrix controllers
             ModMatrixView {
                 id: modMatrixView
                 objectName: "modMatrixView"
             }
 
-            // View 5: 16-Step Pattern LFO Modulator
+            // View 5 STEP LFO: 16-step pattern LFO
             StepLfoView {
                 id: stepLfoView
                 objectName: "stepLfoView"
             }
 
-            // View 6: Multi-Segment Envelope Editor (TVF / TVA / PITCH)
+            // View 6 MSEG ENVELOPES: TVF / TVA / PITCH envelope editor
             EnvEditorView {
                 id: envEditorView
                 objectName: "envEditorView"
             }
 
-            // View 7: Dedicated Multi-Effects (MFX) Studio (80 Algorithms)
+            // View 7 MFX: multi-effects studio (80 algorithms)
             MfxView {
                 id: mfxView
                 objectName: "mfxView"
             }
 
-            // View 8: Dedicated FX & Tone Routing Screen (Matrix & Pitfall Detector)
+            // View 8 ROUTING: tone & FX routing graph
             RoutingView {
                 id: routingView
                 objectName: "routingView"
             }
 
-            // View 9: Master Chorus, Reverb & 3-Band Parametric EQ
+            // View 9 MASTER FX: chorus & reverb
             MasterFxView {
                 id: masterFxView
                 objectName: "masterFxView"
@@ -132,31 +132,31 @@ Item {
             // 3. PERFORMANCE & PLAY
             // =================================================================
 
-            // View 10: Live Session Matrix & Live Macros
+            // View 10 LIVE: live session matrix & macros
             LiveModeView {
                 id: liveView
                 objectName: "liveView"
             }
 
-            // View 11: Polyphonic Step Sequencer & Motion
+            // View 11 SEQUENCER: polyphonic step sequencer & motion
             SeqView {
                 id: seqView
                 objectName: "seqView"
             }
 
-            // View 12: Dedicated Setlist & Repertoire Manager
+            // View 12 SETLIST: setlist & repertoire
             SetlistView {
                 id: setlistView
                 objectName: "setlistView"
             }
 
-            // View 13: Performance Multi-Zone & Layer Mixer
+            // View 13 PERFORMANCE: 16-part mixer, zones & layers
             PerfMixerView {
                 id: mixerView
                 objectName: "mixerView"
             }
 
-            // View 14: Macro Play Deck (8 Large Touch Dials)
+            // View 14 MACROS: macro play deck (8 large dials)
             MacroDeck {
                 id: macroView
                 objectName: "macroView"
@@ -166,31 +166,31 @@ Item {
             // 4. SYSTEM & UTILITIES
             // =================================================================
 
-            // View 12: Preset & Patch Librarian
+            // View 15 LIBRARIAN: patches, performances & songs
             LibrarianView {
                 id: librarianView
                 objectName: "librarianView"
             }
 
-            // View 13: MIDI Learn & CC Controller Surface Mapping
+            // View 16 MIDI LEARN: controller bindings
             MidiLearnView {
                 id: midiLearnView
                 objectName: "midiLearnView"
             }
 
-            // View 14: Hardware Configuration (Juno-DS & External Controllers)
+            // View 17 HARDWARE: Juno-DS & external controllers
             HardwareConfigView {
                 id: hardwareView
                 objectName: "hardwareView"
             }
 
-            // View 15: Appliance System Control (Pi Telemetry, Brightness, Restart)
+            // View 18 SYSTEM: Pi telemetry, brightness, Wi-Fi, updates
             SystemView {
                 id: systemView
                 objectName: "systemView"
             }
 
-            // View 19: JUNO-DS Arpeggiator (synth arp + MIDI clock out)
+            // View 19 ARPEGGIO: synth arp + MIDI clock out
             ArpView {
                 id: arpView
                 objectName: "arpView"
@@ -198,7 +198,7 @@ Item {
         }
     }
 
-    // Global Modal: 16-App Screens Launcher Overlay
+    // Global modal: screens launcher overlay
     ScreensOverlay {
         id: screensOverlay
         objectName: "screensOverlay"

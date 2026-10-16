@@ -1,7 +1,7 @@
 """Synth patch data model for Roland JUNO-DS / XPS-30 and JunoSpectre.
 
 Encapsulates complete Patch Common, 4 Tones (TVA, TVF, Pitch, Pitch Env, LFO 1/2),
-Effects (MFX, Chorus, Reverb, Master EQ), Step LFO, and Performance Parts.
+Effects (MFX, Chorus, Reverb), Step LFO, and Performance Parts.
 """
 
 from __future__ import annotations
@@ -477,7 +477,7 @@ class PatchCommonState:
 
 @dataclass
 class EffectsState:
-    """State for Roland MFX, Chorus, Reverb, and Master EQ."""
+    """State for Roland MFX, Chorus and Reverb."""
     # MFX Studio
     mfx_type: int = 15           # 15: Tape Echo
     mfx_dry_send: int = 127      # 0..127
@@ -584,7 +584,7 @@ def auto_macro_name(index: int, link_names: list[str]) -> str:
 
 
 def default_macro_slots() -> list["MacroSlot"]:
-    """Factory defaults replicating the legacy 8-knob deck as relative macros."""
+    """Factory default macro slots (relative macros)."""
     return [
         MacroSlot(links=[MacroLink("common.cutoff_offset", 1, 1.0)]),
         MacroSlot(links=[MacroLink("common.resonance_offset", 1, 1.0)]),

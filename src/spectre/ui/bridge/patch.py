@@ -1,4 +1,4 @@
-"""Patch bridge mixin: Tone TVF, TVA, pitch, envelopes, waves, MFX, master FX, EQ, and sculptor."""
+"""Patch bridge mixin: Tone TVF, TVA, pitch, envelopes, waves, MFX, master FX and sculptor."""
 
 from __future__ import annotations
 

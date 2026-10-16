@@ -212,7 +212,7 @@ Rectangle {
                             Layout.fillWidth: true
                             viewKey: "MASTER FX"
                             title: "MASTER FX"
-                            subtitle: "Chorus, Hall/Room Reverb & 3-Band EQ"
+                            subtitle: "Chorus & Hall/Room Reverb"
                             accentColor: Theme.catModFx
                         }
                     }
