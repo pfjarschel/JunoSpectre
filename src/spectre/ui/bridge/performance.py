@@ -29,7 +29,6 @@ from ...core.sysex import (
     perf_common_fx_base,
     temp_perf_patch_base,
 )
-from ...librarian.repository import PatchRepository
 from ...sequencer.models import SequencerSong, default_sequencer_song
 from ...vector.motion import RecorderState
 from .base import BridgeBaseMixin
@@ -1126,93 +1125,85 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
     @pyqtSlot()
     @pyqtSlot(bool)
     def syncPerformanceFromSynth(self, async_mode: bool = False) -> None:
-        """Read performance name + 16 part mixer blocks from hardware.
-
-        Disabled-safe offline (logs only). Never touches patch editors.
-        """
+        """Read the performance name, 16 part mixer blocks and shared FX from
+        the synth. async_mode reads on the job worker and applies on the UI
+        thread. Never touches the patch editors directly (the edited part is
+        re-read after)."""
         juno = self.juno
         if juno is None:
             logger.info("Cannot sync performance: no synthesizer connected.")
             return
-
-        if getattr(self, "_sync_busy", False):
+        if self._sync_busy:
             logger.info("Hardware sync already in progress, ignoring request.")
             return
+        self._set_sync_busy(True)
+        kept_names = [p.patch_name or p.name for p in self.patch_state.perf_parts]
+        active = int(self.patch_state.active_perf_part)
 
-        def _do_sync() -> None:
-            self._set_sync_busy(True)
-            try:
-                try:
-                    name = juno.get_perf_name(timeout=1.0)
-                    if isinstance(name, str) and name:
-                        self.patch_state.perf_name = name[:12]
-                        self._patch_name = name
-                except Exception as e:
-                    logger.debug(f"syncPerformance: name read failed: {e}")
-                try:
-                    repo = getattr(self, "_librarian_repo", None)
-                    if repo is None:
+        def read(progress=None) -> dict:
+            return self._read_synth_performance(juno, kept_names, active)
+
+        if not async_mode:
+            self._apply_synth_performance(read(), wait_editors=True)
+        elif not self._start_job("sync", "Reading the performance…", read,
+                                 done=self._apply_synth_performance):
+            logger.info("Sync skipped: another synth job is running.")
+            self._set_sync_busy(False)
+
+    def _read_synth_performance(self, juno, kept_names: list, active: int) -> dict:
+        """The synth's performance name, parts (names resolved) and FX (worker)."""
+        out: dict = {}
+        try:
+            out["name"] = juno.get_perf_name(timeout=1.0)
+        except Exception as e:
+            logger.debug(f"syncPerformance: name read failed: {e}")
+        try:
+            parts = juno.get_perf_parts(timeout=1.0)
+            if parts and len(parts) == 16:
+                repo = self._librarian_repo
+                for i, p in enumerate(parts):
+                    if repo is not None:
+                        p.patch_name = repo.resolve_patch_name(p.patch_msb, p.patch_lsb, p.patch_pc)
+                    # The edited part, or one the library doesn't know: ask the synth
+                    if p.part_index == active or not p.patch_name:
                         try:
-                            repo = PatchRepository()
-                        except Exception:
-                            repo = None
+                            p.patch_name = juno.get_perf_part_patch_name(p.part_index, timeout=0.25) \
+                                or p.patch_name
+                        except Exception as e:
+                            logger.debug(f"part {p.part_index} name read failed: {e}")
+                    if not p.patch_name and kept_names[i] and not kept_names[i].startswith("Part "):
+                        p.patch_name = kept_names[i]
+                    p.patch_name = p.patch_name or f"Part {p.part_index}"
+                out["parts"] = parts
+        except Exception as e:
+            logger.debug(f"syncPerformance: parts read failed: {e}")
+        try:
+            out["fx"] = juno.get_perf_fx(timeout=1.0)
+        except Exception as e:
+            logger.debug(f"syncPerformance: fx read failed: {e}")
+        return out
 
-                    parts = juno.get_perf_parts(timeout=1.0)
-                    if parts and len(parts) == 16:
-                        kept_names = [p.patch_name or p.name for p in self.patch_state.perf_parts]
-                        self.patch_state.perf_parts = parts
-                        for i, p in enumerate(self.patch_state.perf_parts):
-                            # 1. Resolve from DB catalog (user + factory)
-                            if repo is not None:
-                                try:
-                                    resolved = repo.resolve_patch_name(p.patch_msb, p.patch_lsb, p.patch_pc)
-                                    if resolved:
-                                        p.patch_name = resolved
-                                except Exception as e:
-                                    logger.debug(f"resolve_patch_name failed for part {p.part_index}: {e}")
-                            # 2. For active part or if still empty, query live synth buffer if supported
-                            if (p.part_index == self.patch_state.active_perf_part or not p.patch_name) and hasattr(juno, "get_perf_part_patch_name"):
-                                try:
-                                    live_name = juno.get_perf_part_patch_name(p.part_index, timeout=0.25)
-                                    if live_name:
-                                        p.patch_name = live_name
-                                except Exception as e:
-                                    logger.debug(f"get_perf_part_patch_name failed for part {p.part_index}: {e}")
-                            # 3. Fallback to previously kept name if descriptive
-                            if not p.patch_name and i < len(kept_names) and kept_names[i] and not kept_names[i].startswith("Part "):
-                                p.patch_name = kept_names[i]
-                            if not p.patch_name:
-                                p.patch_name = f"Part {p.part_index}"
-                except Exception as e:
-                    logger.debug(f"syncPerformance: parts read failed: {e}")
-                try:
-                    if hasattr(juno, "get_perf_fx"):
-                        fx = juno.get_perf_fx(timeout=1.0)
-                        if fx is not None:
-                            self.patch_state.perf_fx = fx
-                except Exception as e:
-                    logger.debug(f"syncPerformance: fx read failed: {e}")
-                self._sound_mode = "PERFORM"
-                self.patch_state.sound_mode = "PERFORM"
-                self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
-                self.perfPartsChanged.emit()
-                try:
-                    self._emit_fx_editor_signals()
-                except Exception as e:
-                    logger.debug(f"syncPerformance: fx editor signal emit failed: {e}")
-                try:
-                    self._refresh_editors_for_part(self.patch_state.active_perf_part, async_mode=False)
-                except Exception as e:
-                    logger.debug(f"syncPerformance: part editor refresh failed: {e}")
-            except Exception as e:
-                logger.warning(f"syncPerformanceFromSynth failed: {e}")
-            finally:
-                self._set_sync_busy(False)
-
-        if async_mode:
-            threading.Thread(target=_do_sync, daemon=True).start()
-        else:
-            _do_sync()
+    def _apply_synth_performance(self, out, wait_editors: bool = False) -> None:
+        """Take a performance read from the synth into the app (UI thread)."""
+        try:
+            if not isinstance(out, dict):
+                return
+            name = out.get("name")
+            if isinstance(name, str) and name:
+                self.patch_state.perf_name = name[:12]
+                self._patch_name = name
+            if out.get("parts"):
+                self.patch_state.perf_parts = out["parts"]
+            if out.get("fx") is not None:
+                self.patch_state.perf_fx = out["fx"]
+            self._sound_mode = "PERFORM"
+            self.patch_state.sound_mode = "PERFORM"
+            self.patchInfoChanged.emit(self._patch_name, self._sound_mode)
+            self.perfPartsChanged.emit()
+            self._emit_fx_editor_signals()
+            self._refresh_editors_for_part(self.patch_state.active_perf_part, async_mode=not wait_editors)
+        finally:
+            self._set_sync_busy(False)
 
     @pyqtSlot()
     def initPerformance(self) -> None:

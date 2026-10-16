@@ -26,11 +26,11 @@ class JobsBridgeMixin(BridgeBaseMixin):
     _jobDone = pyqtSignal(str, object)        # worker -> UI thread
     _jobStep = pyqtSignal(float, str)         # worker -> UI thread
 
-    _job_name: str = ""
-    _job_progress: float = -1.0
-    _job_text: str = ""
-
     def _init_jobs(self) -> None:
+        self._job_name: str = ""
+        self._job_progress: float = -1.0
+        self._job_text: str = ""
+        self._job_done_cb: Callable[[Any], None] | None = None
         self._jobDone.connect(self._on_job_done)
         self._jobStep.connect(self._on_job_step)
 
@@ -51,11 +51,17 @@ class JobsBridgeMixin(BridgeBaseMixin):
     def jobText(self) -> str:
         return self._job_text
 
-    def _start_job(self, name: str, text: str, fn: Callable[[Callable[[float, str], None]], Any]) -> bool:
-        """Run fn(progress) on a worker; False when another job is running."""
+    def _start_job(self, name: str, text: str, fn: Callable[[Callable[[float, str], None]], Any],
+                   done: Callable[[Any], None] | None = None) -> bool:
+        """Run fn(progress) on a worker; False when another job is running.
+
+        done(result), when given, runs on the UI thread with fn's result:
+        the worker only reads, the UI thread applies.
+        """
         if self._job_name:
             return False
         self._job_name, self._job_progress, self._job_text = name, -1.0, text
+        self._job_done_cb = done
         self.jobChanged.emit()
 
         def progress(fraction: float, label: str = "") -> None:
@@ -87,7 +93,11 @@ class JobsBridgeMixin(BridgeBaseMixin):
     @pyqtSlot(str, object)
     def _on_job_done(self, name: str, result: Any) -> None:
         self._job_name, self._job_progress, self._job_text = "", -1.0, ""
+        done, self._job_done_cb = self._job_done_cb, None
         self.jobChanged.emit()
+        if done is not None:
+            done(result)
+            result = {}
         if name == "save" and isinstance(result, dict) and result.get("saved"):
             self._saved_as_loaded()      # Shift + move now goes back to the saved state
         self.jobFinished.emit(name, result)

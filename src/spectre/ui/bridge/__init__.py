@@ -56,6 +56,7 @@ class SpectreBridge(
         self.juno = juno
         self.patch_state: PatchState = PatchState()  # the in-memory synth state
         # Each mixin sets up its own state
+        self._init_jobs()
         self._init_patch()
         self._init_sequencer()
         self._init_setlist()
@@ -64,7 +65,6 @@ class SpectreBridge(
         self._init_view()
         self._init_system()
         self._init_macros()
-        self._init_jobs()
         self._init_hardware()
         self._init_controllers()
         self._init_automation()

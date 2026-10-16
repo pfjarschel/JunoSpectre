@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 import time
 from contextlib import contextmanager
 from typing import Optional
@@ -22,6 +21,7 @@ from ...core.patch_state import (
     LFO_FADE_MODE_NAMES,
     LFO_WAVE_NAMES,
     TVF_TYPE_NAMES,
+    PatchState,
     ToneState,
 )
 from ...core.routing import (
@@ -2177,60 +2177,58 @@ class PatchBridgeMixin(BridgeBaseMixin):
     @pyqtSlot()
     @pyqtSlot(bool)
     def syncPatchFromSynth(self, async_mode: bool = False) -> None:
-        """Query active patch and all workstation parameters from Roland hardware."""
-        if not self.juno:
+        """Read the sounding patch from the synth into the editors.
+
+        async_mode reads on the job worker and applies on the UI thread.
+        """
+        juno = self.juno
+        if juno is None:
             logger.info("Cannot sync: No Roland synthesizer connected.")
             return
-
         if self._sync_busy:
             logger.info("Hardware sync already in progress, ignoring request.")
             return
+        self._set_sync_busy(True)
+        if not async_mode:
+            self._apply_synced_patch(self._read_synced_patch(juno))
+        elif not self._start_job("sync", "Reading the patch…",
+                                 lambda progress: self._read_synced_patch(juno),
+                                 done=self._apply_synced_patch):
+            logger.info("Sync skipped: another synth job is running.")
+            self._set_sync_busy(False)
 
-        def _do_sync() -> None:
-            self._set_sync_busy(True)
-            try:
-                logger.info("Syncing entire patch and workstation state from Roland hardware...")
-                try:
-                    state = self.juno.read_full_patch(timeout=1.0)
-                except Exception as e:
-                    logger.warning(f"Could not read full patch: {e}")
-                    return
-                # Preserve customizable macro assignments (names/links/values);
-                # bases re-capture lazily from the fresh hardware truth.
-                kept_macros = self.patch_state.macros
-                # A patch read carries no performance: keep the app's
-                old = self.patch_state
-                self.patch_state = state
-                self.patch_state.macros = kept_macros
-                state.perf_parts, state.perf_name = old.perf_parts, old.perf_name
-                state.perf_fx, state.active_perf_part = old.perf_fx, old.active_perf_part
-                self._resetMacroBases()
-                self.patch_state.effects.routing_preset = ""  # No algorithm preset selected on hardware sync
-                self._patch_name = state.common.name
-                self._sound_mode = state.sound_mode
+    @staticmethod
+    def _read_synced_patch(juno):
+        try:
+            return juno.read_full_patch(timeout=1.0)
+        except Exception as e:
+            logger.warning(f"Could not read full patch: {e}")
+            return None
 
-                self.vector.tone_levels = (
-                    state.tones[0].level,
-                    state.tones[1].level,
-                    state.tones[2].level,
-                    state.tones[3].level,
-                )
-                self.patch_state.custom_detune_cache = [t.fine_tune for t in state.tones]
-                self.patchInfoChanged.emit(str(self._patch_name), str(self._sound_mode))
-                self._refresh_tone_waves()
-
-                # Emit all signals to refresh every UI page
-                self._emit_all_state_signals()
-                logger.info(f"Sync complete. Synced patch: '{self._patch_name}'")
-            except Exception as e:
-                logger.error(f"Error syncing from synth: {e}")
-            finally:
-                self._set_sync_busy(False)
-
-        if async_mode:
-            threading.Thread(target=_do_sync, daemon=True).start()
-        else:
-            _do_sync()
+    def _apply_synced_patch(self, state) -> None:
+        """Take a patch read from the synth into the editors (UI thread)."""
+        try:
+            if not isinstance(state, PatchState):
+                return
+            # Keep the macro assignments (bases re-capture from the new sound)
+            # and the performance: a patch read carries neither.
+            old = self.patch_state
+            state.macros = old.macros
+            state.perf_parts, state.perf_name = old.perf_parts, old.perf_name
+            state.perf_fx, state.active_perf_part = old.perf_fx, old.active_perf_part
+            self.patch_state = state
+            self._resetMacroBases()
+            state.effects.routing_preset = ""  # no routing preset is selected on the synth
+            self._patch_name = state.common.name
+            self._sound_mode = state.sound_mode
+            self.vector.tone_levels = tuple(t.level for t in state.tones[:4])
+            state.custom_detune_cache = [t.fine_tune for t in state.tones]
+            self.patchInfoChanged.emit(str(self._patch_name), str(self._sound_mode))
+            self._refresh_tone_waves()
+            self._emit_all_state_signals()
+            logger.info(f"Sync complete. Synced patch: '{self._patch_name}'")
+        finally:
+            self._set_sync_busy(False)
 
     @pyqtSlot(str, str, str, result="QVariantList")
     def getFilteredWaves(self, category: str = "ALL", bank: str = "ALL", search: str = "") -> list:
