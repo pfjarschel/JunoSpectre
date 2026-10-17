@@ -1,9 +1,11 @@
-"""Vector engine: 2D/1D morphing, motion loops and the tone-level writes.
+"""Vector engine: 2D/1D morphing and motion loops.
 
-Level writes are rate-limited (50 Hz default), skipped when unchanged and
-queued for the writer thread, so morphing never blocks the UI. A move that
+The pad sets the four tone levels only when it moves (a drag, a motion loop,
+an automator or a wavetable sweep). Each new set of levels goes to the
+subscribers at once and to `send` rate-limited (50 Hz default); a move that
 falls inside the rate window is sent when the window ends, so the synth
-always ends on the last position.
+always ends on the last position. Mutes and the patch's own levels belong to
+the patch, not to the engine.
 """
 
 from __future__ import annotations
@@ -12,20 +14,20 @@ import enum
 import logging
 import threading
 import time
-from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
-from ..core.protocol import JunoClient
 from .math import (
     CrossfadeCurve,
     calculate_cartesian_levels,
     calculate_wavetable_levels,
     clamp_coordinate,
 )
-from .motion import AutomatorType, LoopMode, MotionRecorder, RecorderState
+from .motion import AutomatorType, LoopMode, MotionRecorder, RecorderState, WavetableSweepMode
 
 logger = logging.getLogger(__name__)
+
+Levels = Tuple[int, int, int, int]
 
 
 class MorphMode(str, enum.Enum):
@@ -41,22 +43,22 @@ class VectorState:
     x: float
     y: float
     w: float
-    tone_levels: Tuple[int, int, int, int]
+    tone_levels: Levels
     recorder_state: RecorderState
     loop_mode: LoopMode
     automator: AutomatorType
 
 
 class VectorEngine:
-    """Coordinates vector morphing, motion playback, and Roland SysEx transmission."""
+    """Vector morphing and motion playback; the levels go out through `send`."""
 
     def __init__(
         self,
-        juno_client: Optional[JunoClient] = None,
+        send: Optional[Callable[[Levels], None]] = None,
         max_update_hz: float = 50.0,
         curve: CrossfadeCurve = CrossfadeCurve.NORMALIZED,
     ):
-        self.juno = juno_client
+        self.send = send
         self.max_update_hz = max_update_hz
         self.curve = curve
 
@@ -66,41 +68,34 @@ class VectorEngine:
         self.w: float = 0.0
 
         self.motion = MotionRecorder()
-        self.tone_levels: Tuple[int, int, int, int] = (32, 32, 32, 32)
-        self.tone_mutes: List[bool] = [False, False, False, False]
+        # The levels the last move produced (mode and curve apply from the next one)
+        self.tone_levels: Levels = (32, 32, 32, 32)
 
         self._last_dispatch_time: float = 0.0
-        self._last_dispatched_levels: Tuple[int, int, int, int] = (-1, -1, -1, -1)
+        self._last_dispatched_levels: Levels = (-1, -1, -1, -1)
         self._subscribers: List[Callable[[VectorState], None]] = []
-        self._hardware_write_holds: int = 0
         self._trailing: Optional[threading.Timer] = None
 
-        # Calculate initial levels
         self._recalculate_levels()
 
     def subscribe(self, callback: Callable[[VectorState], None]) -> None:
         """Register a subscriber callback for vector state changes."""
         self._subscribers.append(callback)
 
-    @contextmanager
-    def hold_hardware_writes(self):
-        """Temporarily suppress engine-driven SysEx without losing motion state."""
-        self._hardware_write_holds += 1
-        try:
-            yield self
-        finally:
-            self._hardware_write_holds = max(0, self._hardware_write_holds - 1)
-
-    def _hardware_writes_held(self) -> bool:
-        return self._hardware_write_holds > 0
+    @property
+    def needs_tick(self) -> bool:
+        """Whether update() has anything to advance (motion, recording or a sweep)."""
+        if self.motion.state in (RecorderState.PLAYING, RecorderState.RECORDING):
+            return True
+        return self.mode == MorphMode.WAVETABLE_1D and self.motion.wavetable_sweep != WavetableSweepMode.MANUAL
 
     def set_mode(self, mode: MorphMode) -> None:
-        """Switch between 2D Vector Pad and 1D Wavetable Scanner."""
-        if self.mode != mode:
-            self.mode = mode
-            self._recalculate_levels()
-            self._dispatch_if_needed(force=True)
-            self._notify_subscribers()
+        """Switch between 2D Vector Pad and 1D Wavetable Scanner (applies from the next move)."""
+        self.mode = mode
+
+    def set_curve(self, curve: CrossfadeCurve) -> None:
+        """Set the crossfade curve (applies from the next move)."""
+        self.curve = curve
 
     def set_coordinates(self, x: float, y: float, record_gesture: bool = True) -> None:
         """Update 2D Cartesian coordinates (0.0 .. 1.0)."""
@@ -129,36 +124,8 @@ class VectorEngine:
                 self._dispatch_if_needed()
             self._notify_subscribers()
 
-    def set_curve(self, curve: CrossfadeCurve) -> None:
-        """Set crossfade curve (Linear or Equal-Power)."""
-        if self.curve != curve:
-            self.curve = curve
-            self._recalculate_levels()
-            self._dispatch_if_needed(force=True)
-            self._notify_subscribers()
-
-    def set_tone_mute(self, tone_idx: int, muted: bool) -> None:
-        """Set mute state for tone 1..4."""
-        if 1 <= tone_idx <= 4:
-            self.tone_mutes[tone_idx - 1] = muted
-            self._recalculate_levels()
-            self._dispatch_if_needed(force=True)
-            self._notify_subscribers()
-
-    def set_tone_level(self, tone_idx: int, level: int) -> None:
-        """Directly adjust level of a single tone (1..4) from 0..127."""
-        if 1 <= tone_idx <= 4:
-            clamped = max(0, min(127, int(level)))
-            levels = list(self.tone_levels)
-            levels[tone_idx - 1] = 0 if self.tone_mutes[tone_idx - 1] else clamped
-            self.tone_levels = (levels[0], levels[1], levels[2], levels[3])
-            self._dispatch_if_needed(force=True)
-            self._notify_subscribers()
-
     def update(self, dt: float) -> None:
         """Tick engine by delta-time dt (advances motion loops / automators / wavetable sweeps)."""
-        if self._hardware_writes_held():
-            return
         if self.mode == MorphMode.VECTOR_2D:
             if self.motion.state == RecorderState.PLAYING:
                 pos = self.motion.update(dt)
@@ -170,27 +137,18 @@ class VectorEngine:
                 self.set_wavetable_pos(new_w)
 
     def _recalculate_levels(self) -> None:
-        """Compute 4-tone TVA levels based on active mode and mutes."""
+        """Compute the 4 tone levels at the current position."""
         if self.mode == MorphMode.VECTOR_2D:
             raw = calculate_cartesian_levels(self.x, self.y, curve=self.curve)
         else:
             raw = calculate_wavetable_levels(self.w, curve=self.curve)
-
-        self.tone_levels = (
-            0 if self.tone_mutes[0] else raw[0],
-            0 if self.tone_mutes[1] else raw[1],
-            0 if self.tone_mutes[2] else raw[2],
-            0 if self.tone_mutes[3] else raw[3],
-        )
+        self.tone_levels = (raw[0], raw[1], raw[2], raw[3])
 
     def _dispatch_if_needed(self, force: bool = False) -> None:
-        """Send SysEx to synth with rate-limiting and change detection."""
-        if self._hardware_writes_held():
-            return
+        """Send the levels, rate-limited and skipped when unchanged."""
         now = time.perf_counter()
         interval = 1.0 / max(1.0, self.max_update_hz)
 
-        # Only send if levels actually changed
         if not force and self.tone_levels == self._last_dispatched_levels:
             return
 
@@ -205,16 +163,11 @@ class VectorEngine:
 
         self._last_dispatch_time = now
         self._last_dispatched_levels = self.tone_levels
-
-        # Queued for the writer thread: the 4 DT1s (~16 ms of MIDI pacing)
-        # never block the UI thread, and a level that changes again before
-        # it went out is sent once.
-        if self.juno:
+        if self.send:
             try:
-                with self.juno.coalesced_writes():
-                    self.juno.set_tone_levels(self.tone_levels)
+                self.send(self.tone_levels)
             except Exception as e:
-                logger.error(f"Failed to dispatch vector levels to synth: {e}")
+                logger.error(f"Failed to send vector levels: {e}")
 
     def _send_trailing(self) -> None:
         self._trailing = None

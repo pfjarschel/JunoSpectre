@@ -35,18 +35,28 @@ class VectorBridgeMixin(BridgeBaseMixin):
     curveChanged = pyqtSignal(str)
 
     def _init_vector(self) -> None:
-        """Engine dirty-check state and the 60 FPS animation/transport tick."""
+        """Engine dirty-check state, the level sink and the motion tick."""
         self._last_tick_time: float = time.perf_counter()
         self._last_x: float = self.vector.x
         self._last_y: float = self.vector.y
         self._last_w: float = self.vector.w
         self._last_tone_levels: tuple[int, int, int, int] = self.vector.tone_levels
         self._last_transport: str = self.vector.motion.state.value
+        self.vector.send = self._send_vector_levels
         self.vector.subscribe(self._on_vector_state_changed)
+        # ~60 Hz, only while motion, recording or a wavetable sweep runs
         self._timer = QTimer(self)
-        self._timer.setInterval(16)  # ~60 Hz
+        self._timer.setInterval(16)
         self._timer.timeout.connect(self._on_timer_tick)
-        self._timer.start()
+        for sig in (self.transportStateChanged, self.wavetableSweepModeChanged, self.morphModeChanged):
+            sig.connect(self._update_vector_timer)
+
+    def _update_vector_timer(self, *_args) -> None:
+        if self.vector.needs_tick and not self._timer.isActive():
+            self._last_tick_time = time.perf_counter()
+            self._timer.start()
+        elif not self.vector.needs_tick:
+            self._timer.stop()
 
     def _on_timer_tick(self) -> None:
         """Tick engine time forward to update motion loops and automators."""
@@ -56,6 +66,23 @@ class VectorBridgeMixin(BridgeBaseMixin):
         self.vector.update(dt)
         if self.vector.motion.state == RecorderState.RECORDING:
             self.motionPointsChanged.emit()
+        if not self.vector.needs_tick:  # a one-shot loop ended
+            self._timer.stop()
+            self._last_transport = self.vector.motion.state.value
+            self.transportStateChanged.emit(self._last_transport)
+
+    def _send_vector_levels(self, levels) -> None:
+        """A pad move's levels to the synth (queued; muted tones stay at 0).
+
+        Runs on the UI thread or on the engine's rate-limit timer thread.
+        """
+        juno = self.juno
+        if juno is None:
+            return
+        with juno.coalesced_writes():
+            for t, level in zip(self.patch_state.tones, levels):
+                if not t.muted:
+                    juno.set_tone_level(t.tone_index, level)
 
     def _on_vector_state_changed(self, state: VectorState) -> None:
         """Handle state notification from VectorEngine with dirty-change detection."""
@@ -69,15 +96,12 @@ class VectorBridgeMixin(BridgeBaseMixin):
             self.wavetablePosChanged.emit(state.w)
 
         if state.tone_levels != self._last_tone_levels:
+            # A pad move sets the patch's tone levels
             self._last_tone_levels = state.tone_levels
-            for i in range(4):
-                self.patch_state.tones[i].level = state.tone_levels[i]
-            self.toneLevelsChanged.emit(
-                state.tone_levels[0],
-                state.tone_levels[1],
-                state.tone_levels[2],
-                state.tone_levels[3],
-            )
+            for t, level in zip(self.patch_state.tones, state.tone_levels):
+                t.level = level
+            self.toneLevelsChanged.emit(*state.tone_levels)
+            self.tvaLevelChanged.emit(self._active_tone().level)
 
         if state.recorder_state.value != self._last_transport:
             self._last_transport = state.recorder_state.value
@@ -297,13 +321,11 @@ class VectorBridgeMixin(BridgeBaseMixin):
         targets = self._target_tones()
         for t in targets:
             t.level = clamped
-            if not t.muted:
-                self.vector.set_tone_level(t.tone_index, clamped)
-                if self.juno:
-                    try:
-                        self.juno.set_tone_level(t.tone_index, clamped)
-                    except Exception as e:
-                        logger.error(f"Error setting tone level on synth: {e}")
+            if self.juno and not t.muted:
+                try:
+                    self.juno.set_tone_level(t.tone_index, clamped)
+                except Exception as e:
+                    logger.error(f"Error setting tone level on synth: {e}")
         self._rebaseDirect([(f"tone.{t.tone_index}.tva_level", clamped) for t in targets])
         self.tvaLevelChanged.emit(self._active_tone().level)
         self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])

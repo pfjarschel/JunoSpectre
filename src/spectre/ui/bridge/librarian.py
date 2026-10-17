@@ -129,10 +129,6 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
 
     def _live_spectre_extras(self) -> dict:
         extras: dict = {"engine_mode": self._active_view}
-        extras["vector"] = {"x": float(self.vector.x),
-                            "y": float(self.vector.y),
-                            "w": float(self.vector.w)}
-        extras["motion"] = {"speed": float(self.vector.motion.speed)}
         extras.update(self._arp_extras())
         return extras
 
@@ -622,12 +618,6 @@ class LibrarianBridgeMixin(BridgeBaseMixin):
         if ok:
             self.librarianChanged.emit()
         return ok
-
-    def _reset_vector_to_patch_state(self) -> None:
-        """Sync tone wave caches from patch_state, centre the vector, reset tone levels."""
-        self._refresh_tone_waves()
-        self.vector.set_coordinates(0.5, 0.5)
-        self.vector.tone_levels = tuple(t.level for t in self.patch_state.tones)
 
     @pyqtSlot(int, int, int, result=bool)
     @pyqtSlot(int, int, int, str, result=bool)

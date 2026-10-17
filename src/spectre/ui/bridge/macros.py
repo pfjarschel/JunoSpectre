@@ -305,10 +305,10 @@ class MacroBridgeMixin(BridgeBaseMixin):
         st = self._macroPartState(part)
         juno = self.juno
         if juno is None:
-            self._applyPatchKey(key, iv, st, edited=False)
+            self._applyPatchKey(key, iv, st)
             return
         with juno.part_scope(part):
-            self._applyPatchKey(key, iv, st, edited=False)
+            self._applyPatchKey(key, iv, st)
 
     def _applyMixerMacro(self, param: str, part: int, iv: int) -> None:
         p = self.patch_state.perf_parts[part - 1]
@@ -481,7 +481,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
         self._auto_forget()
         self._forget_loaded()
 
-    def _applyPatchKey(self, key: str, iv: int, ps, edited: bool = True) -> None:
+    def _applyPatchKey(self, key: str, iv: int, ps) -> None:
         """Common/tone macro write into `ps` + the synth's current patch base."""
         juno = self.juno
         try:
@@ -527,7 +527,7 @@ class MacroBridgeMixin(BridgeBaseMixin):
                         dest3=c.dest3, sens3=c.sens3, dest4=c.dest4, sens4=c.sens4)
             elif key.startswith("tone."):
                 _, idx, param = key.split(".", 2)
-                self._applyToneParam(int(idx), param, iv, ps=ps, edited=edited)
+                self._applyToneParam(int(idx), param, iv, ps=ps)
         except (ValueError, AttributeError, IndexError) as e:
             logger.debug(f"macro apply failed for {key}: {e}")
 
@@ -589,9 +589,8 @@ class MacroBridgeMixin(BridgeBaseMixin):
         except Exception as e:
             logger.debug(f"macro effect push failed for {key}: {e}")
 
-    def _applyToneParam(self, tone_idx: int, param: str, iv: int,
-                        ps=None, edited: bool = True) -> None:
-        """Tone macro write; edited=False for a non-edited part's mirror."""
+    def _applyToneParam(self, tone_idx: int, param: str, iv: int, ps=None) -> None:
+        """Tone macro write into `ps` (default: the edited sound)."""
         ps = ps if ps is not None else self.patch_state
         t = ps.get_tone(tone_idx)
         juno = self.juno
@@ -616,11 +615,8 @@ class MacroBridgeMixin(BridgeBaseMixin):
             self._push_tvf_env(t)
         elif param == "tva_level":
             t.level = max(0, min(127, iv))
-            if not t.muted:
-                if edited:
-                    self.vector.set_tone_level(tone_idx, t.level)
-                if juno:
-                    juno.set_tone_level(tone_idx, t.level)
+            if juno and not t.muted:
+                juno.set_tone_level(tone_idx, t.level)
         elif param == "tva_pan":
             t.pan = max(0, min(127, iv))
             if juno:

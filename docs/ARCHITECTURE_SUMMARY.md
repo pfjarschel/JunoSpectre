@@ -38,7 +38,7 @@ the Launch Control XL3 surface is specified in [LCXL3_LAYOUT.md](LCXL3_LAYOUT.md
 | `core/panel_follow.py`, `arpeggio.py` | Following panel changes on the synth; arp settings and MIDI clock out |
 | `core/updater.py`, `wifi.py`, `backlight.py`, `telemetry.py` | Pi appliance services (git-release updater, NetworkManager, display, system stats) |
 | `control/` | Controller binding model (`mapping.py`) and the LCXL3 screen/LED messages (`lcxl3.py`) |
-| `vector/` | Vector/wavetable maths, the motion recorder and automators, `VectorEngine` (rate-limited, coalesced tone-level writes) |
+| `vector/` | The vector pad feature: wavetable maths, the motion recorder and automators, `VectorEngine` (pad moves only; the patch owns tone levels and mutes) |
 | `sequencer/` | PPQN clock thread, playback engine (tracks, clips, launch quantization), models, step/live recording, automation lanes, chord names |
 | `audio/` | Audio clips: media folder and conversion cache, the worker process that owns the sound device, the sequencer-side player, clock drift lock |
 | `librarian/` | `PatchRepository` (user files + SQLite index) and the shipped factory catalog |

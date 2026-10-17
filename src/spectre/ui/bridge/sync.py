@@ -62,7 +62,6 @@ class SyncBridgeMixin(BridgeBaseMixin):
             state.effects.routing_preset = ""  # no routing preset is selected on the synth
             self._patch_name = state.common.name
             self._sound_mode = state.sound_mode
-            self.vector.tone_levels = tuple(t.level for t in state.tones[:4])
             state.custom_detune_cache = [t.fine_tune for t in state.tones]
             self.patchInfoChanged.emit(str(self._patch_name), str(self._sound_mode))
             self._refresh_tone_waves()

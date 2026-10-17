@@ -15,6 +15,7 @@ from PyQt6.QtCore import QTimer, pyqtProperty, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QGuiApplication
 
 from ...core.backlight import BacklightController
+from ...core.protocol_base import MIN_DT1_GAP_S
 from ...core.telemetry import SystemTelemetry, read_telemetry
 from ...core.updater import GitUpdater, UpdaterError
 from ...core.wifi import WifiError, WifiManager, WifiStatus
@@ -193,14 +194,11 @@ class SystemBridgeMixin(BridgeBaseMixin):
         return max(0.0, min(1.0, used / total))
 
     @pyqtProperty(str, notify=telemetryChanged)
-    def controlRateText(self) -> str:
-        try:
-            hz = float(self.vector.max_update_hz)
-        except (TypeError, ValueError):
-            hz = 50.0
-        if hz <= 0:
-            hz = 50.0
-        return f"{hz:.0f} Hz SysEx dispatch ({1000.0 / hz:.0f} ms)"
+    def sysexRateText(self) -> str:
+        """The synth link's write ceiling: one DT1 per gap (wider during init writes)."""
+        juno = self.juno
+        gap = max(MIN_DT1_GAP_S, juno._min_send_interval_s) if juno is not None else MIN_DT1_GAP_S
+        return f"{1.0 / gap:.0f} msg/s ({gap * 1000.0:.0f} ms gap)"
 
     @pyqtProperty(str, notify=telemetryChanged)
     def midiLinkText(self) -> str:

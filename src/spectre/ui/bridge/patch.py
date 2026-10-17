@@ -34,7 +34,6 @@ from ...core.routing import (
     tone_send_attrs,
 )
 from ...core.waves import WaveCatalogManager
-from ...vector.motion import RecorderState
 from .base import BridgeBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -2181,49 +2180,36 @@ class PatchBridgeMixin(BridgeBaseMixin):
         self._forget_loaded(self._loaded_slot())   # INIT is the new loaded sound
         logger.info("Initializing active patch in RAM to JUNO SPECTRE template...")
 
-        # Pause motion playback without destroying the recorded trajectory, and hold
-        # engine-driven SysEx for the whole critical section. Recording is left alone.
-        motion_was_playing = self.vector.motion.state == RecorderState.PLAYING
-        if motion_was_playing:
-            self.vector.motion.pause()
-            self.transportStateChanged.emit(self.vector.motion.state.value)
+        # 1. Restore the golden image on hardware (one DT1 per region, zero residue).
+        #    Falls back to the per-parameter reset sequence if the asset is missing.
+        hw_ok = False
+        if self.juno:
+            try:
+                hw_ok = self.juno.init_patch()
+            except Exception as e:
+                logger.error(f"Error sending init_patch to synth: {e}")
+        if not hw_ok and not self.juno:
+            logger.info("No synth connected; resetting in-memory state only.")
 
-        try:
-            with self.vector.hold_hardware_writes():
-                # 1. Restore the golden image on hardware (one DT1 per region, zero residue).
-                #    Falls back to the per-parameter reset sequence if the asset is missing.
-                hw_ok = False
-                if self.juno:
-                    try:
-                        hw_ok = self.juno.init_patch()
-                    except Exception as e:
-                        logger.error(f"Error sending init_patch to synth: {e}")
-                if not hw_ok and not self.juno:
-                    logger.info("No synth connected; resetting in-memory state only.")
+        # 2. Reset in-memory state from the SAME golden image the hardware received,
+        #    so UI and synth provably match (decoded blob, or hand-built fallback).
+        self.patch_state = PatchState.from_template_file() or PatchState()
+        # New patches start with plain ADSR envelopes (nothing to switch back to)
+        for t in self.patch_state.tones:
+            for env in ("tvf", "tva", "pitch"):
+                t.env_to_adsr(env, keep_original=False)
+            self._push_tvf_env(t)
+            self._push_tva_env(t)
+            self._push_pitch_env(t)
 
-                # 2. Reset in-memory state from the SAME golden image the hardware received,
-                #    so UI and synth provably match (decoded blob, or hand-built fallback).
-                self.patch_state = PatchState.from_template_file() or PatchState()
-                # New patches start with plain ADSR envelopes (nothing to switch back to)
-                for t in self.patch_state.tones:
-                    for env in ("tvf", "tva", "pitch"):
-                        t.env_to_adsr(env, keep_original=False)
-                    self._push_tvf_env(t)
-                    self._push_tva_env(t)
-                    self._push_pitch_env(t)
+        # 3. Update patch name & mode
+        self._patch_name = self.patch_state.common.name
+        self._sound_mode = self.patch_state.sound_mode
 
-                # 3. Update patch name & mode
-                self._patch_name = self.patch_state.common.name
-                self._sound_mode = self.patch_state.sound_mode
+        # 4. Wave caches follow the template
+        self._refresh_tone_waves()
 
-                # 4. Wave caches, vector position and tone levels follow the template
-                self._reset_vector_to_patch_state()
-        finally:
-            if motion_was_playing and self.vector.motion.state != RecorderState.PLAYING:
-                self.vector.motion.play()
-                self.transportStateChanged.emit(self.vector.motion.state.value)
-
-        # 6. Emit all signals to trigger live UI refresh across all tabs and screens
+        # 5. Emit all signals to trigger live UI refresh across all tabs and screens
         #    (macro deck values are derived getters, so they refresh automatically)
         self._emit_all_state_signals()
         self._clear_current_ref()  # fresh RAM template: no slot origin
@@ -2242,7 +2228,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
         """Set mute state for tone 1..4."""
         idx = max(1, min(4, tone_number)) - 1
         self.patch_state.tones[idx].muted = muted
-        self.vector.set_tone_mute(tone_number, muted)
+        # Level 0 too: the switch alone doesn't silence held notes
         target_level = 0 if muted else self.patch_state.tones[idx].level
         if self.juno:
             try:
@@ -2251,7 +2237,7 @@ class PatchBridgeMixin(BridgeBaseMixin):
             except Exception as e:
                 logger.error(f"Error setting tone mute on synth: {e}")
         self.toneMutesChanged.emit()
-        self.toneLevelsChanged.emit(*self.vector.tone_levels)
+        self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])
         if tone_number == self._selected_tone:
             self.tvaLevelChanged.emit(self.tvaLevel)
 
@@ -2261,13 +2247,11 @@ class PatchBridgeMixin(BridgeBaseMixin):
         idx = max(1, min(4, tone_number)) - 1
         clamped = max(0, min(127, int(level)))
         self.patch_state.tones[idx].level = clamped
-        if not self.patch_state.tones[idx].muted:
-            self.vector.set_tone_level(tone_number, clamped)
-            if self.juno:
-                try:
-                    self.juno.set_tone_level(tone_number, clamped)
-                except Exception as e:
-                    logger.error(f"Error setting tone level on synth: {e}")
+        if self.juno and not self.patch_state.tones[idx].muted:
+            try:
+                self.juno.set_tone_level(tone_number, clamped)
+            except Exception as e:
+                logger.error(f"Error setting tone level on synth: {e}")
         self._rebaseDirect([(f"tone.{max(1, min(4, tone_number))}.tva_level", clamped)])
         self.toneLevelsChanged.emit(*[t.level for t in self.patch_state.tones])
         if tone_number == self._selected_tone:

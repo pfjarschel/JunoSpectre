@@ -1124,7 +1124,7 @@ def test_edit_perf_part_refreshes_editors(tmp_path):
     bridge._refresh_editors_for_part(2, async_mode=False)
 
     assert bridge.patch_state.common.name == "PART2 PATCH"
-    assert bridge.vector.tone_levels == (95, 60, 40, 0)
+    assert [t.level for t in bridge.patch_state.tones] == [95, 60, 40, 0]
     assert bridge._cached_tone_wave_data[0] == bridge._wave_catalog.get_wave("INTA", 123)
 
 

@@ -263,9 +263,9 @@ Rectangle {
                     Text { text: "MIDI & CONTROL LINK"; font.bold: true; font.pixelSize: ScaleMetrics.sp(9); color: Theme.textDim }
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "CONTROL RATE:"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
+                        Text { text: "SYSEX RATE:"; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textDim }
                         Item { Layout.fillWidth: true }
-                        Text { text: Bridge.controlRateText; font.family: Theme.fontMono; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textPrimary }
+                        Text { text: Bridge.sysexRateText; font.family: Theme.fontMono; font.bold: true; font.pixelSize: ScaleMetrics.sp(8); color: Theme.textPrimary }
                     }
                     RowLayout {
                         Layout.fillWidth: true

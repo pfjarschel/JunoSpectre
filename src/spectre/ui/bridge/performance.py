@@ -30,7 +30,6 @@ from ...core.sysex import (
     temp_perf_patch_base,
 )
 from ...sequencer.models import SequencerSong, default_sequencer_song
-from ...vector.motion import RecorderState
 from .base import BridgeBaseMixin
 from .fx_target import CHORUS_ATTRS, REVERB_ATTRS, FxTarget
 
@@ -629,12 +628,6 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             if state.common and state.common.name:
                 self._patch_name = state.common.name
             if len(state.tones) >= 4:
-                self.vector.tone_levels = (
-                    state.tones[0].level,
-                    state.tones[1].level,
-                    state.tones[2].level,
-                    state.tones[3].level,
-                )
                 self.patch_state.custom_detune_cache = [t.fine_tune for t in state.tones]
             self._refresh_tone_waves()
         except Exception as e:
@@ -1120,22 +1113,12 @@ class PerformanceBridgeMixin(BridgeBaseMixin):
             parts.append(p)
         state.perf_parts = parts
 
-        motion_was_playing = self.vector.motion.state == RecorderState.PLAYING
-        if motion_was_playing:
-            self.vector.motion.pause()
-            self.transportStateChanged.emit(self.vector.motion.state.value)
-        try:
-            with self.vector.hold_hardware_writes():
-                if not self._apply_song_state(patch_state_to_dict(state), INIT_PERF_NAME, snaps):
-                    return
-                self.patch_state.macros = state.macros
-                self._resetMacroBases()
-                self._push_perf_fx_details()
-                self._reset_vector_to_patch_state()
-        finally:
-            if motion_was_playing and self.vector.motion.state != RecorderState.PLAYING:
-                self.vector.motion.play()
-                self.transportStateChanged.emit(self.vector.motion.state.value)
+        if not self._apply_song_state(patch_state_to_dict(state), INIT_PERF_NAME, snaps):
+            return
+        self.patch_state.macros = state.macros
+        self._resetMacroBases()
+        self._push_perf_fx_details()
+        self._refresh_tone_waves()
 
         self._restore_song_sequence(default_sequencer_song().to_dict())
         self.seqSelectTrack(0)

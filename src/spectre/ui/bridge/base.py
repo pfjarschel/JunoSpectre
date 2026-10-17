@@ -23,8 +23,7 @@ class BridgeBaseMixin:
 
     @juno.setter
     def juno(self, client: Optional[JunoClient]) -> None:
-        """Attach (or drop) the synth; the vector engine sends tone levels through it."""
+        """Attach (or drop) the synth."""
         self._juno = client
-        self.vector.juno = client
         if client is not None and getattr(client, "on_perf_part_write", None) is None:
             client.on_perf_part_write = self._on_perf_part_write
